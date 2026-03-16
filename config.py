@@ -1,0 +1,6 @@
+# afcon 360_1pp/config.py
+APP_NAME = "AFCON 360"
+TOURNAMENT_NAME = "AFCON 360"
+YEAR = 2025
+VERSION = "1.0.0"
+

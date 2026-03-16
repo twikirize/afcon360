@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receiver Wallet</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="mb-4">Receiver Wallet Overview</h2>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Wallet Details</h5>
+                <p><strong>User ID:</strong> {{ wallet.user_id }}</p>
+                <p><strong>Balance:</strong> {{ wallet.balance_local }} {{ wallet.local_currency }}</p>
+                <p><strong>Verified:</strong> {{ wallet.verified }}</p>
+                <p><strong>Nationality:</strong> {{ wallet.nationality }}</p>
+                <p><strong>Location:</strong> {{ wallet.location }}</p>
+                <p><strong>Home Currency:</strong> {{ wallet.home_currency }}</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Transaction History</h5>
+                {% if wallet.transactions %}
+                    <ul class="list-group">
+                        {% for tx in wallet.transactions %}
+                            <li class="list-group-item">
+                                <strong>{{ tx.timestamp }}</strong><br>
+                                From: {{ tx.from }}<br>
+                                To: {{ tx.to }}<br>
+                                Amount: {{ tx.amount }} {{ tx.currency }}<br>
+                                {% if tx.metadata %}
+                                    <em>Note:</em> {{ tx.metadata.note }}
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No transactions found.</p>
+                {% endif %}
+            </div>
+        </div>
+        <!--There should be a  div body here to put the forms inside but i have pulled to the end of the code-->
+
+      <h3 class="mt-5"> Log a New Transaction</h3>
+
+        <form id="logTransactionForm" class="mb-4">
+             <div class="mb-3">
+                <label for="from" class="form-label">From (Sender ID)</label>
+                <input type="text" class="form-control" id="from" name="from" required>
+             </div>
+              <div class="mb-3">
+                <label for="amount" class="form-label">Amount</label>
+                <input type="number" class="form-control" id="amount" name="amount" required>
+              </div>
+              <div class="mb-3">
+                <label for="currency" class="form-label">Currency</label>
+                <input type="text" class="form-control" id="currency" name="currency" value="UGX" required>
+              </div>
+              <div class="mb-3">
+                <label for="note" class="form-label">Note</label>
+                <input type="text" class="form-control" id="note" name="note">
+              </div>
+              <button type="submit" class="btn btn-primary">Log Transaction</button>
+        </form>
+
+        <div id="logResult" class="alert mt-3 d-none"></div>
+        <script>
+        document.getElementById("logTransactionForm").addEventListener("submit", function(e) {
+          e.preventDefault();
+
+          const receiverId = "{{ wallet.user_id }}";
+          const txData = {
+            from: document.getElementById("from").value,
+            to: receiverId,
+            amount: parseFloat(document.getElementById("amount").value),
+            currency: document.getElementById("currency").value,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              note: document.getElementById("note").value
+            }
+          };
+
+          fetch(`/wallet/receiver/${receiverId}/log`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(txData)
+          })
+          .then(response => response.json())
+          .then(data => {
+            const result = document.getElementById("logResult");
+            result.classList.remove("d-none");
+            result.classList.add("alert-success");
+            result.textContent = "Transaction logged successfully!";
+            setTimeout(() => location.reload(), 1000); // Refresh to show new transaction
+          })
+          .catch(error => {
+            const result = document.getElementById("logResult");
+            result.classList.remove("d-none");
+            result.classList.add("alert-danger");
+            result.textContent = "Failed to log transaction.";
+          });
+        });
+        </script>
+    </div>
+</body>
+</html>

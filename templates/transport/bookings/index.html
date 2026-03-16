@@ -1,0 +1,203 @@
+{% extends "transport/base.html" %}
+{% block title %}Bookings{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span>
+<a href="{{ url_for('transport.bookings_index') }}">Bookings</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-bar {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.filter-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-pill:hover, .filter-pill.active { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+.filter-pill.red.active    { border-color: var(--red);   color: var(--red);   background: var(--red-dim); }
+.filter-pill.green.active  { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+.filter-pill.blue.active   { border-color: var(--blue);  color: var(--blue);  background: var(--blue-dim); }
+
+.booking-row-actions { display: flex; gap: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Bookings</h1>
+    <p class="page-subtitle">{{ total|default(0) }} total bookings</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary btn-sm" onclick="exportBookings()">
+      <i class="fa-solid fa-download"></i> Export
+    </button>
+    <a href="{{ url_for('transport.bookings_new') }}" class="btn btn-primary btn-sm">
+      <i class="fa-solid fa-plus"></i> New Booking
+    </a>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar">
+  <a href="?" class="filter-pill {% if not status %}active{% endif %}">All</a>
+  <a href="?status=pending_payment" class="filter-pill {% if status == 'pending_payment' %}active{% endif %}">Pending Payment</a>
+  <a href="?status=confirmed" class="filter-pill blue {% if status == 'confirmed' %}active blue{% endif %}">Confirmed</a>
+  <a href="?status=assigned" class="filter-pill {% if status == 'assigned' %}active{% endif %}">Assigned</a>
+  <a href="?status=in_progress" class="filter-pill {% if status == 'in_progress' %}active{% endif %}">In Progress</a>
+  <a href="?status=completed" class="filter-pill green {% if status == 'completed' %}active green{% endif %}">Completed</a>
+  <a href="?status=cancelled" class="filter-pill red {% if status == 'cancelled' %}active red{% endif %}">Cancelled</a>
+
+  <div style="margin-left:auto; display:flex; gap:8px;">
+    <input type="text" class="form-control" placeholder="Search ref / name..." style="width:220px;padding:6px 10px;" id="bookingSearch" />
+    <select class="form-control" style="width:160px;padding:6px 10px;" onchange="location.href='?sort='+this.value">
+      <option value="">Sort: Newest</option>
+      <option value="oldest">Oldest</option>
+      <option value="departure">By Departure</option>
+      <option value="status">By Status</option>
+    </select>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAll" style="accent-color:var(--amber);" /></th>
+          <th>Reference</th>
+          <th>Passenger</th>
+          <th>Service</th>
+          <th>Pickup</th>
+          <th>Departure</th>
+          <th>Driver / Vehicle</th>
+          <th>Status</th>
+          <th>Payment</th>
+          <th>Total</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if bookings %}
+          {% for b in bookings %}
+          <tr>
+            <td><input type="checkbox" value="{{ b.id }}" class="row-check" style="accent-color:var(--amber);" /></td>
+            <td>
+              <a href="{{ url_for('transport.booking_show', id=b.id) }}" class="td-primary td-mono" style="color:var(--amber);">
+                {{ b.booking_reference }}
+              </a>
+            </td>
+            <td>
+              <div class="td-primary">{{ b.user_name|default('Guest') }}</div>
+              <div style="font-size:0.7rem;color:var(--text-muted);">{{ b.passenger_count }} pax</div>
+            </td>
+            <td>{{ b.service_type|title|default('—') }}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              {{ b.pickup_location_name|default('—') }}
+            </td>
+            <td>
+              <div>{{ b.scheduled_pickup_time|datetimeformat|default('—') }}</div>
+            </td>
+            <td>
+              {% if b.driver_name %}
+              <div class="td-primary">{{ b.driver_name }}</div>
+              <div style="font-size:0.7rem;color:var(--text-muted);">{{ b.vehicle_plate|default('—') }}</div>
+              {% else %}
+              <span style="color:var(--text-muted);font-size:0.75rem;">Unassigned</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set sc = {'completed':'green','in_progress':'blue','assigned':'amber','confirmed':'blue','cancelled':'red','pending_payment':'amber'} %}
+              <span class="badge badge-{{ sc.get(b.status,'gray') }}">{{ b.status|replace('_',' ')|title }}</span>
+            </td>
+            <td>
+              {% if b.payment_status == 'paid' %}
+              <span class="badge badge-green">Paid</span>
+              {% elif b.payment_status == 'partial' %}
+              <span class="badge badge-amber">Partial</span>
+              {% else %}
+              <span class="badge badge-gray">{{ b.payment_status|title|default('—') }}</span>
+              {% endif %}
+            </td>
+            <td class="td-primary td-mono">${{ b.total_amount|default('0.00') }}</td>
+            <td>
+              <div class="booking-row-actions">
+                <a href="{{ url_for('transport.booking_show', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="View">
+                  <i class="fa-solid fa-eye"></i>
+                </a>
+                {% if b.status in ['confirmed'] %}
+                <a href="{{ url_for('transport.booking_assign', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Assign">
+                  <i class="fa-solid fa-user-plus"></i>
+                </a>
+                {% endif %}
+                <a href="{{ url_for('transport.booking_edit', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Edit">
+                  <i class="fa-solid fa-pen"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="11">
+              <div class="empty-state">
+                <i class="fa-solid fa-calendar-xmark"></i>
+                <h3>No Bookings Found</h3>
+                <p>Try adjusting your filters or <a href="{{ url_for('transport.bookings_new') }}" style="color:var(--amber);">create a new booking</a>.</p>
+              </div>
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if pages and pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}{{ '&status='+status if status }}" class="page-btn"><i class="fa-solid fa-chevron-left"></i></a>
+    {% endif %}
+    {% for p in range(1, pages + 1) %}
+    <a href="?page={{ p }}{{ '&status='+status if status }}" class="page-btn {{ 'active' if p == page }}">{{ p }}</a>
+    {% endfor %}
+    {% if page < pages %}
+    <a href="?page={{ page + 1 }}{{ '&status='+status if status }}" class="page-btn"><i class="fa-solid fa-chevron-right"></i></a>
+    {% endif %}
+    <span class="page-info">{{ total }} total</span>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('selectAll').addEventListener('change', function() {
+  document.querySelectorAll('.row-check').forEach(c => c.checked = this.checked);
+});
+function exportBookings() {
+  const ids = [...document.querySelectorAll('.row-check:checked')].map(c => c.value);
+  const url = ids.length ? `/api/transport/bookings/export?ids=${ids.join(',')}` : '/api/transport/bookings/export';
+  window.open(url);
+}
+let searchTimer;
+document.getElementById('bookingSearch').addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const q = this.value.trim();
+    if (q.length > 1 || q.length === 0) location.href = q ? `?search=${encodeURIComponent(q)}` : '?';
+  }, 400);
+});
+</script>
+{% endblock %}

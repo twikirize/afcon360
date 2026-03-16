@@ -1,0 +1,61 @@
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- Recent Transactions -->
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Recent Transactions</h5>
+
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Currency</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in wallet.transactions[-5:] %}
+          <tr>
+            <td>
+              {% if tx.type == 'conversion' %}
+                <span class="badge bg-warning text-dark">Conversion</span>
+              {% elif 'deposit' in tx.type %}
+                <span class="badge bg-success">Deposit</span>
+              {% elif tx.type == 'send' %}
+                <span class="badge bg-danger">Sent</span>
+              {% elif tx.type == 'receive' %}
+                <span class="badge bg-info text-dark">Received</span>
+              {% else %}
+                {{ tx.type }}
+              {% endif %}
+            </td>
+            <td>{{ tx.amount or tx.converted }}</td>
+            <td>{{ tx.currency or (tx.from ~ '→' ~ tx.to) }}</td>
+            <td>{{ tx.timestamp }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="4" class="text-muted text-center">No transactions yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="text-end">
+      <a href="{{ url_for('wallet_routes.agent_payout_history') }}" class="btn btn-outline-primary">
+        View Full History
+      </a>
+    </div>
+  </div>
+</div>

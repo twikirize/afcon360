@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="h2 mb-4">Super Admin Management</h1>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0">Current Super Admins</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        {% for admin in super_admins %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ admin.username }}</strong>
+                                <br>
+                                <small>{{ admin.email }}</small>
+                            </div>
+                            <form method="POST" action="{{ url_for('owner.remove_super_admin', user_id=admin.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-danger" 
+                                        onclick="return confirm('Remove super admin?')">
+                                    Remove
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <p class="text-muted">No super admins found</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Add New Super Admin</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('owner.add_super_admin') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label class="form-label">Select User</label>
+                            <select name="user_id" class="form-select" required>
+                                <option value="">Choose user...</option>
+                                {% for user in regular_users %}
+                                <option value="{{ user.id }}">
+                                    {{ user.username }} ({{ user.email }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success">
+                            Make Super Admin
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

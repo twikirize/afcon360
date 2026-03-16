@@ -1,0 +1,309 @@
+
+{% extends "base.html" %}
+{% block content %}
+<section class="container py-4">
+  <h2 class="mb-4">{{ title or 'Wallet' }}</h2>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- User + Balances -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>User Info</h5>
+      <p><strong>User ID:</strong> {{ wallet.user_id }}</p>
+      <p><strong>Nationality:</strong> {{ wallet.nationality }}</p>
+      <p><strong>Location:</strong> {{ wallet.location }}</p>
+      <p><strong>Home Currency:</strong> {{ wallet.home_currency }}</p>
+      <p><strong>Local Currency:</strong> {{ wallet.local_currency }}</p>
+      <p><strong>Balance (Home):</strong> {{ wallet.balance_home | round(2) }}</p>
+      <p><strong>Balance (Local):</strong> {{ wallet.balance_local | round(2) }}</p>
+
+      <div class="mt-2">
+        <strong>Agent Commission Earned:</strong> UGX {{ commission | round(2) }}
+        <a href="{{ url_for('wallet_routes.agent_payout_history') }}" class="btn btn-sm btn-outline-secondary ms-2">View Payout History</a>
+        <a href="{{ url_for('wallet_routes.agent_payout_request') }}" class="btn btn-sm btn-outline-info ms-2">Request Payout</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deposit -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>Deposit</h5>
+      <form method="POST" action="{{ url_for('wallet_routes.deposit_form') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Amount</label>
+            <input type="number" step="0.01" name="amount" class="form-control" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Currency</label>
+            <select name="currency" class="form-select">
+              <option value="USD">USD</option>
+              <option value="UGX">UGX</option>
+              <option value="KES">KES</option>
+              <option value="TZS">TZS</option>
+              <option value="NGN">NGN</option>
+            </select>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">Deposit</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Send / Pay -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>Send Funds to Another Fan</h5>
+      <form method="POST" action="{{ url_for('wallet_routes.send_funds') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Receiver ID</label>
+            <input type="text" name="receiver_id" class="form-control" placeholder="e.g., Henry Tiggan" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Amount</label>
+            <input type="number" step="0.01" name="amount" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Currency</label>
+            <select name="currency" class="form-select">
+              <option value="USD">USD</option>
+              <option value="UGX">UGX</option>
+              <option value="KES">KES</option>
+              <option value="TZS">TZS</option>
+              <option value="NGN">NGN</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Optional Agent Fee (flat)</label>
+            <input type="number" step="0.01" name="agent_fee" class="form-control" placeholder="e.g., 50">
+          </div>
+        </div>
+        <div class="mt-3">
+          <small class="text-muted">Note: You can send from your home or local currency. For now, only those two are supported.</small>
+        </div>
+        <div class="mt-3">
+          <button type="submit" class="btn btn-warning">Send Funds</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Withdraw -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>Withdraw Funds</h5>
+      <form method="POST" action="{{ url_for('wallet_routes.withdraw_funds') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Amount</label>
+            <input type="number" step="0.01" name="amount" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Currency</label>
+            <select name="currency" class="form-select">
+              <option value="USD">USD</option>
+              <option value="UGX">UGX</option>
+              <option value="KES">KES</option>
+              <option value="TZS">TZS</option>
+              <option value="NGN">NGN</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Method</label>
+            <select name="method" class="form-select">
+              <option value="ATM">ATM</option>
+              <option value="Agent">Agent</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Agent ID (if applicable)</label>
+            <input type="text" name="agent_id" class="form-control" placeholder="e.g., agent007">
+          </div>
+        </div>
+        <div class="mt-3">
+          <button type="submit" class="btn btn-danger">Withdraw</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Recent Transactions -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>Recent Transactions</h5>
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Amount</th>
+            <th>Currency</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tx in wallet.transactions[-5:] %}
+          <tr>
+            <td>
+              {% if tx.type == 'conversion' %}
+                <span class="badge bg-warning text-dark">Conversion</span>
+              {% elif 'deposit' in tx.type %}
+                <span class="badge bg-success">Deposit</span>
+              {% elif tx.type == 'send' %}
+                <span class="badge bg-danger">Sent</span>
+              {% elif tx.type == 'receive' %}
+                <span class="badge bg-info text-dark">Received</span>
+              {% else %}
+                {{ tx.type }}
+              {% endif %}
+            </td>
+            <td>{{ tx.amount or tx.converted }}</td>
+            <td>{{ tx.currency or (tx.from ~ '→' ~ tx.to) }}</td>
+            <td>{{ tx.timestamp }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted">No transactions yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+        <a href="{{ url_for('wallet_routes.agent_payout_history') }}" class="btn btn-outline-primary">View Full History</a>
+
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+
+
+
+
+{% extends "base.html" %}
+{% block content %}
+<section class="container py-4">
+  <h2 class="mb-4">{{ title or 'Wallet' }}</h2>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="walletTabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#overview">Overview</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#deposit">Deposit</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#send">Send</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#withdraw">Withdraw</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#transactions">Transactions</a></li>
+  </ul>
+
+  <!-- Tab Content -->
+  <div class="tab-content mt-3">
+    <div class="tab-pane fade show active" id="overview">
+      {% include "wallet/overview.html" %}
+    </div>
+    <div class="tab-pane fade" id="deposit">
+      {% include "wallet/deposit.html" %}
+    </div>
+    <div class="tab-pane fade" id="send">
+      {% include "wallet/send.html" %}
+    </div>
+    <div class="tab-pane fade" id="withdraw">
+      {% include "wallet/withdraw.html" %}
+    </div>
+    <div class="tab-pane fade" id="transactions">
+      {% include "wallet/transactions.html" %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ app_name or "AFCON 360" }}</title>
+  <!-- Tailwind CSS first -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.3/dist/tailwind.min.css" rel="stylesheet">
+  <!-- Your custom styles override Tailwind if needed -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  {% block head %}{% endblock %}
+</head>
+<body class="afcon-root">
+  <header class="site-header">
+    <div class="brand">
+      <a href="{{ url_for('index') }}" class="brand-link">AFCON 360</a>
+      <p class="tagline">Your gateway to matches, travel, tickets and more</p>
+    </div>
+
+    <nav class="main-nav" aria-label="Main menu">
+      <ul class="menu">
+        <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
+        <li class="menu-item"><a href="{{ url_for('tournament.home') }}">{{ tournament_name or "Tournament Hub" }}</a></li>
+        <li class="menu-item"><a href="{{ url_for('tourism.home') }}">Tourism</a></li>
+        <li class="menu-item"><a href="{{ url_for('transport.home') }}">Transport</a></li>
+        <li class="menu-item"><a href="{{ url_for('accommodation.home') }}">Accommodation</a></li>
+        <li class="menu-item"><a href="{{ url_for('wallet_routes.wallet_home') }}">Wallet</a></li>
+
+         <li class="menu-item">
+          {% if session.get('user_id') %}
+          <a href="{{ url_for('wallet_routes.wallet_dashboard') }}">Wallet</a>
+          {% else %}
+          <a href="{{ url_for('wallet_routes.wallet_dashboard') }}">Wallet</a>
+          {% endif %}
+        </li>
+        <li class="menu-item auth"><a href="{{ url_for('auth_routes.register') }}">Register</a></li>
+        <li class="menu-item auth"><a href="{{ url_for('auth_routes.login') }}">Login</a></li>
+        <li class="menu-item auth"><a href="{{ url_for('admin.super_dashboard') }}">Super Admin</a></li>
+        <li class="nav-item">
+</li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main" role="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>© {{ app_name or "AFCON 360" }}</div>
+      <div class="links"><a href="{{ url_for('index') }}">Home</a> · <a href="/support">Support</a></div>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  {% block scripts %}
+  </body>
+</html>
+{% endblock %}

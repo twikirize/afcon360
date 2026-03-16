@@ -1,0 +1,32 @@
+<!-- templates/includes/navigation.html -->
+<nav class="navbar navbar-expand-lg navbar-light bg-light">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{{ url_for('index') }}">AFCON 360</a>
+
+    <div class="collapse navbar-collapse">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+        </li>
+
+        <!-- Transport Module (only if enabled) -->
+        {% if config.get('MODULE_FLAGS', {}).get('transport', False) %}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" id="transportDropdown" role="button" data-bs-toggle="dropdown">
+            <i class="bi bi-car-front"></i> Transport
+          </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('transport.home') }}">Transport Home</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('transport.book_ride') }}">Book a Ride</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('transport.become_driver') }}">Become a Driver</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('transport.register_vehicle') }}">Register Vehicle</a></li>
+          </ul>
+        </li>
+        {% endif %}
+
+        <!-- Other modules similarly... -->
+      </ul>
+    </div>
+  </div>
+</nav>

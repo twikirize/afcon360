@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<!-- templates/admin/bulk_verify.html -->
+
+<h2>Verify All Users</h2>
+
+<p>There are <strong>{{ unverified_count }}</strong> unverified users.</p>
+
+<form method="post">
+  {{ csrf_token() }}
+  <button type="submit">Verify All Now</button>
+  <a href="{{ url_for('admin.dashboard') }}">Cancel</a>
+</form>
+
+
+</body>
+</html>

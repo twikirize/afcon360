@@ -1,0 +1,113 @@
+// Dashboard-specific charts
+(function() {
+    "use strict";
+
+    let charts = {
+        analytics: null,
+        bookingTrend: null,
+        revenue: null,
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if (!document.getElementById('bookingChart') &&
+            !document.getElementById('revenueChart')) return; // not dashboard
+
+        initAnalytics();
+        if (window.dashboardData) {
+            initDashboardCharts(
+                window.dashboardData.labels,
+                window.dashboardData.bookings,
+                window.dashboardData.completed,
+                window.dashboardData.revenue
+            );
+        }
+    });
+
+    function initAnalytics() {
+        if (typeof Chart === "undefined") return;
+
+        const canvas = document.getElementById("bookingsChart");
+        if (!canvas) return;
+
+        fetch("/api/transport/analytics/summary")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) return;
+                const s = d.data.bookings;
+
+                destroyChart("analytics");
+
+                charts.analytics = new Chart(canvas, {
+                    type: "doughnut",
+                    data: {
+                        labels: ["Completed", "Cancelled", "Other"],
+                        datasets: [{
+                            data: [
+                                s.by_status.COMPLETED || 0,
+                                s.by_status.CANCELLED || 0,
+                                s.total - (s.by_status.COMPLETED || 0) - (s.by_status.CANCELLED || 0),
+                            ],
+                            backgroundColor: ["#22c55e", "#ef4444", "#f59e0b"],
+                        }]
+                    }
+                });
+            });
+    }
+
+    function initDashboardCharts(labels, bookings, completed, revenue = [0,0,0]) {
+        if (typeof Chart === "undefined") return;
+
+        const defaults = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        };
+
+        const bookingCanvas = document.getElementById("bookingChart");
+        if (bookingCanvas) {
+            destroyChart("bookingTrend");
+            charts.bookingTrend = new Chart(bookingCanvas, {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [
+                        { label: "Bookings", data: bookings, borderColor: "#f59e0b", fill: true },
+                        { label: "Completed", data: completed, borderColor: "#22c55e", borderDash: [4,4] }
+                    ]
+                },
+                options: defaults
+            });
+        }
+
+        const revenueCanvas = document.getElementById("revenueChart");
+        if (revenueCanvas) {
+            destroyChart("revenue");
+            charts.revenue = new Chart(revenueCanvas, {
+                type: "doughnut",
+                data: {
+                    labels: ["Platform", "Providers", "Tax"],
+                    datasets: [{ data: revenue }]
+                },
+                options: { ...defaults, cutout: "72%" }
+            });
+        }
+    }
+
+    function destroyChart(name) {
+        if (charts[name]) {
+            charts[name].destroy();
+            charts[name] = null;
+        }
+    }
+
+    window.chartRange = function(range) {
+        fetch(`/api/transport/dashboard/charts?range=${range}`)
+            .then(r => r.json())
+            .then(d => d.success && initDashboardCharts(
+                d.data.labels,
+                d.data.bookings,
+                d.data.completed,
+                d.data.revenue
+            ));
+    };
+})();

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="tournament-hero">
+  <h1>{{ tournament.name }}</h1>
+  <p>{{ tournament.hero }}</p>
+
+  {% if tournament.status == "live" %}
+    <p class="status live">Status: Live</p>
+    <a class="btn" href="/tournament/fixtures">View fixtures</a>
+  {% else %}
+    <p class="status archived">Status: Archived</p>
+    <a class="btn" href="{{ url_for('tournament.archive') }}">Browse archive</a>
+  {% endif %}
+</section>
+{% endblock %}

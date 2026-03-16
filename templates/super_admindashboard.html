@@ -1,0 +1,629 @@
+{% extends "admin/admin.html" %}
+
+{% block content %}
+
+<div class="sad-shell">
+
+  <!-- ════════ SIDEBAR ════════ -->
+  <nav class="sad-sidebar">
+    <div class="sad-logo">
+      <div class="sad-logo-icon">SA</div>
+      <div>
+        <div class="sad-logo-text">Admin Panel</div>
+        <div class="sad-logo-sub">Super Admin</div>
+      </div>
+    </div>
+
+    <div class="sad-nav">
+      <div class="sad-nav-label">Overview</div>
+      <a href="#" class="sad-nav-item active">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.4"/></svg>
+        Dashboard
+      </a>
+      <a href="{{ url_for('admin.manage_users') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5.5" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 13c0-2.5 2-4.5 4.5-4.5h1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="11" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+        Users
+        <span class="sad-nav-pill">{{ total_users }}</span>
+      </a>
+      <a href="{{ url_for('admin.manage_orgs') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.4"/></svg>
+        Organizations
+      </a>
+
+      <div class="sad-nav-label">Modules</div>
+      <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="5" width="13" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="4" cy="12" r="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="11" cy="12" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 8h13" stroke="currentColor" stroke-width="1.2"/></svg>
+        Transport
+        {% if modules.get('transport') %}<span class="sad-nav-pill on">ON</span>
+        {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
+      </a>
+      <a href="#" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 7.5h5M7.5 5v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Tourism
+        {% if modules.get('tourism') %}<span class="sad-nav-pill on">ON</span>
+        {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
+      </a>
+      <a href="#" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="2" y="2" width="11" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 5h6M4.5 7.5h6M4.5 10h3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Accommodation
+        {% if modules.get('accommodation') %}<span class="sad-nav-pill on">ON</span>
+        {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
+      </a>
+      <a href="{{ url_for('wallet_routes.wallet_dashboard') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 8a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0z" fill="currentColor"/></svg>
+        Wallet
+        {% if modules.get('wallet') %}<span class="sad-nav-pill on">ON</span>
+        {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
+      </a>
+
+      <div class="sad-nav-label">Content</div>
+      <a href="{{ url_for('admin.content_dashboard') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5L9 5H13l-2.9 2.1 1 3.4L7.5 8.8 4.4 10.5l1-3.4L2.5 5H6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        Content Mgmt
+      </a>
+      <a href="{{ url_for('admin.manage_submissions') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="1.5" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 5h6M4.5 8h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Submissions
+        <span class="sad-nav-pill alert">!</span>
+      </a>
+    </div>
+
+    <!-- Sidebar footer: owner button (owner only) + admin chip -->
+    <div class="sad-sidebar-footer">
+
+      {# ── Only the owner sees this — regular super admins never get this HTML ── #}
+      {% if current_user.roles | selectattr('role') | selectattr('role.name', 'equalto', 'owner') | list %}
+      <a href="{{ url_for('admin.owner.dashboard') }}" class="sad-owner-sidebar-btn">
+        <span class="owner-emoji">👑</span>
+        <div>
+          <div class="sad-owner-sidebar-label">Owner Dashboard</div>
+          <div class="sad-owner-sidebar-sub">Switch to owner panel</div>
+        </div>
+        <svg class="owner-arrow" width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M4 2.5l4.5 4-4.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      {% endif %}
+
+      <div class="sad-admin-chip">
+        <div class="sad-admin-avatar">SA</div>
+        <div>
+          <div class="sad-admin-name">Super Admin</div>
+          <div class="sad-admin-role">Full access</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ════════ MAIN ════════ -->
+  <div class="sad-main">
+
+    <!-- Top bar -->
+    <div class="sad-topbar">
+      <div>
+        <div class="sad-page-title">Dashboard</div>
+        <div class="sad-page-sub">Manage modules, users, and system settings</div>
+      </div>
+      <div class="sad-topbar-actions">
+        <a href="{{ url_for('admin.manage_users') }}" class="sad-btn">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="4.5" cy="3.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 11c0-1.93 1.57-3.5 3.5-3.5h.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="9.5" cy="9" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+          Users
+        </a>
+        <a href="{{ url_for('admin.content_dashboard') }}" class="sad-btn primary">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M4 4h5M4 6.5h5M4 9h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          Content Mgmt
+        </a>
+
+        {# ── Owner-only topbar button ── #}
+        {% if current_user.roles | selectattr('role') | selectattr('role.name', 'equalto', 'owner') | list %}
+        <a href="{{ url_for('admin.owner.dashboard') }}" class="sad-btn owner-crown-btn">
+          👑 Owner Panel
+        </a>
+        {% endif %}
+
+      </div>
+    </div>
+
+    <!-- Scrollable content -->
+    <div class="sad-content">
+
+      <!-- Stat cards -->
+      <div class="sad-stats">
+        {% set active_users = total_users - unverified_users %}
+        {% set verified_pct = ((verified_users / total_users) * 100)|int if total_users > 0 else 0 %}
+        {% set unverified_pct = ((unverified_users / total_users) * 100)|int if total_users > 0 else 0 %}
+        {% set active_pct = ((active_users / total_users) * 100)|int if total_users > 0 else 0 %}
+
+        <div class="sad-stat s-blue">
+          <div class="sad-stat-label">Total Users</div>
+          <div class="sad-stat-value">{{ total_users }}</div>
+          <div class="sad-stat-sub">All registered accounts</div>
+          <div class="sad-stat-bar"><div class="sad-stat-fill" style="width:100%"></div></div>
+        </div>
+        <div class="sad-stat s-green">
+          <div class="sad-stat-label">Verified (KYC)</div>
+          <div class="sad-stat-value">{{ verified_users }}</div>
+          <div class="sad-stat-sub">{{ verified_pct }}% completion rate</div>
+          <div class="sad-stat-bar"><div class="sad-stat-fill" style="width:{{ verified_pct }}%"></div></div>
+        </div>
+        <div class="sad-stat s-amber">
+          <div class="sad-stat-label">Pending Verification</div>
+          <div class="sad-stat-value">{{ unverified_users }}</div>
+          <div class="sad-stat-sub">{{ unverified_pct }}% awaiting KYC</div>
+          <div class="sad-stat-bar"><div class="sad-stat-fill" style="width:{{ unverified_pct }}%"></div></div>
+        </div>
+        <div class="sad-stat s-cyan">
+          <div class="sad-stat-label">Active Users</div>
+          <div class="sad-stat-value">{{ active_users }}</div>
+          <div class="sad-stat-sub">Ready to use platform</div>
+          <div class="sad-stat-bar"><div class="sad-stat-fill" style="width:{{ active_pct }}%"></div></div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="sad-card">
+        <div class="sad-card-head">
+          <div class="sad-card-title">
+            <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">⚡</div>
+            Quick Actions
+          </div>
+        </div>
+        <div class="sad-card-body">
+          <div class="sad-qa">
+            <a href="{{ url_for('admin.manage_users') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(108,143,255,0.1)">👥</div>
+              <div class="sad-qa-label">Manage Users</div>
+              <div class="sad-qa-sub">{{ total_users }} registered</div>
+            </a>
+            <a href="{{ url_for('admin.manage_orgs') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(62,207,142,0.1)">🏢</div>
+              <div class="sad-qa-label">Organizations</div>
+              <div class="sad-qa-sub">View all orgs</div>
+            </a>
+            <a href="{{ url_for('admin.content_dashboard') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(167,139,250,0.1)">📁</div>
+              <div class="sad-qa-label">Content Mgmt</div>
+              <div class="sad-qa-sub">{{ manageable_categories|length if manageable_categories else 0 }} categories</div>
+            </a>
+            <a href="{{ url_for('admin.manage_submissions') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(240,106,106,0.1)">📋</div>
+              <div class="sad-qa-label">Review Submissions</div>
+              <div class="sad-qa-sub">Pending review</div>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two-column layout -->
+      <div class="sad-twocol">
+
+        <!-- LEFT COLUMN -->
+        <div class="sad-left">
+
+          <!-- Module Management -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(167,139,250,0.12);color:var(--sad-purple)">⚙</div>
+                Module Management
+              </div>
+              <span class="sad-tag">{{ modules|length }} modules</span>
+            </div>
+            <div class="sad-card-body flush">
+              <table class="sad-table">
+                <thead>
+                  <tr>
+                    <th style="width:42%">Module</th>
+                    <th>Status</th>
+                    <th>Toggle</th>
+                    <th>Access</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for name, status in modules.items() %}
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <div class="sad-mod-icon" style="background:{% if name=='transport' %}rgba(108,143,255,0.12){% elif name=='wallet' %}rgba(48,201,214,0.1){% elif name=='tourism' %}rgba(62,207,142,0.1){% else %}rgba(245,166,35,0.1){% endif %}">
+                          {% if name == 'transport' %}🚌
+                          {% elif name == 'wallet' %}💳
+                          {% elif name == 'tourism' %}🌿
+                          {% elif name == 'accommodation' %}🏨
+                          {% else %}📦{% endif %}
+                        </div>
+                        <div>
+                          <div class="sad-mod-name">{{ name|capitalize }}</div>
+                          <div class="sad-mod-desc">
+                            {% if name == 'transport' %}Bookings, drivers, routes
+                            {% elif name == 'tourism' %}Tour packages, guides
+                            {% elif name == 'accommodation' %}Hotels, lodges, hostels
+                            {% elif name == 'wallet' %}Payments, transactions
+                            {% else %}—{% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {% if status %}<span class="sad-badge on">Enabled</span>
+                      {% else %}<span class="sad-badge off">Disabled</span>{% endif %}
+                    </td>
+                    <td>
+                      <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <label class="sad-toggle" title="Toggle {{ name }}">
+                          <input type="checkbox" {{ 'checked' if status else '' }} onchange="this.form.submit()">
+                          <span class="sad-toggle-slider"></span>
+                        </label>
+                      </form>
+                    </td>
+                    <td>
+                      {% if name == 'transport' %}
+                        <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-btn sm">Open →</a>
+                      {% elif name == 'wallet' %}
+                        <a href="{{ url_for('wallet_routes.wallet_dashboard') }}" class="sad-btn sm">Open →</a>
+                      {% else %}
+                        <span style="color:var(--sad-text3);font-size:11px">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div class="sad-card-body" style="padding-top:0">
+              <div class="sad-alert info">
+                Disabled modules are hidden from all user interfaces system-wide.
+              </div>
+            </div>
+          </div>
+
+          <!-- Wallet Features -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(48,201,214,0.1);color:var(--sad-cyan)">💳</div>
+                Wallet Features
+              </div>
+            </div>
+            <div class="sad-card-body flush">
+              {% for name, config in wallet_features.items() %}
+              {% set is_enabled = config.enabled if config is mapping else config %}
+              <div class="sad-feature-row">
+                <div>
+                  <div class="sad-feature-name">{{ name|replace('_', ' ')|title }}</div>
+                </div>
+                <div class="sad-feature-right">
+                  {% if is_enabled %}<span class="sad-badge on">On</span>
+                  {% else %}<span class="sad-badge off">Off</span>{% endif %}
+                  <form method="POST" action="{{ url_for('admin.toggle_wallet_feature', feature=name) }}" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label class="sad-toggle">
+                      <input type="checkbox" {{ 'checked' if is_enabled else '' }} onchange="this.form.submit()">
+                      <span class="sad-toggle-slider"></span>
+                    </label>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Withdrawal Settings -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(245,166,35,0.1);color:var(--sad-amber)">⚡</div>
+                Withdrawal Settings
+              </div>
+            </div>
+            <div class="sad-card-body">
+              <form method="POST" action="{{ url_for('admin.update_withdraw_settings') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="sad-settings-grid">
+                  <div class="sad-form-group">
+                    <label for="daily_limit">Daily Limit (USD)</label>
+                    <input class="sad-input" type="number" id="daily_limit" name="daily_limit"
+                           value="{{ wallet_features.get('withdraw', {}).get('daily_limit', 1000) }}" min="0" step="10">
+                  </div>
+                  <div class="sad-form-group">
+                    <label>Security</label>
+                    <div class="sad-checks" style="margin-bottom:0">
+                      <label class="sad-check">
+                        <input type="checkbox" id="require_verification" name="require_verification"
+                               {{ 'checked' if wallet_features.get('withdraw', {}).get('require_verification') else '' }}>
+                        Require KYC verification
+                      </label>
+                      <label class="sad-check">
+                        <input type="checkbox" id="require_2fa" name="require_2fa"
+                               {{ 'checked' if wallet_features.get('withdraw', {}).get('require_2fa', false) else '' }}>
+                        Require 2FA
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" class="sad-btn primary">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Save Settings
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Transport Features -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">🚌</div>
+                Transport Features
+              </div>
+              <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-btn sm">Full Admin →</a>
+            </div>
+            <div class="sad-card-body flush">
+              {% if transport_features %}
+                {% for name, config in transport_features.items() %}
+                {% set is_enabled = config.enabled if config is mapping else config %}
+                <div class="sad-feature-row">
+                  <div>
+                    <div class="sad-feature-name">{{ name|replace('_', ' ')|title }}</div>
+                    <div class="sad-feature-desc">
+                      {% if name == 'booking' %}Online vehicle booking system
+                      {% elif name == 'driver_verification' %}License and background checks
+                      {% elif name == 'vehicle_requirements' %}Standards and compliance
+                      {% elif name == 'real_time_tracking' %}GPS tracking and monitoring
+                      {% elif name == 'route_management' %}Create and manage routes
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="sad-feature-right">
+                    {% if is_enabled %}<span class="sad-badge on">On</span>
+                    {% else %}<span class="sad-badge off">Off</span>{% endif %}
+                    <form method="POST" action="{{ url_for('admin.toggle_transport_feature', feature=name) }}" style="display:inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <label class="sad-toggle">
+                        <input type="checkbox" {{ 'checked' if is_enabled else '' }} onchange="this.form.submit()">
+                        <span class="sad-toggle-slider"></span>
+                      </label>
+                    </form>
+                  </div>
+                </div>
+                {% endfor %}
+              {% else %}
+                <div style="padding:14px 0">
+                  <div class="sad-alert warn">
+                    Transport features not configured.
+                    <a href="{{ url_for('admin.update_transport_settings') }}" style="color:var(--sad-amber);text-decoration:underline">Configure now</a>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Transport Settings -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(48,201,214,0.1);color:var(--sad-cyan)">🔧</div>
+                Transport Settings
+              </div>
+            </div>
+            <div class="sad-card-body">
+              <form method="POST" action="{{ url_for('admin.update_transport_settings') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="sad-section-label">Booking</div>
+                <div class="sad-settings-grid">
+                  <div class="sad-form-group">
+                    <label for="max_advance_days">Max Advance Booking (Days)</label>
+                    <input class="sad-input" type="number" id="max_advance_days" name="max_advance_days"
+                           value="{{ transport_features.get('booking', {}).get('max_advance_days', 90) }}" min="1" max="365">
+                  </div>
+                  <div class="sad-form-group">
+                    <label for="cancellation_hours">Cancellation Window (Hours)</label>
+                    <input class="sad-input" type="number" id="cancellation_hours" name="cancellation_hours"
+                           value="{{ transport_features.get('booking', {}).get('cancellation_hours', 24) }}" min="1" max="168">
+                  </div>
+                  <div class="sad-form-group">
+                    <label for="deposit_percentage">Deposit Percentage (%)</label>
+                    <input class="sad-input" type="number" id="deposit_percentage" name="deposit_percentage"
+                           value="{{ transport_features.get('booking', {}).get('deposit_percentage', 20) }}" min="0" max="100">
+                  </div>
+                  <div class="sad-form-group" style="display:flex;align-items:flex-end">
+                    <label class="sad-check">
+                      <input type="checkbox" id="require_deposit" name="require_deposit"
+                             {{ 'checked' if transport_features.get('booking', {}).get('require_deposit') else '' }}>
+                      Require deposit
+                    </label>
+                  </div>
+                </div>
+
+                <div class="sad-section-label">Driver Verification</div>
+                <div class="sad-checks">
+                  <label class="sad-check">
+                    <input type="checkbox" id="require_license" name="require_license"
+                           {{ 'checked' if transport_features.get('driver_verification', {}).get('require_license', True) else '' }}>
+                    Require valid driver's license
+                  </label>
+                  <label class="sad-check">
+                    <input type="checkbox" id="require_background_check" name="require_background_check"
+                           {{ 'checked' if transport_features.get('driver_verification', {}).get('require_background_check') else '' }}>
+                    Require background check
+                  </label>
+                </div>
+                <div class="sad-settings-grid" style="margin-bottom:16px">
+                  <div class="sad-form-group">
+                    <label for="license_expiry_alert_days">License Expiry Alert (Days)</label>
+                    <input class="sad-input" type="number" id="license_expiry_alert_days" name="license_expiry_alert_days"
+                           value="{{ transport_features.get('driver_verification', {}).get('license_expiry_alert_days', 30) }}" min="1" max="365">
+                  </div>
+                </div>
+
+                <div class="sad-section-label">Vehicle Requirements</div>
+                <div class="sad-settings-grid">
+                  <div class="sad-form-group">
+                    <label for="max_vehicle_age">Max Vehicle Age (Years)</label>
+                    <input class="sad-input" type="number" id="max_vehicle_age" name="max_vehicle_age"
+                           value="{{ transport_features.get('vehicle_requirements', {}).get('max_vehicle_age', 10) }}" min="1" max="30">
+                  </div>
+                </div>
+                <div class="sad-checks" style="margin-bottom:18px">
+                  <label class="sad-check">
+                    <input type="checkbox" id="require_insurance" name="require_insurance"
+                           {{ 'checked' if transport_features.get('vehicle_requirements', {}).get('require_insurance', True) else '' }}>
+                    Require vehicle insurance
+                  </label>
+                  <label class="sad-check">
+                    <input type="checkbox" id="require_inspection" name="require_inspection"
+                           {{ 'checked' if transport_features.get('vehicle_requirements', {}).get('require_inspection') else '' }}>
+                    Require regular safety inspection
+                  </label>
+                </div>
+
+                <button type="submit" class="sad-btn primary">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Save Transport Settings
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Future Modules -->
+          <div class="sad-card">
+            <div class="sad-card-head" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#futureModules">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:var(--sad-surface3);color:var(--sad-text3)">📦</div>
+                Future Module Configurations
+              </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="var(--sad-text3)" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div id="futureModules" class="collapse">
+              <div class="sad-card-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                  <div>
+                    <div style="font-size:11px;color:var(--sad-text3);margin-bottom:8px;font-family:var(--sad-mono);text-transform:uppercase;letter-spacing:0.6px">Tourism</div>
+                    <pre style="background:var(--sad-surface2);padding:12px;border-radius:8px;font-size:11px;color:var(--sad-text2);overflow-x:auto;border:1px solid var(--sad-border)">{{ tourism_features|tojson(indent=2) }}</pre>
+                  </div>
+                  <div>
+                    <div style="font-size:11px;color:var(--sad-text3);margin-bottom:8px;font-family:var(--sad-mono);text-transform:uppercase;letter-spacing:0.6px">Accommodation</div>
+                    <pre style="background:var(--sad-surface2);padding:12px;border-radius:8px;font-size:11px;color:var(--sad-text2);overflow-x:auto;border:1px solid var(--sad-border)">{{ accommodation_features|tojson(indent=2) }}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /sad-left -->
+
+        <!-- RIGHT COLUMN -->
+        <div class="sad-right">
+
+          <!-- System Status -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(62,207,142,0.1);color:var(--sad-green)">🖥</div>
+                System Status
+              </div>
+              <span class="sad-badge on">Operational</span>
+            </div>
+            <div class="sad-card-body flush">
+              <div class="sad-status-row">
+                <div class="sad-status-name"><div class="sad-dot green"></div>Database</div>
+                <span style="font-size:11px;font-family:var(--sad-mono);color:var(--sad-green)">Connected</span>
+              </div>
+              <div class="sad-status-row">
+                <div class="sad-status-name"><div class="sad-dot green"></div>Redis Cache</div>
+                <span style="font-size:11px;font-family:var(--sad-mono);color:var(--sad-green)">Connected</span>
+              </div>
+              <div class="sad-status-row">
+                <div class="sad-status-name"><div class="sad-dot green"></div>Email Service</div>
+                <span style="font-size:11px;font-family:var(--sad-mono);color:var(--sad-green)">Active</span>
+              </div>
+              <div class="sad-status-row">
+                <div class="sad-status-name"><div class="sad-dot green"></div>Payment Gateway</div>
+                <span style="font-size:11px;font-family:var(--sad-mono);color:var(--sad-green)">Active</span>
+              </div>
+            </div>
+            <div class="sad-card-body" style="padding-top:0">
+              <div class="sad-alert info" style="font-size:11px">Implement health-check endpoints for live status polling.</div>
+            </div>
+          </div>
+
+          <!-- Content Statistics -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(167,139,250,0.12);color:var(--sad-purple)">📊</div>
+                Content Stats
+              </div>
+            </div>
+            <div class="sad-card-body">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+                <div style="background:var(--sad-surface2);border-radius:9px;padding:14px;text-align:center;border:1px solid var(--sad-border)">
+                  <div style="font-size:26px;font-weight:600;color:var(--sad-accent);letter-spacing:-1px">{{ manageable_categories|length if manageable_categories else 0 }}</div>
+                  <div style="font-size:10.5px;color:var(--sad-text3);margin-top:4px">Categories</div>
+                </div>
+                <div style="background:var(--sad-surface2);border-radius:9px;padding:14px;text-align:center;border:1px solid var(--sad-border)">
+                  <div style="font-size:26px;font-weight:600;color:var(--sad-purple);letter-spacing:-1px">{{ manageable_items|length if manageable_items else 0 }}</div>
+                  <div style="font-size:10.5px;color:var(--sad-text3);margin-top:4px">Items</div>
+                </div>
+              </div>
+              <a href="{{ url_for('admin.content_dashboard') }}" class="sad-btn" style="width:100%;justify-content:center">Manage Content</a>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(48,201,214,0.1);color:var(--sad-cyan)">🕐</div>
+                Recent Activity
+              </div>
+            </div>
+            <div class="sad-card-body flush">
+              {% if audit_logs %}
+                {% for log in audit_logs %}
+                <div class="sad-act-item">
+                  <div class="sad-act-line"><div class="sad-act-dot blue"></div></div>
+                  <div style="flex:1">
+                    <div class="sad-act-text">
+                      <strong>{{ log.actor.username|default('System') }}</strong>
+                      {{ log.action }}
+                      {% if log.organisation %}on <strong>{{ log.organisation.legal_name }}</strong>{% endif %}
+                    </div>
+                    <div class="sad-act-time">{{ log.timestamp.strftime('%H:%M') }} · {{ log.timestamp.strftime('%b %d') }}</div>
+                  </div>
+                </div>
+                {% endfor %}
+              {% else %}
+                <div style="padding:20px;text-align:center;color:var(--sad-text3);font-size:12px">No recent activity</div>
+              {% endif %}
+            </div>
+            <div class="sad-card-body" style="padding-top:10px">
+              <a href="{{ url_for('admin.manage_orgs') }}" class="sad-btn" style="width:100%;justify-content:center;font-size:11px">View All Activity</a>
+            </div>
+          </div>
+
+          <!-- Transport Quick Link -->
+          <div class="sad-card" style="border-color:rgba(108,143,255,0.25)">
+            <div class="sad-card-head" style="background:rgba(108,143,255,0.06)">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">🚌</div>
+                Transport Admin
+              </div>
+            </div>
+            <div class="sad-card-body">
+              <p style="font-size:12px;color:var(--sad-text2);margin-bottom:14px;line-height:1.5">
+                Manage drivers, vehicles, bookings, routes, and all transport operations.
+              </p>
+              <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-btn primary" style="width:100%;justify-content:center">
+                Open Transport Admin →
+              </a>
+            </div>
+          </div>
+
+        </div><!-- /sad-right -->
+      </div><!-- /sad-twocol -->
+
+    </div><!-- /sad-content -->
+  </div><!-- /sad-main -->
+</div><!-- /sad-shell -->
+
+{% endblock %}

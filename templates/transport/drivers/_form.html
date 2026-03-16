@@ -1,0 +1,156 @@
+{% extends "transport/base.html" %}
+{% block title %}{{ 'Edit' if driver else 'New' }} Driver{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ url_for('transport.drivers_index') }}">Drivers</a>
+<span class="sep">/</span><span class="current">{{ 'Edit '+driver.display_name if driver else 'New Driver' }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ 'Edit Driver' if driver else 'Register Driver' }}</h1>
+    <p class="page-subtitle">{{ 'Update driver information and compliance status' if driver else 'Add a new driver to the transport fleet' }}</p>
+  </div>
+</div>
+
+<form method="POST" action="{{ url_for('transport.driver_update', id=driver.id) if driver else url_for('transport.drivers_create') }}" enctype="multipart/form-data">
+  {{ form.hidden_tag() if form }}
+  <div class="grid-2" style="align-items:start;">
+
+    <!-- Left: personal + license -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Personal Information</span></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">First Name <span class="req">*</span></label>
+              <input type="text" name="first_name" class="form-control" value="{{ driver.first_name if driver else '' }}" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Last Name <span class="req">*</span></label>
+              <input type="text" name="last_name" class="form-control" value="{{ driver.last_name if driver else '' }}" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone Number <span class="req">*</span></label>
+            <input type="tel" name="phone_number" class="form-control" value="{{ driver.phone_number if driver else '' }}" required />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Date of Birth</label>
+              <input type="date" name="date_of_birth" class="form-control" value="{{ driver.date_of_birth if driver else '' }}" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nationality</label>
+              <input type="text" name="nationality" class="form-control" value="{{ driver.nationality if driver else '' }}" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Languages Spoken</label>
+            <input type="text" name="languages" class="form-control" placeholder="English, French, Arabic..." value="{{ driver.languages_spoken|join(', ') if driver and driver.languages_spoken else '' }}" />
+            <div class="form-hint">Comma separated</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">License & Experience</span></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">License Number <span class="req">*</span></label>
+            <input type="text" name="license_number" class="form-control" placeholder="Will be encrypted at rest" required />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">License Class</label>
+              <select name="license_class" class="form-control">
+                <option value="">Select...</option>
+                <option value="B" {{ 'selected' if driver and driver.license_class == 'B' }}>Class B (Car)</option>
+                <option value="C" {{ 'selected' if driver and driver.license_class == 'C' }}>Class C (Bus)</option>
+                <option value="D" {{ 'selected' if driver and driver.license_class == 'D' }}>Class D (Coach)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">License Expiry <span class="req">*</span></label>
+              <input type="date" name="license_expiry" class="form-control" value="{{ driver.license_expiry if driver else '' }}" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Years of Experience</label>
+            <input type="number" name="years_experience" class="form-control" min="0" max="50" value="{{ driver.years_experience if driver else '' }}" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: settings + docs -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Operational Settings</span></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Vehicle Class Restriction</label>
+            <select name="vehicle_class_restriction" class="form-control">
+              <option value="">Any vehicle</option>
+              <option value="economy">Economy</option>
+              <option value="standard">Standard</option>
+              <option value="premium">Premium</option>
+              <option value="bus">Bus / Minibus</option>
+              <option value="coach">Coach</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Max Daily Hours</label>
+              <input type="number" name="max_daily_hours" class="form-control" value="{{ driver.max_daily_hours|default(10) }}" min="1" max="16" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Commission Rate (%)</label>
+              <input type="number" name="commission_rate" class="form-control" step="0.01" value="{{ driver.commission_rate|default(0) }}" />
+            </div>
+          </div>
+          {% if driver %}
+          <div class="form-group">
+            <label class="form-label">Compliance Status</label>
+            <select name="compliance_status" class="form-control">
+              <option value="pending" {{ 'selected' if driver.compliance_status == 'pending' }}>Pending Review</option>
+              <option value="fully_compliant" {{ 'selected' if driver.compliance_status == 'fully_compliant' }}>Fully Compliant</option>
+              <option value="suspended" {{ 'selected' if driver.compliance_status == 'suspended' }}>Suspended</option>
+            </select>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Documents</span></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">License Photo</label>
+            <input type="file" name="license_photo" class="form-control" accept="image/*,.pdf" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Profile Photo</label>
+            <input type="file" name="profile_photo" class="form-control" accept="image/*" />
+          </div>
+          {% if driver and driver.document_urls %}
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">
+            {{ driver.document_urls|length }} document(s) already uploaded
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <a href="{{ url_for('transport.drivers_index') }}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-{{ 'floppy-disk' if driver else 'plus' }}"></i>
+          {{ 'Save Changes' if driver else 'Register Driver' }}
+        </button>
+      </div>
+    </div>
+
+  </div>
+</form>
+{% endblock %}

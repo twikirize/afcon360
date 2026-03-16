@@ -1,0 +1,102 @@
+{% extends "transport/base.html" %}
+{% block title %}Routes{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Routes</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Scheduled Routes</h1>
+    <p class="page-subtitle">{{ total|default(0) }} routes · {{ active_count|default(0) }} active now</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('transport.routes_new') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New Route</a>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <a href="?" class="filter-pill {% if not route_type %}active{% endif %}">All Types</a>
+  <a href="?type=airport_transfer"  class="filter-pill {% if route_type=='airport_transfer'  %}active{% endif %}">✈ Airport</a>
+  <a href="?type=stadium_shuttle"   class="filter-pill {% if route_type=='stadium_shuttle'   %}active{% endif %}">🏟 Stadium</a>
+  <a href="?type=hotel_transfer"    class="filter-pill {% if route_type=='hotel_transfer'    %}active{% endif %}">🏨 Hotel</a>
+  <a href="?type=city_tour"         class="filter-pill {% if route_type=='city_tour'         %}active{% endif %}">🗺 City Tour</a>
+  <a href="?active=1" class="filter-pill green {% if active_filter %}active green{% endif %}">Active Only</a>
+  <a href="?seats=1"  class="filter-pill blue  {% if seats_filter  %}active blue{% endif %}">Has Seats</a>
+</div>
+
+<div class="card">
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Next Departure</th>
+          <th>Capacity</th>
+          <th>Driver / Vehicle</th>
+          <th>Price</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if routes %}
+          {% for r in routes %}
+          <tr>
+            <td><span class="td-mono" style="color:var(--amber);">{{ r.route_code }}</span></td>
+            <td>
+              <a href="{{ url_for('transport.route_show', id=r.id) }}" class="td-primary">{{ r.name }}</a>
+              <div style="font-size:0.7rem;color:var(--text-muted);">{{ r.primary_zone|default('') }}</div>
+            </td>
+            <td>{{ r.route_type|replace('_',' ')|title }}</td>
+            <td>
+              {% if r.next_departure %}
+              <div>{{ r.next_departure|datetimeformat }}</div>
+              {% else %}<span style="color:var(--text-muted);">—</span>{% endif %}
+            </td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="flex:1;height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
+                  <div style="height:100%;width:{{ (r.booked_seats / r.vehicle_capacity * 100)|int if r.vehicle_capacity else 0 }}%;background:{{ 'var(--red)' if r.is_full else 'var(--amber)' }};border-radius:3px;"></div>
+                </div>
+                <span style="font-size:0.72rem;font-family:var(--font-mono);white-space:nowrap;">
+                  {{ r.available_seats }}/{{ r.vehicle_capacity }}
+                </span>
+              </div>
+            </td>
+            <td>
+              {% if r.current_driver_id %}
+              <div style="font-size:0.78rem;font-weight:500;">{{ r.driver_name|default('Assigned') }}</div>
+              {% else %}<span style="color:var(--text-muted);font-size:0.75rem;">Unassigned</span>{% endif %}
+            </td>
+            <td class="td-mono">
+              {% if r.is_free %}<span class="badge badge-green">Free</span>
+              {% else %}<span>${{ r.price_per_seat }}</span>{% endif %}
+            </td>
+            <td>
+              {% if not r.is_active or r.is_cancelled %}<span class="badge badge-red">Inactive</span>
+              {% elif r.is_full %}<span class="badge badge-amber">Full</span>
+              {% else %}<span class="badge badge-green">Active</span>{% endif %}
+            </td>
+            <td>
+              <div style="display:flex;gap:4px;">
+                <a href="{{ url_for('transport.route_show', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
+                <a href="{{ url_for('transport.route_edit', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="9">
+            <div class="empty-state">
+              <i class="fa-solid fa-route"></i>
+              <h3>No Routes Found</h3>
+              <p><a href="{{ url_for('transport.routes_new') }}" style="color:var(--amber);">Create the first scheduled route</a></p>
+            </div>
+          </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

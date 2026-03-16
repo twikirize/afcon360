@@ -1,0 +1,72 @@
+
+{% extends "base.html" %}
+{% block content %}
+<section class="wallet-landing">
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>Power Your Payments with Our Wallet</h1>
+    <p class="lead">Quick, secure, and easy payments for tickets, packages, and more — all in one place.</p>
+    <div class="wallet-actions">
+      <a class="btn primary" href="{{ url_for('auth_routes.register') }}">Get Started</a>
+      <a class="btn" href="{{ url_for('auth_routes.login') }}">Sign In</a>
+
+    </div>
+  </section>
+
+  <hr/>
+
+  <!-- Benefits -->
+  <section class="benefits">
+    <h2>Why use our Wallet?</h2>
+    <ul>
+      <li><strong>Fast Payments:</strong> Instantly pay for tickets and packages without delays.</li>
+      <li><strong>Secure Transactions:</strong> Your payment history is encrypted and safe.</li>
+      <li><strong>Flexible Payouts:</strong> Receive agent payouts and refunds when activated.</li>
+      <li><strong>Easy Top-Ups:</strong> Add funds with multiple payment methods.</li>
+      <li><strong>Manage Everything:</strong> Track your spending and transactions seamlessly.</li>
+    </ul>
+  </section>
+
+  <hr/>
+
+  <!-- How it works -->
+  <section class="how-it-works">
+    <h2>How It Works</h2>
+    <ol>
+      <li><strong>Create an account:</strong> Sign up or log in to your dashboard.</li>
+      <li><strong>Activate your wallet:</strong> Enable wallet features from your profile.</li>
+      <li><strong>Top up balance:</strong> Add funds using your preferred payment method.</li>
+      <li><strong>Use your wallet:</strong> Pay for tickets, view transaction history, and more.</li>
+    </ol>
+  </section>
+
+  <hr/>
+
+  <!-- FAQs -->
+  <section class="faqs">
+    <h2>Frequently Asked Questions</h2>
+    <dl>
+      <dt>Is the wallet secure?</dt>
+      <dd>Yes, we use encryption and best practices to ensure your funds and data are safe.</dd>
+
+      <dt>How do I top up my wallet?</dt>
+      <dd>You can add money via credit card, bank transfer, or other supported payment options.</dd>
+
+      <dt>Can I get refunds through the wallet?</dt>
+      <dd>Refunds and agent payouts are available once your wallet is activated.</dd>
+
+      <dt>Do I need to log in to view the wallet features?</dt>
+      <dd>No, you can browse all features here. But to use the wallet, please log in or register.</dd>
+    </dl>
+  </section>
+
+  <hr/>
+
+  <footer class="wallet-footer">
+    <p>Ready to get started? <a href="{{ url_for('auth_routes.register') }}">Create an account</a> or <a href="{{ url_for('auth_routes.login') }}">log in</a>
+ </p>
+  </footer>
+
+</section>
+{% endblock %}

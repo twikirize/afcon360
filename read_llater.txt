@@ -1,0 +1,172 @@
+Perfect — that actually makes things **clearer**, not worse 👍
+If **MFA, permissions, sessions, API keys are already in `users.py`**, that’s totally valid and *not* a mistake.
+
+Now let me answer your question **precisely and practically**, without over-engineering.
+
+---
+
+## Short answer (straight up)
+
+👉 **You do NOT need to rename anything right now.**
+👉 **You do NOT need to split immediately.**
+👉 What you *do* need is a **clear mental boundary** of what belongs to *identity* vs *business modules*.
+
+Your current setup is **acceptable and production-safe** at your current stage.
+
+---
+
+## Why your current `identity/models.py` is OK
+
+Right now your single file contains:
+
+### Identity Core (this is correct)
+
+* `User`
+* `Organisation`
+* Memberships (`OrganisationMember`)
+* Roles (global + org)
+* MFA
+* Sessions
+* API keys
+* KYC hooks
+* Audit readiness
+
+This is **exactly what an identity domain should own**.
+
+Big companies *start like this too* — one big models file — and split later **only when pain appears**.
+
+---
+
+## When you SHOULD split (not now)
+
+You split **only when one of these happens**:
+
+1. File becomes **hard to reason about**
+2. Merge conflicts increase
+3. Different devs touch different identity areas
+4. You add **more identity subdomains** (KYB, Trust, Risk, AML, etc.)
+
+You’re *approaching* that point — but not forced yet.
+
+---
+
+## If/when you split: what actually deserves its own file?
+
+Since MFA, permissions, etc. are already in `users.py`, here’s the **minimal future split**, not the academic one.
+
+### 1️⃣ `users.py` (keep as-is, very good)
+
+Contains:
+
+* `User`
+* MFA (`MFASecret`)
+* Sessions
+* API keys
+* Global roles
+* Permissions
+* UserRole
+* KYC hooks
+
+✔ This is **correctly grouped already**
+
+---
+
+### 2️⃣ `organisations.py` (this is the first real split candidate)
+
+Move **only** these when ready:
+
+* `Organisation`
+* `OrganisationMember`
+* `OrgRole`
+* `OrgUserRole`
+* `OrganisationLicense`
+* `OrganisationDocument`
+* `OrganisationAuditLog`
+
+Why?
+
+* Organisations grow faster than users in marketplaces
+* Compliance, KYB, documents, audit explode in size
+* Africa-first + payments = heavy org logic
+
+---
+
+### 3️⃣ `events.py` (optional, later)
+
+Move:
+
+* `check_duplicates`
+* `@event.listens_for(...)`
+
+Why?
+
+* Keeps models clean
+* Easier testing
+* Avoid circular imports later
+
+---
+
+## What else belongs in `identity` (but NOT models)
+
+These are **future folders**, not mandatory now:
+
+### `identity/services/`
+
+* Auth flows
+* MFA verification
+* Role assignment logic
+* Org onboarding flows
+
+### `identity/schemas/`
+
+* API input/output validation
+* Public vs private identity views
+
+### `identity/utils/`
+
+* Token helpers
+* Hashing
+* Permission checks
+
+---
+
+## What should NEVER be in identity
+
+This is important ⛔
+
+Do **not** put these in identity:
+
+* Orders
+* Trips
+* Listings
+* Products
+* Payments logic (wallet is fine, transactions are not)
+* Reviews
+
+Those modules should **reference identity by ID only**.
+
+---
+
+## Verdict (architectural truth)
+
+✅ Your current single-file identity model is **valid**
+✅ MFA + permissions in `users.py` is **correct**
+✅ Organisation model you designed is **enterprise-grade**
+✅ You are NOT blocked by structure right now
+
+**My advice:**
+
+> Keep it as one file for now.
+> Split only when development friction appears.
+
+That’s how real systems scale — not by premature refactors.
+
+---
+
+If you want next, I can:
+
+* Define **clear ownership rules** between identity and business modules
+* Show how other modules should reference identity safely
+* Review your identity boundaries for payments (wallets vs transactions)
+
+Just tell me what’s next 👊

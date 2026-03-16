@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<head>
+  <meta charset="utf-8">
+  <title>Fan Profile</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-4">
+  <h2>Fan Profile</h2>
+  <form method="POST" action="{{ url_for('fan_routes.update_fan_profile_route') }}">
+    <label>Name:</label>
+    <input type="text" name="name" value="{{ profile.name }}" class="form-control">
+    <label>Nationality:</label>
+    <input type="text" name="nationality" value="{{ profile.nationality }}" class="form-control">
+    <label>Favorite Team:</label>
+    <input type="text" name="favorite_team" value="{{ profile.favorite_team }}" class="form-control">
+    <label>Avatar URL:</label>
+    <input type="text" name="avatar_url" value="{{ profile.avatar_url or '' }}" class="form-control">
+    <button type="submit" class="btn btn-primary mt-2">Update Profile</button>
+  </form>
+
+  <hr>
+
+  <h3>Wallet Overview</h3>
+  <p><strong>Home Currency:</strong> {{ wallet.home_currency }}</p>
+  <p><strong>Local Currency:</strong> {{ wallet.local_currency }}</p>
+  <p><strong>Balance (Home):</strong> {{ wallet.balance_home }}</p>
+  <p><strong>Balance (Local):</strong> {{ wallet.balance_local }}</p>
+
+  <h4>Recent Transactions</h4>
+  <ul>
+    {% for tx in wallet.transactions %}
+      <li>{{ tx.timestamp }} — {{ tx.type }} {{ tx.amount }} {{ tx.currency }}</li>
+    {% else %}
+      <li class="text-muted">No transactions yet.</li>
+    {% endfor %}
+  </ul>
+
+  <a href="/" class="btn btn-outline-secondary mt-3">Back to Home</a>
+</body>
+</html>
+{% endblock %}

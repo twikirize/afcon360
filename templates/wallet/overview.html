@@ -1,0 +1,18 @@
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">User Info</h5>
+    <p><strong>User ID:</strong> {{ wallet.user_id }}</p>
+    <p><strong>Nationality:</strong> {{ wallet.nationality }}</p>
+    <p><strong>Location:</strong> {{ wallet.location }}</p>
+    <p><strong>Home Currency:</strong> {{ wallet.home_currency }}</p>
+    <p><strong>Local Currency:</strong> {{ wallet.local_currency }}</p>
+    <p><strong>Balance (Home):</strong> {{ wallet.balance_home | round(2) }}</p>
+    <p><strong>Balance (Local):</strong> {{ wallet.balance_local | round(2) }}</p>
+
+    <div class="mt-2">
+      <strong>Agent Commission Earned:</strong> UGX {{ commission | round(2) }}
+      <a href="{{ url_for('wallet_routes.agent_payout_history') }}" class="btn btn-sm btn-outline-secondary ms-2">View Payout History</a>
+      <a href="{{ url_for('wallet_routes.agent_payout_request') }}" class="btn btn-sm btn-outline-info ms-2">Request Payout</a>
+    </div>
+  </div>
+</div>

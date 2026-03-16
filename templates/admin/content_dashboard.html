@@ -1,0 +1,209 @@
+{% extends "admin/base_admin.html" %}
+
+{% block admin_content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Content Management</h1>
+            <p class="text-muted">Manage cities, vehicles, hotels, and other dynamic content</p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin.create_category') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> New Category
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Categories</h6>
+                    <h2 class="mb-0">{{ categories|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-title">Pending Submissions</h6>
+                    <h2 class="mb-0">{{ pending_submissions }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Recent Items</h6>
+                    <h2 class="mb-0">{{ recent_items|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Active Categories</h6>
+                    <h2 class="mb-0">{{ categories|selectattr('is_active')|list|length }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Categories Grid -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Content Categories</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for category in categories %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-{{ category.icon or 'folder' }} me-2"></i>
+                                            {{ category.name }}
+                                        </h5>
+                                        <span class="badge bg-{{ 'success' if category.is_active else 'secondary' }}">
+                                            {{ 'Active' if category.is_active else 'Inactive' }}
+                                        </span>
+                                    </div>
+                                    <p class="card-text text-muted">{{ category.description or 'No description' }}</p>
+                                    
+                                    <!-- Permissions Badges -->
+                                    <div class="mb-3">
+                                        {% if category.editable_by_admins %}
+                                        <span class="badge bg-primary me-1">Admins</span>
+                                        {% endif %}
+                                        {% if category.editable_by_org_admins %}
+                                        <span class="badge bg-info me-1">Org Admins</span>
+                                        {% endif %}
+                                        {% if category.editable_by_users %}
+                                        <span class="badge bg-success me-1">Users</span>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <!-- Action Buttons -->
+                                    <div class="d-flex gap-2">
+                                        <a href="{{ url_for('admin.manage_category_items', category_slug=category.slug) }}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i> View Items
+                                        </a>
+                                        <a href="{{ url_for('admin.create_item', category_slug=category.slug) }}" 
+                                           class="btn btn-sm btn-outline-success">
+                                            <i class="bi bi-plus"></i> Add Item
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="card-footer text-muted">
+                                    <small>{{ category.items|length }} items</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i> No categories found. 
+                                <a href="{{ url_for('admin.create_category') }}">Create your first category</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Items -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Recent Items</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in recent_items %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ item.name }}</strong>
+                                        {% if item.is_featured %}
+                                        <span class="badge bg-warning ms-2">Featured</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ item.category.name }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if item.is_active else 'secondary' }}">
+                                            {{ 'Active' if item.is_active else 'Inactive' }}
+                                        </span>
+                                        {% if not item.is_approved %}
+                                        <span class="badge bg-warning">Pending</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ item.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary">Edit</button>
+                                            <button class="btn btn-outline-danger">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">
+                                        No recent items found
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-3">
+                        <a href="{{ url_for('admin.manage_submissions') }}" class="btn btn-warning">
+                            <i class="bi bi-clock-history"></i> Review Pending Submissions
+                            {% if pending_submissions > 0 %}
+                            <span class="badge bg-danger ms-2">{{ pending_submissions }}</span>
+                            {% endif %}
+                        </a>
+                        <a href="{{ url_for('admin.manage_categories') }}" class="btn btn-info">
+                            <i class="bi bi-list-check"></i> Manage All Categories
+                        </a>
+                        <a href="{{ url_for('admin.user_content_dashboard') }}" class="btn btn-success">
+                            <i class="bi bi-person"></i> User View
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,238 @@
+{% extends "transport/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Settings</span>{% endblock %}
+
+{% block extra_css %}
+<style>
+.settings-layout { display:grid; grid-template-columns:200px 1fr; gap:16px; align-items:start; }
+@media(max-width:768px) { .settings-layout { grid-template-columns:1fr; } }
+.settings-nav { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; position:sticky; top:80px; }
+.settings-nav-item { display:flex; align-items:center; gap:9px; padding:11px 14px; font-size:0.82rem; color:var(--text-secondary); border-bottom:1px solid var(--border); cursor:pointer; transition:all 0.15s; }
+.settings-nav-item:last-child { border-bottom:none; }
+.settings-nav-item:hover { background:var(--bg-hover); color:var(--text-primary); }
+.settings-nav-item.active { background:var(--amber-dim); color:var(--amber); }
+.settings-nav-item i { width:14px; text-align:center; font-size:0.8rem; }
+.setting-section { display:none; }
+.setting-section.active { display:block; }
+.setting-row { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:16px 20px; border-bottom:1px solid var(--border); }
+.setting-row:last-child { border-bottom:none; }
+.setting-info { flex:1; }
+.setting-name { font-size:0.85rem; font-weight:600; color:var(--text-primary); margin-bottom:2px; }
+.setting-desc { font-size:0.75rem; color:var(--text-muted); }
+.setting-control { flex-shrink:0; min-width:140px; text-align:right; }
+/* Toggle switch */
+.toggle { position:relative; display:inline-block; width:40px; height:22px; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; cursor:pointer; inset:0; background:var(--bg-hover); border:1px solid var(--border-light); border-radius:22px; transition:0.2s; }
+.toggle-slider::before { content:''; position:absolute; width:16px; height:16px; left:2px; top:2px; background:var(--text-muted); border-radius:50%; transition:0.2s; }
+.toggle input:checked + .toggle-slider { background:var(--amber); border-color:var(--amber); }
+.toggle input:checked + .toggle-slider::before { transform:translateX(18px); background:#000; }
+.setting-modified { font-size:0.68rem; color:var(--text-muted); margin-top:3px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Transport Settings</h1>
+    <p class="page-subtitle">Manage feature flags, limits, and integration settings</p>
+  </div>
+</div>
+
+<div class="settings-layout">
+  <!-- Nav -->
+  <div class="settings-nav">
+    {% set sections = [('general','General','fa-sliders'),('booking','Booking','fa-calendar-check'),('payment','Payment','fa-credit-card'),('safety','Safety','fa-shield-halved'),('vehicles','Vehicles','fa-van-shuttle'),('integrations','Integrations','fa-plug'),('advanced','Advanced','fa-code')] %}
+    {% for id, label, icon in sections %}
+    <div class="settings-nav-item {% if (active_section|default('general')) == id %}active{% endif %}" onclick="showSection('{{ id }}')">
+      <i class="fa-solid {{ icon }}"></i> {{ label }}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Sections -->
+  <div>
+    <!-- General -->
+    <div class="card setting-section {{ 'active' if (active_section|default('general')) == 'general' }}" id="section-general">
+      <div class="card-header"><span class="card-title">General Settings</span></div>
+      {% set general_settings = settings|selectattr('category','eq','general')|list if settings else [] %}
+      {% for s in general_settings %}
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">{{ s.name }}</div>
+          <div class="setting-desc">{{ s.description|default('') }}</div>
+          {% if s.last_modified_by %}<div class="setting-modified">Last modified by user #{{ s.last_modified_by }}</div>{% endif %}
+        </div>
+        <div class="setting-control">
+          {% if s.data_type == 'boolean' %}
+          <label class="toggle">
+            <input type="checkbox" {{ 'checked' if s.value in [True, 'true', '1'] }} onchange="saveSetting('{{ s.key }}', this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+          {% elif s.data_type == 'select' %}
+          <select class="form-control" style="width:140px;padding:5px 8px;" onchange="saveSetting('{{ s.key }}', this.value)">
+            {% for opt in s.allowed_values|default([]) %}
+            <option value="{{ opt }}" {{ 'selected' if s.value == opt }}>{{ opt|title }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="{{ 'number' if s.data_type == 'integer' else 'text' }}" class="form-control" style="width:140px;text-align:right;" value="{{ s.value }}" onchange="saveSetting('{{ s.key }}', this.value)" />
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <!-- Default settings when no DB data yet -->
+      {% for name, key, desc, type, val in [
+        ('Booking System Enabled','booking_system_enabled','Allow new bookings to be created','boolean',true),
+        ('Max Advance Booking Days','max_advance_booking_days','How far ahead bookings can be made','integer',60),
+        ('Auto-Assignment Enabled','auto_assignment_enabled','Automatically assign nearest available driver','boolean',false),
+        ('Platform Currency','platform_currency','Base currency for all transactions','text','USD'),
+      ] %}
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">{{ name }}</div>
+          <div class="setting-desc">{{ desc }}</div>
+        </div>
+        <div class="setting-control">
+          {% if type == 'boolean' %}
+          <label class="toggle">
+            <input type="checkbox" {{ 'checked' if val }} onchange="saveSetting('{{ key }}', this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+          {% else %}
+          <input type="{{ 'number' if type == 'integer' else 'text' }}" class="form-control" style="width:120px;text-align:right;" value="{{ val }}" onchange="saveSetting('{{ key }}', this.value)" />
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+
+    <!-- Booking settings -->
+    <div class="card setting-section {{ 'active' if active_section == 'booking' }}" id="section-booking">
+      <div class="card-header"><span class="card-title">Booking Settings</span></div>
+      {% for name, key, desc, type, val in [
+        ('Cancellation Window (hours)','cancellation_window_hours','Hours before pickup within which cancellation is free','integer',24),
+        ('Max Passengers per Booking','max_passengers','Maximum passenger count allowed per booking','integer',20),
+        ('Require Payment Upfront','require_upfront_payment','Require full payment before confirming booking','boolean',false),
+        ('Allow Guest Bookings','allow_guest_bookings','Allow unauthenticated users to book','boolean',false),
+        ('Auto-Complete After (hours)','auto_complete_hours','Auto-mark booking complete if driver does not update','integer',6),
+      ] %}
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">{{ name }}</div>
+          <div class="setting-desc">{{ desc }}</div>
+        </div>
+        <div class="setting-control">
+          {% if type == 'boolean' %}
+          <label class="toggle">
+            <input type="checkbox" {{ 'checked' if val }} onchange="saveSetting('{{ key }}', this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+          {% else %}
+          <input type="number" class="form-control" style="width:100px;text-align:right;" value="{{ val }}" onchange="saveSetting('{{ key }}', this.value)" />
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Safety settings -->
+    <div class="card setting-section {{ 'active' if active_section == 'safety' }}" id="section-safety">
+      <div class="card-header"><span class="card-title">Safety Settings</span></div>
+      {% for name, key, desc, type, val in [
+        ('Incident Auto-Escalation','incident_auto_escalate','Auto-escalate critical incidents to admins','boolean',true),
+        ('Driver Background Check Required','require_background_check','Block unapproved drivers from accepting bookings','boolean',true),
+        ('Max Consecutive Hours','max_consecutive_hours','Maximum continuous driving hours before break required','integer',8),
+        ('Speed Alert Threshold (km/h)','speed_alert_kmh','Alert if driver exceeds this speed','integer',120),
+        ('SOS Feature Enabled','sos_enabled','Enable passenger SOS button in trip view','boolean',true),
+      ] %}
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">{{ name }}</div>
+          <div class="setting-desc">{{ desc }}</div>
+        </div>
+        <div class="setting-control">
+          {% if type == 'boolean' %}
+          <label class="toggle">
+            <input type="checkbox" {{ 'checked' if val }} onchange="saveSetting('{{ key }}', this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+          {% else %}
+          <input type="number" class="form-control" style="width:100px;text-align:right;" value="{{ val }}" onchange="saveSetting('{{ key }}', this.value)" />
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Integrations -->
+    <div class="card setting-section {{ 'active' if active_section == 'integrations' }}" id="section-integrations">
+      <div class="card-header"><span class="card-title">Integration Settings</span></div>
+      {% for name, key, desc, enabled in [
+        ('Google Maps','google_maps_enabled','Enable Google Maps for route display and tracking',false),
+        ('WhatsApp Notifications','whatsapp_enabled','Send booking confirmations via WhatsApp',false),
+        ('SMS Alerts','sms_enabled','Send trip status SMS to passengers',true),
+        ('Email Receipts','email_receipts_enabled','Auto-send email receipts after payment',true),
+        ('Tracking Webhooks','webhooks_enabled','Send real-time trip events to registered webhooks',false),
+      ] %}
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">{{ name }}</div>
+          <div class="setting-desc">{{ desc }}</div>
+        </div>
+        <div class="setting-control">
+          <label class="toggle">
+            <input type="checkbox" {{ 'checked' if enabled }} onchange="saveSetting('{{ key }}', this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Unsaved changes notice -->
+    <div id="saveBar" style="display:none;position:fixed;bottom:20px;right:24px;background:var(--bg-elevated);border:1px solid var(--amber);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow-elevated);z-index:150;">
+      <span style="font-size:0.82rem;color:var(--amber);"><i class="fa-solid fa-circle-info"></i> Settings auto-saved</span>
+      <button onclick="document.getElementById('saveBar').style.display='none'" class="btn btn-secondary btn-sm">Dismiss</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showSection(id) {
+  document.querySelectorAll('.setting-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.settings-nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('section-'+id)?.classList.add('active');
+  document.querySelectorAll('.settings-nav-item').forEach(n => {
+    if (n.onclick.toString().includes("'"+id+"'")) n.classList.add('active');
+  });
+  const url = new URL(location.href); url.searchParams.set('tab', id); history.replaceState({}, '', url);
+}
+
+let saveTimeout;
+function saveSetting(key, value) {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    fetch(`/api/transport/settings/key/${key}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+      body: JSON.stringify({ value })
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        const bar = document.getElementById('saveBar');
+        bar.style.display = 'flex';
+        setTimeout(() => bar.style.display = 'none', 3000);
+        if (d.requires_restart) {
+          alert('This setting requires a server restart to take effect.');
+        }
+      } else {
+        alert('Save failed: ' + d.error);
+      }
+    });
+  }, 500);
+}
+</script>
+{% endblock %}

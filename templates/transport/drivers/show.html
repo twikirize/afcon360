@@ -1,0 +1,196 @@
+{% extends "transport/base.html" %}
+{% block title %}{{ driver.display_name|default('Driver') }}{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ url_for('transport.drivers_index') }}">Drivers</a>
+<span class="sep">/</span><span class="current">{{ driver.display_name }}</span>
+{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.driver-detail-grid { display:grid; grid-template-columns:300px 1fr; gap:16px; }
+@media(max-width:900px) { .driver-detail-grid { grid-template-columns:1fr; } }
+.rating-bar { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:0.75rem; }
+.rating-bar .label { width:12px; text-align:right; color:var(--text-muted); }
+.rating-bar .bar-wrap { flex:1; height:6px; background:var(--bg-hover); border-radius:3px; overflow:hidden; }
+.rating-bar .bar-fill { height:100%; background:var(--amber); border-radius:3px; }
+.rating-bar .val { width:28px; color:var(--text-muted); font-size:0.7rem; }
+.stat-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:0.82rem; }
+.stat-row:last-child { border-bottom:none; }
+.stat-row-k { color:var(--text-muted); }
+.stat-row-v { font-weight:600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ driver.display_name }}</h1>
+    <p class="page-subtitle">Driver ID #{{ driver.id }} · Joined {{ driver.created_at|dateformat|default('—') }}</p>
+  </div>
+  <div class="page-actions">
+    {% if driver.compliance_status == 'pending' %}
+    <a href="{{ url_for('transport.driver_verification', id=driver.id) }}" class="btn btn-primary btn-sm">
+      <i class="fa-solid fa-shield-check"></i> Verify Driver
+    </a>
+    {% endif %}
+    <a href="{{ url_for('transport.driver_edit', id=driver.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-pen"></i> Edit
+    </a>
+    <button class="btn btn-danger btn-sm" onclick="toggleSuspend()">
+      <i class="fa-solid fa-ban"></i> {{ 'Unsuspend' if driver.compliance_status == 'suspended' else 'Suspend' }}
+    </button>
+  </div>
+</div>
+
+<div class="driver-detail-grid">
+  <!-- Left panel: profile -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <!-- Profile card -->
+    <div class="card">
+      <div style="padding:24px;text-align:center;border-bottom:1px solid var(--border);">
+        <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--amber),var(--blue));display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;font-size:1.5rem;margin:0 auto 12px;">
+          {{ driver.display_name[:2].upper() if driver.display_name else '?' }}
+        </div>
+        <div style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;">{{ driver.display_name }}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;">{{ driver.phone_number|default('—') }}</div>
+        <div style="margin-top:10px;">
+          {% if driver.is_online %}
+          <span class="badge badge-green">Online</span>
+          {% else %}
+          <span class="badge badge-gray">Offline</span>
+          {% endif %}
+          &nbsp;
+          {% if driver.compliance_status == 'fully_compliant' %}
+          <span class="badge badge-green">Verified</span>
+          {% elif driver.compliance_status == 'suspended' %}
+          <span class="badge badge-red">Suspended</span>
+          {% else %}
+          <span class="badge badge-amber">{{ driver.compliance_status|replace('_',' ')|title }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div style="padding:16px;">
+        <div class="stat-row"><span class="stat-row-k">License No.</span><span class="stat-row-v td-mono">••••{{ driver.license_number_last4|default('????') }}</span></div>
+        <div class="stat-row"><span class="stat-row-k">License Expiry</span><span class="stat-row-v">{{ driver.license_expiry|dateformat|default('—') }}</span></div>
+        <div class="stat-row"><span class="stat-row-k">Vehicle Class</span><span class="stat-row-v">{{ driver.vehicle_class_restriction|title|default('Any') }}</span></div>
+        <div class="stat-row"><span class="stat-row-k">Languages</span><span class="stat-row-v">{{ driver.languages_spoken|join(', ') if driver.languages_spoken else '—' }}</span></div>
+        <div class="stat-row"><span class="stat-row-k">Years Experience</span><span class="stat-row-v">{{ driver.years_experience|default('—') }}</span></div>
+      </div>
+    </div>
+
+    <!-- Rating breakdown -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Rating Breakdown</span></div>
+      <div class="card-body">
+        <div style="text-align:center;margin-bottom:14px;">
+          <div style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--amber);">{{ driver.average_rating|default('—') }}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);">{{ driver.total_reviews|default(0) }} reviews</div>
+        </div>
+        {% for star in [5,4,3,2,1] %}
+        <div class="rating-bar">
+          <span class="label">{{ star }}</span>
+          <div class="bar-wrap">
+            <div class="bar-fill" style="width:{{ driver.rating_dist[star|string]|default(0) }}%;"></div>
+          </div>
+          <span class="val">{{ driver.rating_dist[star|string]|default(0) }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: tabs with stats, trips, history -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <!-- Performance stats -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Performance</span></div>
+      <div class="card-body">
+        <div class="grid-3">
+          <div style="text-align:center;padding:12px;background:var(--bg-elevated);border-radius:8px;">
+            <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;">{{ driver.total_trips|default(0) }}</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);">Total Trips</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--bg-elevated);border-radius:8px;">
+            <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--green);">{{ driver.acceptance_rate|default(0) }}%</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);">Acceptance Rate</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--bg-elevated);border-radius:8px;">
+            <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--red);">{{ driver.cancellation_rate|default(0) }}%</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);">Cancellation Rate</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;height:160px;">
+          <canvas id="perfChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trips table -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Recent Trips</span>
+        <a href="{{ url_for('transport.driver_history', id=driver.id) }}" class="btn btn-secondary btn-sm">Full History</a>
+      </div>
+      <div class="t-table-wrap">
+        <table class="t-table">
+          <thead><tr><th>Reference</th><th>Date</th><th>Service</th><th>Status</th><th>Rating</th></tr></thead>
+          <tbody>
+            {% if trips %}
+              {% for t in trips %}
+              <tr>
+                <td><a href="{{ url_for('transport.booking_show', id=t.id) }}" class="td-mono" style="color:var(--amber);">{{ t.booking_reference }}</a></td>
+                <td>{{ t.scheduled_pickup_time|dateformat|default('—') }}</td>
+                <td>{{ t.service_type|title|default('—') }}</td>
+                <td><span class="badge badge-{{ 'green' if t.status=='completed' else 'red' if t.status=='cancelled' else 'amber' }}">{{ t.status|title }}</span></td>
+                <td>{{ '★ '+t.rating|string if t.rating else '—' }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="5"><div class="empty-state" style="padding:20px;"><i class="fa-solid fa-route"></i><p>No trips yet</p></div></td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ctx = document.getElementById('perfChart').getContext('2d');
+new Chart(ctx, {
+  type: 'radar',
+  data: {
+    labels: ['Reliability','Safety','Communication','Punctuality','Professionalism'],
+    datasets: [{
+      data: [
+        {{ driver.reliability_score|default(4.5) }},
+        {{ driver.safety_score|default(4.8) }},
+        {{ driver.communication_score|default(4.2) }},
+        {{ driver.punctuality_score|default(4.6) }},
+        {{ driver.professionalism_score|default(4.7) }},
+      ],
+      backgroundColor:'rgba(245,158,11,0.15)', borderColor:'#f59e0b',
+      pointBackgroundColor:'#f59e0b', pointRadius:4,
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    scales:{ r:{ min:0, max:5, ticks:{display:false,stepSize:1}, grid:{color:'#ffffff10'}, pointLabels:{color:'#94a3b8',font:{family:'DM Sans',size:11}} }},
+    plugins:{ legend:{display:false} }
+  }
+});
+
+function toggleSuspend() {
+  const action = '{{ driver.compliance_status }}' === 'suspended' ? 'activate' : 'suspend';
+  if (!confirm(`${action} this driver?`)) return;
+  fetch(`/api/transport/drivers/{{ driver.id }}/compliance`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'},
+    body: JSON.stringify({ action })
+  }).then(r=>r.json()).then(d=>{ if(d.success) location.reload(); });
+}
+</script>
+{% endblock %}

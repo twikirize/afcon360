@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">Owner Audit Logs</h1>
+        <a href="{{ url_for('owner.export_audit_logs') }}" class="btn btn-primary">
+            Export CSV
+        </a>
+    </div>
+    
+    <!-- Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-auto">
+                    <select name="category" class="form-select">
+                        <option value="all">All Categories</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>
+                            {{ cat|title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Filter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Logs Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Action</th>
+                            <th>Category</th>
+                            <th>Status</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs.items %}
+                        <tr>
+                            <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>{{ log.action }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'secondary' if log.category == 'navigation'
+                                                      else 'info' if log.category == 'security'
+                                                      else 'danger' if log.category == 'danger'
+                                                      else 'primary' }}">
+                                    {{ log.category }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if log.status == 'success'
+                                                      else 'warning' if log.status == 'pending'
+                                                      else 'danger' }}">
+                                    {{ log.status }}
+                                </span>
+                            </td>
+                            <td>{{ log.ip_address or 'N/A' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if logs.pages > 1 %}
+            <nav>
+                <ul class="pagination">
+                    {% for page in logs.iter_pages() %}
+                        {% if page %}
+                            <li class="page-item {{ 'active' if page == logs.page else '' }}">
+                                <a class="page-link" href="{{ url_for('owner.audit_logs', page=page, category=current_category) }}">
+                                    {{ page }}
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

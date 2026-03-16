@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero container py-8 text-center">
+  <h1 class="text-4xl font-bold mb-4">Welcome to {{ app_name or "AFCON 360" }}</h1>
+  <p class="text-lg text-gray-700 mb-6">
+    Live fixtures, travel packages, wallet payments, and trusted local agents — all in one place.
+  </p>
+
+  <!-- Call to Actions -->
+  <div class="flex flex-wrap justify-center gap-4 mb-8">
+    <a href="{{ url_for('tournament.home') }}" class="btn bg-afcon text-white px-6 py-2 rounded hover:bg-green-700 transition">View Fixtures</a>
+    <a href="{{ url_for('tourism.home') }}" class="btn border border-afcon text-afcon px-6 py-2 rounded hover:bg-afcon hover:text-white transition">Explore Travel</a>
+    {% if session.get('user_id') %}
+      <a href="{{ url_for('wallet_routes.wallet_dashboard') }}" class="btn border border-gray-600 text-gray-800 px-6 py-2 rounded hover:bg-gray-800 hover:text-white transition">Open Wallet</a>
+    {% else %}
+      <a href="{{ url_for('wallet_routes.wallet_home') }}" class="btn border border-gray-600 text-gray-800 px-6 py-2 rounded hover:bg-gray-800 hover:text-white transition">Open Wallet</a>
+    {% endif %}
+  </div>
+
+  <!-- Feature Tiles -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+    <a href="{% if session.get('user_id') %}{{ url_for('wallet_routes.wallet_dashboard') }}{% else %}{{ url_for('wallet_routes.wallet_home') }}{% endif %}" class="tile block p-4 border rounded hover:shadow-lg transition text-center">
+      <span class="text-3xl block mb-2">💼</span>
+      <strong>Wallet</strong>
+      <small class="block text-gray-600">Payments & history</small>
+    </a>
+    <a href="{{ url_for('tournament.home') }}" class="tile block p-4 border rounded hover:shadow-lg transition text-center">
+      <span class="text-3xl block mb-2">🏟️</span>
+      <strong>Fixtures</strong>
+      <small class="block text-gray-600">Match schedule & tickets</small>
+    </a>
+    <a href="{{ url_for('tourism.home') }}" class="tile block p-4 border rounded hover:shadow-lg transition text-center">
+      <span class="text-3xl block mb-2">✈️</span>
+      <strong>Tourism</strong>
+      <small class="block text-gray-600">Packages & sightseeing</small>
+    </a>
+  </div>
+</section>
+
+<!-- Optional: Highlight upcoming matches if available -->
+{% if matches %}
+<section class="upcoming-matches container py-8">
+  <h2 class="text-2xl font-bold mb-4">Upcoming Matches</h2>
+  <ul class="space-y-4">
+    {% for match in matches %}
+      <li class="p-4 border rounded flex justify-between items-center hover:shadow-lg transition">
+        <div>
+          <strong>{{ match.team_a }} vs {{ match.team_b }}</strong>
+          <span class="text-gray-600 block">{{ match.date }} • {{ match.venue }}</span>
+        </div>
+        <div class="space-x-2">
+          <a href="{{ url_for('matches.index') + '/' + match.match_id }}" class="btn border px-4 py-1 rounded hover:bg-afcon hover:text-white transition">Details</a>
+          {% if not session.get('user_id') %}
+            <a href="{{ url_for('auth_routes.login') }}?next={{ url_for('matches.index') + '/' + match.match_id }}" class="btn outline px-4 py-1 rounded hover:bg-gray-800 hover:text-white transition">Book</a>
+          {% else %}
+            <a href="{{ url_for('matches.index') + '/' + match.match_id }}" class="btn outline px-4 py-1 rounded hover:bg-gray-800 hover:text-white transition">Book</a>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<!-- Optional: Highlight top tourism packages -->
+{% if tourism %}
+<section class="tourism-packages container py-8">
+  <h2 class="text-2xl font-bold mb-4">Top Tourism Packages</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+    {% for package in tourism %}
+      <div class="card border rounded p-4 hover:shadow-lg transition">
+        <img src="{{ package.image_url }}" alt="{{ package.title }}" class="rounded mb-2 w-full h-40 object-cover">
+        <div class="card-body">
+          <div class="font-bold">{{ package.title }}</div>
+          <div class="text-gray-600 mb-2">${{ package.price }}</div>
+          <p class="text-gray-700 text-sm mb-2">{{ package.description }}</p>
+          <div class="space-x-2">
+            <a href="{{ url_for('tourism.home') + '/' + package.package_id }}" class="btn px-4 py-1 rounded bg-afcon text-white hover:bg-green-700 transition">Explore</a>
+            {% if not session.get('user_id') %}
+              <a href="{{ url_for('auth_routes.login') }}?next={{ url_for('tourism.home') + '/' + package.package_id }}" class="btn outline px-4 py-1 rounded hover:bg-gray-800 hover:text-white transition">Book</a>
+            {% else %}
+              <a href="{{ url_for('tourism.home') + '/' + package.package_id }}" class="btn outline px-4 py-1 rounded hover:bg-gray-800 hover:text-white transition">Book</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+
+
+<!--{1% extends "base.html" %}
+
+{1% block content %}
+<section class="hero">
+  <div class="hero-left">
+    <h1>🌍 Welcome to AFCON 360</h1>
+    <p class="lead">Live fixtures, travel packages, wallet payments and trusted local agents — all in one place.</p>
+    <div class="hero-ctas">
+      <a class="btn primary" href="{{ url_for('matches.index') }}">View Fixtures</a>
+      <a class="btn outline" href="{{ url_for('tourism.home') }}">Explore Tourism</a>
+    </div>
+  </div>
+
+  <div class="hero-right">
+    <div class="highlights">
+      {% if matches %}
+        <div class="highlight"><strong>Next Match</strong><span>{{ matches[0].team_a }} vs {{ matches[0].team_b }} • {{ matches[0].date }}</span></div>
+      {% endif %}
+      {% if tourism %}
+        <div class="highlight"><strong>Top Package</strong><span>{{ tourism[0].title }} • ${{ tourism[0].price }}</span></div>
+      {% endif %}
+      {% if adverts %}
+        <div class="highlight"><strong>Sponsored</strong><span>{{ adverts[0].title }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="explore">
+  <h2>Explore</h2>
+  <div class="tiles">
+    <a class="tile" href="{{ url_for('auth_routes.register') }}"><span class="icon">📝</span><strong>Register</strong><small>Create your Fan Profile</small></a>
+    <a class="tile" href="{{ url_for('auth_routes.login') }}"><span class="icon">🔐</span><strong>Login</strong><small>Access wallet & bookings</small></a>
+    <a class="tile" href="{{ url_for('matches.index') }}"><span class="icon">⚽</span><strong>Match Fixtures</strong><small>Full schedule & tickets</small></a>
+    <a class="tile" href="{{ url_for('tourism.home') }}"><span class="icon">🏞️</span><strong>Tourism</strong><small>Curated travel packages</small></a>
+    <a class="tile" href="{{ url_for('wallet_routes.wallet_dashboard') }}"><span class="icon">💳</span><strong>Wallet</strong><small>Deposits & transfers</small></a>
+  </div>
+</section>
+
+<section class="strip">
+  <div class="strip-inner">
+    {% for match in matches %}
+      <div class="strip-item">
+        <strong>{{ match.team_a }} vs {{ match.team_b }}</strong>
+        <span>{{ match.date }} • {{ match.venue }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="modules">
+  <div class="module-col">
+    <h3>Upcoming Matches</h3>
+    <ul class="card-list">
+      {% for match in matches %}
+        <li class="card">
+          <div class="card-body">
+            <div class="card-title">{{ match.team_a }} vs {{ match.team_b }}</div>
+            <div class="card-meta">{{ match.date }} • {{ match.venue }}</div>
+            <div class="card-actions">
+              <a class="btn small" href="{{ url_for('matches.index') + '/' + match.match_id }}">Details</a>
+              <a class="btn small outline" href="{{ url_for('auth_routes.login') }}?next={{ url_for('matches.index') + '/' + match.match_id }}">Book</a>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="module-col">
+    <h3>Tourism Packages</h3>
+    <ul class="card-list">
+      {% for package in tourism %}
+        <li class="card">
+          <img class="card-media" src="{{ package.image_url }}" alt="{{ package.title }}">
+          <div class="card-body">
+            <div class="card-title">{{ package.title }}</div>
+            <div class="card-meta">${{ package.price }}</div>
+            <p class="card-desc">{{ package.description }}</p>
+            <div class="card-actions">
+              <a class="btn small" href="{{ url_for('tourism.home') + '/' + package.package_id }}">Explore</a>
+              <a class="btn small outline" href="{{ url_for('auth_routes.login') }}?next={{ url_for('tourism.home') + '/' + package.package_id }}">Book</a>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="sponsors">
+  <h3>Our Sponsors</h3>
+  <div class="sponsor-row">
+    {1% for ad in adverts %}
+      <a class="sponsor" href="{{ url_for('index') + 'ads/' + ad.advert_id }}"><img src="{{ ad.image_url }}" alt="{{ ad.title }}"></a>
+    {1% endfor %}
+  </div>
+</section>
+{1% endblock %}
+-->

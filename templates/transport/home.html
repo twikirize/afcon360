@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h1 class="display-4">
+            <i class="bi bi-car-front text-primary"></i>
+            AFCON Transport Services
+        </h1>
+        <p class="lead">Reliable transportation for the AFCON tournament across Africa</p>
+    </div>
+
+    <!-- Module Status -->
+    <div class="alert alert-success mb-4">
+        <i class="bi bi-check-circle"></i>
+        Transport module is <strong>ACTIVE</strong>.
+        {% if current_user.is_authenticated and current_user.has_global_role('admin') %}
+        <a href="{{ url_for('admin.super_dashboard') }}" class="btn btn-sm btn-outline-success float-end">
+            <i class="bi bi-gear"></i> Manage Module
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-5">
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 text-center border-primary">
+                <div class="card-body">
+                    <i class="bi bi-geo-alt display-4 text-primary mb-3"></i>
+                    <h3>Book Transport</h3>
+                    <p>Find rides between stadiums, hotels, and airports</p>
+                    <a href="{{ url_for('transport.book_transport') }}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-calendar-check"></i> Book Now
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 text-center border-success">
+                <div class="card-body">
+                    <i class="bi bi-person-badge display-4 text-success mb-3"></i>
+                    <h3>Become a Driver</h3>
+                    <p>Register as a driver and earn during AFCON</p>
+                    <a href="{{ url_for('transport.become_driver') }}" class="btn btn-success btn-lg">
+                        <i class="bi bi-person-plus"></i> Register
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 text-center border-warning">
+                <div class="card-body">
+                    <i class="bi bi-truck display-4 text-warning mb-3"></i>
+                    <h3>Register Vehicle</h3>
+                    <p>Add your vehicle to our transport fleet</p>
+                    <a href="{{ url_for('transport.register_vehicle') }}" class="btn btn-warning btn-lg">
+                        <i class="bi bi-plus-circle"></i> Add Vehicle
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Services -->
+    {% if services %}
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">Available Transport Services</h2>
+            <div class="row">
+                {% for service in services %}
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-{{ service.icon|default('car-front') }}"></i>
+                                {{ service.name }}
+                            </h5>
+                            <p class="card-text">{{ service.description }}</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="badge bg-{{ service.status_color|default('primary') }}">
+                                    {{ service.status|default('Available') }}
+                                </span>
+                                <a href="{{ url_for('transport.service_detail', service_id=service.id) }}" 
+                                   class="btn btn-sm btn-outline-primary">
+                                    View Details
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Transport Dashboard Links (for registered users) -->
+    {% if current_user.is_authenticated %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h4 class="mb-0">Your Transport Dashboard</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <a href="{{ url_for('transport.driver_dashboard') }}" class="btn btn-outline-success w-100 mb-3">
+                                <i class="bi bi-speedometer2"></i> Driver Dashboard
+                            </a>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="{{ url_for('transport.vehicle_dashboard') }}" class="btn btn-outline-warning w-100 mb-3">
+                                <i class="bi bi-truck"></i> Vehicle Dashboard
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

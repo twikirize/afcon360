@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="container py-5">
+  <h1>Audit Logs for {{ org.legal_name }}</h1>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Action</th>
+        <th>Actor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in audit_logs %}
+      <tr>
+        <td>{{ log.timestamp }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.actor.username }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

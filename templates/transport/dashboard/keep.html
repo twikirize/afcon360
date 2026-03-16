@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="transport">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AFCON360 Transport{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Leaflet Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <!-- Core CSS — same as transport/base.html -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='transport/css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='transport/css/dashboard.css') }}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+<div class="t-shell">
+
+    <!-- Sidebar -->
+    <aside class="t-sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">🚌</div>
+            <div class="logo-text">AFCON<span>360</span></div>
+        </div>
+
+        <!-- User Profile Mini -->
+        <div class="sidebar-user-mini">
+            <div class="user-avatar">
+                {{ current_user.username[:2].upper() if current_user.username else 'A' }}
+            </div>
+            <div class="user-info">
+                <div class="user-name">{{ current_user.username|default('Admin') }}</div>
+                <div class="user-role">
+                    {% if current_user.role == 'super_admin' %}Super Admin
+                    {% elif current_user.role == 'transport_admin' %}Transport Admin
+                    {% elif current_user.role == 'org_admin' %}Org Admin
+                    {% elif current_user.role == 'driver' %}Driver
+                    {% else %}User
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+
+            {# ── SUPER ADMIN & TRANSPORT ADMIN NAV ── #}
+            {% if current_user.role in ['super_admin', 'transport_admin'] %}
+
+                <div class="nav-section-label">MAIN</div>
+                <a href="{{ url_for('transport_admin.dashboard') }}"
+                   class="nav-item {% if request.endpoint == 'transport_admin.dashboard' %}active{% endif %}">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span>Dashboard</span>
+                </a>
+
+                <div class="nav-section-label">OPERATIONS</div>
+
+                <!-- Bookings with submenu -->
+                <div class="nav-item has-submenu {% if 'booking' in request.endpoint %}active{% endif %}">
+                    <a href="#" class="submenu-toggle">
+                        <i class="fa-solid fa-calendar-check"></i>
+                        <span>Bookings</span>
+                        {% if pending_bookings_count is defined and pending_bookings_count %}
+                        <span class="badge amber">{{ pending_bookings_count }}</span>
+                        {% endif %}
+                        <i class="fa-solid fa-chevron-right submenu-arrow"></i>
+                    </a>
+                    <ul class="submenu">
+                        <li><a href="{{ url_for('transport_admin.list_bookings') }}">All Bookings</a></li>
+                        <li><a href="{{ url_for('transport.book_transport') }}">New Booking</a></li>
+                        <li><a href="{{ url_for('transport_admin.bookings_report') }}">Reports</a></li>
+                    </ul>
+                </div>
+
+                <!-- Drivers with submenu -->
+                <div class="nav-item has-submenu {% if 'driver' in request.endpoint %}active{% endif %}">
+                    <a href="#" class="submenu-toggle">
+                        <i class="fa-solid fa-id-card"></i>
+                        <span>Drivers</span>
+                        <i class="fa-solid fa-chevron-right submenu-arrow"></i>
+                    </a>
+                    <ul class="submenu">
+                        <li><a href="{{ url_for('transport_admin.list_drivers') }}">All Drivers</a></li>
+                        <li><a href="{{ url_for('transport.become_driver') }}">Add Driver</a></li>
+                        <li><a href="{{ url_for('transport_admin.list_drivers') }}?status=pending">Pending Approval</a></li>
+                    </ul>
+                </div>
+
+                <!-- Vehicles with submenu -->
+                <div class="nav-item has-submenu {% if 'vehicle' in request.endpoint %}active{% endif %}">
+                    <a href="#" class="submenu-toggle">
+                        <i class="fa-solid fa-van-shuttle"></i>
+                        <span>Vehicles</span>
+                        <i class="fa-solid fa-chevron-right submenu-arrow"></i>
+                    </a>
+                    <ul class="submenu">
+                        <li><a href="{{ url_for('transport_admin.list_vehicles') }}">All Vehicles</a></li>
+                        <li><a href="{{ url_for('transport.register_vehicle') }}">Add Vehicle</a></li>
+                    </ul>
+                </div>
+
+                <a href="{{ url_for('transport_admin.routes') }}"
+                   class="nav-item {% if 'route' in request.endpoint %}active{% endif %}">
+                    <i class="fa-solid fa-route"></i>
+                    <span>Routes</span>
+                </a>
+
+                <a href="{{ url_for('transport_admin.incidents') }}"
+                   class="nav-item {% if 'incident' in request.endpoint %}active{% endif %}">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>Incidents</span>
+                    {% if open_incidents_count is defined and open_incidents_count %}
+                    <span class="badge red">{{ open_incidents_count }}</span>
+                    {% endif %}
+                </a>
+
+                <div class="nav-section-label">ANALYTICS</div>
+                <a href="{{ url_for('transport_admin.bookings_report') }}"
+                   class="nav-item {% if 'analytics' in request.endpoint or 'report' in request.endpoint %}active{% endif %}">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Reports</span>
+                </a>
+
+                <div class="nav-section-label">CONFIGURATION</div>
+                <a href="{{ url_for('transport_admin.settings') }}"
+                   class="nav-item {% if 'settings' in request.endpoint %}active{% endif %}">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Settings</span>
+                </a>
+
+            {# ── ORG ADMIN NAV ── #}
+            {% elif current_user.role == 'org_admin' %}
+
+                <div class="nav-section-label">MY ORGANISATION</div>
+                <a href="{{ url_for('transport.organisations_index') }}"
+                   class="nav-item {% if request.endpoint == 'transport.organisations_index' %}active{% endif %}">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-van-shuttle"></i>
+                    <span>My Fleet</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span>My Drivers</span>
+                </a>
+                <a href="{{ url_for('transport.bookings_index') }}"
+                   class="nav-item {% if 'booking' in request.endpoint %}active{% endif %}">
+                    <i class="fa-solid fa-calendar-check"></i>
+                    <span>Bookings</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Revenue</span>
+                </a>
+
+            {# ── DRIVER NAV ── #}
+            {% elif current_user.role == 'driver' %}
+
+                <div class="nav-section-label">MY DAY</div>
+                <a href="{{ url_for('transport.drivers_index') }}"
+                   class="nav-item {% if request.endpoint == 'transport.drivers_index' %}active{% endif %}">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-calendar"></i>
+                    <span>My Schedule</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-route"></i>
+                    <span>My Trips</span>
+                </a>
+
+                <div class="nav-section-label">MY DETAILS</div>
+                <a href="{{ url_for('transport.vehicles_index') }}" class="nav-item">
+                    <i class="fa-solid fa-van-shuttle"></i>
+                    <span>My Vehicle</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-wallet"></i>
+                    <span>Earnings</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>History</span>
+                </a>
+
+            {% endif %}
+
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    {{ current_user.username[:2].upper() if current_user.username else 'A' }}
+                </div>
+                <div class="user-info">
+                    <div class="user-name">{{ current_user.username|default('Admin') }}</div>
+                    <div class="user-role">Transport</div>
+                </div>
+                <a href="{{ url_for('auth_routes.logout') }}" title="Sign out" class="logout-link">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                </a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Sidebar overlay for mobile -->
+    <div id="sidebarOverlay" onclick="toggleSidebar()" class="sidebar-overlay"></div>
+
+    <!-- Main Content Area -->
+    <div class="t-main">
+
+        <!-- Topbar -->
+        <header class="t-topbar">
+            <button class="topbar-toggle" onclick="toggleSidebar()">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            <nav class="breadcrumb">
+                <a href="{{ url_for('transport_admin.dashboard') }}">
+                    <i class="fa-solid fa-house"></i>
+                </a>
+                {% block breadcrumb %}{% endblock %}
+            </nav>
+
+            <div class="topbar-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" placeholder="Search transport..." id="globalSearch" />
+                <div id="searchResults" class="search-results-dropdown"></div>
+            </div>
+
+            <div class="topbar-actions">
+                <!-- Notifications -->
+                <button class="topbar-btn" title="Notifications" id="notificationsBtn">
+                    <i class="fa-regular fa-bell"></i>
+                    {% if unread_notifications is defined and unread_notifications > 0 %}
+                    <span class="notification-badge dot"></span>
+                    {% endif %}
+                </button>
+
+                <!-- Live Tracking -->
+                <button class="topbar-btn" title="Live tracking">
+                    <i class="fa-solid fa-location-dot"></i>
+                </button>
+
+                <!-- Refresh -->
+                <button class="topbar-btn" title="Refresh" id="refreshBtn">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+
+                <!-- User dropdown -->
+                <div class="topbar-user">
+                    <div class="user-avatar-sm">
+                        {{ current_user.username[:2].upper() if current_user.username else 'A' }}
+                    </div>
+                    <span>{{ current_user.username.split()[0] if current_user.username else 'Admin' }}</span>
+                    <i class="fa-solid fa-chevron-down"></i>
+                    <div class="user-dropdown">
+                        <a href="#"><i class="fa-solid fa-user"></i> Profile</a>
+                        <a href="#"><i class="fa-solid fa-shield"></i> Security</a>
+                        <hr>
+                        <a href="{{ url_for('index') }}"><i class="fa-solid fa-globe"></i> Main Site</a>
+                        <a href="{{ url_for('auth_routes.logout') }}"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <main class="t-content">
+
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'red' if category == 'danger' else 'green' if category == 'success' else 'amber' }}" data-timeout="5000">
+                    <i class="fa-solid fa-{{ 'circle-exclamation' if category == 'danger' else 'circle-check' if category == 'success' else 'triangle-exclamation' }}"></i>
+                    <span>{{ message }}</span>
+                    <button onclick="this.parentElement.remove()" class="alert-close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<!-- Modals Container -->
+<div id="modalContainer"></div>
+
+<!-- Scripts -->
+<script src="{{ url_for('static', filename='transport/js/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='transport/js/base.js') }}"></script>
+<script src="{{ url_for('static', filename='transport/js/charts.js') }}"></script>
+<script src="{{ url_for('static', filename='transport/js/realtime.js') }}"></script>
+
+<script>
+// Sidebar toggle
+function toggleSidebar() {
+    const s = document.getElementById('sidebar');
+    const o = document.getElementById('sidebarOverlay');
+    const open = s.classList.toggle('open');
+    o.style.display = open ? 'block' : 'none';
+}
+
+// Submenu accordion
+document.querySelectorAll('.submenu-toggle').forEach(toggle => {
+    toggle.addEventListener('click', function(e) {
+        e.preventDefault();
+        const parent = this.closest('.has-submenu');
+        const isOpen = parent.classList.contains('expanded');
+        // Close all
+        document.querySelectorAll('.has-submenu.expanded').forEach(el => el.classList.remove('expanded'));
+        // Open this one if it was closed
+        if (!isOpen) parent.classList.add('expanded');
+    });
+});
+
+// Auto-expand active submenu on page load
+document.querySelectorAll('.has-submenu.active').forEach(el => el.classList.add('expanded'));
+
+// Refresh button spin
+document.getElementById('refreshBtn')?.addEventListener('click', function() {
+    this.style.transition = 'transform 0.5s';
+    this.style.transform = 'rotate(360deg)';
+    setTimeout(() => {
+        this.style.transition = '';
+        this.style.transform = '';
+    }, 520);
+    window.location.reload();
+});
+
+// Auto-dismiss flash messages
+setTimeout(() => {
+    document.querySelectorAll('.flash-messages .alert').forEach(a => {
+        a.style.transition = 'opacity 0.4s';
+        a.style.opacity = '0';
+        setTimeout(() => a.remove(), 400);
+    });
+}, 5000);
+
+// Global config for JS modules
+const AFCON_CONFIG = {
+    userId: {{ current_user.id|tojson }},
+    userRole: {{ current_user.role|tojson if current_user.role is defined else '"user"'|safe }},
+    apiBase: '/api/transport',
+};
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

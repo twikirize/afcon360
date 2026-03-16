@@ -1,0 +1,401 @@
+{% extends "transport/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block breadcrumb %}
+<span class="sep">/</span>
+<span class="current">Dashboard</span>
+{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto;
+    gap: 16px;
+  }
+  .col-span-2 { grid-column: span 2; }
+  .col-span-3 { grid-column: span 3; }
+  @media(max-width:1024px) { .dashboard-grid { grid-template-columns: 1fr 1fr; } .col-span-3 { grid-column: span 2; } }
+  @media(max-width:640px)  { .dashboard-grid { grid-template-columns: 1fr; } .col-span-2, .col-span-3 { grid-column: span 1; } }
+
+  /* Live ops band */
+  .live-band {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .live-band-item {
+    background: var(--bg-surface);
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .live-band-item .lv { font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; }
+  .live-band-item .ll { font-size: 0.68rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
+  .live-band-item.highlight { background: var(--amber-dim); }
+  .live-band-item.highlight .lv { color: var(--amber); }
+  @media(max-width:768px) { .live-band { grid-template-columns: repeat(3,1fr); } }
+  @media(max-width:480px) { .live-band { grid-template-columns: repeat(2,1fr); } }
+
+  /* Alert list */
+  .alert-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .alert-item:last-child { border-bottom: none; }
+  .alert-item:hover { background: var(--bg-hover); }
+  .alert-icon {
+    width: 28px; height: 28px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; flex-shrink: 0;
+  }
+  .alert-icon.crit  { background: var(--red-dim);    color: var(--red); }
+  .alert-icon.warn  { background: var(--amber-dim);  color: var(--amber); }
+  .alert-icon.info  { background: var(--blue-dim);   color: var(--blue); }
+  .alert-text { flex: 1; }
+  .alert-msg { color: var(--text-secondary); }
+  .alert-time { font-size: 0.68rem; color: var(--text-muted); margin-top: 1px; }
+  .alert-count {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  /* Booking activity */
+  .activity-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+  .activity-item:last-child { border-bottom: none; }
+  .act-ref {
+    font-family: var(--font-mono); font-size: 0.72rem;
+    color: var(--amber); min-width: 80px;
+  }
+  .act-info { flex: 1; }
+  .act-route { color: var(--text-secondary); }
+  .act-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; }
+  .act-time { font-size: 0.7rem; color: var(--text-muted); text-align: right; }
+
+  /* Pending actions */
+  .pending-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+  .pending-item:last-child { border-bottom: none; }
+  .pending-label { color: var(--text-secondary); }
+  .pending-count {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.9rem;
+    min-width: 32px;
+    text-align: right;
+  }
+  .pending-count.urgent { color: var(--red); }
+  .pending-count.normal { color: var(--amber); }
+
+  /* Chart canvas */
+  .chart-container { position: relative; height: 220px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Transport Dashboard</h1>
+    <p class="page-subtitle">
+      <span class="live-dot">LIVE</span> &nbsp; Last updated {{ now|default('just now') }}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('transport.bookings_new') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-plus"></i> New Booking
+    </a>
+    <a href="{{ url_for('transport.analytics_index') }}" class="btn btn-primary btn-sm">
+      <i class="fa-solid fa-chart-line"></i> Analytics
+    </a>
+  </div>
+</div>
+
+<!-- Live Operations Band -->
+<div class="live-band">
+  <div class="live-band-item highlight">
+    <div class="lv">{{ live.active_drivers|default(0) }}</div>
+    <div class="ll">Active Drivers</div>
+  </div>
+  <div class="live-band-item">
+    <div class="lv">{{ live.live_bookings|default(0) }}</div>
+    <div class="ll">Live Bookings</div>
+  </div>
+  <div class="live-band-item">
+    <div class="lv">{{ live.available_vehicles|default(0) }}</div>
+    <div class="ll">Avail. Vehicles</div>
+  </div>
+  <div class="live-band-item">
+    <div class="lv">{{ live.active_routes|default(0) }}</div>
+    <div class="ll">Active Routes</div>
+  </div>
+  <div class="live-band-item">
+    <div class="lv" style="color:var(--red)">{{ live.open_incidents|default(0) }}</div>
+    <div class="ll">Open Incidents</div>
+  </div>
+</div>
+
+<!-- KPI Stats Row -->
+<div class="grid-stats" style="margin-bottom:16px;">
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-calendar-check"></i></div>
+    <div class="stat-value">{{ today.bookings|default(0) }}</div>
+    <div class="stat-label">Today's Bookings</div>
+    <div class="stat-delta up"><i class="fa-solid fa-arrow-up"></i> {{ today.bookings_delta|default('12') }}% vs yesterday</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon green"><i class="fa-solid fa-check-double"></i></div>
+    <div class="stat-value">{{ today.completed|default(0) }}</div>
+    <div class="stat-label">Completed Today</div>
+    <div class="stat-delta up"><i class="fa-solid fa-arrow-up"></i> On track</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="fa-solid fa-money-bill-wave"></i></div>
+    <div class="stat-value">{{ today.revenue|default('$0') }}</div>
+    <div class="stat-label">Revenue Today</div>
+    <div class="stat-delta up"><i class="fa-solid fa-arrow-up"></i> {{ today.revenue_delta|default('8') }}%</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon red"><i class="fa-solid fa-xmark"></i></div>
+    <div class="stat-value">{{ today.cancelled|default(0) }}</div>
+    <div class="stat-label">Cancelled</div>
+    {% if today.cancelled_delta is defined %}
+    <div class="stat-delta down"><i class="fa-solid fa-arrow-up"></i> {{ today.cancelled_delta }}%</div>
+    {% endif %}
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-star"></i></div>
+    <div class="stat-value">{{ quick_stats.avg_rating|default('4.7') }}</div>
+    <div class="stat-label">Avg. Rating (7d)</div>
+    <div class="stat-delta up"><i class="fa-solid fa-arrow-up"></i> +0.1</div>
+  </div>
+</div>
+
+<!-- Main Dashboard Grid -->
+<div class="dashboard-grid">
+
+  <!-- Booking trend chart -->
+  <div class="card col-span-2">
+    <div class="card-header">
+      <span class="card-title">Booking Trend — 7 Days</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="chartRange('7d')">7d</button>
+        <button class="btn btn-secondary btn-sm" onclick="chartRange('30d')">30d</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="chart-container">
+        <canvas id="bookingChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pending Actions -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Pending Actions</span>
+      <span style="font-family:var(--font-mono);font-size:0.72rem;background:var(--red-dim);color:var(--red);padding:2px 8px;border-radius:4px;">
+        {{ pending.total|default(0) }} items
+      </span>
+    </div>
+    <div>
+      <div class="pending-item">
+        <span class="pending-label"><i class="fa-solid fa-id-card" style="margin-right:7px;opacity:0.6;"></i>Driver Approvals</span>
+        <a href="{{ url_for('transport.drivers_index') }}?status=pending" class="pending-count urgent">{{ pending.driver_approvals|default(0) }}</a>
+      </div>
+      <div class="pending-item">
+        <span class="pending-label"><i class="fa-solid fa-van-shuttle" style="margin-right:7px;opacity:0.6;"></i>Vehicle Approvals</span>
+        <a href="{{ url_for('transport.vehicles_index') }}?status=pending" class="pending-count normal">{{ pending.vehicle_approvals|default(0) }}</a>
+      </div>
+      <div class="pending-item">
+        <span class="pending-label"><i class="fa-solid fa-calendar-check" style="margin-right:7px;opacity:0.6;"></i>Unassigned Bookings</span>
+        <a href="{{ url_for('transport.bookings_index') }}?status=confirmed" class="pending-count urgent">{{ pending.unassigned_bookings|default(0) }}</a>
+      </div>
+      <div class="pending-item">
+        <span class="pending-label"><i class="fa-solid fa-triangle-exclamation" style="margin-right:7px;opacity:0.6;"></i>Open Incidents</span>
+        <a href="{{ url_for('transport.incidents_index') }}?unresolved=1" class="pending-count urgent">{{ pending.open_incidents|default(0) }}</a>
+      </div>
+      <div class="pending-item">
+        <span class="pending-label"><i class="fa-solid fa-scale-unbalanced" style="margin-right:7px;opacity:0.6;"></i>Disputed Payments</span>
+        <a href="{{ url_for('transport.bookings_index') }}?payment=disputed" class="pending-count normal">{{ pending.disputed_payments|default(0) }}</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts panel -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">System Alerts</span>
+      <span class="live-dot">LIVE</span>
+    </div>
+    <div>
+      {% if alerts %}
+        {% for alert in alerts %}
+        <div class="alert-item" onclick="location.href='{{ alert.action_url }}'">
+          <div class="alert-icon {{ alert.level }}">
+            <i class="fa-solid fa-{{ 'circle-exclamation' if alert.level == 'crit' else 'triangle-exclamation' if alert.level == 'warn' else 'circle-info' }}"></i>
+          </div>
+          <div class="alert-text">
+            <div class="alert-msg">{{ alert.message }}</div>
+            <div class="alert-time">{{ alert.level|upper }} · {{ alert.type }}</div>
+          </div>
+          <span class="alert-count">{{ alert.count }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:28px;">
+          <i class="fa-solid fa-shield-check" style="color:var(--green);opacity:0.5;"></i>
+          <p style="margin-top:8px;font-size:0.8rem;color:var(--green);">All systems nominal</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Revenue breakdown chart -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Revenue Breakdown</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-container" style="height:180px;">
+        <canvas id="revenueChart"></canvas>
+      </div>
+      <div style="display:flex;justify-content:space-around;margin-top:12px;">
+        <div style="text-align:center;">
+          <div style="font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--amber);">{{ revenue.platform_fees|default('$0') }}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">Platform</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--blue);">{{ revenue.provider_earnings|default('$0') }}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">Providers</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--text-secondary);">{{ revenue.tax|default('$0') }}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">Tax</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="card col-span-2">
+    <div class="card-header">
+      <span class="card-title">Recent Bookings</span>
+      <a href="{{ url_for('transport.bookings_index') }}" class="btn btn-secondary btn-sm">View All</a>
+    </div>
+    <div>
+      {% if recent_bookings %}
+        {% for b in recent_bookings %}
+        <div class="activity-item">
+          <div class="act-ref">{{ b.booking_reference }}</div>
+          <div class="act-info">
+            <div class="act-route">{{ b.service_type }} — {{ b.pickup_location_name|default('—') }}</div>
+            <div class="act-meta">{{ b.user_name|default('Guest') }} · {{ b.passenger_count|default(1) }} pax</div>
+          </div>
+          <div>
+            {% if b.status == 'completed' %}
+            <span class="badge badge-green">Completed</span>
+            {% elif b.status == 'in_progress' %}
+            <span class="badge badge-blue">In Progress</span>
+            {% elif b.status == 'assigned' %}
+            <span class="badge badge-amber">Assigned</span>
+            {% elif b.status == 'cancelled' %}
+            <span class="badge badge-red">Cancelled</span>
+            {% else %}
+            <span class="badge badge-gray">{{ b.status|title }}</span>
+            {% endif %}
+          </div>
+          <div class="act-time">{{ b.created_at|timeago|default('—') }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">
+          <i class="fa-solid fa-calendar"></i>
+          <p>No recent bookings</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div><!-- /dashboard-grid -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: { backgroundColor: '#161929', titleColor: '#f59e0b', bodyColor: '#94a3b8', borderColor: '#ffffff14', borderWidth: 1, padding: 10 }},
+};
+
+// Booking trend
+const bCtx = document.getElementById('bookingChart').getContext('2d');
+const labels = {{ chart_labels|default(['Mon','Tue','Wed','Thu','Fri','Sat','Sun'])|tojson }};
+const bookingData = {{ chart_bookings|default([12,18,15,22,30,28,35])|tojson }};
+const completedData = {{ chart_completed|default([10,16,12,20,27,24,30])|tojson }};
+
+new Chart(bCtx, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      { label: 'Bookings', data: bookingData, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#f59e0b', pointRadius: 4 },
+      { label: 'Completed', data: completedData, borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.4, borderDash: [4,4], pointBackgroundColor: '#22c55e', pointRadius: 3 },
+    ]
+  },
+  options: { ...chartDefaults, scales: {
+    x: { grid: { color: '#ffffff08' }, ticks: { color: '#475569', font: { family: 'DM Sans' } } },
+    y: { grid: { color: '#ffffff08' }, ticks: { color: '#475569', font: { family: 'DM Sans' } }, beginAtZero: true },
+  }}
+});
+
+// Revenue donut
+const rCtx = document.getElementById('revenueChart').getContext('2d');
+new Chart(rCtx, {
+  type: 'doughnut',
+  data: {
+    labels: ['Platform', 'Providers', 'Tax'],
+    datasets: [{ data: {{ revenue_chart|default([20,65,15])|tojson }}, backgroundColor: ['#f59e0b','#3b82f6','#334155'], borderWidth: 0, hoverOffset: 4 }]
+  },
+  options: { ...chartDefaults, cutout: '72%' }
+});
+
+function chartRange(r) { /* TODO: fetch & redraw */ }
+
+// Auto-refresh live band every 30s
+setInterval(() => {
+  fetch('/api/transport/dashboard/overview')
+    .then(r => r.json())
+    .then(d => {
+      if (d.success && d.data.live_operations) {
+        const lo = d.data.live_operations;
+        // update band values
+      }
+    }).catch(() => {});
+}, 30000);
+</script>
+{% endblock %}

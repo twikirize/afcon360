@@ -1,0 +1,220 @@
+{% extends "transport/base.html" %}
+{% block title %}Incident {{ incident.incident_reference|default('') }}{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ url_for('transport.incidents_index') }}">Incidents</a>
+<span class="sep">/</span><span class="current">{{ incident.incident_reference }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ incident.title }}</h1>
+    <p class="page-subtitle">{{ incident.incident_reference }} · Occurred {{ incident.occurred_at|datetimeformat|default('—') }}</p>
+  </div>
+  <div class="page-actions">
+    {% if incident.status == 'reported' %}
+    <button class="btn btn-primary btn-sm" onclick="assignModal.classList.add('open')">
+      <i class="fa-solid fa-user-plus"></i> Assign Investigator
+    </button>
+    {% endif %}
+    {% if incident.status in ['under_investigation','action_taken'] %}
+    <button class="btn btn-success btn-sm" onclick="resolveIncident()">
+      <i class="fa-solid fa-check"></i> Resolve
+    </button>
+    {% endif %}
+    <a href="{{ url_for('transport.incident_edit', id=incident.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-pen"></i> Edit
+    </a>
+  </div>
+</div>
+
+{% if incident.severity == 'critical' %}
+<div class="alert alert-red" style="margin-bottom:16px;">
+  <i class="fa-solid fa-circle-exclamation"></i>
+  <strong>CRITICAL INCIDENT</strong> — This incident requires immediate attention and escalation.
+</div>
+{% endif %}
+
+<div class="grid-2" style="align-items:start;">
+  <!-- Left: details -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Incident Details</span>
+        {% if incident.severity == 'critical' %}<span class="badge badge-red">Critical</span>
+        {% elif incident.severity == 'high'    %}<span class="badge" style="background:rgba(249,115,22,0.15);color:#f97316;">High</span>
+        {% elif incident.severity == 'medium'  %}<span class="badge badge-amber">Medium</span>
+        {% else %}<span class="badge badge-gray">Low</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          {% for label, val in [('Type', incident.incident_type|replace('_',' ')|title), ('Category', incident.incident_category|replace('_',' ')|title|default('—')), ('Reported Via', incident.reported_via|default('—')), ('Priority', incident.priority|title|default('—'))] %}
+          <div style="background:var(--bg-elevated);padding:10px;border-radius:8px;">
+            <div style="font-size:0.67rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:3px;">{{ label }}</div>
+            <div style="font-size:0.82rem;font-weight:600;">{{ val }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        <div style="background:var(--bg-elevated);padding:14px;border-radius:8px;">
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;">Description</div>
+          <p style="font-size:0.85rem;line-height:1.6;color:var(--text-secondary);">{{ incident.description }}</p>
+        </div>
+        {% if incident.location %}
+        <div style="margin-top:10px;background:var(--bg-elevated);padding:10px;border-radius:8px;">
+          <div style="font-size:0.67rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;">Location</div>
+          <div style="font-size:0.82rem;">{{ incident.location }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Related entities -->
+    {% if incident.booking or incident.driver or incident.vehicle %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Related Entities</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:10px;">
+        {% if incident.booking %}
+        <a href="{{ url_for('transport.booking_show', id=incident.booking.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+          <i class="fa-solid fa-calendar-check" style="color:var(--amber);"></i>
+          <div><div style="font-size:0.82rem;font-weight:600;">{{ incident.booking.booking_reference }}</div><div style="font-size:0.7rem;color:var(--text-muted);">Booking</div></div>
+          <i class="fa-solid fa-chevron-right" style="margin-left:auto;color:var(--text-muted);font-size:0.7rem;"></i>
+        </a>
+        {% endif %}
+        {% if incident.driver %}
+        <a href="{{ url_for('transport.driver_show', id=incident.driver.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+          <i class="fa-solid fa-id-card" style="color:var(--blue);"></i>
+          <div><div style="font-size:0.82rem;font-weight:600;">{{ incident.driver.display_name }}</div><div style="font-size:0.7rem;color:var(--text-muted);">Driver</div></div>
+          <i class="fa-solid fa-chevron-right" style="margin-left:auto;color:var(--text-muted);font-size:0.7rem;"></i>
+        </a>
+        {% endif %}
+        {% if incident.vehicle %}
+        <a href="{{ url_for('transport.vehicle_show', id=incident.vehicle.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+          <i class="fa-solid fa-van-shuttle" style="color:var(--green);"></i>
+          <div><div style="font-size:0.82rem;font-weight:600;">{{ incident.vehicle.license_plate }}</div><div style="font-size:0.7rem;color:var(--text-muted);">Vehicle</div></div>
+          <i class="fa-solid fa-chevron-right" style="margin-left:auto;color:var(--text-muted);font-size:0.7rem;"></i>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Investigation notes -->
+    {% if incident.status in ['under_investigation','action_taken','resolved','closed'] %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Investigation</span></div>
+      <div class="card-body">
+        {% if incident.investigation_notes %}
+        <div style="margin-bottom:12px;">
+          <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Notes</div>
+          <p style="font-size:0.85rem;line-height:1.6;color:var(--text-secondary);">{{ incident.investigation_notes }}</p>
+        </div>
+        {% endif %}
+        {% if incident.root_cause %}
+        <div style="margin-bottom:12px;">
+          <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Root Cause</div>
+          <p style="font-size:0.85rem;line-height:1.6;color:var(--text-secondary);">{{ incident.root_cause }}</p>
+        </div>
+        {% endif %}
+        {% if incident.actions_taken %}
+        <div>
+          <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Actions Taken</div>
+          <p style="font-size:0.85rem;line-height:1.6;color:var(--text-secondary);">{{ incident.actions_taken }}</p>
+        </div>
+        {% endif %}
+        {% if incident.status not in ['resolved','closed'] %}
+        <a href="{{ url_for('transport.incident_investigate', id=incident.id) }}" class="btn btn-primary" style="margin-top:12px;width:100%;justify-content:center;">
+          <i class="fa-solid fa-pen-to-square"></i> Update Investigation
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right sidebar -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Status</span></div>
+      <div style="padding:16px;">
+        <div style="margin-bottom:14px;">
+          {% if incident.status == 'reported' %}<span class="badge badge-amber" style="font-size:0.8rem;padding:5px 12px;">Reported</span>
+          {% elif incident.status == 'under_investigation' %}<span class="badge badge-blue" style="font-size:0.8rem;padding:5px 12px;">Under Investigation</span>
+          {% elif incident.status == 'resolved' %}<span class="badge badge-green" style="font-size:0.8rem;padding:5px 12px;">Resolved</span>
+          {% else %}<span class="badge badge-gray" style="font-size:0.8rem;padding:5px 12px;">{{ incident.status|replace('_',' ')|title }}</span>{% endif %}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          {% for label, val in [('Reported By', incident.reported_by|default('—')), ('Assigned To', incident.assigned_to_name|default('Unassigned')), ('Reported At', incident.created_at|datetimeformat|default('—')), ('Resolved At', incident.resolved_at|datetimeformat|default('—'))] %}
+          <div style="display:flex;justify-content:space-between;font-size:0.78rem;padding:7px 0;border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-muted);">{{ label }}</span>
+            <span style="font-weight:500;">{{ val }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Evidence -->
+    {% if incident.photos or incident.videos %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Evidence</span></div>
+      <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        {% for photo in incident.photos[:4] %}
+        <a href="{{ photo }}" target="_blank">
+          <img src="{{ photo }}" style="width:100%;border-radius:6px;aspect-ratio:16/9;object-fit:cover;" />
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick resolve form -->
+    {% if incident.status in ['under_investigation','action_taken'] %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Resolve Incident</span></div>
+      <div class="card-body">
+        <form onsubmit="submitResolve(event)">
+          <div class="form-group">
+            <label class="form-label">Resolution <span class="req">*</span></label>
+            <select class="form-control" id="resolutionType" required>
+              <option value="">Select resolution...</option>
+              <option value="issue_resolved">Issue Resolved</option>
+              <option value="no_action_needed">No Action Needed</option>
+              <option value="driver_warned">Driver Warned</option>
+              <option value="driver_suspended">Driver Suspended</option>
+              <option value="compensation_issued">Compensation Issued</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Resolution Details</label>
+            <textarea class="form-control" id="resolutionDetails" rows="3" placeholder="Describe the resolution..."></textarea>
+          </div>
+          <button type="submit" class="btn btn-success" style="width:100%;justify-content:center;">
+            <i class="fa-solid fa-check"></i> Mark Resolved
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function resolveIncident() {
+  document.querySelector('[id="resolveCard"]')?.scrollIntoView({ behavior:'smooth' });
+}
+function submitResolve(e) {
+  e.preventDefault();
+  const resolution = document.getElementById('resolutionType').value;
+  const details = document.getElementById('resolutionDetails').value;
+  if (!resolution) return;
+  fetch(`/api/transport/incidents/{{ incident.id }}/followup`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'},
+    body: JSON.stringify({ action:'resolve', resolution, resolution_details: details })
+  }).then(r=>r.json()).then(d=>{ if(d.success) location.reload(); else alert('Error: '+d.error); });
+}
+</script>
+{% endblock %}

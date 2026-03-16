@@ -1,0 +1,28 @@
+{% extends "transport/base.html" %}
+{% block content %}
+<div id="mainContent" class="container">
+    <h2>Admin Overview Dashboard</h2>
+
+    <!-- KPI Cards -->
+    <div class="kpi-row">
+        <div class="kpi-card" data-tooltip="Total bookings in selected period">
+            <h3>Total Bookings</h3>
+            <div id="totalBookings">0</div>
+        </div>
+        <div class="kpi-card" data-tooltip="Percentage of completed bookings">
+            <h3>Completion Rate</h3>
+            <div id="completionRate">0%</div>
+        </div>
+        <div class="kpi-card" data-tooltip="Percentage of cancelled bookings">
+            <h3>Cancellation Rate</h3>
+            <div id="cancellationRate">0%</div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <canvas id="bookingsChart" width="400" height="200"></canvas>
+
+    <!-- Notifications -->
+    <div id="notificationsList"></div>
+</div>
+{% endblock %}

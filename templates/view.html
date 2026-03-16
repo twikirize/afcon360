@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="container py-4">
+  <h2 class="mb-4">My Profile</h2>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>User Info</h5>
+      <p><strong>Username:</strong> {{ user.username }}</p>
+      <p><strong>Email:</strong> {{ user.email }}</p>
+      <p><strong>Verified:</strong> {{ "✔" if user.is_verified else "✖" }}</p>
+      <p><strong>Created:</strong> {{ user.created_at }}</p>
+    </div>
+  </div>
+
+  {% if user.profile %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5>Profile Details</h5>
+      <p><strong>Name:</strong> {{ user.profile.first_name }} {{ user.profile.last_name }}</p>
+      <p><strong>Phone:</strong> {{ user.profile.phone_number }}</p>
+      <p><strong>Country:</strong> {{ user.profile.country }}</p>
+      <p><strong>Date of Birth:</strong> {{ user.profile.date_of_birth }}</p>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

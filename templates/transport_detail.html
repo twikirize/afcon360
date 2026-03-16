@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if service %}
+    <h2>{{ service.name }}</h2>
+    <p>{{ service.summary }}</p>
+    <p><strong>Frequency / ETA:</strong> {{ service.eta }}</p>
+  {% else %}
+    <p>Service not found.</p>
+  {% endif %}
+{% endblock %}

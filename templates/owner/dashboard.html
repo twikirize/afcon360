@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block title %}Owner Dashboard - AFCON360{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='owner.css') }}">
+{% endblock %}
+
+{# ── Use block body so we get full viewport — no public header squishing the grid ── #}
+{% block body %}
+<div class="owner-shell owner-theme">
+
+  {# ════════ TOPBAR ════════ #}
+  <div class="owner-topbar">
+
+    {# Left: back to site #}
+    <a href="{{ url_for('index') }}" class="owner-back-link">
+      <i class="bi bi-arrow-left"></i>
+      <span>Back to AFCON 360</span>
+    </a>
+
+    {# Centre: branding #}
+    <div class="owner-topbar-brand">
+      <span class="owner-crown">👑</span>
+      <span>Owner Panel</span>
+    </div>
+
+    {# Right: nav links + super admin switch #}
+    <div class="owner-topbar-right">
+      <a href="{{ url_for('admin.owner.audit_logs') }}" class="owner-topbar-link">
+        <i class="bi bi-clock-history"></i> Audit Logs
+      </a>
+      <a href="{{ url_for('admin.owner.settings') }}" class="owner-topbar-link">
+        <i class="bi bi-gear"></i> Settings
+      </a>
+      <a href="{{ url_for('admin.super_dashboard') }}" class="owner-switch-btn">
+        <i class="bi bi-shield-fill"></i>
+        Super Admin View
+        <i class="bi bi-arrow-right"></i>
+      </a>
+      <a href="{{ links.auth_logout }}" class="owner-topbar-link danger">
+        <i class="bi bi-box-arrow-right"></i>
+      </a>
+    </div>
+  </div>
+
+  {# ════════ MAIN CONTENT ════════ #}
+  <div class="owner-wrapper">
+    <div class="owner-container">
+
+      {# ── Page Header ── #}
+      <div class="owner-header">
+        <div class="owner-header-content">
+          <div class="owner-title">
+            <h1><span class="owner-crown">👑</span> Platform Owner Dashboard</h1>
+            <p>Welcome back, <strong>{{ current_user.username }}</strong> · {{ now().strftime('%B %d, %Y') }}</p>
+          </div>
+          <div class="owner-header-meta">
+            <span class="role-badge"><i class="bi bi-crown-fill"></i> Owner</span>
+            <span class="health-pill health-{{ health.database.status }}">
+              <span class="health-dot"></span>
+              System {{ health.database.status }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {# ── Stats Grid ── #}
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon primary"><i class="bi bi-people"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">{{ total_users }}</div>
+            <div class="stat-label">Total Users</div>
+            <div class="stat-trend">+{{ new_users_today }} today</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon success"><i class="bi bi-check-circle"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">{{ verified_users }}</div>
+            <div class="stat-label">Verified Users</div>
+            <div class="stat-trend">{{ ((verified_users / total_users) * 100)|round|int if total_users > 0 else 0 }}% of total</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon warning"><i class="bi bi-building"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">{{ total_orgs }}</div>
+            <div class="stat-label">Organizations</div>
+            <div class="stat-trend">{{ pending_orgs }} pending</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon info"><i class="bi bi-shield-lock"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">{{ total_roles }}</div>
+            <div class="stat-label">System Roles</div>
+            <div class="stat-trend">{{ super_admins|length }} super admins</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon purple"><i class="bi bi-activity"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">{{ active_users }}</div>
+            <div class="stat-label">Active Users</div>
+            <div class="stat-trend">{{ ((active_users / total_users) * 100)|round|int if total_users > 0 else 0 }}% active</div>
+          </div>
+        </div>
+      </div>
+
+      {# ── Quick Actions ── #}
+      <div class="quick-actions">
+        <div class="section-title">
+          <i class="bi bi-lightning-charge"></i> Quick Actions
+        </div>
+        <div class="action-grid">
+          <a href="{{ url_for('admin.owner.users') }}" class="action-card">
+            <div class="action-icon">👥</div>
+            <h4>Manage Users</h4>
+            <p>View and manage all platform users</p>
+          </a>
+          <a href="{{ url_for('admin.owner.audit_logs') }}" class="action-card">
+            <div class="action-icon">📋</div>
+            <h4>Audit Logs</h4>
+            <p>View all owner actions</p>
+          </a>
+          <a href="{{ url_for('admin.owner.settings') }}" class="action-card">
+            <div class="action-icon">⚙️</div>
+            <h4>Settings</h4>
+            <p>Configure security preferences</p>
+          </a>
+          <a href="{{ url_for('admin.owner.system_health') }}" class="action-card">
+            <div class="action-icon">📊</div>
+            <h4>System Health</h4>
+            <p>Monitor platform status</p>
+          </a>
+          <a href="{{ url_for('admin.owner.manage_roles') }}" class="action-card">
+            <div class="action-icon">🔐</div>
+            <h4>Manage Roles</h4>
+            <p>Configure role permissions</p>
+          </a>
+          <a href="{{ url_for('admin.owner.danger_zone') }}" class="action-card danger">
+            <div class="action-icon">⚠️</div>
+            <h4>Danger Zone</h4>
+            <p>Critical platform actions</p>
+          </a>
+        </div>
+      </div>
+
+      {# ── Two-column: Super Admin Mgmt + Recent Activity ── #}
+      <div class="owner-twocol">
+
+        {# LEFT: Super Admin Management #}
+        <div class="super-admin-card">
+          <div class="super-admin-header">
+            <h3><i class="bi bi-shield-fill-check me-2"></i>Super Admin Management</h3>
+            <span class="badge bg-warning text-dark">{{ super_admins|length }} Active</span>
+          </div>
+          <div class="super-admin-body">
+
+            {# Current super admins list #}
+            <h6 class="owner-section-label">Current Super Admins</h6>
+            <div class="super-admin-list">
+              {% for admin in super_admins %}
+              <div class="admin-item">
+                <div class="admin-info">
+                  <strong>{{ admin.username }}</strong>
+                  <small>{{ admin.email }}</small>
+                </div>
+                <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.id) }}"
+                      onsubmit="return confirm('Remove super admin privileges from {{ admin.username }}?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn-remove">
+                    <i class="bi bi-dash-circle"></i> Remove
+                  </button>
+                </form>
+              </div>
+              {% else %}
+              <p class="owner-empty">No super admins found</p>
+              {% endfor %}
+            </div>
+
+            <div class="owner-divider"></div>
+
+            {# Add new super admin #}
+            <h6 class="owner-section-label">Add New Super Admin</h6>
+            <form method="POST" action="{{ url_for('admin.owner.add_super_admin') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="owner-form-row">
+                <select name="user_id" class="owner-select" required>
+                  <option value="">Select user...</option>
+                  {% for user in regular_users %}
+                  <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="owner-btn-primary">
+                  <i class="bi bi-plus-circle"></i> Make Super Admin
+                </button>
+              </div>
+            </form>
+
+            <a href="{{ url_for('admin.manage_users') }}" class="owner-btn-ghost mt-10">
+              <i class="bi bi-people"></i> View All Users
+            </a>
+          </div>
+        </div>
+
+        {# RIGHT: Recent Activity + Recent Signups #}
+        <div class="owner-right-col">
+
+          {# Recent Activity #}
+          <div class="super-admin-card">
+            <div class="super-admin-header">
+              <h3><i class="bi bi-clock-history me-2"></i>Recent Owner Activity</h3>
+              <a href="{{ url_for('admin.owner.audit_logs') }}" class="view-all-link">View all →</a>
+            </div>
+            <div class="activity-list">
+              {% for log in recent_logs %}
+              <div class="activity-item">
+                <div class="activity-icon {{ log.category }}">
+                  {% if log.category == 'navigation' %}🔍
+                  {% elif log.category == 'security' %}🛡️
+                  {% elif log.category == 'danger' %}⚠️
+                  {% elif log.category == 'settings' %}⚙️
+                  {% elif log.category == 'user_management' %}👥
+                  {% else %}📝{% endif %}
+                </div>
+                <div class="activity-content">
+                  <div class="activity-action">{{ log.action }}</div>
+                  <div class="activity-meta">
+                    {{ log.created_at.strftime('%H:%M · %b %d') }}
+                    <span class="activity-status status-{{ log.status }}">{{ log.status }}</span>
+                  </div>
+                </div>
+              </div>
+              {% else %}
+              <p class="owner-empty" style="padding:14px 8px">No recent activity</p>
+              {% endfor %}
+            </div>
+          </div>
+
+          {# Recent Signups #}
+          <div class="super-admin-card" style="margin-top:16px">
+            <div class="super-admin-header">
+              <h3><i class="bi bi-person-plus me-2"></i>Recent Signups</h3>
+              <a href="{{ url_for('admin.owner.users') }}" class="view-all-link">View all →</a>
+            </div>
+            <div class="activity-list">
+              {% for user in recent_users %}
+              <div class="activity-item">
+                <div class="activity-icon user_management">👤</div>
+                <div class="activity-content">
+                  <div class="activity-action">{{ user.username }}</div>
+                  <div class="activity-meta">
+                    {{ user.email }} ·
+                    <span class="badge-inline {{ 'verified' if user.is_verified else 'pending' }}">
+                      {{ 'Verified' if user.is_verified else 'Pending' }}
+                    </span>
+                    · {{ user.created_at.strftime('%b %d') }}
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+        </div>{# /owner-right-col #}
+      </div>{# /owner-twocol #}
+
+      {# ── System Health Footer Bar ── #}
+      <div class="owner-health-bar">
+        <div class="health-item">
+          <span class="health-indicator health-{{ health.database.status }}"></span>
+          Database: <strong>{{ health.database.status }}</strong>
+          <span class="health-latency">{{ health.database.latency }}ms</span>
+        </div>
+        <div class="health-item">
+          <span class="health-indicator health-{{ health.redis.status }}"></span>
+          Redis: <strong>{{ health.redis.status }}</strong>
+          <span class="health-latency">{{ health.redis.latency }}ms</span>
+        </div>
+        <div class="health-item">
+          <i class="bi bi-clock"></i>
+          Last updated: {{ now().strftime('%H:%M:%S') }}
+        </div>
+        <a href="{{ url_for('admin.owner.system_health') }}" class="view-all-link">
+          Full health report →
+        </a>
+      </div>
+
+    </div>{# /owner-container #}
+  </div>{# /owner-wrapper #}
+</div>{# /owner-shell #}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+setTimeout(function() { location.reload(); }, 30000);
+</script>
+{% endblock %}

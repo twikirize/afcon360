@@ -1,0 +1,402 @@
+<!--
+#version 3
+
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-left">
+    <h1>🌍 Welcome to AFCON 360</h1>
+    <p class="lead">Live fixtures, travel packages, wallet payments and trusted local agents — all in one place.</p>
+    <div class="hero-ctas">
+      <a class="btn primary" href="{{ url_for('matches.index') }}">View Fixtures</a>
+      <a class="btn outline" href="{{ url_for('tourism.index') }}">Explore Tourism</a>
+    </div>
+  </div>
+
+  <div class="hero-right">
+    <div class="highlights">
+      {% if matches %}
+        <div class="highlight"><strong>Next Match</strong><span>{{ matches[0].team_a }} vs {{ matches[0].team_b }} • {{ matches[0].date }}</span></div>
+      {% endif %}
+      {% if tourism %}
+        <div class="highlight"><strong>Top Package</strong><span>{{ tourism[0].title }} • ${{ tourism[0].price }}</span></div>
+      {% endif %}
+      {% if adverts %}
+        <div class="highlight"><strong>Sponsored</strong><span>{{ adverts[0].title }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="explore">
+  <h2>Explore</h2>
+  <div class="tiles">
+    <a class="tile" href="{{ url_for('auth.register') }}"><span class="icon">📝</span><strong>Register</strong><small>Create your Fan Profile</small></a>
+    <a class="tile" href="{{ url_for('auth.login') }}"><span class="icon">🔐</span><strong>Login</strong><small>Access wallet & bookings</small></a>
+    <a class="tile" href="{{ url_for('matches.index') }}"><span class="icon">⚽</span><strong>Match Fixtures</strong><small>Full schedule & tickets</small></a>
+    <a class="tile" href="{{ url_for('tourism.index') }}"><span class="icon">🏞️</span><strong>Tourism</strong><small>Curated travel packages</small></a>
+    <a class="tile" href="{{ url_for('wallet.home') }}"><span class="icon">💳</span><strong>Wallet</strong><small>Deposits & transfers</small></a>
+  </div>
+</section>
+
+<section class="strip">
+  <div class="strip-inner">
+    {% for match in matches %}
+      <div class="strip-item">
+        <strong>{{ match.team_a }} vs {{ match.team_b }}</strong>
+        <span>{{ match.date }} • {{ match.venue }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="modules">
+  <div class="module-col">
+    <h3>Upcoming Matches</h3>
+    <ul class="card-list">
+      {% for match in matches %}
+        <li class="card">
+          <div class="card-body">
+            <div class="card-title">{{ match.team_a }} vs {{ match.team_b }}</div>
+            <div class="card-meta">{{ match.date }} • {{ match.venue }}</div>
+            <div class="card-actions">
+              <a class="btn small" href="{{ url_for('matches.index') + '/' + match.match_id }}">Details</a>
+              <a class="btn small outline" href="{{ url_for('auth.login') }}?next={{ url_for('matches.index') + '/' + match.match_id }}">Book</a>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="module-col">
+    <h3>Tourism Packages</h3>
+    <ul class="card-list">
+      {% for package in tourism %}
+        <li class="card">
+          <img class="card-media" src="{{ package.image_url }}" alt="{{ package.title }}">
+          <div class="card-body">
+            <div class="card-title">{{ package.title }}</div>
+            <div class="card-meta">${{ package.price }}</div>
+            <p class="card-desc">{{ package.description }}</p>
+            <div class="card-actions">
+              <a class="btn small" href="{{ url_for('tourism.index') + '/' + package.package_id }}">Explore</a>
+              <a class="btn small outline" href="{{ url_for('auth.login') }}?next={{ url_for('tourism.index') + '/' + package.package_id }}">Book</a>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="sponsors">
+  <h3>Our Sponsors</h3>
+  <div class="sponsor-row">
+    {% for ad in adverts %}
+      <a class="sponsor" href="{{ url_for('index') + 'ads/' + ad.advert_id }}"><img src="{{ ad.image_url }}" alt="{{ ad.title }}"></a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
+
+<!--
+#End of the jinja templating
+#start of the old lay outs
+
+<#!-- First layout --#>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AFCON 360 | Welcome</title>
+
+    <#!-- Mobile & Device Friendly --#>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <#!-- SEO --#>
+    <meta name="description" content="AFCON 360 - Explore football, travel, accommodation, and visa services across East Africa.">
+    <meta name="keywords" content="AFCON, Football, Travel, East Africa, Visas, Accommodation, Transport">
+    <meta name="author" content="AFCON 360 Team">
+
+    <#!-- Favicon (optional) --#>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+
+    <style>
+        :root {
+            --primary: #006400;
+            --accent: #ffcc00;
+            --bg: #f4f4f4;
+            --text: #333;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 2rem 1rem;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        header p {
+            font-size: 1.1rem;
+        }
+
+        main {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            color: var(--primary);
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 0.5rem;
+            margin-top: 0;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        ul li {
+            margin: 1rem 0;
+        }
+
+        ul li ul {
+            margin-top: 0.5rem;
+            margin-left: 1rem;
+        }
+
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent);
+        }
+
+        footer {
+            text-align: center;
+            font-size: 0.9rem;
+            padding: 1rem;
+            color: #666;
+            margin-top: 2rem;
+        }
+
+        /* Responsive Layout */
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 2rem;
+            }
+
+            a {
+                font-size: 1rem;
+            }
+
+            main {
+                margin: 1rem;
+                padding: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 1.5rem;
+            }
+
+            main {
+                padding: 0.5rem;
+            }
+
+            a {
+                font-size: 0.95rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🌍 Welcome to AFCON 360</h1>
+        <p>Your gateway to matches, travel, visas, and more.</p>
+    </header>
+
+    <main>
+        <h2>Explore</h2>
+        <ul>
+            <li>
+                👤 <a href="/account">Account & Profile</a>
+                <ul>
+                    <li><a href="/register">📝 Register</a></li>
+                    <li><a href="/login">🔐 Login</a></li>
+                </ul>
+            </li>
+            <li><a href="/football">⚽ Football Hub</a></li>
+            <li><a href="/explore">🌍 Explore East Africa</a></li>
+            <li><a href="/transport">🚌 Transport & Travel</a></li>
+            <li><a href="/accommodation">🏨 Accommodation</a></li>
+            <li><a href="/egov">🏛️ Visa & ID Services</a></li>
+            <li class="menu-item"><a href="/wallet/dashboard">💳 Wallet</a></li>
+        </ul>
+
+        <p>✨ More modules coming soon...</p>
+    </main>
+
+    <footer>
+        &copy; {{ year }} AFCON 360. All rights reserved.
+    </footer>
+
+</body>
+</html>
+
+##### Start another layout
+#This is the original code, we are improving it day by day
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AFCON 360 | Welcome</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        :root {
+            --primary: #006400; /* Dark green */
+            --accent: #ffcc00; /* Gold */
+            --bg: #f4f4f4;
+            --text: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 2rem 1rem;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            color: var(--primary);
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 0.5rem;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        ul li {
+            margin: 1rem 0;
+        }
+
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent);
+        }
+
+        footer {
+            text-align: center;
+            font-size: 0.9rem;
+            padding: 1rem;
+            color: #666;
+        }
+
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            a {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🌍 Welcome to AFCON 360</h1>
+        <p>Your gateway to matches, tourism, transport, and more.</p>
+    </header>
+
+    <main>
+        <h2>Explore</h2>
+        <ul>
+            <li><a href="/register">📝 Register</a></li>
+            <li><a href="/login">🔐 Login</a></li>
+            <li><a href="/match">⚽ Match Fixtures</a></li>
+            <li><a href="/tourism">🏞️ Tourism Packages</a></li>
+            <li><a href="/transport">🚌 Transport Options</a></li>
+            <li><a href="/accommodation">🏨 Accommodation</a></li>
+        </ul>
+
+        <p>✨ More modules coming soon...</p>
+    </main>
+
+    <footer>
+        &copy; {{ year or 2025 }} AFCON 360. All rights reserved.
+    </footer>
+
+</body>
+</html>
+-->

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <title>Reset Password</title>
+</head>
+<body>
+    <h2>Request Password Reset</h2>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+          {% for msg in messages %}
+            <li>{{ msg }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    <form method="POST">
+        <label>Username:</label><br>
+        <input type="text" name="username"><br><br>
+        <button type="submit">Send Reset Link</button>
+    </form>
+</body>
+</html>

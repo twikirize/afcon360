@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="container py-5">
+  <h1 class="mb-4">Organisation: {{ org.name }}</h1>
+  <p class="lead mb-4">Owner: <span class="badge bg-info">{{ org.owner.username }}</span></p>
+
+  <!-- =========================
+       MEMBERS LIST
+  ========================== -->
+  <h2 class="mb-3">Members</h2>
+  {% if org.members and org.members|length > 0 %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Roles</th>
+            <th>Verified</th>
+            <th>Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for member in org.members %}
+          <tr>
+            <td>{{ member.id }}</td>
+            <td>{{ member.username }}</td>
+            <td>{{ member.email or "-" }}</td>
+            <td>
+              {% if member.roles %}
+                {% for role in member.roles %}
+                  <span class="badge bg-secondary">{{ role.name }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="badge bg-light">none</span>
+              {% endif %}
+            </td>
+            <td>{{ "✔" if member.is_verified else "✖" }}</td>
+            <td>{{ "✔" if member.is_active else "✖" }}</td>
+            <td class="actions">
+              <!-- Promote/Demote -->
+              <form method="post" action="{{ url_for('admin.promote_member', org_id=org.id, user_id=member.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-success">Promote</button>
+              </form>
+              <form method="post" action="{{ url_for('admin.demote_member', org_id=org.id, user_id=member.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-warning">Demote</button>
+              </form>
+
+              <!-- Verify -->
+              {% if not member.is_verified %}
+              <form method="post" action="{{ url_for('admin.verify_member', org_id=org.id, user_id=member.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Verify</button>
+              </form>
+              {% endif %}
+
+              <!-- Remove -->
+              <form method="post" action="{{ url_for('admin.remove_member', org_id=org.id, user_id=member.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>No members found in this organisation yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

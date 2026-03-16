@@ -1,0 +1,117 @@
+<!-- templates/wallet_transactions.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title or 'Transaction History' }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-4">
+
+  <h2 class="mb-4">Transaction History</h2>
+
+  <form method="GET" action="/wallet/transactions" class="mb-3 d-flex gap-2">
+    <select name="range" class="form-select w-auto">
+      <option value="7">Last 7 Days</option>
+      <option value="30">Last 30 Days</option>
+      <option value="365">This Year</option>
+      <option value="last_year">Last Year</option>
+      <option value="all" selected>All Time</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Filter</button>
+    <a href="/wallet/dashboard" class="btn btn-outline-primary">Back to Wallet</a>
+  </form>
+
+  <table class="table table-bordered table-sm">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Currency</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in transactions %}
+      <tr>
+        <td>
+          {% if tx.type == 'conversion' %}
+            <span class="badge bg-warning text-dark">Conversion</span>
+          {% elif 'deposit' in tx.type %}
+            <span class="badge bg-success">Deposit</span>
+          {% elif tx.type == 'send' %}
+            <span class="badge bg-danger">Sent</span>
+          {% elif tx.type == 'receive' %}
+            <span class="badge bg-info text-dark">Received</span>
+          {% else %}
+            {{ tx.type }}
+          {% endif %}
+        </td>
+        <td>{{ tx.amount or tx.converted }}</td>
+        <td>{{ tx.currency or (tx.from ~ '→' ~ tx.to) }}</td>
+        <td>{{ tx.timestamp }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-muted">No transactions to show.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</body>
+</html>
+
+<!--
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Transaction History</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-5">
+
+  <h2>Transaction History</h2>
+
+  #!-- Filter Form --#
+  <form method="GET" action="/wallet/transactions" class="mb-4">
+    <div class="d-flex align-items-center gap-2">
+      <label for="range" class="form-label mb-0">Filter by Date:</label>
+      <select name="range" id="range" class="form-select w-auto">
+        <option value="7">Last 7 Days</option>
+        <option value="30">Last 30 Days</option>
+        <option value="365">This Year</option>
+        <option value="last_year">Last Year</option>
+        <option value="all">All Time</option>
+      </select>
+      <button type="submit" class="btn btn-secondary">Apply</button>
+    </div>
+  </form>
+
+  #!-- Transaction Table --#
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Currency</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in transactions %}
+      <tr>
+        <td>{{ tx.type }}</td>
+        <td>{{ tx.amount }}</td>
+        <td>{{ tx.currency }}</td>
+        <td>{{ tx.timestamp }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a href="/wallet/dashboard" class="btn btn-secondary mt-3">Back to Dashboard</a>
+
+</body>
+</html>
+-->

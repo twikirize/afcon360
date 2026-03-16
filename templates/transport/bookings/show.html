@@ -1,0 +1,308 @@
+{% extends "transport/base.html" %}
+{% block title %}Booking {{ booking.booking_reference|default('') }}{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span>
+<a href="{{ url_for('transport.bookings_index') }}">Bookings</a>
+<span class="sep">/</span>
+<span class="current">{{ booking.booking_reference }}</span>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.booking-layout { display:grid; grid-template-columns:1fr 340px; gap:16px; }
+@media(max-width:900px) { .booking-layout { grid-template-columns:1fr; } }
+
+.timeline { position:relative; padding-left:28px; }
+.timeline::before { content:''; position:absolute; left:9px; top:0; bottom:0; width:2px; background: var(--border); }
+.tl-step { position:relative; margin-bottom:20px; }
+.tl-step::before {
+  content:''; position:absolute; left:-23px; top:4px;
+  width:12px; height:12px; border-radius:50%;
+  background: var(--bg-elevated); border:2px solid var(--border);
+  transition: border-color 0.2s;
+}
+.tl-step.done::before  { background:var(--green);   border-color:var(--green); }
+.tl-step.active::before{ background:var(--amber);   border-color:var(--amber); box-shadow:0 0 0 4px var(--amber-dim); }
+.tl-step.skip::before  { background:var(--bg-elevated); border-color: var(--text-muted); }
+.tl-label  { font-size:0.8rem; font-weight:600; color:var(--text-secondary); }
+.tl-step.done .tl-label { color:var(--green); }
+.tl-step.active .tl-label { color:var(--amber); }
+.tl-time   { font-size:0.7rem; color:var(--text-muted); margin-top:2px; }
+
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+.info-row { padding:11px 16px; border-bottom:1px solid var(--border); }
+.info-row:nth-child(even) { border-left:1px solid var(--border); }
+.info-row:last-child { border-bottom:none; }
+.info-row:nth-last-child(2) { border-bottom:none; }
+.info-k { font-size:0.7rem; color:var(--text-muted); font-weight:600; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:3px; }
+.info-v { font-size:0.85rem; color:var(--text-primary); font-weight:500; }
+
+.payment-row { display:flex; justify-content:space-between; align-items:center; padding:9px 16px; border-bottom:1px solid var(--border); font-size:0.82rem; }
+.payment-row:last-child { border-bottom:none; }
+.payment-total { background:var(--bg-hover); font-weight:700; font-family:var(--font-display); }
+
+.status-flow { display:flex; align-items:center; gap:0; overflow-x:auto; padding-bottom:4px; }
+.sf-step { display:flex; align-items:center; gap:0; flex-shrink:0; }
+.sf-label { font-size:0.68rem; font-weight:700; padding:4px 10px; border-radius:4px; background:var(--bg-elevated); color:var(--text-muted); border:1px solid var(--border); white-space:nowrap; }
+.sf-step.done .sf-label    { background:var(--green-dim);  color:var(--green); border-color:rgba(34,197,94,0.3); }
+.sf-step.active .sf-label  { background:var(--amber-dim);  color:var(--amber); border-color:rgba(245,158,11,0.3); }
+.sf-step.skip .sf-label    { opacity:0.4; }
+.sf-arrow { color:var(--text-muted); margin:0 4px; font-size:0.65rem; opacity:0.4; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ booking.booking_reference }}</h1>
+    <p class="page-subtitle">
+      {{ booking.service_type|title|default('Transport') }} ·
+      {{ booking.scheduled_pickup_time|datetimeformat|default('—') }}
+    </p>
+  </div>
+  <div class="page-actions">
+    {% if booking.status == 'confirmed' %}
+    <a href="{{ url_for('transport.booking_assign', id=booking.id) }}" class="btn btn-primary btn-sm">
+      <i class="fa-solid fa-user-plus"></i> Assign Driver
+    </a>
+    {% endif %}
+    <a href="{{ url_for('transport.booking_edit', id=booking.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-pen"></i> Edit
+    </a>
+    <button class="btn btn-danger btn-sm" onclick="confirmDelete()">
+      <i class="fa-solid fa-trash"></i>
+    </button>
+  </div>
+</div>
+
+<!-- Status flow bar -->
+<div class="status-flow" style="margin-bottom:16px;">
+  {% set steps = ['draft','pending_payment','confirmed','assigned','driver_en_route','pickup_arrived','in_progress','completed'] %}
+  {% set step_labels = {'draft':'Draft','pending_payment':'Awaiting Payment','confirmed':'Confirmed','assigned':'Driver Assigned','driver_en_route':'Driver En Route','pickup_arrived':'Driver Arrived','in_progress':'In Progress','completed':'Completed'} %}
+  {% set current_idx = steps.index(booking.status) if booking.status in steps else 0 %}
+  {% for step in steps %}
+  {% set idx = loop.index0 %}
+  <div class="sf-step {{ 'done' if idx < current_idx else 'active' if idx == current_idx else 'skip' if booking.status == 'cancelled' else '' }}">
+    <div class="sf-label">{{ step_labels[step] }}</div>
+    {% if not loop.last %}<div class="sf-arrow"><i class="fa-solid fa-chevron-right"></i></div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="booking-layout">
+  <!-- Left column -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+
+    <!-- Core details -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Booking Details</span>
+        {% set sc = {'completed':'green','in_progress':'blue','assigned':'amber','confirmed':'blue','cancelled':'red','pending_payment':'amber'} %}
+        <span class="badge badge-{{ sc.get(booking.status,'gray') }}">{{ booking.status|replace('_',' ')|title }}</span>
+      </div>
+      <div class="info-grid">
+        <div class="info-row">
+          <div class="info-k">Service Type</div>
+          <div class="info-v">{{ booking.service_type|title|default('—') }}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-k">Passengers</div>
+          <div class="info-v">{{ booking.passenger_count|default(1) }}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-k">Pickup</div>
+          <div class="info-v">{{ booking.pickup_location_name|default('—') }}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-k">Drop-off</div>
+          <div class="info-v">{{ booking.dropoff_location_name|default('—') }}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-k">Scheduled Pickup</div>
+          <div class="info-v">{{ booking.scheduled_pickup_time|datetimeformat|default('—') }}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-k">Actual Pickup</div>
+          <div class="info-v">{{ booking.pickup_actual_time|datetimeformat|default('—') }}</div>
+        </div>
+        <div class="info-row" style="grid-column:span 2;">
+          <div class="info-k">Special Requirements</div>
+          <div class="info-v">{{ booking.special_requirements|default('None') }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Driver & Vehicle -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Driver & Vehicle</span></div>
+      {% if booking.driver %}
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--amber),var(--blue));display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;flex-shrink:0;">
+          {{ booking.driver.display_name[:2].upper() if booking.driver.display_name else '?' }}
+        </div>
+        <div>
+          <div style="font-weight:600;">{{ booking.driver.display_name }}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);">{{ booking.driver.phone_number }}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right;">
+          <div style="color:var(--amber);font-weight:700;">★ {{ booking.driver.average_rating|default('—') }}</div>
+          <a href="{{ url_for('transport.driver_show', id=booking.driver.id) }}" class="btn btn-secondary btn-sm" style="margin-top:4px;">View</a>
+        </div>
+      </div>
+      {% else %}
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <span style="color:var(--text-muted);font-size:0.82rem;">No driver assigned</span>
+        {% if booking.status == 'confirmed' %}
+        <a href="{{ url_for('transport.booking_assign', id=booking.id) }}" class="btn btn-primary btn-sm" style="margin-left:10px;">Assign Now</a>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if booking.vehicle %}
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;">
+        <div style="width:44px;height:44px;background:var(--bg-hover);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;">🚌</div>
+        <div>
+          <div style="font-weight:600;">{{ booking.vehicle.make }} {{ booking.vehicle.model }}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);">{{ booking.vehicle.license_plate }} · {{ booking.vehicle.vehicle_class|title }}</div>
+        </div>
+        <a href="{{ url_for('transport.vehicle_show', id=booking.vehicle.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View</a>
+      </div>
+      {% else %}
+      <div style="padding:16px 20px;color:var(--text-muted);font-size:0.82rem;">No vehicle assigned</div>
+      {% endif %}
+    </div>
+
+    <!-- Payments -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Payments</span>
+        <span class="badge badge-{{ 'green' if booking.payment_status == 'paid' else 'amber' }}">
+          {{ booking.payment_status|title|default('Pending') }}
+        </span>
+      </div>
+      {% if booking.payments %}
+        {% for p in booking.payments %}
+        <div class="payment-row">
+          <div>
+            <div style="font-weight:500;">{{ p.payment_type|title }}</div>
+            <div style="font-size:0.7rem;color:var(--text-muted);">{{ p.created_at|datetimeformat }}</div>
+          </div>
+          <span class="badge badge-{{ 'green' if p.status == 'captured' else 'amber' if p.status == 'pending' else 'red' }}">{{ p.status|title }}</span>
+          <div style="font-family:var(--font-mono);font-weight:600;">${{ p.amount }}</div>
+        </div>
+        {% endfor %}
+      {% endif %}
+      <div class="payment-row payment-total">
+        <span>Total</span>
+        <span style="font-family:var(--font-mono);">${{ booking.total_amount|default('0.00') }}</span>
+      </div>
+    </div>
+
+  </div><!-- /left col -->
+
+  <!-- Right sidebar -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+
+    <!-- Timeline -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Timeline</span></div>
+      <div class="card-body">
+        <div class="timeline">
+          <div class="tl-step {{ 'done' if booking.created_at else '' }}">
+            <div class="tl-label">Booking Created</div>
+            <div class="tl-time">{{ booking.created_at|datetimeformat|default('—') }}</div>
+          </div>
+          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}">
+            <div class="tl-label">Confirmed</div>
+            <div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div>
+          </div>
+          <div class="tl-step {{ 'done' if booking.driver_assigned_at else 'skip' }}">
+            <div class="tl-label">Driver Assigned</div>
+            <div class="tl-time">{{ booking.driver_assigned_at|datetimeformat|default('—') }}</div>
+          </div>
+          <div class="tl-step {{ 'active' if booking.status == 'in_progress' else 'done' if booking.completed_at else 'skip' }}">
+            <div class="tl-label">Trip Started</div>
+            <div class="tl-time">{{ booking.pickup_actual_time|datetimeformat|default('—') }}</div>
+          </div>
+          <div class="tl-step {{ 'done' if booking.completed_at else 'skip' }}">
+            <div class="tl-label">Completed</div>
+            <div class="tl-time">{{ booking.completed_at|datetimeformat|default('—') }}</div>
+          </div>
+          {% if booking.cancelled_at %}
+          <div class="tl-step done" style="--green:var(--red)">
+            <div class="tl-label" style="color:var(--red)">Cancelled</div>
+            <div class="tl-time">{{ booking.cancelled_at|datetimeformat }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Quick Actions</span></div>
+      <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+        {% if booking.status in ['confirmed','assigned'] %}
+        <button class="btn btn-secondary" onclick="updateStatus('driver_en_route')">
+          <i class="fa-solid fa-location-arrow"></i> Mark En Route
+        </button>
+        <button class="btn btn-secondary" onclick="updateStatus('in_progress')">
+          <i class="fa-solid fa-play"></i> Start Trip
+        </button>
+        {% endif %}
+        {% if booking.status == 'in_progress' %}
+        <button class="btn btn-success" onclick="updateStatus('completed')">
+          <i class="fa-solid fa-check"></i> Complete Trip
+        </button>
+        {% endif %}
+        {% if booking.status not in ['completed','cancelled'] %}
+        <button class="btn btn-danger" onclick="updateStatus('cancelled')">
+          <i class="fa-solid fa-ban"></i> Cancel Booking
+        </button>
+        {% endif %}
+        <a href="{{ url_for('transport.incidents_new') }}?booking_id={{ booking.id }}" class="btn btn-secondary">
+          <i class="fa-solid fa-triangle-exclamation"></i> Report Incident
+        </a>
+      </div>
+    </div>
+
+    <!-- Rating -->
+    {% if booking.rating %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Passenger Rating</span></div>
+      <div class="card-body">
+        <div style="font-size:1.5rem;margin-bottom:6px;">
+          {% for i in range(5) %}{{ '★' if i < booking.rating.overall_rating else '☆' }}{% endfor %}
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-secondary);font-style:italic;">
+          "{{ booking.rating.comment|default('No comment.') }}"
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div><!-- /right col -->
+</div>
+
+<!-- Confirm delete modal -->
+{% include "transport/partials/modals/confirm_delete.html" %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateStatus(newStatus) {
+  if (!confirm(`Transition to "${newStatus.replace(/_/g,' ')}"?`)) return;
+  fetch(`/api/transport/bookings/{{ booking.id }}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: JSON.stringify({ new_status: newStatus })
+  }).then(r => r.json()).then(d => {
+    if (d.success) location.reload();
+    else alert('Error: ' + d.error);
+  });
+}
+function confirmDelete() {
+  document.getElementById('deleteModal').classList.add('open');
+}
+</script>
+{% endblock %}

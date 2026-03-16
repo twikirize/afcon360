@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="container py-5">
+  <h1 class="mb-4">Organisation Management</h1>
+  <p class="lead mb-4">Manage organisations, ownership, roles, and member lifecycle.</p>
+
+  <!-- =========================
+       ORG STATS
+  ========================== -->
+  <div class="row mb-5">
+    <div class="col-md-3">
+      <div class="card text-bg-primary shadow-sm text-center">
+        <div class="card-body">
+          <h5>Total Organisations</h5>
+          <p class="fs-3 fw-bold">{{ total_orgs }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-bg-success shadow-sm text-center">
+        <div class="card-body">
+          <h5>Active</h5>
+          <p class="fs-3 fw-bold">{{ active_orgs }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-bg-warning shadow-sm text-center">
+        <div class="card-body">
+          <h5>Pending Verification</h5>
+          <p class="fs-3 fw-bold">{{ pending_orgs }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-bg-danger shadow-sm text-center">
+        <div class="card-body">
+          <h5>Suspended</h5>
+          <p class="fs-3 fw-bold">{{ suspended_orgs }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       ORG LIST
+  ========================== -->
+  <h2 class="mb-3">Organisations</h2>
+  {% if orgs and orgs|length > 0 %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Owner</th>
+            <th>Members</th>
+            <th>Roles</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for org in orgs %}
+          <tr>
+            <td>{{ org.id }}</td>
+            <td>{{ org.name }}</td>
+            <td><span class="badge bg-info">{{ org.owner.username }}</span></td>
+            <td><span class="badge bg-info">
+              {{ org.primary_contact_user.profile.full_name if org.primary_contact_user.profile else org.primary_contact_user.username }}
+            </span></td>
+            <td>{{ org.members|length }}</td>
+            <td>
+              {% for role in org.roles %}
+                <span class="badge bg-secondary">{{ role.name }}</span>
+              {% endfor %}
+            </td>
+            <td>
+            <span class="badge bg-secondary">{{ org.verification_status }}</span>
+            </td>
+
+            <td class="actions">
+              <!-- Ownership transfer -->
+              <form method="post" action="{{ url_for('admin.transfer_org_owner', org_id=org.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Transfer Ownership</button>
+              </form>
+
+              <!-- Activate/Deactivate -->
+              {% if org.is_active %}
+              <form method="post" action="{{ url_for('admin.deactivate_org', org_id=org.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-warning">Deactivate</button>
+              </form>
+              {% else %}
+              <form method="post" action="{{ url_for('admin.activate_org', org_id=org.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-success">Activate</button>
+              </form>
+              {% endif %}
+
+              <!-- Audit logs -->
+              <a href="{{ url_for('admin.view_org_audit', org_id=org.id) }}" class="btn btn-sm btn-outline-dark">Audit Logs</a>
+
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>No organisations found in the system yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

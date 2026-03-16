@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="container py-4">
+  <h1>Accommodation</h1>
+  <p>Hotels and stays for fans.</p>
+</section>
+{% endblock %}
+
+{#
+Version 1
+{% block content %}
+  <h1>Accommodation</h1>
+  <ul>
+    {% for h in hotels %}
+      <li>
+        <a href="{{ url_for('accommodation.detail', id=h.id) }}">{{ h.name }}</a>
+        — {{ h.price }} {{ h.currency }} · {{ h.summary }}
+      </li>
+    {% else %}
+      <li>No hotels available yet.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}
+#}
