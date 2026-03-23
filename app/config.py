@@ -94,6 +94,38 @@ class Config:
     METRICS = {"enabled": True, "namespace": "wallet"}
     LOGGING = {"level": os.getenv("LOG_LEVEL", "INFO"), "structured": True}
 
+    # Feature Flags - Master Switches for Modules
+    FEATURE_FLAGS = {
+        'accommodation': {
+            'enabled': True,  # MASTER SWITCH - OFF by default
+            'dependencies': ['wallet', 'identity'],
+            'version': '1.0.0',
+            'description': 'Accommodation booking and hosting module'
+        },
+        'transport': {
+            'enabled': False,
+            'dependencies': ['wallet', 'identity'],
+            'version': '1.0.0'
+        },
+        'tourism': {
+            'enabled': False,
+            'dependencies': ['identity'],
+            'version': '1.0.0'
+        }
+    }
+
+    # Accommodation-specific settings
+    ACCOMMODATION_SETTINGS = {
+        'max_photos_per_property': 20,
+        'max_guests_per_property': 50,
+        'default_currency': 'USD',
+        'service_fee_percentage': 10.0,  # Platform fee
+        'booking_expiry_minutes': 15,  # Pending booking auto-cancel
+        'refund_window_days': 7,  # Days after checkout for refunds
+        'enable_reviews': True,
+        'enable_messaging': True
+    }
+
     @classmethod
     def validate_for_production(cls):
         if cls.FLASK_ENV == "production":

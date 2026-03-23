@@ -161,10 +161,6 @@ def create_app(config_object=None) -> Flask:
     if app.config.get("TOURISM_ENABLED", True):
         app.register_blueprint(tourism_bp)
 
-        # In app/__init__.py — replace your transport registration block with this:
-        #
-        # Find this section in your create_app() function and replace it entirely.
-        # Everything else in create_app() stays the same.
 
     if app.config.get("TRANSPORT_ENABLED", True):
         from app.transport import transport_bp, transport_admin_bp, init_transport_module
@@ -189,6 +185,10 @@ def create_app(config_object=None) -> Flask:
 
     if app.config.get("ACCOMMODATION_ENABLED", True):
         app.register_blueprint(accommodation_bp)
+
+    # CLI commands
+    from app.cli.owner import register_owner_commands
+    register_owner_commands(app)
 
     # -------------------------------
     # Context processors

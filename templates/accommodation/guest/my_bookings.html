@@ -1,0 +1,117 @@
+{# templates/accommodation/guest/my_bookings.html #}
+{% extends "base.html" %}
+
+{% block title %}My Bookings - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h2 mb-4">My Bookings</h1>
+            
+            {% if bookings %}
+                <div class="list-group">
+                    {% for item in bookings %}
+                    {% set booking = item.booking %}
+                    {% set property = item.property %}
+                    <div class="list-group-item list-group-item-action mb-3 rounded shadow-sm">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                {% if property and property.images %}
+                                    <img src="{{ property.images[0] }}" class="img-fluid rounded" style="height: 100px; object-fit: cover; width: 100%;">
+                                {% else %}
+                                    <div class="bg-light rounded text-center py-4">
+                                        <i class="fas fa-hotel fa-2x text-muted"></i>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-5">
+                                <h5 class="mb-1">{{ property.name if property else 'Property' }}</h5>
+                                <p class="mb-1 text-muted small">
+                                    <i class="fas fa-map-marker-alt"></i> {{ property.city if property else 'Location' }}
+                                </p>
+                                <p class="mb-1">
+                                    <strong>{{ booking.check_in.strftime('%b %d') }}</strong> → 
+                                    <strong>{{ booking.check_out.strftime('%b %d, %Y') }}</strong>
+                                </p>
+                                <p class="mb-0 small text-muted">{{ booking.num_guests }} guest{{ 's' if booking.num_guests > 1 else '' }}</p>
+                            </div>
+                            <div class="col-md-2">
+                                {% set status_class = {
+                                    'pending': 'warning',
+                                    'confirmed': 'success',
+                                    'checked_in': 'info',
+                                    'checked_out': 'secondary',
+                                    'cancelled': 'danger',
+                                    'refunded': 'dark'
+                                } %}
+                                <span class="badge bg-{{ status_class.get(booking.status.value, 'secondary') }} px-3 py-2">
+                                    {{ booking.status.value|replace('_', ' ')|title }}
+                                </span>
+                                <p class="mt-2 mb-0">
+                                    <strong>${{ "%.2f"|format(booking.total_amount) }}</strong>
+                                </p>
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <a href="{{ url_for('accommodation.accommodation_guest.confirmation', reference=booking.booking_reference) }}"
+                                   class="btn btn-sm btn-outline-primary mb-2">
+                                    View Details
+                                </a>
+                                {% if booking.status.value in ['pending', 'confirmed'] %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        data-bs-toggle="modal" data-bs-target="#cancelModal{{ booking.id }}">
+                                    Cancel
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cancel Modal -->
+                    {% if booking.status.value in ['pending', 'confirmed'] %}
+                    <div class="modal fade" id="cancelModal{{ booking.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('accommodation.accommodation_guest.cancel_booking', reference=booking.booking_reference) }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Cancel Booking</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p>Are you sure you want to cancel this booking?</p>
+                                        <p><strong>Booking:</strong> {{ booking.booking_reference }}</p>
+                                        <p><strong>Dates:</strong> {{ booking.check_in.strftime('%b %d') }} - {{ booking.check_out.strftime('%b %d, %Y') }}</p>
+                                        <div class="mb-3">
+                                            <label class="form-label">Reason (optional)</label>
+                                            <textarea name="reason" class="form-control" rows="2"></textarea>
+                                        </div>
+                                        <div class="alert alert-warning">
+                                            <i class="fas fa-info-circle"></i> 
+                                            Refund amount will be calculated based on the cancellation policy.
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                        <button type="submit" class="btn btn-danger">Confirm Cancellation</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-calendar-alt fa-3x text-muted mb-3"></i>
+                    <h3>No Bookings Yet</h3>
+                    <p class="text-muted">You haven't made any accommodation bookings.</p>
+                    <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="btn btn-primary">
+                        Search for Stays
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

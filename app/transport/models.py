@@ -1126,7 +1126,7 @@ class BookingPayment(TransportBase):
     reconciled_by = db.Column(db.BigInteger)
 
     # Relationships
-    booking = relationship("Booking", back_populates="payments")
+    booking = relationship("app.transport.models.Booking", back_populates="payments")
 
     def generate_payment_reference(self):
         """Generate unique payment reference"""
@@ -1201,7 +1201,7 @@ class Rating(TransportBase):
     report_count = db.Column(db.Integer, default=0)
 
     # Relationships
-    booking = relationship("Booking", back_populates="rating")
+    booking = relationship("app.transport.models.Booking", back_populates="rating")
     user = relationship("User", backref="transport_ratings_given")
 
     @property
@@ -1275,7 +1275,7 @@ class ScheduledRoute(TransportBase):
     route_metadata = db.Column(JSONB, default=lambda: {})
 
     # Relationships
-    bookings = relationship("Booking", back_populates="assigned_route")
+    bookings = relationship("app.transport.models.Booking", back_populates="assigned_route")
 
     @property
     def is_full(self):
@@ -1539,7 +1539,7 @@ class TransportIncident(TransportBase):
     insurance_claim_details = db.Column(JSONB)
 
     # Relationships
-    booking = relationship("Booking", back_populates="incidents")
+    booking = relationship("app.transport.models.Booking", back_populates="incidents")
 
 
     def generate_reference(self):

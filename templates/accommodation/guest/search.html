@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Find Accommodation - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5">Find Your Perfect Stay</h1>
+            <p class="lead">Book hotels, lodges, and apartments near match venues</p>
+        </div>
+    </div>
+
+    <!-- Search Form -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('accommodation.accommodation_guest.search') }}" class="row g-3">
+                        <!-- Search Form -->
+                        <div class="col-md-4">
+                            <label class="form-label">City / Venue</label>
+                            <input type="text" class="form-control" name="city"
+                                   value="{{ request.args.get('city', '') }}"
+                                   placeholder="e.g., Kampala, Nairobi, Cairo">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Check-in</label>
+                            <input type="date" class="form-control" name="check_in"
+                                   value="{{ request.args.get('check_in', '') }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Check-out</label>
+                            <input type="date" class="form-control" name="check_out"
+                                   value="{{ request.args.get('check_out', '') }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Guests</label>
+                            <input type="number" class="form-control" name="guests"
+                                   value="{{ request.args.get('guests', 2) }}" min="1" max="20">
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="fas fa-search"></i> Search Properties
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div class="row">
+        <div class="col-12 mb-3">
+            <h2>Available Properties</h2>
+            <p class="text-muted">{{ properties|length }} properties found</p>
+        </div>
+
+        {% if properties %}
+            {% for property in properties %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm hover-shadow">
+                    <!-- Property Image -->
+                    <div class="card-img-top" style="height: 200px; background-color: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+                        {% if property.images and property.images|length > 0 %}
+                            <img src="{{ property.images[0] }}" class="img-fluid h-100 w-100 object-fit-cover" alt="{{ property.name }}">
+                        {% else %}
+                            <div class="text-center text-muted">
+                                <i class="fas fa-hotel fa-3x"></i>
+                                <p>No image</p>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0">{{ property.name }}</h5>
+                            {% if property.rating %}
+                                <span class="badge bg-warning text-dark">
+                                    <i class="fas fa-star"></i> {{ property.rating }}
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <p class="card-text text-muted small">
+                            <i class="fas fa-map-marker-alt"></i> {{ property.city }}
+                        </p>
+
+                        <p class="card-text">{{ property.summary|truncate(100) }}</p>
+
+                        <div class="row small text-muted mb-3">
+                            <div class="col-6">
+                                <i class="fas fa-user"></i> {{ property.max_guests }} guests
+                            </div>
+                            <div class="col-6">
+                                <i class="fas fa-bed"></i> {{ property.bedrooms }} bedroom{% if property.bedrooms != 1 %}s{% endif %}
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-end">
+                            <div>
+                                <strong class="h5 text-primary">${{ property.price }}</strong>
+                                <small class="text-muted">/ night</small>
+                            </div>
+                            <a href="{{ url_for('accommodation.accommodation_guest.detail', identifier=property.slug or property.id) }}"
+                               class="btn btn-outline-primary">
+                                View Details <i class="fas fa-arrow-right"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-info text-center py-5">
+                    <i class="fas fa-info-circle fa-3x mb-3"></i>
+                    <h4>No properties found</h4>
+                    <p>Try adjusting your search criteria or check back later for new listings.</p>
+                    <!-- Clear Filters -->
+                    {% if request.args.get('city') %}
+                        <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="btn btn-primary">
+                            Clear Filters
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.hover-shadow:hover {
+    transform: translateY(-5px);
+    transition: transform 0.3s ease;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+.object-fit-cover {
+    object-fit: cover;
+}
+</style>
+{% endblock %}

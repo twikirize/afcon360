@@ -156,6 +156,27 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
             ["owner", "super_admin"]),
     PermDef("permissions.manage", "Create permissions and link to roles",
             ["owner"]),
+    PermDef("permissions.view", "View permissions",
+            ["owner", "super_admin"]),
+
+    # Accommodation permissions
+    PermDef("accommodation.search",       "Search and view listings",
+            ["owner", "super_admin", "admin", "fan"]),
+    PermDef("accommodation.view",         "View property details",
+            ["owner", "super_admin", "admin", "fan"]),
+    PermDef("accommodation.book",         "Create bookings",
+            ["owner", "super_admin", "admin", "fan"]),
+    PermDef("accommodation.host",         "Create and manage own listings",
+            ["owner", "super_admin", "admin"]),
+    PermDef("accommodation.manage",       "Platform-wide listing management",
+            ["owner", "super_admin", "admin"]),
+    PermDef("accommodation.verify_host",  "Approve host registrations",
+            ["owner", "super_admin", "admin"]),
+    PermDef("accommodation.payouts",      "Manage host payouts",
+            ["owner", "super_admin"]),
+    PermDef("accommodation.moderate",     "Moderate reviews and listings",
+            ["owner", "super_admin", "moderator"]),
+
 ]
 
 # Organisation-scoped permissions
@@ -194,6 +215,15 @@ ORG_PERMISSION_DEFS: List[PermDef] = [
             ["org_owner", "org_admin", "project_manager"]),
     PermDef("org.projects.manage", "Manage org projects",
             ["org_owner", "project_manager"]),
+
+    #for organisation hosts) Accomodation
+    PermDef("org.accommodation.view",     "View org's accommodation listings",
+            ["org_owner", "org_admin", "transport_manager"]),
+    PermDef("org.accommodation.manage",   "Manage org's accommodation listings",
+            ["org_owner", "transport_manager"]),
+    PermDef("org.accommodation.pricing",  "Manage pricing for org listings",
+            ["org_owner", "transport_manager", "finance_manager"]),
+
 ]
 
 
@@ -442,3 +472,4 @@ def register_commands(app) -> None:
             roles       = {r.name: r for r in Role.query.all()}
             permissions = {p.name: p for p in Permission.query.all()}
             seed_role_permissions(roles, permissions)
+

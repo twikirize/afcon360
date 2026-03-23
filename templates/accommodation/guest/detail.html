@@ -1,0 +1,227 @@
+{# templates/accommodation/guest/detail.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ property.name }} - AFCON360 Accommodation{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('accommodation.accommodation_guest.search') }}">Accommodation</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ property.name }}</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <!-- Left Column - Property Details -->
+        <div class="col-lg-8">
+            <!-- Property Title -->
+            <div class="mb-4">
+                <h1 class="display-6">{{ property.name }}</h1>
+                <p class="text-muted">
+                    <i class="fas fa-map-marker-alt"></i> {{ property.city }}, {{ property.country }}
+                    {% if property.address %}<br><small>{{ property.address }}</small>{% endif %}
+                </p>
+                {% if property.rating %}
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-warning text-dark me-2">
+                            <i class="fas fa-star"></i> {{ property.rating }}
+                        </span>
+                        <span class="text-muted">({{ property.reviews }} reviews)</span>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Gallery -->
+            <div class="mb-4">
+                <div class="row g-2">
+                    {% if property.images and property.images|length > 0 %}
+                        {% for image in property.images[:4] %}
+                        <div class="col-md-6 mb-2">
+                            <img src="{{ image }}" class="img-fluid rounded w-100" style="height: 200px; object-fit: cover;" alt="{{ property.name }}">
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="col-12">
+                            <div class="bg-light rounded text-center py-5">
+                                <i class="fas fa-hotel fa-4x text-muted mb-3"></i>
+                                <p class="text-muted">No images available</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">About this property</h5>
+                    <p class="card-text">{{ property.description }}</p>
+                </div>
+            </div>
+
+            <!-- Amenities -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Amenities</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-users text-success me-2"></i> Max guests: {{ property.max_guests }}</li>
+                                <li><i class="fas fa-bed text-success me-2"></i> Bedrooms: {{ property.bedrooms }}</li>
+                                <li><i class="fas fa-bed me-2"></i> Beds: {{ property.beds }}</li>
+                                <li><i class="fas fa-bath text-success me-2"></i> Bathrooms: {{ property.bathrooms }}</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            {% if property.amenities %}
+                                <ul class="list-unstyled">
+                                    {% for amenity in property.amenities[:5] %}
+                                    <li><i class="fas fa-check-circle text-success me-2"></i> {{ amenity|replace('_', ' ')|title }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- House Rules -->
+            {% if property.house_rules %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">House Rules</h5>
+                    <p class="card-text">{{ property.house_rules }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Right Column - Booking Card -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm sticky-top" style="top: 20px;">
+                <div class="card-body">
+                    <h3 class="card-title text-center mb-3">Book This Stay</h3>
+
+                    <div class="text-center mb-4">
+                        <span class="display-6 text-primary">${{ property.price }}</span>
+                        <small class="text-muted">/ night</small>
+                    </div>
+
+                    <!-- Availability Check Form -->
+                    <form method="GET" action="{{ url_for('accommodation.accommodation_guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
+                        <div class="mb-3">
+                            <label class="form-label">Check-in Date</label>
+                            <input type="date" class="form-control" name="check_in"
+                                   value="{{ selected_check_in or '' }}"
+                                   min="{{ now }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Check-out Date</label>
+                            <input type="date" class="form-control" name="check_out"
+                                   value="{{ selected_check_out or '' }}"
+                                   min="{{ selected_check_in or now }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Number of Guests</label>
+                            <input type="number" class="form-control" name="guests"
+                                   value="{{ selected_guests or 2 }}"
+                                   min="1" max="{{ property.max_guests }}" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-calendar-check"></i> Check Availability
+                        </button>
+                    </form>
+
+                    <!-- Availability Result -->
+                    {% if availability_status %}
+                        {% if availability_status == 'available' and price_breakdown %}
+                            <div class="alert alert-success mb-3">
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Dates are available!</strong>
+                            </div>
+
+                            <!-- Price Breakdown -->
+                            <div class="bg-light p-3 rounded mb-3">
+                                <p class="mb-2 fw-bold">Price Breakdown</p>
+                                <div class="small">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span>${{ "%.2f"|format(price_breakdown.nightly_rate) }} × {{ price_breakdown.nights }} night{{ 's' if price_breakdown.nights > 1 else '' }}</span>
+                                        <span>${{ "%.2f"|format(price_breakdown.subtotal) }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span>Cleaning fee</span>
+                                        <span>${{ "%.2f"|format(price_breakdown.cleaning_fee) }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span>Service fee</span>
+                                        <span>${{ "%.2f"|format(price_breakdown.service_fee) }}</span>
+                                    </div>
+                                    <hr class="my-2">
+                                    <div class="d-flex justify-content-between fw-bold">
+                                        <span>Total</span>
+                                        <span class="text-primary">${{ "%.2f"|format(price_breakdown.total) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Booking Form - POST to checkout -->
+                            <form method="POST" action="{{ url_for('accommodation.accommodation_guest.checkout') }}">
+                                <input type="hidden" name="property_id" value="{{ property.id }}">
+                                <input type="hidden" name="host_user_id" value="{{ property_model.owner_user_id or property_model.owner_org_id }}">
+                                <input type="hidden" name="check_in" value="{{ selected_check_in }}">
+                                <input type="hidden" name="check_out" value="{{ selected_check_out }}">
+                                <input type="hidden" name="num_guests" value="{{ selected_guests }}">
+                                <input type="hidden" name="nightly_rate" value="{{ price_breakdown.nightly_rate }}">
+                                <input type="hidden" name="nights" value="{{ price_breakdown.nights }}">
+                                <input type="hidden" name="subtotal" value="{{ price_breakdown.subtotal }}">
+                                <input type="hidden" name="cleaning_fee" value="{{ price_breakdown.cleaning_fee }}">
+                                <input type="hidden" name="service_fee" value="{{ price_breakdown.service_fee }}">
+                                <input type="hidden" name="total" value="{{ price_breakdown.total }}">
+                                <input type="hidden" name="name" value="{{ property.name }}">
+                                <input type="hidden" name="city" value="{{ property.city }}">
+
+                                {% if current_user.is_authenticated %}
+                                    <button type="submit" class="btn btn-primary w-100 btn-lg">
+                                        <i class="fas fa-credit-card"></i> Proceed to Checkout
+                                    </button>
+                                {% else %}
+                                    <a href="{{ url_for('auth_routes.login') }}?next={{ request.path }}" class="btn btn-primary w-100 btn-lg">
+                                        Login to Book
+                                    </a>
+                                {% endif %}
+                            </form>
+
+                        {% elif availability_status == 'unavailable' %}
+                            <div class="alert alert-danger mb-3">
+                                <i class="fas fa-times-circle"></i>
+                                <strong>Selected dates are not available.</strong>
+                                <p class="mb-0 mt-1 small">Please try different dates.</p>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="alert alert-info mb-3">
+                            <i class="fas fa-info-circle"></i>
+                            Select dates to check availability and see price breakdown.
+                        </div>
+                    {% endif %}
+
+                    <hr class="my-3">
+
+                    <div class="small text-muted">
+                        <p class="mb-1"><i class="fas fa-shield-alt"></i> Secure booking</p>
+                        <p class="mb-1"><i class="fas fa-credit-card"></i> Pay with wallet or card</p>
+                        <p class="mb-0"><i class="fas fa-calendar-check"></i> Instant confirmation</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
