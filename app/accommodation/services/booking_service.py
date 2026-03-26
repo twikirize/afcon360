@@ -14,7 +14,8 @@ from app.extensions import db
 from app.accommodation.models.booking import (
     AccommodationBooking,
     AccommodationBookingStatus,
-    AccommodationPaymentStatus
+    AccommodationPaymentStatus,
+    BookingContextType
 )
 from app.accommodation.models.availability import AccommodationBlockedReason
 from app.accommodation.services.availability_service import AvailabilityService
@@ -60,8 +61,13 @@ class BookingService:
         special_requests: str = None,
         idempotency_key: str = None,
         ip_address: str = None,
-        user_agent: str = None
+        user_agent: str = None,
+        context_type: 'BookingContextType' = None,  # Will import at top
+        context_id: str = None,
+        context_metadata: dict = None,
     ) -> Tuple[Optional[AccommodationBooking], Optional[str]]:
+
+
         """
         Create a new booking with temporary hold.
 
@@ -150,9 +156,12 @@ class BookingService:
                 guest_email=guest_email,
                 guest_phone=guest_phone,
                 special_requests=special_requests,
+                context_type=context_type or BookingContextType.NONE,
+                context_id=context_id,
+                context_metadata=context_metadata or {},
                 idempotency_key=idempotency_key,
-                status=AccommodationBookingStatus.PENDING,
-                payment_status=AccommodationPaymentStatus.PENDING,
+                status=AccommodationBookingStatus.PENDING.value,
+                payment_status=AccommodationPaymentStatus.PENDING.value,
                 expires_at=datetime.utcnow() + timedelta(minutes=15)  # 15 min hold
             )
 
@@ -204,10 +213,10 @@ class BookingService:
         if not booking:
             return False, "Booking not found"
 
-        if booking.payment_status == AccommodationPaymentStatus.PAID:
+        if booking.payment_status == AccommodationPaymentStatus.PAID.value:
             return False, "Booking already paid and confirmed"
 
-        if booking.status != AccommodationBookingStatus.PENDING:
+        if booking.status != AccommodationBookingStatus.PENDING.value:
             return False, f"Cannot confirm booking in {booking.status.value} state"
 
         if booking.expires_at and booking.expires_at < datetime.utcnow():
@@ -352,7 +361,7 @@ class BookingService:
         query = AccommodationBooking.query.filter_by(guest_user_id=user_id)
         if status:
             try:
-                query = query.filter_by(status=AccommodationBookingStatus(status))
+                query = query.filter_by(status=AccommodationBookingStatus(status).value)
             except ValueError:
                 logger.warning(f"Invalid status filter: {status}")
         return query.order_by(AccommodationBooking.created_at.desc()).limit(limit).offset(offset).all()
@@ -380,7 +389,7 @@ class BookingService:
     @staticmethod
     def get_pending_expired_bookings() -> list:
         return AccommodationBooking.query.filter(
-            AccommodationBooking.status == AccommodationBookingStatus.PENDING,
+            AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
             AccommodationBooking.expires_at < datetime.utcnow()
         ).all()
 
@@ -404,4 +413,25 @@ class BookingService:
                 logger.error(f"Failed to clean up expired booking {booking.id}: {e}")
         return count
 
+    @staticmethod
+    def get_bookings_by_context(context_type: str, context_id: str = None):
+        """Get all bookings linked to a specific context (event, tour, etc.)"""
+        query = AccommodationBooking.query.filter_by(context_type=context_type)
+        if context_id:
+            query = query.filter_by(context_id=context_id)
+        return query.all()
 
+    @staticmethod
+    def get_bookings_by_context(context_type: str, context_id: str = None, limit: int = 100) -> list:
+        """Get all bookings for a specific event or context"""
+        from app.accommodation.models.booking import BookingContextType
+
+        # Convert string to enum if needed
+        if isinstance(context_type, str):
+            context_type = BookingContextType(context_type)
+
+        query = AccommodationBooking.query.filter_by(context_type=context_type)
+        if context_id:
+            query = query.filter_by(context_id=context_id)
+
+        return query.order_by(AccommodationBooking.created_at.desc()).limit(limit).all()

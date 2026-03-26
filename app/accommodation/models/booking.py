@@ -1,13 +1,13 @@
 # app/accommodation/models/booking.py
 """
-Booking models - High-standard, using namespaced enums and fully aligned with DB.
+Booking models - High-standard, using Python Enums with String DB storage
 """
 
-from datetime import datetime, date, timedelta  # FIX 1: added timedelta (used in Booking.is_available but was missing)
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Date,
-    ForeignKey, Integer, Text, Numeric,
+    ForeignKey, Integer, Text, Numeric, JSON,
     Index, UniqueConstraint, CheckConstraint
 )
 from sqlalchemy.orm import relationship, validates
@@ -18,11 +18,11 @@ import enum
 
 
 # ==========================================
-# Namespaced Enums for Booking
+# Namespaced Enums for Booking (Python only)
 # ==========================================
 
 class AccommodationBookingStatus(enum.Enum):
-    """Booking status - matches DB enum 'accommodation_bookingstatus'"""
+    """Booking status - stored as string in DB"""
     PENDING = "pending"
     CONFIRMED = "confirmed"
     CHECKED_IN = "checked_in"
@@ -33,7 +33,7 @@ class AccommodationBookingStatus(enum.Enum):
 
 
 class AccommodationPaymentStatus(enum.Enum):
-    """Payment status - matches DB enum 'accommodation_paymentstatus'"""
+    """Payment status - stored as string in DB"""
     PENDING = "pending"
     PAID = "paid"
     FAILED = "failed"
@@ -42,18 +42,31 @@ class AccommodationPaymentStatus(enum.Enum):
 
 
 class AccommodationPaymentMethod(enum.Enum):
-    """Payment method - matches DB enum 'accommodation_paymentmethod'"""
+    """Payment method - stored as string in DB"""
     WALLET = "wallet"
     CARD = "card"
     MOBILE_MONEY = "mobile_money"
     BANK_TRANSFER = "bank_transfer"
 
 
+class BookingContextType(enum.Enum):
+    """Context type - stored as string in DB"""
+    NONE = "none"
+    EVENT = "event"
+    TOUR = "tour"
+    CORPORATE = "corporate"
+    GROUP = "group"
+    INDIVIDUAL = "individual"
+    SPONSOR = "sponsor"
+    ORGANIZER = "organizer"
+    ASSIGNED = "assigned"
+
+
 # ==========================================
 # Booking Model
 # ==========================================
 
-class AccommodationBooking(db.Model):  # Changed from Booking
+class AccommodationBooking(db.Model):
     __tablename__ = "accommodation_bookings"
     __table_args__ = (
         UniqueConstraint("booking_reference", name="uq_booking_reference"),
@@ -62,6 +75,7 @@ class AccommodationBooking(db.Model):  # Changed from Booking
         Index("idx_booking_guest_status", "guest_user_id", "status"),
         Index("idx_booking_status_created", "status", "created_at"),
         Index("idx_booking_dates", "check_in", "check_out"),
+        Index("idx_booking_context", "context_type", "context_id"),
         CheckConstraint("check_out > check_in", name="ck_valid_dates"),
         CheckConstraint("num_guests >= 1", name="ck_guests_positive"),
         CheckConstraint("num_nights >= 1", name="ck_nights_positive"),
@@ -77,13 +91,13 @@ class AccommodationBooking(db.Model):  # Changed from Booking
     idempotency_key = Column(String(64), unique=True, index=True, nullable=True)
 
     # -------------------------------
-    # Relationships
+    # Relationships (renamed to avoid conflict with @property)
     # -------------------------------
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False, index=True)
-    property = relationship("Property", back_populates="bookings")
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False,
+                         index=True)
+    accommodation_property = relationship("Property", back_populates="bookings")  # RENAMED
 
     guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
-    #guest = relationship("User", foreign_keys=[guest_user_id], back_populates="accommodation_bookings")
     guest = relationship("User", foreign_keys=[guest_user_id], backref="accommodation_bookings")
 
     host_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -108,10 +122,10 @@ class AccommodationBooking(db.Model):  # Changed from Booking
     currency = Column(String(3), default="USD")
 
     # -------------------------------
-    # Payment
+    # Payment (String storage)
     # -------------------------------
-    payment_method = Column(db.Enum(AccommodationPaymentMethod), nullable=True)
-    payment_status = Column(db.Enum(AccommodationPaymentStatus), default=AccommodationPaymentStatus.PENDING)
+    payment_method = Column(String(50), nullable=True)
+    payment_status = Column(String(50), default=AccommodationPaymentStatus.PENDING.value, nullable=False)
     wallet_txn_id = Column(String(255), nullable=True)
     paid_at = Column(DateTime, nullable=True)
 
@@ -122,9 +136,9 @@ class AccommodationBooking(db.Model):  # Changed from Booking
     refunded_at = Column(DateTime, nullable=True)
 
     # -------------------------------
-    # Booking Status
+    # Booking Status (String storage)
     # -------------------------------
-    status = Column(db.Enum(AccommodationBookingStatus), default=AccommodationBookingStatus.PENDING, nullable=False, index=True)
+    status = Column(String(50), default=AccommodationBookingStatus.PENDING.value, nullable=False, index=True)
 
     # -------------------------------
     # Cancellation / Host Approval
@@ -146,6 +160,13 @@ class AccommodationBooking(db.Model):  # Changed from Booking
     host_message = Column(Text, nullable=True)
 
     # -------------------------------
+    # Context Fields (String storage)
+    # -------------------------------
+    context_type = Column(String(50), default=BookingContextType.NONE.value, nullable=False, index=True)
+    context_id = Column(String(100), nullable=True, index=True)
+    context_metadata = Column(JSON, default=dict)
+
+    # -------------------------------
     # Check-in/out Tracking
     # -------------------------------
     checked_in_at = Column(DateTime, nullable=True)
@@ -159,10 +180,34 @@ class AccommodationBooking(db.Model):  # Changed from Booking
     expires_at = Column(DateTime, nullable=True)
 
     # -------------------------------
-    # Relationships
+    # Relationships (continued)
     # -------------------------------
     status_history = relationship("BookingStatusHistory", back_populates="booking", cascade="all, delete-orphan")
     review = relationship("Review", back_populates="booking", uselist=False)
+
+    # ==========================================
+    # PROPERTIES (now they work because relationship is renamed)
+    # ==========================================
+
+    @property
+    def property(self):
+        """Alias for accommodation_property to maintain backward compatibility"""
+        return self.accommodation_property
+
+    @property
+    def status_enum(self) -> AccommodationBookingStatus:
+        """Get status as enum for type-safe operations"""
+        return AccommodationBookingStatus(self.status)
+
+    @property
+    def payment_status_enum(self) -> AccommodationPaymentStatus:
+        """Get payment status as enum"""
+        return AccommodationPaymentStatus(self.payment_status)
+
+    @property
+    def context_type_enum(self) -> BookingContextType:
+        """Get context type as enum"""
+        return BookingContextType(self.context_type)
 
     # -------------------------------
     # Core Methods
@@ -182,26 +227,26 @@ class AccommodationBooking(db.Model):  # Changed from Booking
         return self.total_amount
 
     def mark_paid(self, transaction_id=None):
-        self.payment_status = AccommodationPaymentStatus.PAID
+        self.payment_status = AccommodationPaymentStatus.PAID.value
         self.paid_at = datetime.utcnow()
         self.wallet_txn_id = transaction_id
 
     def confirm(self):
-        self.status = AccommodationBookingStatus.CONFIRMED
+        self.status = AccommodationBookingStatus.CONFIRMED.value
 
     def cancel(self, user_id, reason=None):
         can_cancel, msg, refund = self.can_cancel()
         if not can_cancel:
             return False, msg, 0
 
-        self.status = AccommodationBookingStatus.CANCELLED
+        self.status = AccommodationBookingStatus.CANCELLED.value
         self.cancelled_at = datetime.utcnow()
         self.cancelled_by_user_id = user_id
         self.cancellation_reason = reason
 
         if refund > 0:
             self.refund_amount = refund
-            self.payment_status = AccommodationPaymentStatus.REFUNDED
+            self.payment_status = AccommodationPaymentStatus.REFUNDED.value
             self.refunded_at = datetime.utcnow()
 
         return True, msg, refund
@@ -209,11 +254,14 @@ class AccommodationBooking(db.Model):  # Changed from Booking
     def can_cancel(self):
         from app.accommodation.models.property import AccommodationCancellationPolicy
 
-        if self.status not in [AccommodationBookingStatus.PENDING, AccommodationBookingStatus.CONFIRMED]:
+        # Convert string status to enum for comparison
+        current_status = self.status_enum
+
+        if current_status not in [AccommodationBookingStatus.PENDING, AccommodationBookingStatus.CONFIRMED]:
             return False, "Cannot cancel at this stage", 0
 
         days_until = (self.check_in - datetime.utcnow().date()).days
-        policy = self.property.cancellation_policy
+        policy = self.accommodation_property.cancellation_policy  # UPDATED: use renamed relationship
 
         if policy == AccommodationCancellationPolicy.FLEXIBLE:
             return True, "Full refund", self.total_amount
@@ -251,11 +299,12 @@ class BookingStatusHistory(db.Model):
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False, index=True)
+    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False,
+                        index=True)
     booking = relationship("AccommodationBooking", back_populates="status_history")
 
-    from_status = Column(db.Enum(AccommodationBookingStatus), nullable=True)
-    to_status = Column(db.Enum(AccommodationBookingStatus), nullable=False)
+    from_status = Column(String(50), nullable=True)
+    to_status = Column(String(50), nullable=False)
     changed_by_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     reason = Column(Text, nullable=True)
 
@@ -264,3 +313,13 @@ class BookingStatusHistory(db.Model):
 
     changed_at = Column(DateTime, default=func.now(), nullable=False)
     changed_by = relationship("User", foreign_keys=[changed_by_user_id])
+
+    @property
+    def from_status_enum(self) -> AccommodationBookingStatus:
+        """Get from_status as enum"""
+        return AccommodationBookingStatus(self.from_status) if self.from_status else None
+
+    @property
+    def to_status_enum(self) -> AccommodationBookingStatus:
+        """Get to_status as enum"""
+        return AccommodationBookingStatus(self.to_status)

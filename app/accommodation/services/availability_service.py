@@ -55,8 +55,8 @@ class AvailabilityService:
         query = AccommodationBooking.query.filter(
             AccommodationBooking.property_id == property_id,
             AccommodationBooking.status.in_([
-                AccommodationBookingStatus.CONFIRMED,
-                AccommodationBookingStatus.CHECKED_IN
+                AccommodationBookingStatus.CONFIRMED.value,
+                AccommodationBookingStatus.CHECKED_IN.value
             ]),
             AccommodationBooking.check_in <= check_date,
             AccommodationBooking.check_out > check_date

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Create Event - AFCON360 Accommodation{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">Create New Event</h4>
+                    <p class="text-muted small mb-0">Events will be reviewed before publication</p>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="event-form">
+                        <div class="mb-3">
+                            <label class="form-label">Event Name *</label>
+                            <input type="text" name="name" class="form-control" required>
+                            <small class="text-muted">e.g., "AFCON 2026", "Great Crusade 2026"</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="4" placeholder="Describe your event..."></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">City *</label>
+                                <input type="text" name="city" class="form-control" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Venue</label>
+                                <input type="text" name="venue" class="form-control" placeholder="e.g., Namboole Stadium">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Start Date</label>
+                                <input type="date" name="start_date" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">End Date</label>
+                                <input type="date" name="end_date" class="form-control">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Website</label>
+                            <input type="url" name="website" class="form-control" placeholder="https://...">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Contact Email</label>
+                                <input type="email" name="contact_email" class="form-control" value="{{ current_user.email }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Contact Phone</label>
+                                <input type="tel" name="contact_phone" class="form-control">
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info small">
+                            <i class="fas fa-info-circle"></i> 
+                            Your event will be reviewed by our team before it appears publicly.
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('accommodation.accommodation_event.my_events') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Create Event</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('event-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData.entries());
+    
+    const response = await fetch('{{ url_for("accommodation.accommodation_event.create_event") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+        window.location.href = result.redirect;
+    } else {
+        alert('Error: ' + result.error);
+    }
+});
+</script>
+{% endblock %}

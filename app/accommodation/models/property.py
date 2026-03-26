@@ -202,7 +202,7 @@ class Property(db.Model):
     amenities = relationship("PropertyAmenity", back_populates="property", cascade="all, delete-orphan")
     rules = relationship("PropertyRule", back_populates="property", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="property", cascade="all, delete-orphan")
-    bookings = relationship("AccommodationBooking", back_populates="property", cascade="all, delete-orphan")
+    bookings = relationship("AccommodationBooking", back_populates="accommodation_property",cascade="all, delete-orphan")
 
     blocked_dates = relationship("BlockedDate", back_populates="property", cascade="all, delete-orphan")
     availability_rules = relationship("AvailabilityRule", back_populates="property", cascade="all, delete-orphan")

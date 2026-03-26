@@ -1,19 +1,20 @@
 # app/accommodation/routes/__init__.py
 """
-Accommodation Routes - Sub-blueprints for different user types
+Accommodation Routes - Sub-blueprints
 """
 
 from flask import Blueprint
 
-# Create sub-blueprints
-guest = Blueprint('accommodation_guest', __name__, url_prefix='/guest')
-host = Blueprint('accommodation_host', __name__, url_prefix='/host')
-admin = Blueprint('accommodation_admin', __name__, url_prefix='/admin')
+# Define blueprints
+guest = Blueprint('accommodation_guest', __name__)
+host = Blueprint('accommodation_host', __name__)
+admin = Blueprint('accommodation_admin', __name__)
+event = Blueprint('accommodation_event', __name__)
 
-# Import route modules (these will populate the blueprints)
-
+# Import route files (these attach routes to blueprints)
 from app.accommodation.routes import guest_routes, host_routes, admin_routes
 
-# Export
-__all__ = ['guest', 'host', 'admin']
+# NOTE:
+# Do NOT import event_routes here (avoid circular imports)
 
+__all__ = ['guest', 'host', 'admin', 'event']

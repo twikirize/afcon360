@@ -173,6 +173,10 @@
 
                             <!-- Booking Form - POST to checkout -->
                             <form method="POST" action="{{ url_for('accommodation.accommodation_guest.checkout') }}">
+                                <!-- Add these hidden fields inside the booking form -->
+                                <input type="hidden" name="context_type" value="{{ request.args.get('context_type', 'none') }}">
+                                <input type="hidden" name="context_id" value="{{ request.args.get('context_id', '') }}">
+                                <input type="hidden" name="context_metadata" value="{{ request.args.get('context_metadata', '{}') }}">
                                 <input type="hidden" name="property_id" value="{{ property.id }}">
                                 <input type="hidden" name="host_user_id" value="{{ property_model.owner_user_id or property_model.owner_org_id }}">
                                 <input type="hidden" name="check_in" value="{{ selected_check_in }}">

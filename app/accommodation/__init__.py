@@ -7,31 +7,29 @@ from flask import Blueprint, current_app, abort, redirect, url_for
 from functools import wraps
 from flask_login import login_required, current_user
 
-# Create blueprint
+# Create main blueprint
 accommodation_bp = Blueprint('accommodation', __name__, url_prefix='/accommodation')
 
-# FIX 1: Was url_for("accommodation_guest.search") — blueprint is registered as a
-# nested child so the full endpoint is "accommodation.accommodation_guest.search".
-# FIX 2: Removed the duplicate `/` route (`legacy_home`) defined further below —
-# Flask cannot have two routes with the same path on the same blueprint.
-@accommodation_bp.route("/")
-def index():
-    return redirect(url_for("accommodation.accommodation_guest.search"))
 
-
+# ==============================
+# FEATURE FLAG CHECK
+# ==============================
 def module_enabled(f):
-    """Decorator to check if accommodation module is enabled."""
+    """Check if accommodation module is enabled."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         module_config = current_app.config.get('FEATURE_FLAGS', {}).get('accommodation', {})
         if not module_config.get('enabled', False):
-            abort(404, description="Accommodation module is currently disabled")
+            abort(404, description="Accommodation module is disabled")
         return f(*args, **kwargs)
     return decorated_function
 
 
+# ==============================
+# PERMISSION CHECK
+# ==============================
 def require_accommodation_permission(permission):
-    """Decorator for permission checks within accommodation module."""
+    """Check user permissions inside accommodation module."""
     def decorator(f):
         @wraps(f)
         @module_enabled
@@ -39,28 +37,45 @@ def require_accommodation_permission(permission):
         def decorated_function(*args, **kwargs):
             from app.auth.policy import can
             if not can(current_user, permission):
-                abort(403, description=f"Insufficient permissions: {permission} required")
+                abort(403, description="You do not have access to this resource")
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
 
-# Import routes
-from app.accommodation.routes import guest, host, admin
+# ==============================
+# IMPORT BLUEPRINTS
+# ==============================
+from app.accommodation.routes import guest, host, admin, event
 
-# Register sub-blueprints
+# IMPORTANT: Trigger route registration
+import app.accommodation.routes.events_routes
+
+
+# ==============================
+# REGISTER BLUEPRINTS
+# ==============================
 accommodation_bp.register_blueprint(guest, url_prefix='/guest')
 accommodation_bp.register_blueprint(host, url_prefix='/host')
 accommodation_bp.register_blueprint(admin, url_prefix='/admin')
+accommodation_bp.register_blueprint(event, url_prefix='/event')
 
 
-# FIX 3: Legacy detail route also had wrong endpoint name.
-# Was 'accommodation.guest.detail' — correct is 'accommodation.accommodation_guest.detail'
+# ==============================
+# ROUTES
+# ==============================
+@accommodation_bp.route("/")
+@module_enabled
+def index():
+    return redirect(url_for('accommodation.accommodation_guest.search'))
+
+
 @accommodation_bp.route("/<identifier>", endpoint="legacy_detail")
 @module_enabled
 def legacy_detail(identifier):
-    """Legacy route - redirects to new detail"""
-    return redirect(url_for('accommodation.accommodation_guest.detail', identifier=identifier))
+    return redirect(
+        url_for('accommodation.accommodation_guest.detail', identifier=identifier)
+    )
 
 
 __all__ = ['accommodation_bp', 'module_enabled', 'require_accommodation_permission']

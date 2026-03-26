@@ -67,4 +67,5 @@ __all__ = [
     # Review
     'Review',
     'AccommodationReviewStatus',
+    'BookingContextType'
 ]

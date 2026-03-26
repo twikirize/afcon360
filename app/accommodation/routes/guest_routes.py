@@ -179,7 +179,11 @@ def checkout():
             special_requests=data.get('special_requests'),
             idempotency_key=idempotency_key,
             ip_address=request.remote_addr,
-            user_agent=request.headers.get('User-Agent')
+            user_agent=request.headers.get('User-Agent'),
+            # NEW: Get context from form or session
+            context_type=data.get('context_type'),  # From hidden form field
+            context_id=data.get('context_id'),
+            context_metadata=data.get('context_metadata')  # Could be JSON string
         )
 
         if error:
