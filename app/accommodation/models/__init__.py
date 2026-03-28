@@ -23,6 +23,7 @@ from app.accommodation.models.booking import (
     AccommodationPaymentStatus,
     AccommodationPaymentMethod,
     BookingStatusHistory,
+    BookingContextType,
 )
 
 # Availability models

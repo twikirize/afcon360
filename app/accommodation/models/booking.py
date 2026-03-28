@@ -75,7 +75,7 @@ class AccommodationBooking(db.Model):
         Index("idx_booking_guest_status", "guest_user_id", "status"),
         Index("idx_booking_status_created", "status", "created_at"),
         Index("idx_booking_dates", "check_in", "check_out"),
-        Index("idx_booking_context", "context_type", "context_id"),
+        Index("idx_booking_context", "context_type", "context_id"),  # ⚠️ This references context_type which is defined later
         CheckConstraint("check_out > check_in", name="ck_valid_dates"),
         CheckConstraint("num_guests >= 1", name="ck_guests_positive"),
         CheckConstraint("num_nights >= 1", name="ck_nights_positive"),
@@ -91,11 +91,10 @@ class AccommodationBooking(db.Model):
     idempotency_key = Column(String(64), unique=True, index=True, nullable=True)
 
     # -------------------------------
-    # Relationships (renamed to avoid conflict with @property)
+    # Relationships
     # -------------------------------
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False,
-                         index=True)
-    accommodation_property = relationship("Property", back_populates="bookings")  # RENAMED
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False, index=True)
+    accommodation_property = relationship("Property", back_populates="bookings")
 
     guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     guest = relationship("User", foreign_keys=[guest_user_id], backref="accommodation_bookings")
@@ -162,7 +161,7 @@ class AccommodationBooking(db.Model):
     # -------------------------------
     # Context Fields (String storage)
     # -------------------------------
-    context_type = Column(String(50), default=BookingContextType.NONE.value, nullable=False, index=True)
+    context_type = Column(String(50), default=BookingContextType.NONE.value, nullable=False, index=True)  # ✅ Has default
     context_id = Column(String(100), nullable=True, index=True)
     context_metadata = Column(JSON, default=dict)
 
@@ -186,12 +185,12 @@ class AccommodationBooking(db.Model):
     review = relationship("Review", back_populates="booking", uselist=False)
 
     # ==========================================
-    # PROPERTIES (now they work because relationship is renamed)
+    # PROPERTIES
     # ==========================================
 
     @property
-    def property(self):
-        """Alias for accommodation_property to maintain backward compatibility"""
+    def listing(self):
+        """Return the property listing (clear alias for accommodation_property)"""
         return self.accommodation_property
 
     @property
@@ -254,14 +253,13 @@ class AccommodationBooking(db.Model):
     def can_cancel(self):
         from app.accommodation.models.property import AccommodationCancellationPolicy
 
-        # Convert string status to enum for comparison
         current_status = self.status_enum
 
         if current_status not in [AccommodationBookingStatus.PENDING, AccommodationBookingStatus.CONFIRMED]:
             return False, "Cannot cancel at this stage", 0
 
         days_until = (self.check_in - datetime.utcnow().date()).days
-        policy = self.accommodation_property.cancellation_policy  # UPDATED: use renamed relationship
+        policy = self.accommodation_property.cancellation_policy
 
         if policy == AccommodationCancellationPolicy.FLEXIBLE:
             return True, "Full refund", self.total_amount
@@ -299,8 +297,7 @@ class BookingStatusHistory(db.Model):
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False,
-                        index=True)
+    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False, index=True)
     booking = relationship("AccommodationBooking", back_populates="status_history")
 
     from_status = Column(String(50), nullable=True)
@@ -322,4 +319,4 @@ class BookingStatusHistory(db.Model):
     @property
     def to_status_enum(self) -> AccommodationBookingStatus:
         """Get to_status as enum"""
-        return AccommodationBookingStatus(self.to_status)
+        return AccommodationBookingStatus(self.to_status) if self.from_status else None

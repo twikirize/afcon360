@@ -15,7 +15,7 @@ from app.accommodation.services.availability_service import AvailabilityService
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.services.wallet_service import WalletService
 from app.accommodation.services.abuse_prevention_service import AbusePreventionService
-from app.accommodation.services.events_services import EventService
+from app.accommodation.services.events_service import EventService
 
 __all__ = [
     'search_properties',

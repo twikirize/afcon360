@@ -9,39 +9,95 @@ from app.accommodation.services.search_service import search_properties
 from app.accommodation.models.booking import BookingContextType
 
 
-@event.route("/<event_slug>", endpoint="landing")
-def event_landing(event_slug):
-    """
-    Landing page for an event (AFCON, Crusade, etc.)
-
-    Example URLs:
-        /accommodation/event/afcon-2026
-        /accommodation/event/crusade-2026
-    """
-
-    # You can store event info in a database or config file
-    # For now, a simple dictionary for testing
+@event.route("/", endpoint="list")
+def event_list():
+    """List all events"""
     events = {
         'afcon-2026': {
             'name': 'AFCON 2026',
+            'slug': 'afcon-2026',
             'city': 'Kampala',
             'description': 'Africa Cup of Nations 2026 - The biggest football event in Africa!',
+            'start_date': '2026-06-01',
+            'end_date': '2026-07-31',
+            'dates': 'June - July 2026',
+            'venue': 'Namboole Stadium',
+            'image': '/static/images/afcon-2026.jpg',
+            'metadata': {
+                'image': '/static/images/afcon-2026.jpg'
+            }
+        },
+        'crusade-2026': {
+            'name': 'Great Crusade 2026',
+            'slug': 'crusade-2026',
+            'city': 'Kampala',
+            'description': 'Annual spiritual gathering with thousands of believers',
+            'start_date': '2026-04-10',
+            'end_date': '2026-04-13',
+            'dates': 'April 10-13, 2026',
+            'venue': 'Kololo Independence Grounds',
+            'image': '/static/images/crusade-2026.jpg',
+            'metadata': {
+                'image': '/static/images/crusade-2026.jpg'
+            }
+        },
+        'world-cup-2026': {
+            'name': 'World Cup 2026',
+            'slug': 'world-cup-2026',
+            'city': 'Nairobi',
+            'description': 'Watch the World Cup in style!',
+            'start_date': '2026-06-01',
+            'end_date': '2026-07-31',
+            'dates': 'June - July 2026',
+            'venue': 'Kasarani Stadium',
+            'image': '/static/images/worldcup-2026.jpg',
+            'metadata': {
+                'image': '/static/images/worldcup-2026.jpg'
+            }
+        }
+    }
+
+    events_list = list(events.values())
+
+    return render_template(
+        'accommodation/events/list.html',
+        events=events_list
+    )
+
+
+@event.route("/<event_slug>", endpoint="landing")
+def event_landing(event_slug):
+    """Landing page for an event"""
+    events = {
+        'afcon-2026': {
+            'name': 'AFCON 2026',
+            'slug': 'afcon-2026',
+            'city': 'Kampala',
+            'description': 'Africa Cup of Nations 2026 - The biggest football event in Africa!',
+            'start_date': '2026-06-01',
+            'end_date': '2026-07-31',
             'dates': 'June - July 2026',
             'venue': 'Namboole Stadium',
             'image': '/static/images/afcon-2026.jpg'
         },
         'crusade-2026': {
             'name': 'Great Crusade 2026',
+            'slug': 'crusade-2026',
             'city': 'Kampala',
             'description': 'Annual spiritual gathering with thousands of believers',
+            'start_date': '2026-04-10',
+            'end_date': '2026-04-13',
             'dates': 'April 10-13, 2026',
             'venue': 'Kololo Independence Grounds',
             'image': '/static/images/crusade-2026.jpg'
         },
         'world-cup-2026': {
             'name': 'World Cup 2026',
+            'slug': 'world-cup-2026',
             'city': 'Nairobi',
             'description': 'Watch the World Cup in style!',
+            'start_date': '2026-06-01',
+            'end_date': '2026-07-31',
             'dates': 'June - July 2026',
             'venue': 'Kasarani Stadium',
             'image': '/static/images/worldcup-2026.jpg'
@@ -50,14 +106,12 @@ def event_landing(event_slug):
 
     event_data = events.get(event_slug)
     if not event_data:
-        # Return 404 if event not found
-        return render_template('accommodation/event_not_found.html', event_slug=event_slug), 404
+        return render_template('accommodation/events/not_found.html', event_slug=event_slug), 404
 
-    # Search properties in the event city
     properties = search_properties(city=event_data['city'])
 
     return render_template(
-        'accommodation/landing.html',
+        'accommodation/events/landing.html',
         event=event_data,
         properties=properties,
         context_type=BookingContextType.EVENT.value,
@@ -68,6 +122,24 @@ def event_landing(event_slug):
             'venue': event_data['venue']
         }
     )
+
+
+@event.route("/create", endpoint="create_event")
+def create_event():
+    """Create event page"""
+    return render_template('accommodation/events/create.html')
+
+
+@event.route("/my-events", endpoint="my_events")
+def my_events():
+    """User's events page"""
+    return render_template('accommodation/events/my_events.html')
+
+
+@event.route("/<event_slug>/edit", endpoint="edit_event")
+def edit_event(event_slug):
+    """Edit event page"""
+    return render_template('accommodation/events/edit.html', event_slug=event_slug)
 
 
 @event.route("/api/<event_slug>/properties", endpoint="api_properties")

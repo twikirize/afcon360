@@ -23,11 +23,11 @@ import enum
 # Add TEMPORARY_HOLD to the enum
 class AccommodationBlockedReason(enum.Enum):
     """Blocked reason - matches DB enum 'accommodation_blockedreason'"""
-    BOOKED = "BOOKED"
-    TEMPORARY_HOLD = "TEMPORARY_HOLD"
-    OWNER_BLOCKED = "OWNER_BLOCKED"
-    MAINTENANCE = "MAINTENANCE"
-    SEASONAL = "SEASONAL"
+    BOOKED = "booked"
+    TEMPORARY_HOLD = "temporary_hold"
+    OWNER_BLOCKED = "owner_blocked"
+    MAINTENANCE = "maintenance"
+    SEASONAL = "seasonal"
 
 
 # ==========================================

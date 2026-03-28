@@ -245,10 +245,25 @@ def create_app(config_object=None) -> Flask:
     # -------------------------------
     # Routes
     # -------------------------------
-    @app.route("/")
+    from app.accommodation.services.events_service import EventService
+
+    @app.route('/')
     def index():
-        """Public home page."""
-        return render_template("public_home.html")
+        # Get featured event (AFCON will be first if available)
+        featured_event = EventService.get_featured_event()
+
+        # Get other upcoming events (excluding featured)
+        other_events = EventService.get_upcoming_events(limit=2, exclude_featured=True)
+
+        # Pass to template
+        return render_template(
+            'public_home.html',
+            featured_event=featured_event,
+            other_events=other_events,
+            # ... your other existing context
+        )
+
+
 
     @app.route("/fan/profile")
     def fan_profile():

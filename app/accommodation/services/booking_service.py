@@ -6,7 +6,7 @@ Includes: Idempotency, anti-abuse, temporary holds, state management, and audit 
 
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import Optional, Tuple
+from typing import Union, Optional, List, Tuple
 import enum
 import logging
 
@@ -23,7 +23,6 @@ from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
 
 logger = logging.getLogger(__name__)
-
 
 def enum_value(val):
     """
@@ -413,25 +412,44 @@ class BookingService:
                 logger.error(f"Failed to clean up expired booking {booking.id}: {e}")
         return count
 
-    @staticmethod
-    def get_bookings_by_context(context_type: str, context_id: str = None):
-        """Get all bookings linked to a specific context (event, tour, etc.)"""
-        query = AccommodationBooking.query.filter_by(context_type=context_type)
-        if context_id:
-            query = query.filter_by(context_id=context_id)
-        return query.all()
+    from typing import Optional, Union, List
+
+    # ... rest of your code ...
 
     @staticmethod
-    def get_bookings_by_context(context_type: str, context_id: str = None, limit: int = 100) -> list:
-        """Get all bookings for a specific event or context"""
-        from app.accommodation.models.booking import BookingContextType
+    def get_bookings_by_context(
+            context_type: Union[str, BookingContextType],
+            context_id: Optional[str] = None,
+            limit: Optional[int] = 100
+    ) -> List[AccommodationBooking]:
+        """
+        Get bookings for a specific context (event, tour, etc.).
 
-        # Convert string to enum if needed
+        Args:
+            context_type: Context type as string or BookingContextType enum.
+            context_id: Optional specific context ID to filter.
+            limit: Maximum number of results to return. Use None for no limit.
+
+        Returns:
+            List of AccommodationBooking instances.
+        """
+        # Convert string to enum safely
         if isinstance(context_type, str):
-            context_type = BookingContextType(context_type)
+            try:
+                context_type = BookingContextType(context_type)
+            except ValueError:
+                logger.warning(f"Invalid context_type: {context_type}")
+                return []
 
-        query = AccommodationBooking.query.filter_by(context_type=context_type)
+        # Build and execute query
+        query = AccommodationBooking.query.filter_by(
+            context_type=context_type
+        ).order_by(AccommodationBooking.created_at.desc())
+
         if context_id:
             query = query.filter_by(context_id=context_id)
 
-        return query.order_by(AccommodationBooking.created_at.desc()).limit(limit).all()
+        if limit is not None:
+            query = query.limit(limit)
+
+        return query.all()

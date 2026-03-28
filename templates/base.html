@@ -7,33 +7,49 @@
 
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Bootstrap Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
   <!-- Custom CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='deposit.css') }}">
 
-  <!-- Per-page styles (child templates inject here) -->
   {% block styles %}{% endblock %}
-
   {% block head %}{% endblock %}
 </head>
 <body class="afcon-root">
 
   {% block body %}
-  <!-- DEFAULT body: header + main + footer -->
   <header class="site-header">
     <div class="brand">
       <a href="{{ url_for('index') }}" class="brand-link">{{ app_name or "AFCON 360" }}</a>
       <p class="tagline">Your gateway to matches, travel, tickets and more</p>
     </div>
 
-    <nav class="main-nav" aria-label="Main menu">
+    <button class="hamburger" id="hamburgerBtn" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+
+    <nav class="main-nav desktop-nav" aria-label="Main menu">
       <ul class="menu">
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
-        <li class="menu-item"><a href="{{ links.tournament_home }}">{{ tournament_name or "Tournament Hub" }}</a></li>
+
+        <li class="menu-item has-dropdown">
+          <a href="{{ url_for('accommodation.accommodation_event.list') }}">Events</a>
+          <ul class="drop-menu" role="menu">
+            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.list') }}">📅 All Events</a></li>
+            <li><hr class="drop-divider"></li>
+            <li><span class="drop-header">✨ Upcoming Events</span></li>
+            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='afcon-2027') }}">🏆 AFCON 2027</a></li>
+            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='crusade-2026') }}">✝️ Great Crusade 2026</a></li>
+            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='world-cup-2026') }}">🌍 World Cup 2026</a></li>
+            {% if session.get('user_id') %}
+            <li><hr class="drop-divider"></li>
+            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.create_event') }}">➕ Create Event</a></li>
+            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.my_events') }}">📋 My Events</a></li>
+            {% endif %}
+          </ul>
+        </li>
+
         <li class="menu-item"><a href="{{ links.tourism_home }}">Tourism</a></li>
         <li class="menu-item"><a href="{{ links.transport_home }}">Transport</a></li>
         <li class="menu-item"><a href="{{ links.accommodation_home }}">Accommodation</a></li>
@@ -52,23 +68,110 @@
     </nav>
   </header>
 
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <aside class="mobile-drawer" id="mobileDrawer" aria-label="Mobile navigation" aria-hidden="true">
+    <div class="drawer-header">
+      <span class="drawer-brand">{{ app_name or "AFCON 360" }}</span>
+      <button class="drawer-close" id="drawerClose" aria-label="Close menu">&#10005;</button>
+    </div>
+    <nav class="drawer-nav">
+      <a class="drawer-link" href="{{ url_for('index') }}">🏠 Home</a>
+
+      <div class="drawer-accordion">
+        <div class="drawer-accordion-head">
+          <a class="drawer-link" href="{{ url_for('accommodation.accommodation_event.list') }}">📅 Events</a>
+          <button class="drawer-accordion-toggle" aria-label="Expand events">▾</button>
+        </div>
+        <div class="drawer-accordion-body">
+          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.list') }}">All Events</a>
+          <span class="drawer-sub-label">✨ Upcoming</span>
+          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='afcon-2027') }}">🏆 AFCON 2027</a>
+          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='crusade-2026') }}">✝️ Great Crusade 2026</a>
+          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='world-cup-2026') }}">🌍 World Cup 2026</a>
+          {% if session.get('user_id') %}
+          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.create_event') }}">➕ Create Event</a>
+          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.my_events') }}">📋 My Events</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <a class="drawer-link" href="{{ links.tourism_home }}">🌍 Tourism</a>
+      <a class="drawer-link" href="{{ links.transport_home }}">🚌 Transport</a>
+      <a class="drawer-link" href="{{ links.accommodation_home }}">🏨 Accommodation</a>
+
+      <div class="drawer-divider"></div>
+
+      {% if session.get('user_id') %}
+        <a class="drawer-link" href="{{ links.wallet_dashboard }}">👛 Wallet</a>
+        <a class="drawer-link drawer-auth" href="{{ links.auth_logout }}">Logout</a>
+      {% else %}
+        <a class="drawer-link" href="{{ links.wallet_home }}">👛 Wallet</a>
+        <a class="drawer-link drawer-auth" href="{{ links.auth_login }}">Login</a>
+        <a class="drawer-link drawer-auth" href="{{ links.auth_register }}">Register</a>
+      {% endif %}
+
+      <a class="drawer-link" href="{{ url_for('admin.super_dashboard') }}">⚙️ Super Admin</a>
+    </nav>
+  </aside>
+
   <main id="main" role="main">
     {% block content %}{% endblock %}
   </main>
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <div>© {{ app_name or "AFCON 360" }}</div>
-      <div class="links"><a href="{{ url_for('index') }}">Home</a> · <a href="/support">Support</a></div>
+      <div>&copy; {{ app_name or "AFCON 360" }}</div>
+      <div class="links">
+        <a href="{{ url_for('index') }}">Home</a> &middot;
+        <a href="/support">Support</a>
+      </div>
     </div>
   </footer>
   {% endblock %}
 
-  <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-  <!-- Custom scripts -->
   <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <script>
+    (function () {
+      const hamburger = document.getElementById('hamburgerBtn');
+      const drawer    = document.getElementById('mobileDrawer');
+      const overlay   = document.getElementById('drawerOverlay');
+      const closeBtn  = document.getElementById('drawerClose');
+
+      function openDrawer() {
+        drawer.classList.add('open');
+        overlay.classList.add('open');
+        hamburger.classList.add('active');
+        hamburger.setAttribute('aria-expanded', 'true');
+        drawer.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeDrawer() {
+        drawer.classList.remove('open');
+        overlay.classList.remove('open');
+        hamburger.classList.remove('active');
+        hamburger.setAttribute('aria-expanded', 'false');
+        drawer.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+      }
+
+      hamburger.addEventListener('click', openDrawer);
+      closeBtn.addEventListener('click', closeDrawer);
+      overlay.addEventListener('click', closeDrawer);
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeDrawer();
+      });
+
+      document.querySelectorAll('.drawer-accordion-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var body = this.closest('.drawer-accordion').querySelector('.drawer-accordion-body');
+          var open = body.classList.toggle('open');
+          this.classList.toggle('rotated', open);
+        });
+      });
+    })();
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
