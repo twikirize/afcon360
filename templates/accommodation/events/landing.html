@@ -67,7 +67,7 @@
                                 <strong class="h5 text-primary">${{ property.price }}</strong>
                                 <small class="text-muted">/ night</small>
                             </div>
-                            <a href="{{ url_for('accommodation.accommodation_guest.detail', identifier=property.slug or property.id) }}?context_type=event&context_id={{ context_id }}&context_metadata={{ context_metadata|tojson }}" 
+                            <a href="{{ url_for('accommodation.accommodation_guest.detail', identifier=property.slug or property.id) }}?context_type=event&context_id={{ context_id }}&context_metadata={{ context_metadata|tojson }}"
                                class="btn btn-primary btn-sm">
                                 Book for {{ event.name }}
                             </a>
