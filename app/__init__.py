@@ -1,4 +1,14 @@
 # app/__init__.py
+"""
+# Changes vs original:
+#   [P0] REMOVED remove_csp() — it was stripping CSP in production due to
+#        Flask's LIFO after_request execution order (registered first = runs last)
+#   [P0] Consolidated security headers into single after_request handler
+#   [P1] SESSION_SERIALIZER changed to json (pickle = RCE risk)
+#   All module registration, Redis enforcement, blueprints: UNCHANGED
+# ============================================================================
+"""
+
 import os
 import redis
 import logging
@@ -14,27 +24,17 @@ from app.config import Config
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client
 from app.identity.models.user import User
 
-import logging
-
-# -------------------------------
-# Logging
-# -------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-
 logger = logging.getLogger("app")
 
-# -------------------------------
-# Redis helper
-# -------------------------------
+
 def require_redis(url: str, purpose: str) -> redis.Redis:
     """
-    Helper to enforce Redis availability.
-    - url: Redis connection string
-    - purpose: human-readable purpose (e.g. 'sessions', 'rate limiting')
-    Returns a connected Redis client or raises RuntimeError with traceable details.
+    Ensure Redis is available before starting the app.
+    Raises RuntimeError if Redis connection fails.
     """
     try:
         client = redis.Redis.from_url(url, decode_responses=False, socket_connect_timeout=5)
@@ -46,101 +46,80 @@ def require_redis(url: str, purpose: str) -> redis.Redis:
         logging.error(error_msg)
         raise RuntimeError(error_msg) from e
 
-# -------------------------------
-# Application Factory
-# -------------------------------
+
 def create_app(config_object=None) -> Flask:
     """
-    Application factory for AFCON360.
-    Enforces Redis for sessions and rate limiting.
-    Fails fast with traceable errors if Redis is unavailable.
-    """
+    Application factory pattern.
 
-    # -------------------------------
-    # Paths for templates and static files
-    # -------------------------------
+    Security features:
+        - Redis-backed sessions (server-side, not client cookies)
+        - CSRF protection via Flask-WTF
+        - Rate limiting with Redis storage
+        - Security headers (CSP, HSTS, etc.)
+        - No pickle serialization (JSON only)
+    """
     base_dir = os.path.abspath(os.path.dirname(__file__))
     template_path = os.path.join(base_dir, "..", "templates")
     project_root = os.path.abspath(os.path.join(base_dir, ".."))
     static_path = os.path.join(project_root, "static")
 
-    # -------------------------------
-    # Load environment variables
-    # -------------------------------
     load_dotenv()
 
-    # -------------------------------
-    # Create Flask app instance
-    # -------------------------------
     app = Flask(__name__, static_folder=static_path, template_folder=template_path)
-
-    # -------------------------------
-    # app/__init__.py - add this after creating the app
-    # -------------------------------
-
-    @app.after_request
-    def remove_csp(response):
-        """Remove CSP header for development"""
-        response.headers.pop('Content-Security-Policy', None)
-        response.headers.pop('X-Content-Security-Policy', None)  # Some browsers use this
-        return response
-
     app.config.from_object(config_object or Config)
     app.config['SECRET_KEY'] = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
 
-    # -------------------------------
-    # Database (always use DATABASE_URL from env)
-    # -------------------------------
+    # SECURITY FIX: Explicitly set JSON serializer — pickle allows RCE
+    app.config["SESSION_SERIALIZER"] = "json"
+
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    # -------------------------------
+    # ------------------------------------------------------------------
     # Sessions (Redis enforced)
-    # -------------------------------
-    redis_client = require_redis(app.config["REDIS_URL"], "sessions")
+    # ------------------------------------------------------------------
+    redis_session_client = require_redis(app.config["REDIS_URL"], "sessions")
     app.config["SESSION_TYPE"] = "redis"
-    app.config["SESSION_REDIS"] = redis_client
+    app.config["SESSION_REDIS"] = redis_session_client
     Session(app)
     cache.init_app(app)
 
-    # -------------------------------
+    # ------------------------------------------------------------------
     # Rate limiting (Redis enforced)
-    # -------------------------------
+    # ------------------------------------------------------------------
     require_redis(app.config["RATELIMIT_STORAGE_URL"], "rate limiting")
-    limiter = Limiter(
+    limiter_instance = Limiter(
         key_func=get_remote_address,
         storage_uri=app.config["RATELIMIT_STORAGE_URL"],
         default_limits=[app.config["RATELIMIT_DEFAULT"]],
     )
-    limiter.init_app(app)
+    limiter_instance.init_app(app)
 
-    # -------------------------------
-    # Initialize core extensions
-    # -------------------------------
-    db.init_app(app)             # SQLAlchemy
-    migrate.init_app(app, db)    # Alembic migrations
-    login_manager.init_app(app)  # Flask-Login
-    csrf.init_app(app)           # CSRF protection
+    # ------------------------------------------------------------------
+    # Database and extensions
+    # ------------------------------------------------------------------
+    db.init_app(app)
+    migrate.init_app(app, db)
+    login_manager.init_app(app)
+    csrf.init_app(app)
 
-    # -------------------------------
-    # Security cookie flags
-    # -------------------------------
+    # Ensure secure cookie defaults
     app.config.setdefault("SESSION_COOKIE_SECURE", True)
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
-    # -------------------------------
+    # ------------------------------------------------------------------
     # Import models so Alembic sees them
-    # -------------------------------
+    # ------------------------------------------------------------------
     from app.identity import models as identity_models
     from app.profile import models as profile_models
     from app.kyc import models as kyc_models
     from app.audit import models as audit_models
-    from app.auth import roles as role_models  # keep if you need role constants
+    from app.auth import roles as role_models
 
-    # -------------------------------
-    # Import blueprints
-    # -------------------------------
+    # ------------------------------------------------------------------
+    # Blueprints
+    # ------------------------------------------------------------------
     from app.auth.routes import auth_routes as auth_bp
     from app.fan.routes import fan_routes as fan_bp
     from app.wallet.routes import wallet_routes as wallet_bp
@@ -150,49 +129,31 @@ def create_app(config_object=None) -> Flask:
     from app.accommodation import accommodation_bp
     from app.admin import admin_bp
 
-    # Register core blueprints
     for bp in [admin_bp, auth_bp, fan_bp, wallet_bp]:
         app.register_blueprint(bp)
 
-    # Conditional module registration
     if app.config.get("TOURNAMENT_ENABLED", True):
         app.register_blueprint(tournament_bp)
 
     if app.config.get("TOURISM_ENABLED", True):
         app.register_blueprint(tourism_bp)
 
-
     if app.config.get("TRANSPORT_ENABLED", True):
         from app.transport import transport_bp, transport_admin_bp, init_transport_module
-
-        # Initialize module first (attaches routes + API resources)
         init_transport_module(app)
-
-        # Register blueprints WITH CORRECT URL PREFIXES
         app.register_blueprint(transport_bp, url_prefix='/transport')
         app.register_blueprint(transport_admin_bp, url_prefix='/transport/admin')
-
-        # DEBUG: Print all registered routes
-        print("\n" + "=" * 50)
-        print("REGISTERED TRANSPORT ROUTES:")
-        print("=" * 50)
-        for rule in app.url_map.iter_rules():
-            if 'transport' in str(rule):
-                print(f"{rule.endpoint}: {rule}")
-        print("=" * 50 + "\n")
-
-        logger.info("Transport blueprint registered with prefixes")
+        logger.info("Transport blueprint registered")
 
     if app.config.get("ACCOMMODATION_ENABLED", True):
         app.register_blueprint(accommodation_bp)
 
-    # CLI commands
     from app.cli.owner import register_owner_commands
     register_owner_commands(app)
 
-    # -------------------------------
+    # ------------------------------------------------------------------
     # Context processors
-    # -------------------------------
+    # ------------------------------------------------------------------
     @app.context_processor
     def inject_sitewide() -> Dict:
         """Inject site-wide variables into all templates."""
@@ -204,7 +165,10 @@ def create_app(config_object=None) -> Flask:
 
     @app.context_processor
     def inject_links() -> Dict:
-        """Inject dynamic navigation links with fallback URLs."""
+        """
+        Inject URL links into all templates.
+        Resolves endpoint names to URLs with fallbacks.
+        """
 
         def resolve_endpoint(candidates: List[str], default: str = "#") -> str:
             for ep in candidates:
@@ -226,82 +190,149 @@ def create_app(config_object=None) -> Flask:
             "auth_register": ["auth.register", "auth_routes.register"],
             "index": ["index"],
         }
-
         links = {
             key: resolve_endpoint(endpoints, default=f"/{key.replace('_', '/')}")
             for key, endpoints in modules.items()
         }
-
         return {"links": links, **inject_sitewide()}
 
-    # -------------------------------
-    # Login manager user loader
-    # -------------------------------
+    # ------------------------------------------------------------------
+    # Login manager
+    # ------------------------------------------------------------------
     @login_manager.user_loader
     def load_user(user_id):
-        """Load user by UUID for Flask-Login."""
+        """Load user from database by ID for Flask-Login."""
         return User.query.filter_by(user_id=user_id).first()
 
-    # -------------------------------
+    # ------------------------------------------------------------------
     # Routes
-    # -------------------------------
+    # ------------------------------------------------------------------
     from app.accommodation.services.events_service import EventService
 
     @app.route('/')
     def index():
-        # Get featured event (AFCON will be first if available)
+        """Public home page with featured and upcoming events."""
         featured_event = EventService.get_featured_event()
-
-        # Get other upcoming events (excluding featured)
         other_events = EventService.get_upcoming_events(limit=2, exclude_featured=True)
-
-        # Pass to template
         return render_template(
             'public_home.html',
             featured_event=featured_event,
             other_events=other_events,
-            # ... your other existing context
         )
-
-
 
     @app.route("/fan/profile")
     def fan_profile():
-        """Legacy fan profile route. Redirects unauthenticated users to home."""
+        """Fan profile page — requires authentication."""
         if "user_id" not in session:
             return redirect(url_for("index"))
         return render_template("fan_profile.html")
 
-    # ----------------------------
-    # Global CSRF error handler
-    # ---------------------------
+    # ------------------------------------------------------------------
+    # CSRF error handler
+    # ------------------------------------------------------------------
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
-        """Handle CSRF failures globally."""
-        if request.is_json:  # JSON API requests
-            return jsonify({"status":"error","message":"CSRF token missing"}), 400
+        """Handle CSRF token validation failures."""
+        if request.is_json:
+            return jsonify({"status": "error", "message": "CSRF token missing or invalid"}), 400
         flash("Your session expired. Please refresh the page and try again.", "warning")
         return redirect(url_for("auth_routes.register"))
 
-    # -------------------------------
-    # Global security headers
-    # -------------------------------
+    # ------------------------------------------------------------------
+    # SECURITY HEADERS — ONE consolidated handler
+    #
+    # SECURITY FIX: Removed remove_csp() which was stripping CSP headers.
+    # Flask registers after_request handlers in LIFO order. Previously:
+    #   1. remove_csp() registered first → ran LAST (stripped CSP)
+    #   2. set_global_security_headers() registered last → ran FIRST (added CSP)
+    # Net result: NO CSP in production.
+    #
+    # Now: single handler, no conflicts, no stripping.
+    # ------------------------------------------------------------------
     @app.after_request
-    def set_global_security_headers(response):
-        """Apply security headers to all responses."""
-        response.headers["Content-Security-Policy"] = "default-src 'self';"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
+    def apply_security_headers(response):
+        """
+        Apply security headers to every response.
+        - Content Security Policy (CSP) prevents XSS
+        - HSTS enforces HTTPS
+        - Various headers prevent clickjacking, MIME sniffing, etc.
+        """
+        env = app.config.get("FLASK_ENV", "production")
+
+        # ------------------------------------------------------------------
+        # Content Security Policy
+        # ------------------------------------------------------------------
+        if env == "development":
+            # Relaxed CSP for dev: allow inline styles (useful for dev tools)
+            # TODO: Consider removing unsafe-inline when moving to production
+            csp = (
+                "default-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; "
+                "font-src 'self'; "
+                "connect-src 'self'; "
+                "frame-ancestors 'none'; "
+                "form-action 'self'; "
+                "base-uri 'self';"
+            )
+        else:
+            # Production: strict CSP — no unsafe-inline
+            # Future enhancement: add nonce-based CSP for script/style tags
+            csp = (
+                "default-src 'self'; "
+                "script-src 'self'; "
+                "style-src 'self'; "
+                "img-src 'self' data:; "
+                "font-src 'self'; "
+                "connect-src 'self'; "
+                "frame-ancestors 'none'; "
+                "form-action 'self'; "
+                "base-uri 'self';"
+            )
+        response.headers["Content-Security-Policy"] = csp
+
+        # ------------------------------------------------------------------
+        # HSTS — only set over HTTPS
+        # ------------------------------------------------------------------
+        if request.is_secure:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=63072000; includeSubDomains; preload"
+            )
+
+        # ------------------------------------------------------------------
+        # Standard hardening headers
+        # ------------------------------------------------------------------
+        response.headers["X-Content-Type-Options"] = "nosniff"  # Prevent MIME sniffing
+        response.headers["X-Frame-Options"] = "DENY"  # Prevent clickjacking
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=(), payment=()"  # Disable sensitive APIs
+        )
+
+        # ------------------------------------------------------------------
+        # Cache control — never cache authenticated responses
+        # ------------------------------------------------------------------
+        if session.get("user_id"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+
+        # ------------------------------------------------------------------
+        # Remove server fingerprinting headers
+        # ------------------------------------------------------------------
+        response.headers.pop("Server", None)  # Remove server version
+        response.headers.pop("X-Powered-By", None)  # Remove tech stack info
+
         return response
 
-    # -------------------------------
-    # Prometheus metrics endpoint
-    # -------------------------------
+    # ------------------------------------------------------------------
+    # Metrics endpoint (Prometheus)
+    # ------------------------------------------------------------------
     from prometheus_client import generate_latest
+
     @app.route("/metrics")
     def metrics():
-        """Expose Prometheus metrics for monitoring."""
+        """Prometheus metrics endpoint for monitoring."""
         return Response(generate_latest(), mimetype="text/plain; charset=utf-8")
 
     return app

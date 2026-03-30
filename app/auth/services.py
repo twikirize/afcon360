@@ -1,6 +1,14 @@
-# app/auth/services.py
+# app/auth/services.py  — PATCHED
+#
+# Changes vs original:
+#   [P0] request_password_reset: raw token REMOVED from audit emit
+#        (raw token in ComplianceAuditLog is a critical data breach vector)
+#   All other logic is unchanged.
+# ============================================================================
+
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Union
+import hashlib
 import uuid
 from functools import wraps
 
@@ -69,7 +77,6 @@ class AuthResult:
 # Decorators
 # ----------------------------
 def auth_event_emitter(func):
-    """Decorator to automatically emit auth events based on AuthResult"""
     @wraps(func)
     def wrapper(identifier: str, password: str, ip=None, user_agent=None):
         result, payload = func(identifier, password, ip, user_agent)
@@ -240,7 +247,16 @@ def verify_email(token: str) -> bool:
 # ----------------------------
 def request_password_reset(user: User) -> str:
     token = generate_reset_token(user.user_id)
-    _emit("password.reset.requested", {"user_id": user.user_id, "token": token})
+
+    # FIX [P0]: raw token NEVER goes into the audit log.
+    # Log only a short non-reversible hint for correlation if ever needed.
+    token_hint = hashlib.sha256(token.encode()).hexdigest()[:12]
+    _emit("password.reset.requested", {
+        "user_id":    user.user_id,
+        "token_hint": token_hint,   # safe: 12 hex chars of SHA-256, not usable
+        # "token": token  ← REMOVED — was a critical data breach vector
+    })
+
     db.session.commit()
     return token
 

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ app_name or "AFCON 360" }}</title>
 
   <!-- Bootstrap CSS -->
@@ -56,7 +57,15 @@
 
         {% if session.get('user_id') %}
           <li class="menu-item"><a href="{{ links.wallet_dashboard }}">Wallet</a></li>
-          <li class="menu-item auth"><a href="{{ links.auth_logout }}">Logout</a></li>
+          <li class="menu-item auth">
+            <!-- SECURITY FIX: POST form with CSRF token instead of anchor tag -->
+            <form method="POST" action="{{ url_for('auth_routes.logout') }}" style="display: inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="logout-btn" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; font: inherit;">
+                Logout
+              </button>
+            </form>
+          </li>
         {% else %}
           <li class="menu-item"><a href="{{ links.wallet_home }}">Wallet</a></li>
           <li class="menu-item auth"><a href="{{ links.auth_login }}">Login</a></li>
@@ -103,7 +112,13 @@
 
       {% if session.get('user_id') %}
         <a class="drawer-link" href="{{ links.wallet_dashboard }}">👛 Wallet</a>
-        <a class="drawer-link drawer-auth" href="{{ links.auth_logout }}">Logout</a>
+        <!-- SECURITY FIX: POST form with CSRF token for mobile drawer -->
+        <form method="POST" action="{{ url_for('auth_routes.logout') }}" style="display: block; width: 100%; margin: 0; padding: 0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="drawer-link drawer-auth" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
+            Logout
+          </button>
+        </form>
       {% else %}
         <a class="drawer-link" href="{{ links.wallet_home }}">👛 Wallet</a>
         <a class="drawer-link drawer-auth" href="{{ links.auth_login }}">Login</a>
@@ -168,6 +183,15 @@
           var body = this.closest('.drawer-accordion').querySelector('.drawer-accordion-body');
           var open = body.classList.toggle('open');
           this.classList.toggle('rotated', open);
+        });
+      });
+
+      // Optional: Add logout confirmation to prevent accidental clicks
+      document.querySelectorAll('form[action*="logout"]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+          if (!confirm('Are you sure you want to log out?')) {
+            e.preventDefault();
+          }
         });
       });
     })();

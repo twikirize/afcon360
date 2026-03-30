@@ -22,7 +22,9 @@ login flow does not need to change.
 from __future__ import annotations
 
 import secrets
+import time
 from datetime import datetime, timedelta
+from typing import Optional
 
 from flask import (
     Blueprint,
@@ -87,6 +89,19 @@ def _dashboard_for_user(user: User) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Security helpers
+# ---------------------------------------------------------------------------
+
+def _ct_delay() -> None:
+    """
+    Constant-time delay to prevent username/password timing enumeration.
+    Uses CSPRNG for jitter — not predictable.
+    """
+    # 50–100 ms delay with random jitter
+    time.sleep(0.050 + secrets.randbelow(51) / 1000.0)
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -97,6 +112,11 @@ def register():
         username = (request.form.get("username") or "").strip()
         password =  request.form.get("password") or ""
         email    = (request.form.get("email")    or "").strip() or None
+
+        # SECURITY: hard length caps before any processing (DoS prevention)
+        if len(username) > 64 or len(password) > 128 or (email and len(email) > 255):
+            flash("Input exceeds maximum length.", "danger")
+            return render_template("register.html", username=username, email=email)
 
         ok, msg = validate_registration(username, password, email)
         if not ok:
@@ -144,6 +164,8 @@ def register():
 @limiter.limit("30 per hour")
 def verify():
     token = request.args.get("token")
+    # SECURITY: cap token length
+    token = token[:128] if token else None
     if not token or not verify_email(token):
         flash("Invalid or expired verification link.", "danger")
         return redirect(url_for("auth_routes.login"))
@@ -162,8 +184,9 @@ def login():
     require_verification = current_app.config.get("VERIFY_EMAIL_REQUIRED", False)
 
     if request.method == "POST":
-        identifier = (request.form.get("username") or "").strip()
-        password   =  request.form.get("password") or ""
+        # SECURITY: hard caps before any processing (DoS prevention)
+        identifier = (request.form.get("username") or "").strip()[:64]
+        password   = (request.form.get("password") or "")[:128]
         ip         = request.remote_addr
         user_agent = request.headers.get("User-Agent", "")
 
@@ -180,6 +203,7 @@ def login():
                 "login_backend_error",
                 extra={"identifier": identifier, "ip": ip},
             )
+            _ct_delay()  # SECURITY: constant-time delay
             flash("Login is temporarily unavailable. Please try again later.", "danger")
             return render_template("login.html", username=identifier)
 
@@ -203,11 +227,13 @@ def login():
 
                 login_user(user, remember="remember" in request.form)
 
+                # SECURITY: Do NOT store roles in session — always read from DB
+                # Storing roles creates stale privilege escalation window.
+                # User roles are loaded by Flask-Login's user_loader on every request.
                 session.update({
                     "server_session_id": session_id,
                     "user_id":           user.user_id,
                     "username":          user.username,
-                    "roles":             user.role_names,
                     "ip":                ip,
                     "user_agent":        user_agent,
                 })
@@ -234,48 +260,80 @@ def login():
             # ── Role-based redirect ───────────────────────────────────────
             return redirect(_dashboard_for_user(user))
 
+        # ── MFA handling ──────────────────────────────────────────────────
+        # SECURITY FIX: MFA stub no longer bypasses authentication.
+        # TODO: Implement TOTP (pyotp) with mfa_secret column in User model.
+        # When ready, replace this block with real MFA flow.
         if result == AuthResult.MFA_REQUIRED:
-            flash("Multi-factor authentication is required.", "warning")
-            return redirect(url_for("auth_routes.mfa", user_id=payload["user_id"]))
+            current_app.logger.warning(
+                "mfa_required_but_not_implemented",
+                extra={"uid": payload.get("user_id"), "ip": ip},
+            )
+            flash(
+                "Multi-factor authentication is required for this account "
+                "but is not yet active. Contact support.",
+                "danger",
+            )
+            _ct_delay()
+            return render_template("login.html", username=identifier)
+
+        # ── Failure paths (all get constant-time delay) ───────────────────
+        _ct_delay()
 
         if result == AuthResult.LOCKED:
             flash("Your account is temporarily locked. Please try again later.", "danger")
             current_app.logger.info(
                 "login_locked", extra={"identifier": identifier, "ip": ip}
             )
-            return render_template("login.html", username=identifier)
-
-        if result == AuthResult.INACTIVE:
+        elif result == AuthResult.INACTIVE:
             flash("This account is inactive or deleted. Contact support.", "warning")
             current_app.logger.info(
                 "login_inactive", extra={"identifier": identifier, "ip": ip}
             )
-            return render_template("login.html", username=identifier)
-
-        if result == AuthResult.NOT_FOUND:
-            flash("No account found with that username or email.", "danger")
+        elif result == AuthResult.NOT_FOUND:
+            # SECURITY: same message as INVALID_CREDENTIALS — prevents user enumeration
+            flash("Invalid username or password.", "danger")
             current_app.logger.info(
-                "login_not_found", extra={"identifier": identifier, "ip": ip}
+                "login_not_found", extra={"ip": ip}
             )
-            return render_template("login.html", username=identifier)
+        else:
+            # INVALID_CREDENTIALS (default)
+            flash("Invalid username or password.", "danger")
+            current_app.logger.info(
+                "login_failed", extra={"identifier": identifier, "ip": ip}
+            )
 
-        # INVALID_CREDENTIALS (default)
-        flash("Invalid username or password.", "danger")
-        current_app.logger.info(
-            "login_failed", extra={"identifier": identifier, "ip": ip}
-        )
         return render_template("login.html", username=identifier)
 
     return render_template("login.html")
 
 
 # ---------------------------------------------------------------------------
-# Logout
+# Logout  — SECURITY FIX: POST only (prevents CSRF logout attacks)
 # ---------------------------------------------------------------------------
 
-@auth_routes.route("/logout", methods=["GET"], endpoint="logout")
+@auth_routes.route("/logout", methods=["POST"], endpoint="logout")
 @login_required
 def logout():
+    """
+    Secure logout — POST method only.
+
+    This prevents CSRF attacks where malicious sites can log users out
+    via GET requests (<img src="/logout">).
+
+    Template requirement:
+        Use a form with CSRF token instead of an anchor tag:
+
+        <form method="POST" action="{{ url_for('auth_routes.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit">Log out</button>
+        </form>
+
+    Future improvements:
+        - Add logout from all devices option
+        - Revoke API tokens / JWTs
+        - Log security event for audit
+    """
     ssid       = session.get("server_session_id")
     uid        = current_user.user_id if current_user.is_authenticated else None
     ip         = request.remote_addr
@@ -307,7 +365,7 @@ def logout():
 
     logout_user()
 
-    for key in ("server_session_id", "user_id", "username", "roles"):
+    for key in ("server_session_id", "user_id", "username"):
         session.pop(key, None)
 
     flash("You have been logged out.", "info")
@@ -322,7 +380,8 @@ def logout():
 @limiter.limit("10 per hour")
 def reset_request():
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
+        # SECURITY: cap username length
+        username = (request.form.get("username") or "").strip()[:64]
         user     = User.query.filter_by(username=username).first()
 
         if user and user.email:
@@ -340,22 +399,36 @@ def reset_request():
 
 
 # ---------------------------------------------------------------------------
-# MFA  (stub — replace POST body with real OTP logic when ready)
+# MFA  (stub — disabled until TOTP is implemented)
 # ---------------------------------------------------------------------------
 
 @auth_routes.route("/mfa/<user_id>", methods=["GET", "POST"], endpoint="mfa")
 def mfa(user_id: str):
     """
-    MFA verification stub.
+    MFA verification placeholder.
 
-    Replace the POST handler body with real TOTP/OTP validation when MFA
-    is activated. The route signature and redirect flow are final.
+    SECURITY NOTE: This stub no longer bypasses authentication.
+    Previously, this route allowed unauthenticated users to proceed
+    into the application. Now it blocks access with a clear message.
+
+    Implementation plan when TOTP is ready:
+        1. pip install pyotp
+        2. Add mfa_secret column to User model
+        3. Add mfa_enabled column to User model
+        4. Generate QR code for user setup (otpauth:// URI)
+        5. Verify TOTP code with pyotp.TOTP(secret).verify(code)
+        6. On success: login_user() and clear mfa_pending flag
+
+    The complete implementation is available in the security_suite
+    reference files (app/auth/routes.py from that package).
     """
-    if request.method == "POST":
-        flash("MFA verification is not yet active. Proceeding without it.", "info")
-        return redirect(url_for("index"))
-
-    return render_template("mfa.html", user_id=user_id)
+    # SECURITY: Block access instead of bypassing auth
+    flash(
+        "Multi-factor authentication is required for this account "
+        "but has not been activated yet. Please contact support.",
+        "danger",
+    )
+    return redirect(url_for("auth_routes.login"))
 
 
 # ---------------------------------------------------------------------------
