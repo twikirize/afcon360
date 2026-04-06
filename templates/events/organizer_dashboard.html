@@ -1,0 +1,255 @@
+{#
+  FILE: templates/events/organizer_dashboard.html
+  PURPOSE: Event-specific dashboard for organizers
+  ACCESS: Event organizer only
+  RELATED: events.organizer_dashboard route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Organizer Dashboard: {{ event.name }} - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-8">
+            <h1 class="display-5 mb-0">
+                <i class="fas fa-chart-line"></i>
+                Dashboard: {{ event.name }}
+            </h1>
+            <p class="text-muted">Manage your event, track registrations, and coordinate staff</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <div class="btn-group">
+                <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-edit"></i> Edit Event
+                </a>
+                <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-external-link-alt"></i> View Public Page
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# Stats Row #}
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-primary text-white mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50">Total Registrations</h6>
+                            <h2 class="mb-0">{{ stats.event.registration_count or registrations|length }}</h2>
+                        </div>
+                        <i class="fas fa-users fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-success text-white mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50">Total Revenue</h6>
+                            <h2 class="mb-0">${{ "%.2f"|format(stats.total_revenue or 0) }}</h2>
+                        </div>
+                        <i class="fas fa-dollar-sign fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-info text-white mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50">Checked In</h6>
+                            <h2 class="mb-0">{{ registrations|selectattr('status', 'equalto', 'checked_in')|list|length }}</h2>
+                        </div>
+                        <i class="fas fa-user-check fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 bg-warning text-white mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50">Capacity Used</h6>
+                            <h2 class="mb-0">
+                                {% if event.max_capacity %}
+                                    {{ "%.1f"|format((registrations|length / event.max_capacity) * 100) }}%
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </h2>
+                        </div>
+                        <i class="fas fa-percentage fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        {# Ticket Tier Breakdown #}
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-tags me-2"></i>Ticket Tiers</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    {% if event.ticket_types %}
+                        {% for tt in event.ticket_types %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong>{{ tt.name }}</strong>
+                                <span class="badge bg-light text-dark">{{ tt.registration_count }} / {{ tt.capacity if tt.capacity else '∞' }}</span>
+                            </div>
+                            <div class="progress" style="height: 5px;">
+                                {% set percent = (tt.registration_count / tt.capacity * 100) if tt.capacity else 0 %}
+                                <div class="progress-bar" role="progressbar" style="width: {{ percent }}%"
+                                     aria-valuenow="{{ tt.registration_count }}" aria-valuemin="0" aria-valuemax="{{ tt.capacity }}"></div>
+                            </div>
+                            <small class="text-muted">${{ tt.price }} each</small>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="list-group-item text-center py-4">
+                            <p class="text-muted mb-0">No ticket tiers defined.</p>
+                            <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" class="btn btn-sm btn-link">Add Tiers</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# Recent Registrations #}
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Registrations</h5>
+                    <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="btn btn-sm btn-outline-primary">View All</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Ticket</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if registrations %}
+                                {% for reg in registrations %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ reg.full_name }}</div>
+                                        <small class="text-muted">{{ reg.email }}</small>
+                                    </td>
+                                    <td><span class="badge bg-info text-dark">{{ reg.ticket_type }}</span></td>
+                                    <td>
+                                        <span class="badge {% if reg.status == 'checked_in' %}bg-success{% elif reg.status == 'confirmed' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                            {{ reg.status }}
+                                        </span>
+                                    </td>
+                                    <td><small>{{ reg.created_at[:10] }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">No registrations yet.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Quick Links & Staff Row #}
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-tools me-2"></i>Event Management</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 border-light hover-bg-light">
+                                <i class="fas fa-users-cog fa-2x mb-2 text-primary"></i>
+                                <div class="small fw-bold">Attendees</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 border-light hover-bg-light">
+                                <i class="fas fa-user-shield fa-2x mb-2 text-success"></i>
+                                <div class="small fw-bold">Manage Staff</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="#" class="card text-center text-decoration-none p-3 border-light hover-bg-light opacity-50">
+                                <i class="fas fa-bullhorn fa-2x mb-2 text-warning"></i>
+                                <div class="small fw-bold">Announcements</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="#" class="card text-center text-decoration-none p-3 border-light hover-bg-light opacity-50">
+                                <i class="fas fa-file-invoice-dollar fa-2x mb-2 text-danger"></i>
+                                <div class="small fw-bold">Financials</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Event Details Summary #}
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Event Summary</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Category</dt>
+                        <dd class="col-sm-8">{{ event.category|capitalize }}</dd>
+
+                        <dt class="col-sm-4">Status</dt>
+                        <dd class="col-sm-8">
+                            <span class="badge {% if event.status == 'active' %}bg-success{% elif event.status == 'pending' %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ event.status|upper }}
+                            </span>
+                        </dd>
+
+                        <dt class="col-sm-4">Location</dt>
+                        <dd class="col-sm-8">{{ event.city }}, {{ event.country }}</dd>
+
+                        <dt class="col-sm-4">Venue</dt>
+                        <dd class="col-sm-8">{{ event.venue or 'TBD' }}</dd>
+
+                        <dt class="col-sm-4">Start Date</dt>
+                        <dd class="col-sm-8">{{ event.start_date[:10] if event.start_date else 'TBD' }}</dd>
+
+                        <dt class="col-sm-4">End Date</dt>
+                        <dd class="col-sm-8">{{ event.end_date[:10] if event.end_date else 'TBD' }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.hover-bg-light:hover {
+    background-color: #f8f9fa;
+    transition: background-color 0.2s;
+}
+</style>
+{% endblock %}

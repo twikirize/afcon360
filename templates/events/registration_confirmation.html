@@ -1,0 +1,131 @@
+{#
+  FILE: templates/events/registration_confirmation.html
+  PURPOSE: Display QR code and registration confirmation after successful registration
+  ACCESS: Authenticated users only
+  RELATED: events.registration_confirmation route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Registration Confirmed - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white text-center">
+                    <i class="fas fa-check-circle fa-3x"></i>
+                    <h3 class="mb-0 mt-2">Registration Successful!</h3>
+                </div>
+                <div class="card-body text-center">
+
+                    <div class="alert alert-success">
+                        <strong>Welcome to {{ event.name }}!</strong><br>
+                        Your registration has been confirmed.
+                    </div>
+
+                    {# Ticket Details #}
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="border rounded p-3 bg-light">
+                                <small class="text-muted">Registration Reference</small>
+                                <div class="fw-bold">{{ registration.registration_ref }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-3 bg-light">
+                                <small class="text-muted">Ticket Number</small>
+                                <div class="fw-bold">{{ registration.ticket_number }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# QR Code #}
+                    <div class="border p-4 text-center bg-white rounded mb-4">
+                        <h5><i class="fas fa-qrcode"></i> Your Entry QR Code</h5>
+                        <img src="{{ qr_code }}" alt="QR Code"
+                             class="img-fluid" style="max-width: 250px; margin: 15px auto;">
+                        <p class="small text-muted mt-2">
+                            <i class="fas fa-save"></i> Save this QR code to your phone<br>
+                            <i class="fas fa-print"></i> Or print it for entry
+                        </p>
+                    </div>
+
+                    {# Attendee Details #}
+                    <div class="text-start mb-4">
+                        <h5>Attendee Information</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <th style="width: 40%">Full Name:</th>
+                                <td>{{ registration.full_name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Email:</th>
+                                <td>{{ registration.email }}</td>
+                            </tr>
+                            <tr>
+                                <th>Ticket Type:</th>
+                                <td><span class="badge bg-info">{{ registration.ticket_type|upper }}</span></td>
+                            </tr>
+                            <tr>
+                                <th>Registration Date:</th>
+                                <td>{{ registration.created_at[:19] if registration.created_at else 'Today' }}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    {# Event Info #}
+                    <div class="alert alert-info text-start">
+                        <h6><i class="fas fa-info-circle"></i> Event Details</h6>
+                        <p class="mb-1"><strong>Event:</strong> {{ event.name }}</p>
+                        <p class="mb-1"><strong>Date:</strong>
+                            {{ event.start_date[:10] if event.start_date else 'TBD' }}
+                            {% if event.end_date and event.end_date != event.start_date %}
+                                - {{ event.end_date[:10] }}
+                            {% endif %}
+                        </p>
+                        <p class="mb-0"><strong>Venue:</strong> {{ event.venue or event.city }}</p>
+                    </div>
+
+                    {# Action Buttons #}
+                    <div class="d-flex justify-content-center gap-2">
+                        <button onclick="window.print()" class="btn btn-secondary">
+                            <i class="fas fa-print"></i> Print Ticket
+                        </button>
+                        <a href="{{ url_for('events.my_registrations') }}" class="btn btn-primary">
+                            <i class="fas fa-list"></i> My Registrations
+                        </a>
+                        <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-outline-primary">
+                            <i class="fas fa-calendar-alt"></i> Event Page
+                        </a>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <p class="small text-muted">
+                        <i class="fas fa-envelope"></i>
+                        A confirmation email has been sent to {{ registration.email }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .navbar, .site-footer, .btn, .alert-info, .card-header .btn,
+    .d-flex.justify-content-center, hr {
+        display: none !important;
+    }
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+    body {
+        background: white !important;
+    }
+}
+</style>
+{% endblock %}

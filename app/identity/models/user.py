@@ -173,9 +173,13 @@ class User(UserMixin, db.Model):
 
     def has_global_role(self, *role_names: str) -> bool:
         """Return True if the user has any of the given global roles."""
-        if self.is_app_owner():
-            return True
-        return any(rn in role_names for rn in self.role_names)
+        try:
+            if self.is_app_owner():
+                return True
+            return any(rn in role_names for rn in self.role_names)
+        except Exception as e:
+            current_app.logger.error(f"RBAC Error for user {self.id}: {e}")
+            return False
 
     # ---------------------------
     # Organisation role helpers

@@ -1,0 +1,391 @@
+{% extends "admin/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Wallet Statistics</h1>
+            <p class="text-muted">Comprehensive analytics and insights</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary" onclick="refreshStats()">
+                <i class="bi bi-arrow-repeat"></i> Refresh
+            </button>
+            <button class="btn btn-outline-success" onclick="exportStats()">
+                <i class="bi bi-download"></i> Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Wallets</h6>
+                    <h2 class="mb-0" id="totalWallets">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-title">Frozen Wallets</h6>
+                    <h2 class="mb-0" id="frozenWallets">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Verified Wallets</h6>
+                    <h2 class="mb-0" id="verifiedWallets">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Unverified Wallets</h6>
+                    <h2 class="mb-0" id="unverifiedWallets">0</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balance Cards -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Total Balance (USD)</h5>
+                </div>
+                <div class="card-body text-center">
+                    <h1 class="display-3 text-primary" id="totalBalanceHome">0.00</h1>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Total Balance (UGX)</h5>
+                </div>
+                <div class="card-body text-center">
+                    <h1 class="display-3 text-success" id="totalBalanceLocal">0.00</h1>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Growth Metrics -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">New Wallets</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <h3 id="newWalletsWeek">0</h3>
+                            <p class="text-muted">Last 7 Days</p>
+                        </div>
+                        <div class="col-6">
+                            <h3 id="newWalletsMonth">0</h3>
+                            <p class="text-muted">Last 30 Days</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Daily Transaction Volume (Last 7 Days)</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="dailyVolumeChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Volume by Type -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Volume by Transaction Type</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="volumeByTypeChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Volume by Currency</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="volumeByCurrencyChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Users by Balance -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Top 10 Users by Balance</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Balance (USD)</th>
+                            <th>Balance (UGX)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topUsersTableBody">
+                        <tr><td colspan="4" class="text-center py-4">Loading...</td</tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let dailyVolumeChart = null;
+let volumeByTypeChart = null;
+let volumeByCurrencyChart = null;
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/admin/wallet/stats');
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            renderStats(result.data);
+        } else {
+            console.error('Error loading stats:', result.message);
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+function renderStats(data) {
+    // Overview
+    document.getElementById('totalWallets').textContent = data.total_wallets || 0;
+    document.getElementById('frozenWallets').textContent = data.frozen_wallets || 0;
+    document.getElementById('verifiedWallets').textContent = data.verified_wallets || 0;
+    document.getElementById('unverifiedWallets').textContent = data.unverified_wallets || 0;
+
+    // Balances
+    document.getElementById('totalBalanceHome').textContent = parseFloat(data.total_balance_home).toLocaleString();
+    document.getElementById('totalBalanceLocal').textContent = parseFloat(data.total_balance_local).toLocaleString();
+
+    // Growth
+    document.getElementById('newWalletsWeek').textContent = data.new_wallets_week || 0;
+    document.getElementById('newWalletsMonth').textContent = data.new_wallets_month || 0;
+
+    // Charts
+    if (data.daily_volume_last_7_days) {
+        renderDailyVolumeChart(data.daily_volume_last_7_days);
+    }
+
+    if (data.volume_by_type) {
+        renderVolumeByTypeChart(data.volume_by_type);
+    }
+
+    if (data.volume_by_currency) {
+        renderVolumeByCurrencyChart(data.volume_by_currency);
+    }
+
+    // Top users
+    if (data.top_users_by_balance) {
+        renderTopUsers(data.top_users_by_balance);
+    }
+}
+
+function renderDailyVolumeChart(dailyVolume) {
+    const ctx = document.getElementById('dailyVolumeChart').getContext('2d');
+    const dates = dailyVolume.map(d => d.date);
+    const volumes = dailyVolume.map(d => parseFloat(d.volume));
+
+    if (dailyVolumeChart) {
+        dailyVolumeChart.destroy();
+    }
+
+    dailyVolumeChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates.reverse(),
+            datasets: [{
+                label: 'Transaction Volume (USD)',
+                data: volumes.reverse(),
+                borderColor: '#4299e1',
+                backgroundColor: 'rgba(66, 153, 225, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' }
+            }
+        }
+    });
+}
+
+function renderVolumeByTypeChart(volumeByType) {
+    const ctx = document.getElementById('volumeByTypeChart').getContext('2d');
+    const types = volumeByType.map(v => v.type);
+    const totals = volumeByType.map(v => parseFloat(v.total));
+    const colors = {
+        'deposit': '#48bb78',
+        'withdrawal': '#f56565',
+        'send': '#ed8936',
+        'receive': '#4299e1',
+        'admin_adjustment': '#9f7aea'
+    };
+
+    if (volumeByTypeChart) {
+        volumeByTypeChart.destroy();
+    }
+
+    volumeByTypeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: types,
+            datasets: [{
+                label: 'Total Volume',
+                data: totals,
+                backgroundColor: types.map(t => colors[t] || '#718096'),
+                borderRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+function renderVolumeByCurrencyChart(volumeByCurrency) {
+    const ctx = document.getElementById('volumeByCurrencyChart').getContext('2d');
+    const currencies = volumeByCurrency.map(v => v.currency);
+    const totals = volumeByCurrency.map(v => parseFloat(v.total));
+
+    if (volumeByCurrencyChart) {
+        volumeByCurrencyChart.destroy();
+    }
+
+    volumeByCurrencyChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: currencies,
+            datasets: [{
+                data: totals,
+                backgroundColor: ['#4299e1', '#48bb78', '#ed8936', '#9f7aea', '#f56565']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+}
+
+function renderTopUsers(topUsers) {
+    const tbody = document.getElementById('topUsersTableBody');
+
+    if (!topUsers || topUsers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No users found</td</tr>';
+        return;
+    }
+
+    tbody.innerHTML = topUsers.map(user => `
+        <tr>
+            <td>
+                <strong>${escapeHtml(user.username || 'Unknown')}</strong><br>
+                <small class="text-muted">ID: ${user.user_id}</small>
+            </td>
+            <td class="text-success">${parseFloat(user.balance_home).toLocaleString()} USD</td>
+            <td>${parseFloat(user.balance_local).toLocaleString()} UGX</td>
+            <td>
+                <a href="/admin/wallets/${user.user_id}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-eye"></i> View
+                </a>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function refreshStats() {
+    loadStats();
+    showToast('info', 'Statistics refreshed');
+}
+
+function exportStats() {
+    fetch('/api/admin/wallet/stats')
+        .then(res => res.json())
+        .then(result => {
+            if (result.status === 'success') {
+                const dataStr = JSON.stringify(result.data, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `wallet_stats_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('success', 'Statistics exported');
+            }
+        })
+        .catch(error => {
+            console.error('Error exporting stats:', error);
+            showToast('error', 'Failed to export statistics');
+        });
+}
+
+function showToast(type, message) {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'info' ? 'info' : 'danger'} position-fixed bottom-0 end-0 m-3`;
+    toast.style.zIndex = 9999;
+    toast.style.padding = '12px 20px';
+    toast.style.borderRadius = '8px';
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load on page load
+loadStats();
+
+// Refresh every 60 seconds
+setInterval(loadStats, 60000);
+</script>
+{% endblock %}

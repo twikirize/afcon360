@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Event - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Edit Event: {{ event.name }}</h4>
+                    <span class="badge {% if event.status == 'active' %}bg-success{% elif event.status == 'pending' %}bg-warning{% else %}bg-danger{% endif %}">
+                        {{ event.status|upper }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="event-form">
+                        <div class="mb-3">
+                            <label class="form-label">Event Name *</label>
+                            <input type="text" name="name" class="form-control" value="{{ event.name }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="4">{{ event.description }}</textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">City *</label>
+                                <input type="text" name="city" class="form-control" value="{{ event.city }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Venue</label>
+                                <input type="text" name="venue" class="form-control" value="{{ event.venue }}">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Start Date</label>
+                                <input type="date" name="start_date" class="form-control" value="{{ event.start_date[:10] if event.start_date else '' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">End Date</label>
+                                <input type="date" name="end_date" class="form-control" value="{{ event.end_date[:10] if event.end_date else '' }}">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Website</label>
+                            <input type="url" name="website" class="form-control" value="{{ event.website }}">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Contact Email</label>
+                                <input type="email" name="contact_email" class="form-control" value="{{ event.contact_email }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Contact Phone</label>
+                                <input type="tel" name="contact_phone" class="form-control" value="{{ event.contact_phone }}">
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('events.my_events') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary" id="save-btn">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Ticket Management Section -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Ticket Tiers</h5>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addTicketModal">
+                        <i class="fas fa-plus"></i> Add
+                    </button>
+                </div>
+                <div class="list-group list-group-flush" id="ticket-list">
+                    {% if event.ticket_types %}
+                        {% for tt in event.ticket_types %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-0">{{ tt.name }}</h6>
+                                    <small class="text-muted">{{ event.currency }} {{ tt.price }}</small>
+                                </div>
+                                <span class="badge bg-light text-dark border">
+                                    {{ tt.capacity if tt.capacity else '∞' }}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="list-group-item text-center text-muted py-4">
+                            No ticket tiers defined.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Staff Management Quick Link -->
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h6>Event Management</h6>
+                    <div class="d-grid gap-2 mt-3">
+                        <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="btn btn-outline-primary btn-sm text-start">
+                            <i class="fas fa-users me-2"></i> View Attendees
+                        </a>
+                        <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}" class="btn btn-outline-primary btn-sm text-start">
+                            <i class="fas fa-user-shield me-2"></i> Manage Staff
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Ticket Modal -->
+<div class="modal fade" id="addTicketModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="add-ticket-form">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Ticket Tier</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Tier Name *</label>
+                        <input type="text" name="name" class="form-control" placeholder="e.g. VIP, Early Bird" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Price ({{ event.currency }}) *</label>
+                        <input type="number" name="price" class="form-control" step="0.01" value="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Capacity (Optional)</label>
+                        <input type="number" name="capacity" class="form-control" placeholder="Unlimited">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="add-ticket-btn">Add Tier</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Main event edit form
+document.getElementById('event-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const saveBtn = document.getElementById('save-btn');
+    saveBtn.disabled = true;
+
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.href = result.redirect;
+        } else {
+            alert('Error: ' + result.error);
+            saveBtn.disabled = false;
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+        saveBtn.disabled = false;
+    }
+});
+
+// Add ticket tier form
+document.getElementById('add-ticket-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const addBtn = document.getElementById('add-ticket-btn');
+    addBtn.disabled = true;
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        const response = await fetch('{{ url_for("events.add_ticket_type", event_slug=event.slug) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            location.reload(); // Quickest way to refresh the ticket list
+        } else {
+            alert('Error: ' + result.error);
+            addBtn.disabled = false;
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+        addBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

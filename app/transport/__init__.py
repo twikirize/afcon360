@@ -1,17 +1,13 @@
 # app/transport/__init__.py
 """
 AFCON360 – Transport Module
-Responsible for:
-- Transport blueprint registration
-- Ensuring transport models are visible to Alembic
-- Initializing transport-related services
 """
 
 from flask import Blueprint
 import logging
 
 # -------------------------------------------------------------------
-# Blueprints (created at module level — safe, no circular imports)
+# Blueprints — created at module level (safe)
 # -------------------------------------------------------------------
 
 transport_bp = Blueprint(
@@ -31,82 +27,80 @@ transport_admin_bp = Blueprint(
 logger = logging.getLogger("transport")
 
 # -------------------------------------------------------------------
-# Models — imported here so Alembic can detect them
-# Safe because models only import from app.extensions (db)
+# Lazy Service Getters
 # -------------------------------------------------------------------
-from app.transport import models  # noqa: F401
+
+def get_provider_service():
+    from app.transport.services.provider_service import get_provider_service as get
+    return get()
+
+def get_booking_service():
+    from app.transport.services.booking_service import get_booking_service as get
+    return get()
+
+def get_dashboard_service():
+    from app.transport.services.dashboard_service import get_dashboard_service as get
+    return get()
+
+def get_matching_service():
+    from app.transport.services.matching_service import get_matching_service as get
+    return get()
+
+def get_payment_service():
+    from app.transport.services.payment_service import get_payment_service as get
+    return get()
+
+def get_tracking_service():
+    from app.transport.services.tracking_service import get_tracking_service as get
+    return get()
+
+def get_notification_service():
+    from app.transport.services.notification_service import get_notification_service as get
+    return get()
+
+def get_promotion_service():
+    from app.transport.services.promotion_service import get_promotion_service as get
+    return get()
+
+def get_external_platforms():
+    from app.transport.services.external_platforms import get_external_platforms as get
+    return get()
+
+def get_settings_service():
+    from app.transport.services.settings_service import get_settings_service as get
+    return get()
+
+def init_provider_service():
+    from app.transport.services.provider_service import init_provider_service as init
+    return init()
 
 # -------------------------------------------------------------------
-# Service getters — lazy singletons, safe to import at module level
-# -------------------------------------------------------------------
-from app.transport.services import (
-    get_provider_service,
-    get_booking_service,
-    get_dashboard_service,
-    get_matching_service,
-    get_payment_service,
-    get_tracking_service,
-    get_notification_service,
-    get_promotion_service,
-    get_external_platforms,
-    get_settings_service,
-    init_provider_service,
-)
-
-# -------------------------------------------------------------------
-# Module initialization hook — called from create_app()
-# Routes and API are imported HERE to avoid circular imports.
-# By the time this runs, blueprints exist and Flask app is ready.
+# Module initialization hook
 # -------------------------------------------------------------------
 
 def init_transport_module(app):
     """
     Initialize Transport module services and register all routes.
-    Must be called from create_app() AFTER blueprints are registered.
     """
-    # 1. Initialize services (order matters — provider first)
-    init_provider_service()
-    get_dashboard_service()
-    get_booking_service()
-    get_matching_service()
-    get_payment_service()
-    get_tracking_service()
-    get_notification_service()
-    get_promotion_service()
-    get_external_platforms()
-    get_settings_service()
+    # 1. Models — imported here so they are registered with SQLAlchemy
+    # but only when the module is actually initialized.
+    from app.transport import models  # noqa: F401
 
     # 2. Import web routes (registers @transport_bp.route decorators)
-    #    This is safe here because blueprints already exist above.
     from app.transport import routes  # noqa: F401
 
-    # 3. Initialize REST API (registers all Flask-RESTful resources)
-    #    init_api() handles its own internal imports to avoid cycles.
+    # 3. Initialize REST API
     from app.transport.api import init_api
     init_api(app)
 
-    app.logger.info("✅ Transport module initialized")
+    app.logger.info("✅ Transport module initialized (Deep Lazy)")
 
 
-# -------------------------------------------------------------------
-# Utility helpers
-# -------------------------------------------------------------------
 def paginate(query, page=1, per_page=25):
-    """
-    Helper to paginate a SQLAlchemy query safely.
-    Usage:
-        paginated = paginate(User.query, page=2, per_page=20)
-    Returns a Pagination object with .items, .total, .pages, etc.
-    """
-    # limit per_page to 100
     per_page = min(per_page, 100)
     page = max(page, 1)
     return query.paginate(page=page, per_page=per_page, error_out=False)
 
-
-# -------------------------------------------------------------------
-# Public exports
-# -------------------------------------------------------------------
 __all__ = [
     "transport_bp",
     "transport_admin_bp",
@@ -116,7 +110,7 @@ __all__ = [
     "get_matching_service",
     "get_payment_service",
     "get_tracking_service",
-    "get_notification_service",
+    "get_notification_status",
     "get_promotion_service",
     "get_external_platforms",
     "get_settings_service",

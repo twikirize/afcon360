@@ -7,6 +7,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 import redis
+import os
 
 # Core DB + migrations
 db = SQLAlchemy()
@@ -20,20 +21,45 @@ login_manager.session_protection = "strong"
 # CSRF protection for forms
 csrf = CSRFProtect()
 
-# Rate limiting (create unbound; init in factory)
-limiter = Limiter(key_func=get_remote_address, default_limits=[])
+# Redis URL from environment
+_redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# Caching
-cache = Cache(config={"CACHE_TYPE": "SimpleCache"})
+# Rate limiting with Redis storage
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["2000 per day", "500 per hour"],
+    storage_uri=_redis_url,
+    storage_options={"socket_connect_timeout": 30},
+    strategy="fixed-window",
+)
 
-# Caching
-#cache = Cache(config={"CACHE_TYPE": "RedisCache", "CACHE_REDIS_URL": "redis://localhost:6379/0"}) #
+# Caching with Redis
+cache = Cache(config={
+    "CACHE_TYPE": "RedisCache",
+    "CACHE_REDIS_URL": _redis_url,
+    "CACHE_DEFAULT_TIMEOUT": 300
+})
 
-# or RedisCache if you want Redis
-#Redis client
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
+# Redis client (lazy-loaded)
+class LazyRedis:
+    def __init__(self):
+        self._client = None
+        self._url = _redis_url
 
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = redis.Redis.from_url(
+                self._url,
+                decode_responses=False,
+                socket_connect_timeout=5,
+                socket_keepalive=True
+            )
+            # Test connection
+            self._client.ping()
+        return self._client
 
-# Optional: add other shared extensions here (e.g., mail, cache)
-# from flask_mail import Mail
-# mail = Mail()
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+redis_client = LazyRedis()

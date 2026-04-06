@@ -46,10 +46,11 @@ def require_accommodation_permission(permission):
 # ==============================
 # IMPORT BLUEPRINTS
 # ==============================
-from app.accommodation.routes import guest, host, admin, event
+from app.accommodation.routes import guest, host, admin
 
-# IMPORTANT: Trigger route registration
-import app.accommodation.routes.events_routes
+# ==============================
+# REMOVED - events_routes no longer exists in accommodation
+# import app.accommodation.routes.events_routes  # ← DELETE THIS LINE
 
 
 # ==============================
@@ -58,7 +59,6 @@ import app.accommodation.routes.events_routes
 accommodation_bp.register_blueprint(guest, url_prefix='/guest')
 accommodation_bp.register_blueprint(host, url_prefix='/host')
 accommodation_bp.register_blueprint(admin, url_prefix='/admin')
-accommodation_bp.register_blueprint(event, url_prefix='/event')
 
 
 # ==============================

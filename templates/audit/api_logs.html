@@ -1,0 +1,134 @@
+{% extends "audit/base_audit.html" %}
+
+{% block audit_title %}API Call Logs{% endblock %}
+{% block audit_subtitle %}Third-party API integration calls and responses{% endblock %}
+{% block api_endpoint %}api{% endblock %}
+{% block export_type %}api{% endblock %}
+
+{% block filters %}
+<div class="col-md-3">
+    <label class="form-label">Service Name</label>
+    <select class="form-select filter-input" id="service_name">
+        <option value="">All</option>
+        <option value="flutterwave">Flutterwave</option>
+        <option value="paystack">Paystack</option>
+        <option value="mtn_momo">MTN MoMo</option>
+        <option value="airtel_money">Airtel Money</option>
+    </select>
+</div>
+<div class="col-md-2">
+    <label class="form-label">Status</label>
+    <select class="form-select filter-input" id="status">
+        <option value="">All</option>
+        <option value="success">Success</option>
+        <option value="failure">Failure</option>
+        <option value="timeout">Timeout</option>
+    </select>
+</div>
+<div class="col-md-3">
+    <label class="form-label">Start Date</label>
+    <input type="date" class="form-control filter-input" id="start_date">
+</div>
+<div class="col-md-3">
+    <label class="form-label">End Date</label>
+    <input type="date" class="form-control filter-input" id="end_date">
+</div>
+<div class="col-md-1">
+    <label class="form-label">&nbsp;</label>
+    <button class="btn btn-primary w-100" onclick="applyFilters()">Filter</button>
+</div>
+{% endblock %}
+
+{% block summary %}
+<div class="col-md-4">
+    <div class="card bg-success text-white">
+        <div class="card-body">
+            <h6>Success Rate</h6>
+            <h3 id="successRate">0%</h3>
+        </div>
+    </div>
+</div>
+<div class="col-md-4">
+    <div class="card bg-danger text-white">
+        <div class="card-body">
+            <h6>Failed Calls</h6>
+            <h3 id="failedCount">0</h3>
+        </div>
+    </div>
+</div>
+<div class="col-md-4">
+    <div class="card bg-info text-white">
+        <div class="card-body">
+            <h6>Avg Response Time</h6>
+            <h3 id="avgResponseTime">0ms</h3>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block table_header %}
+<thead>
+    <tr>
+        <th>Service</th>
+        <th>Endpoint</th>
+        <th>Method</th>
+        <th>Status</th>
+        <th>Response Code</th>
+        <th>Response Time</th>
+        <th>Created At</th>
+        <th>Error</th>
+    </tr>
+</thead>
+{% endblock %}
+
+<script>
+function applyFilters() {
+    currentFilters = {
+        service_name: document.getElementById('service_name').value,
+        status: document.getElementById('status').value,
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value
+    };
+    Object.keys(currentFilters).forEach(k => !currentFilters[k] && delete currentFilters[k]);
+    currentPage = 1;
+    loadData();
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+    const apiCalls = data.api_calls || [];
+    
+    if (!apiCalls.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No API calls found</td></tr>';
+        return;
+    }
+    
+    // Calculate summary stats
+    const total = apiCalls.length;
+    const successCount = apiCalls.filter(c => c.status === 'success').length;
+    const failedCount = apiCalls.filter(c => c.status === 'failure').length;
+    const avgTime = apiCalls.reduce((sum, c) => sum + (c.response_time_ms || 0), 0) / total;
+    
+    document.getElementById('successRate').textContent = Math.round((successCount / total) * 100) + '%';
+    document.getElementById('failedCount').textContent = failedCount;
+    document.getElementById('avgResponseTime').textContent = Math.round(avgTime) + 'ms';
+    
+    tbody.innerHTML = apiCalls.map(call => `
+        <tr class="${call.status === 'failure' ? 'table-danger' : call.status === 'timeout' ? 'table-warning' : ''}">
+            <td><strong>${call.service_name}</strong></td>
+            <td><code>${call.endpoint.substring(0, 50)}${call.endpoint.length > 50 ? '...' : ''}</code></td>
+            <td><span class="badge bg-secondary">${call.method}</span></td>
+            <td>
+                <span class="badge bg-${call.status === 'success' ? 'success' : call.status === 'failure' ? 'danger' : 'warning'}">
+                    ${call.status}
+                </span>
+            </td>
+            <td>${call.response_status || '-'}</td>
+            <td>${call.response_time_ms ? call.response_time_ms + 'ms' : '-'}</td>
+            <td><small>${new Date(call.created_at).toLocaleString()}</small></td>
+            <td>${call.error_message ? '<span class="text-danger">' + call.error_message.substring(0, 50) + '</span>' : '-'}</td>
+        </tr>
+    `).join('');
+}
+</script>
+{% endblock %}

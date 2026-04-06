@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.name }} - AFCON360 Accommodation{% endblock %}
+
+{% block module_styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/public.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Event Hero Section -->
+    <div class="event-hero mb-4" style="background-image: url('https://via.placeholder.com/1200x400/007bff/ffffff?text={{ event.name | urlencode }}');">
+        <div class="container event-hero-content">
+            <h1 class="display-4">{{ event.name }}</h1>
+            <p class="lead">{{ event.description }}</p>
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <p class="mb-1"><i class="fas fa-calendar-alt me-2"></i>
+                    {% if event.start_date %}
+                        {{ event.start_date[:10] }}
+                        {% if event.end_date and event.end_date != event.start_date %}
+                            - {{ event.end_date[:10] }}
+                        {% endif %}
+                    {% else %}
+                        Date TBD
+                    {% endif %}
+                    </p>
+                </div>
+                <div class="col-md-4">
+                    <p class="mb-1"><i class="fas fa-map-marker-alt me-2"></i> {{ event.city }}</p>
+                </div>
+                <div class="col-md-4">
+                    <p class="mb-1"><i class="fas fa-map-pin me-2"></i> {{ event.venue }}</p>
+                </div>
+            </div>
+            <div class="mt-4">
+                <a href="{{ url_for('events.register', event_slug=event.slug) }}" class="btn btn-warning btn-lg">
+                    <i class="fas fa-ticket-alt me-2"></i>Register Now
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Details and Sidebar -->
+    <div class="row event-details-grid">
+        <div class="col-lg-8">
+            <div class="event-info-main">
+                <h2 class="mb-3">About This Event</h2>
+                <p>{{ event.description }}</p>
+
+                <h3 class="mt-4 mb-3">Key Information</h3>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><i class="fas fa-tag me-2"></i><strong>Category:</strong> {{ event.category|capitalize }}</li>
+                    <li class="list-group-item"><i class="fas fa-globe me-2"></i><strong>Location:</strong> {{ event.venue }}, {{ event.city }}, {{ event.country }}</li>
+                    <li class="list-group-item"><i class="fas fa-link me-2"></i><strong>Website:</strong> <a href="{{ event.website }}" target="_blank">{{ event.website }}</a></li>
+                    <li class="list-group-item"><i class="fas fa-envelope me-2"></i><strong>Contact:</strong> {{ event.contact_email }}</li>
+                    <li class="list-group-item"><i class="fas fa-phone me-2"></i><strong>Phone:</strong> {{ event.contact_phone }}</li>
+                </ul>
+
+                <h3 class="mt-4 mb-3">Ticket Information</h3>
+                {% if event.ticket_types %}
+                    <div class="table-responsive">
+                        <table class="table table-striped event-table">
+                            <thead>
+                                <tr>
+                                    <th>Tier</th>
+                                    <th>Price</th>
+                                    <th>Capacity</th>
+                                    <th>Available</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tt in event.ticket_types %}
+                                <tr>
+                                    <td>{{ tt.name }}</td>
+                                    <td>{{ event.currency }} {{ "%.2f"|format(tt.price) }}</td>
+                                    <td>{% if tt.capacity %}{{ tt.capacity }}{% else %}Unlimited{% endif %}</td>
+                                    <td>{% if tt.capacity %}{{ tt.capacity - tt.registration_count }}{% else %}Unlimited{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No specific ticket tiers defined. Check registration for details.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="event-sidebar">
+                <div class="registration-card mb-4">
+                    <h3>Ready to Join?</h3>
+                    {% if event.registration_required %}
+                        <p class="registration-price">
+                            {% if event.ticket_types %}
+                                {% set min_price = (event.ticket_types | map(attribute='price') | min) %}
+                                {% if min_price == 0 %}
+                                    FREE
+                                {% else %}
+                                    From {{ event.currency }} {{ "%.2f"|format(min_price) }}
+                                {% endif %}
+                            {% else %}
+                                FREE
+                            {% endif %}
+                        </p>
+                        <a href="{{ url_for('events.register', event_slug=event.slug) }}" class="btn btn-primary btn-lg w-100">
+                            <i class="fas fa-user-plus me-2"></i>Register Now
+                        </a>
+                    {% else %}
+                        <p class="lead text-success">No Registration Required!</p>
+                        <a href="#" class="btn btn-success btn-lg w-100 disabled">
+                            <i class="fas fa-check-circle me-2"></i>Open Event
+                        </a>
+                    {% endif %}
+                </div>
+
+                <!-- Accommodation Section -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0"><i class="fas fa-hotel me-2"></i>Accommodation near {{ event.city }}</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if properties %}
+                            {% for property in properties[:3] %} {# Show top 3 properties #}
+                            <div class="d-flex mb-3">
+                                <img src="{{ property.images[0] if property.images else 'https://via.placeholder.com/80' }}" alt="{{ property.name }}" class="rounded me-3" style="width: 80px; height: 60px; object-fit: cover;">
+                                <div>
+                                    <h6 class="mb-0">{{ property.name }}</h6>
+                                    <p class="text-muted small mb-1">{{ property.city }}</p>
+                                    <strong class="text-primary">${{ property.price }}</strong> <small class="text-muted">/ night</small>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            <a href="{{ url_for('accommodation.accommodation_guest.search', city=event.city) }}" class="btn btn-outline-secondary btn-sm w-100 mt-3">
+                                View All Accommodation
+                            </a>
+                        {% else %}
+                            <p class="text-muted text-center">No accommodation found in {{ event.city }}.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,1 @@
+console.log("AFCON360 Global Script Loaded");

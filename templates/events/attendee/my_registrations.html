@@ -1,0 +1,138 @@
+{#
+  FILE: templates/events/attendee/my_registrations.html
+  PURPOSE: Display all events a user has registered for, acting as an Attendee Dashboard
+  ACCESS: Authenticated users only
+  RELATED: events.my_registrations route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}My Event Dashboard - AFCON360{% endblock %}
+
+{% block module_styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/attendee.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>
+                <i class="fas fa-ticket-alt text-primary me-2"></i>
+                My Event Dashboard
+            </h1>
+            <p class="lead">Manage your event tickets and discover new opportunities</p>
+        </div>
+    </div>
+
+    {# Summary Section #}
+    <div class="dashboard-summary-row">
+        <div class="dashboard-summary-card">
+            <h3>{{ registrations|length }}</h3>
+            <p>Total Registrations</p>
+        </div>
+
+        <div class="dashboard-summary-card">
+            <h3>${{ "%.2f"|format(wallet_balance) }}</h3>
+            <p>Wallet Balance</p>
+            <a href="{{ url_for('wallet.home') }}" class="btn btn-sm btn-link mt-2">Manage Wallet</a>
+        </div>
+
+        <div class="dashboard-summary-card">
+            <div class="d-grid gap-2 w-100">
+                <a href="{{ url_for('events.list') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-search me-1"></i>Find Events
+                </a>
+                <a href="{{ url_for('events.events_hub') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-rocket me-1"></i>Go to Hub
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# Upcoming Events #}
+    <div class="dashboard-content-card shadow-sm mb-4">
+        <div class="dashboard-content-header bg-primary text-white">
+            <h4 class="text-white"><i class="fas fa-calendar-alt me-2"></i>Upcoming Events</h4>
+        </div>
+        <div class="dashboard-content-body">
+            {% set upcoming_registrations = registrations | selectattr('event.start_date', '>', now()) | list %}
+            {% if upcoming_registrations %}
+                <div class="row row-cols-1 row-cols-md-2 g-4">
+                    {% for reg in upcoming_registrations %}
+                    <div class="col">
+                        <div class="card h-100 border-0 shadow-sm dashboard-event-item-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <h5 class="card-title mb-0">{{ reg.event.name }}</h5>
+                                    <span class="badge badge-event-status badge-status-{{ reg.status }}">
+                                        {{ reg.status|upper }}
+                                    </span>
+                                </div>
+                                <p class="text-muted small mb-3">
+                                    <i class="fas fa-map-marker-alt me-1"></i>{{ reg.event.city }}
+                                </p>
+                                <div class="mb-3">
+                                    <small class="text-muted d-block">Ticket: <strong>{{ reg.ticket_number }}</strong></small>
+                                    <small class="text-muted d-block">Date: <strong>{{ reg.event.start_date[:10] }}</strong></small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn btn-sm btn-primary flex-grow-1">
+                                        <i class="fas fa-qrcode me-1"></i>View Ticket
+                                    </a>
+                                    <a href="{{ url_for('events.landing', event_slug=reg.event.slug) }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-info-circle"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <p class="text-muted">You have no upcoming event registrations.</p>
+                    <a href="{{ url_for('events.list') }}" class="btn btn-sm btn-primary">Browse Events</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Past Events #}
+    <div class="dashboard-content-card shadow-sm">
+        <div class="dashboard-content-header bg-light">
+            <h4 class="text-muted"><i class="fas fa-history me-2"></i>Past Registrations</h4>
+        </div>
+        <div class="dashboard-content-body p-0">
+            {% set past_registrations = registrations | selectattr('event.start_date', '<=', now()) | list %}
+            {% if past_registrations %}
+                <div class="list-group list-group-flush">
+                    {% for reg in past_registrations %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">{{ reg.event.name }}</h6>
+                            <small class="text-muted">{{ reg.event.start_date[:10] }} | {{ reg.ticket_type }}</small>
+                        </div>
+                        <span class="badge {% if reg.status == 'checked_in' %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ reg.status|title }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <p class="text-muted mb-0">No past events recorded.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Filter helper #}
+{%- macro now() -%}
+{{ moment.utcnow().strftime('%Y-%m-%d') }}
+{%- endmacro -%}
+
+{% endblock %}

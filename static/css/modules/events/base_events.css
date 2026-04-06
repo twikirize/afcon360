@@ -1,0 +1,120 @@
+/* static/css/modules/events/base_events.css */
+
+/* General Event Module Styles */
+.event-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.event-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.event-card-img {
+    height: 180px;
+    object-fit: cover;
+    width: 100%;
+}
+
+.event-card-body {
+    padding: 15px;
+}
+
+.event-card-title {
+    font-size: 1.25rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.event-card-meta {
+    font-size: 0.85rem;
+    color: #777;
+    margin-bottom: 5px;
+}
+
+.event-card-description {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 15px;
+}
+
+.event-card-footer {
+    padding: 15px;
+    background-color: #f8f8f8;
+    border-top: 1px solid #eee;
+}
+
+/* Badges for status/type */
+.badge-event-status {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.badge-status-active { background-color: #28a745; color: white; }
+.badge-status-pending { background-color: #ffc107; color: #333; }
+.badge-status-rejected { background-color: #dc3545; color: white; }
+.badge-status-confirmed { background-color: #007bff; color: white; }
+.badge-status-checked-in { background-color: #28a745; color: white; }
+.badge-status-cancelled { background-color: #6c757d; color: white; }
+
+.badge-ticket-type {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    background-color: #17a2b8;
+    color: white;
+}
+
+/* General form styling for event module */
+.event-form-section {
+    margin-bottom: 25px;
+    padding: 20px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background-color: #fff;
+}
+
+.event-form-section h5 {
+    color: #007bff;
+    margin-bottom: 15px;
+}
+
+/* Table styling for attendee/staff lists */
+.event-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.event-table th, .event-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+}
+
+.event-table th {
+    background-color: #f8f8f8;
+    font-weight: bold;
+    color: #333;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+}
+
+.event-table tbody tr:hover {
+    background-color: #f2f2f2;
+}
+
+/* Utility classes */
+.text-primary-event { color: #007bff; }
+.text-success-event { color: #28a745; }
+.text-warning-event { color: #ffc107; }
+.text-danger-event { color: #dc3545; }
+.text-info-event { color: #17a2b8; }

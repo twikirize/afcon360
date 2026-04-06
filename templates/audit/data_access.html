@@ -1,0 +1,89 @@
+{% extends "audit/base_audit.html" %}
+
+{% block audit_title %}Data Access Logs (GDPR){% endblock %}
+{% block audit_subtitle %}Track access to sensitive user data for compliance{% endblock %}
+{% block api_endpoint %}data-access{% endblock %}
+{% block export_type %}data_access{% endblock %}
+
+{% block filters %}
+<div class="col-md-3">
+    <label class="form-label">Subject User ID</label>
+    <input type="number" class="form-control filter-input" id="user_id" placeholder="Whose data was accessed">
+</div>
+<div class="col-md-3">
+    <label class="form-label">Accessed By</label>
+    <input type="number" class="form-control filter-input" id="accessed_by" placeholder="Who accessed it">
+</div>
+<div class="col-md-3">
+    <label class="form-label">Data Category</label>
+    <select class="form-select filter-input" id="data_category">
+        <option value="">All</option>
+        <option value="kyc_documents">KYC Documents</option>
+        <option value="financial_records">Financial Records</option>
+        <option value="bank_account_details">Bank Account Details</option>
+        <option value="personal_info">Personal Information</option>
+    </select>
+</div>
+<div class="col-md-3">
+    <label class="form-label">Start Date</label>
+    <input type="date" class="form-control filter-input" id="start_date">
+</div>
+{% endblock %}
+
+{% block table_header %}
+<thead>
+    <tr>
+        <th>Accessed By</th>
+        <th>Subject User</th>
+        <th>Access Type</th>
+        <th>Data Category</th>
+        <th>Resource</th>
+        <th>Purpose</th>
+        <th>Legal Basis</th>
+        <th>IP Address</th>
+        <th>Created At</th>
+    </tr>
+</thead>
+{% endblock %}
+
+<script>
+function applyFilters() {
+    currentFilters = {
+        user_id: document.getElementById('user_id').value,
+        accessed_by: document.getElementById('accessed_by').value,
+        data_category: document.getElementById('data_category').value,
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value
+    };
+    Object.keys(currentFilters).forEach(k => !currentFilters[k] && delete currentFilters[k]);
+    currentPage = 1;
+    loadData();
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+    const accessLogs = data.access_logs || [];
+    
+    if (!accessLogs.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No data access logs found</td></tr>';
+        return;
+    }
+    
+    const accessTypeColors = { read: 'info', export: 'warning', delete: 'danger', modify: 'primary' };
+    
+    tbody.innerHTML = accessLogs.map(log => `
+        <tr>
+            <td>${log.accessed_by || '-'}</td>
+            <td>${log.subject_user_id || '-'}</td>
+            <td><span class="badge bg-${accessTypeColors[log.access_type] || 'secondary'}">${log.access_type}</span></td>
+            <td><code>${log.data_category}</code></td>
+            <td>${log.resource_type || '-'}${log.resource_id ? ': ' + log.resource_id : ''}</td>
+            <td><small>${log.purpose || '-'}</small></td>
+            <td><small>${log.legal_basis || '-'}</small></td>
+            <td>${log.ip_address || '-'}</td>
+            <td><small>${new Date(log.created_at).toLocaleString()}</small></td>
+        </tr>
+    `).join('');
+}
+</script>
+{% endblock %}

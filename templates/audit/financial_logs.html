@@ -1,0 +1,146 @@
+{% extends "audit/base_audit.html" %}
+
+{% block audit_title %}Financial Audit Logs{% endblock %}
+{% block audit_subtitle %}All financial transactions with AML flags{% endblock %}
+{% block api_endpoint %}financial{% endblock %}
+{% block export_type %}financial{% endblock %}
+
+{% block filters %}
+<div class="col-md-2">
+    <label class="form-label">User ID</label>
+    <input type="number" class="form-control filter-input" id="user_id" placeholder="User ID">
+</div>
+<div class="col-md-2">
+    <label class="form-label">Transaction Type</label>
+    <select class="form-select filter-input" id="transaction_type">
+        <option value="">All</option>
+        <option value="deposit">Deposit</option>
+        <option value="withdrawal">Withdrawal</option>
+        <option value="transfer">Transfer</option>
+    </select>
+</div>
+<div class="col-md-2">
+    <label class="form-label">Status</label>
+    <select class="form-select filter-input" id="status">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
+    </select>
+</div>
+<div class="col-md-2">
+    <label class="form-label">AML Flagged</label>
+    <select class="form-select filter-input" id="aml_flagged">
+        <option value="">All</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+    </select>
+</div>
+<div class="col-md-2">
+    <label class="form-label">Start Date</label>
+    <input type="date" class="form-control filter-input" id="start_date">
+</div>
+<div class="col-md-2">
+    <label class="form-label">End Date</label>
+    <input type="date" class="form-control filter-input" id="end_date">
+</div>
+{% endblock %}
+
+{% block summary %}
+<div class="col-md-3">
+    <div class="card bg-primary text-white">
+        <div class="card-body">
+            <h6>Total Volume</h6>
+            <h3 id="totalVolume">0</h3>
+        </div>
+    </div>
+</div>
+<div class="col-md-3">
+    <div class="card bg-warning text-dark">
+        <div class="card-body">
+            <h6>AML Flagged</h6>
+            <h3 id="amlFlaggedCount">0</h3>
+        </div>
+    </div>
+</div>
+<div class="col-md-3">
+    <div class="card bg-info text-white">
+        <div class="card-body">
+            <h6>Needs Review</h6>
+            <h3 id="needsReviewCount">0</h3>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block table_header %}
+<thead>
+    <tr>
+        <th>Transaction ID</th>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Currency</th>
+        <th>Status</th>
+        <th>From/To User</th>
+        <th>AML</th>
+        <th>Created At</th>
+        <th>Actions</th>
+    </tr>
+</thead>
+{% endblock %}
+
+<script>
+function applyFilters() {
+    currentFilters = {
+        user_id: document.getElementById('user_id').value,
+        transaction_type: document.getElementById('transaction_type').value,
+        status: document.getElementById('status').value,
+        aml_flagged: document.getElementById('aml_flagged').value,
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value
+    };
+    Object.keys(currentFilters).forEach(k => !currentFilters[k] && delete currentFilters[k]);
+    currentPage = 1;
+    loadData();
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+    const transactions = data.transactions || [];
+    
+    if (!transactions.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No transactions found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = transactions.map(tx => `
+        <tr class="${tx.aml_flagged ? 'table-warning' : ''}">
+            <td><code>${tx.transaction_id.substring(0, 12)}...</code></td>
+            <td><span class="badge bg-${tx.transaction_type === 'deposit' ? 'success' : tx.transaction_type === 'withdrawal' ? 'danger' : 'info'}">${tx.transaction_type}</span></td>
+            <td class="${tx.transaction_type === 'withdrawal' ? 'text-danger' : 'text-success'}">${parseFloat(tx.amount).toLocaleString()}</td>
+            <td>${tx.currency}</td>
+            <td><span class="badge bg-${tx.status === 'completed' ? 'success' : tx.status === 'pending' ? 'warning' : 'danger'}">${tx.status}</span></td>
+            <td>${tx.from_user_id || '-'} → ${tx.to_user_id || '-'}</td>
+            <td>${tx.aml_flagged ? '<span class="badge bg-danger">⚠️ Flagged</span>' : '<span class="badge bg-success">Clean</span>'}</td>
+            <td><small>${new Date(tx.created_at).toLocaleString()}</small></td>
+            <td>
+                <button class="btn btn-sm btn-outline-secondary" onclick="showDetails(${JSON.stringify(tx.metadata).replace(/"/g, '&quot;')})">
+                    <i class="bi bi-info-circle"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderSummary(data) {
+    const summary = data.summary || {};
+    document.getElementById('totalVolume').textContent = parseFloat(summary.total_volume || 0).toLocaleString();
+    document.getElementById('amlFlaggedCount').textContent = summary.aml_flagged_count || 0;
+    document.getElementById('needsReviewCount').textContent = summary.requires_review_count || 0;
+}
+
+function showDetails(metadata) {
+    alert('Transaction Details:\n' + JSON.stringify(metadata, null, 2));
+}
+</script>
+{% endblock %}

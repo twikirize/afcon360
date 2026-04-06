@@ -1,0 +1,86 @@
+{% extends "audit/base_audit.html" %}
+
+{% block audit_title %}Security Events{% endblock %}
+{% block audit_subtitle %}Security alerts, incidents, and system events{% endblock %}
+{% block api_endpoint %}security{% endblock %}
+{% block export_type %}security{% endblock %}
+
+{% block filters %}
+<div class="col-md-3">
+    <label class="form-label">Event Type</label>
+    <input type="text" class="form-control filter-input" id="event_type" placeholder="e.g., wallet_frozen">
+</div>
+<div class="col-md-2">
+    <label class="form-label">Severity</label>
+    <select class="form-select filter-input" id="severity">
+        <option value="">All</option>
+        <option value="info">INFO</option>
+        <option value="warning">WARNING</option>
+        <option value="critical">CRITICAL</option>
+    </select>
+</div>
+<div class="col-md-3">
+    <label class="form-label">User ID</label>
+    <input type="number" class="form-control filter-input" id="user_id" placeholder="User ID">
+</div>
+<div class="col-md-2">
+    <label class="form-label">Start Date</label>
+    <input type="date" class="form-control filter-input" id="start_date">
+</div>
+<div class="col-md-2">
+    <label class="form-label">End Date</label>
+    <input type="date" class="form-control filter-input" id="end_date">
+</div>
+{% endblock %}
+
+{% block table_header %}
+<thead>
+    <tr>
+        <th>Event Type</th>
+        <th>Severity</th>
+        <th>Description</th>
+        <th>User ID</th>
+        <th>IP Address</th>
+        <th>Created At</th>
+    </tr>
+</thead>
+{% endblock %}
+
+<script>
+function applyFilters() {
+    currentFilters = {
+        event_type: document.getElementById('event_type').value,
+        severity: document.getElementById('severity').value,
+        user_id: document.getElementById('user_id').value,
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value
+    };
+    Object.keys(currentFilters).forEach(k => !currentFilters[k] && delete currentFilters[k]);
+    currentPage = 1;
+    loadData();
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+    const events = data.events || [];
+    
+    if (!events.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No security events found</td></tr>';
+        return;
+    }
+    
+    const severityColors = { info: 'info', warning: 'warning', critical: 'danger' };
+    
+    tbody.innerHTML = events.map(e => `
+        <tr>
+            <td><code>${e.event_type}</code></td>
+            <td><span class="badge bg-${severityColors[e.severity] || 'secondary'}">${e.severity}</span></td>
+            <td>${e.description}</td>
+            <td>${e.user_id || '-'}</td>
+            <td>${e.ip_address || '-'}</td>
+            <td><small>${new Date(e.created_at).toLocaleString()}</small></td>
+        </tr>
+    `).join('');
+}
+</script>
+{% endblock %}

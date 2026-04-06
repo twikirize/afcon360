@@ -1,0 +1,481 @@
+/* =============================================================
+   AFCON 360 — Homepage Styles  (static/css/home.css)
+   3-column layout: left icon-nav | main content | right ads
+   ============================================================= */
+
+/* ── Search Bar ─────────────────────────────────────────────── */
+.top-search {
+  background: #f5f3ee;
+  border-bottom: 1px solid #ddd;
+  padding: 0.75rem 1.5rem;
+}
+.search-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.search-select-wrap {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0 0.6rem;
+  flex: 1;
+  min-width: 130px;
+}
+.search-select-wrap select {
+  border: none; outline: none;
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.82rem; color: #333;
+  background: transparent;
+  padding: 0.55rem 0.3rem;
+  cursor: pointer; flex: 1;
+  appearance: none; -webkit-appearance: none;
+}
+.search-select-wrap::after {
+  content: '▾'; font-size: 0.65rem; color: #888; pointer-events: none;
+}
+.search-btn {
+  background: #2d5a2d;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.58rem 1.4rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700; font-size: 0.82rem;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 0.4rem;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.search-btn:hover { background: #1a3a1a; }
+.search-btn-arrow {
+  background: #ffcc00; color: #1a3a1a;
+  border: none; border-radius: 4px;
+  padding: 0.58rem 0.75rem;
+  font-weight: 700; font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.trending-tags {
+  max-width: 1280px;
+  margin: 0.5rem auto 0;
+  display: flex; flex-wrap: wrap;
+  align-items: center; gap: 0.5rem;
+}
+.trending-label { font-size: 0.75rem; color: #666; font-weight: 600; }
+.trending-tag {
+  background: #fff; border: 1px solid #ddd;
+  padding: 0.22rem 0.7rem; border-radius: 20px;
+  color: #2d5a2d; font-size: 0.72rem; font-weight: 600;
+  text-decoration: none; transition: all 0.18s;
+}
+.trending-tag:hover { background: #ffcc00; border-color: #ffcc00; color: #1a3a1a; }
+
+/* ── 3-COLUMN LAYOUT ────────────────────────────────────────── */
+.home-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 240px;
+  gap: 0;
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: calc(100vh - 120px);
+  align-items: start;
+}
+
+/* ── LEFT SIDEBAR ───────────────────────────────────────────── */
+.home-left {
+  background: #2a2a2a;
+  min-height: calc(100vh - 120px);
+  display: flex; flex-direction: column;
+  position: sticky; top: 60px;
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+  margin: 0 auto;
+}
+
+/* Icon nav items */
+.left-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.9rem 1.1rem;
+  color: rgba(255,255,255,0.82);
+  text-decoration: none;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border-left: 3px solid transparent;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.left-nav-item:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border-left-color: #ffcc00;
+}
+.left-nav-item.active {
+  background: rgba(255,204,0,0.12);
+  color: #ffcc00;
+  border-left-color: #ffcc00;
+}
+.left-nav-icon {
+  width: 34px; height: 34px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; flex-shrink: 0;
+}
+.left-nav-item:hover .left-nav-icon,
+.left-nav-item.active .left-nav-icon {
+  background: rgba(255,204,0,0.18);
+}
+
+/* Left sidebar ad cards */
+.left-ad {
+  margin: 0;
+  overflow: hidden;
+  position: relative;
+}
+.left-ad-img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+}
+.left-ad-placeholder {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 2rem;
+}
+.left-ad-placeholder.hotel {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: white;
+}
+.left-ad-placeholder.airline {
+  background: linear-gradient(135deg, #0f3460 0%, #1a5276 100%);
+  color: white;
+}
+.left-ad-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 50%);
+  display: flex; flex-direction: column;
+  justify-content: flex-end;
+  padding: 0.75rem;
+}
+.left-ad-title { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 0.78rem; color: #fff; margin-bottom: 0.2rem; }
+.left-ad-sub { font-size: 0.65rem; color: rgba(255,255,255,0.75); margin-bottom: 0.4rem; }
+.left-ad-btn {
+  display: inline-block;
+  background: #ffcc00; color: #1a3a1a;
+  padding: 0.25rem 0.7rem;
+  border-radius: 20px;
+  font-size: 0.65rem; font-weight: 700;
+  text-decoration: none; align-self: center;
+}
+
+/* Host Your Event CTA at bottom of left sidebar */
+.left-host-cta {
+  background: linear-gradient(135deg, #3a2800 0%, #5a3d00 100%);
+  padding: 1rem;
+  display: flex; align-items: center; gap: 0.75rem;
+  text-decoration: none;
+  border-top: 2px solid #ffcc00;
+  margin-top: auto;
+  transition: background 0.2s;
+}
+.left-host-cta:hover { background: linear-gradient(135deg, #4a3500 0%, #6b4900 100%); }
+.left-host-cta-icon {
+  width: 36px; height: 36px;
+  background: #ffcc00;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; flex-shrink: 0;
+}
+.left-host-cta-text strong { display: block; font-family: 'Montserrat', sans-serif; font-size: 0.8rem; font-weight: 700; color: #ffcc00; }
+.left-host-cta-text span { font-size: 0.65rem; color: rgba(255,255,255,0.6); }
+
+/* ── MAIN CENTER CONTENT ────────────────────────────────────── */
+.home-main {
+  background: #f2f4f2;
+  padding: 1.25rem;
+  display: flex; flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Section headers */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+.section-title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700; font-size: 1.05rem;
+  color: #1a1a1a; margin: 0;
+  padding-left: 0.7rem;
+  border-left: 4px solid #ffcc00;
+}
+.section-title span { color: #c8860a; }
+.section-link {
+  font-size: 0.75rem; font-weight: 600;
+  color: #2d5a2d; text-decoration: none;
+  transition: color 0.18s;
+}
+.section-link:hover { color: #ffcc00; }
+
+/* Featured Events Grid — 4 cards */
+.featured-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+.feat-card {
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  height: 200px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  text-decoration: none;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.18);
+  transition: transform 0.22s, box-shadow 0.22s;
+}
+.feat-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
+
+.feat-card-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  transition: transform 0.4s ease;
+}
+.feat-card:hover .feat-card-bg { transform: scale(1.05); }
+
+/* Individual card backgrounds */
+.feat-card.afcon .feat-card-bg   { background: linear-gradient(135deg, #1a5c1a 0%, #2d7a2d 40%, #4a9a3a 100%); }
+.feat-card.chogm .feat-card-bg   { background: linear-gradient(135deg, #c8860a 0%, #e6a800 40%, #b8860b 100%); }
+.feat-card.wcup .feat-card-bg    { background: linear-gradient(135deg, #8b6914 0%, #c8a020 40%, #a07820 100%); }
+.feat-card.crusade .feat-card-bg { background: linear-gradient(135deg, #6b1a1a 0%, #8b2020 40%, #a03030 100%); }
+
+.feat-card-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.3) 55%, transparent 100%);
+}
+.feat-card-body {
+  position: relative; z-index: 2;
+  padding: 0.75rem;
+}
+.feat-badge {
+  display: inline-block;
+  background: rgba(255,204,0,0.25);
+  border: 1px solid rgba(255,204,0,0.5);
+  color: #ffcc00; font-size: 0.58rem;
+  font-family: 'Montserrat', sans-serif; font-weight: 700;
+  padding: 0.15rem 0.5rem; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 0.3rem; display: block;
+}
+.feat-title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800; font-size: 1.05rem; line-height: 1.1;
+  color: #fff; margin-bottom: 0.2rem;
+}
+.feat-title .feat-gold { color: #ffcc00; }
+.feat-meta { font-size: 0.62rem; color: rgba(255,255,255,0.75); margin-bottom: 0.45rem; }
+.feat-explore-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: #2d5a2d; color: #fff;
+  padding: 0.3rem 0.75rem; border-radius: 4px;
+  font-size: 0.68rem; font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  text-decoration: none; transition: background 0.18s;
+}
+.feat-explore-btn:hover { background: #1a3a1a; }
+
+/* Stadium icon decoration */
+.feat-card-icon {
+  position: absolute; top: 0.6rem; right: 0.6rem; z-index: 2;
+  font-size: 1.8rem; opacity: 0.35;
+}
+
+/* Live & Upcoming — horizontal scroll */
+.live-scroll {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.live-card {
+  border-radius: 10px;
+  overflow: hidden; position: relative;
+  height: 140px; display: flex; flex-direction: column; justify-content: flex-end;
+  text-decoration: none;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.live-card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.22); }
+
+.live-card-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.live-card.summit .live-card-bg { background: linear-gradient(135deg, #1a1a3a 0%, #2d2d6b 100%); }
+.live-card.chogm2 .live-card-bg { background: linear-gradient(135deg, #8b6914 0%, #c8a020 100%); }
+.live-card.expo .live-card-bg   { background: linear-gradient(135deg, #1a3a4a 0%, #2d6b8b 100%); }
+
+.live-card-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 70%, transparent 100%);
+}
+.live-card-body { position: relative; z-index: 2; padding: 0.6rem 0.75rem; }
+
+.live-badge {
+  display: inline-block;
+  background: #ff4444; color: #fff;
+  font-size: 0.58rem; font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  padding: 0.15rem 0.5rem; border-radius: 20px;
+  margin-bottom: 0.25rem;
+}
+.upcoming-badge {
+  display: inline-block;
+  background: #ffcc00; color: #1a3a1a;
+  font-size: 0.58rem; font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  padding: 0.15rem 0.5rem; border-radius: 20px;
+  margin-bottom: 0.25rem;
+}
+.live-card-title { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 0.82rem; color: #fff; margin-bottom: 0.15rem; line-height: 1.2; }
+.live-card-title .live-gold { color: #ffcc00; }
+.live-card-sub { font-size: 0.6rem; color: rgba(255,255,255,0.7); margin-bottom: 0.35rem; }
+.live-action-btn {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  background: #2d5a2d; color: #fff;
+  padding: 0.25rem 0.65rem; border-radius: 4px;
+  font-size: 0.62rem; font-weight: 700;
+  text-decoration: none; transition: background 0.18s;
+}
+.live-action-btn:hover { background: #1a3a1a; }
+
+/* Quick Actions */
+.quick-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.quick-action {
+  flex: 1; min-width: 110px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 0.9rem 0.5rem;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 0.4rem;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.quick-action:hover { border-color: #ffcc00; box-shadow: 0 4px 14px rgba(0,0,0,0.1); transform: translateY(-2px); }
+.quick-action-icon { font-size: 1.6rem; }
+.quick-action span { font-size: 0.7rem; font-weight: 600; font-family: 'Montserrat', sans-serif; color: #1a3a1a; text-align: center; line-height: 1.2; }
+
+/* Host Your Event Banner */
+.host-banner {
+  background: linear-gradient(135deg, #1a3a1a 0%, #2d5a2d 50%, #3a6b3a 100%);
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  display: flex; flex-direction: column;
+  align-items: center; text-align: center;
+  position: relative; overflow: hidden;
+}
+.host-banner::before {
+  content: '🏟️';
+  position: absolute; right: 1.5rem; top: 50%; transform: translateY(-50%);
+  font-size: 5rem; opacity: 0.12; pointer-events: none;
+}
+.host-banner-title { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 1.1rem; color: #fff; margin-bottom: 0.3rem; }
+.host-banner-title span { color: #ffcc00; }
+.host-banner-sub { font-size: 0.8rem; color: rgba(255,255,255,0.75); margin-bottom: 0.9rem; }
+.host-banner-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: #ffcc00; color: #1a3a1a;
+  padding: 0.55rem 1.5rem; border-radius: 30px;
+  font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 0.85rem;
+  text-decoration: none; transition: all 0.2s;
+}
+.host-banner-btn:hover { background: #e6a800; transform: translateY(-2px); box-shadow: 0 4px 14px rgba(255,204,0,0.4); }
+
+/* ── RIGHT SIDEBAR ──────────────────────────────────────────── */
+.home-right {
+  background: #f2f4f2;
+  padding: 1.25rem 0.9rem;
+  display: flex; flex-direction: column;
+  gap: 0.85rem;
+  position: sticky; top: 60px;
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+
+.right-ad {
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border: 1px solid #e8e8e8;
+}
+.right-ad-head {
+  padding: 0.75rem 0.9rem 0.5rem;
+}
+.right-ad-title { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 0.88rem; color: #1a1a1a; margin-bottom: 0.2rem; }
+.right-ad-sub { font-size: 0.7rem; color: #666; }
+.right-ad-img-wrap {
+  height: 100px; overflow: hidden;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.5rem;
+}
+.right-ad-img-wrap.airline { background: linear-gradient(135deg, #0f3460, #1a5276); }
+.right-ad-foot { padding: 0.6rem 0.9rem; }
+.right-ad-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #2d5a2d; color: #fff;
+  padding: 0.5rem 0.85rem; border-radius: 6px;
+  font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 0.75rem;
+  text-decoration: none; transition: background 0.18s;
+}
+.right-ad-btn:hover { background: #1a3a1a; }
+.right-ad-btn span { opacity: 0.7; }
+
+/* =============================================================
+   RESPONSIVE — HOMEPAGE
+   ============================================================= */
+@media (max-width: 1100px) {
+  .home-layout { grid-template-columns: 200px 1fr 210px; }
+  .featured-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .home-layout { grid-template-columns: 180px 1fr; }
+  .home-right { display: none; }
+}
+
+@media (max-width: 768px) {
+  .home-layout { grid-template-columns: 1fr; }
+  .home-left { position: static; height: auto; min-height: unset; flex-direction: row; flex-wrap: wrap; overflow: visible; }
+  .left-nav-item { flex: 1; min-width: 80px; flex-direction: column; gap: 0.3rem; padding: 0.6rem 0.4rem; text-align: center; font-size: 0.68rem; border-left: none; border-bottom: 3px solid transparent; }
+  .left-nav-item:hover { border-left: none; border-bottom-color: #ffcc00; }
+  .left-ad { display: none; }
+  .left-host-cta { display: none; }
+  .featured-grid { grid-template-columns: repeat(2, 1fr); }
+  .live-scroll { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .top-search { padding: 0.6rem 0.75rem; }
+  .search-inner { flex-direction: column; }
+  .search-select-wrap { width: 100%; }
+  .featured-grid { grid-template-columns: 1fr; }
+  .feat-card { height: 170px; }
+  .quick-actions { gap: 0.4rem; }
+  .quick-action { min-width: 90px; }
+  .home-main { padding: 0.75rem; gap: 1rem; }
+}

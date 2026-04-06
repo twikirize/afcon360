@@ -1,131 +1,130 @@
 # app/config.py
 # ============================================================================
-#  FLASK CONFIGURATION  — Security-hardened production settings
+#  FLASK CONFIGURATION — Security-hardened production settings
 # ============================================================================
 
 import os
+from decimal import Decimal
 from datetime import timedelta
-import importlib.util
 from dotenv import load_dotenv
 
+# Optimization: Load dotenv once
 load_dotenv()
 
-branding_spec = importlib.util.spec_from_file_location(
-    "branding", os.path.join(os.path.dirname(__file__), "../../afcon360_app/config.py")
-)
-branding = importlib.util.module_from_spec(branding_spec)
-branding_spec.loader.exec_module(branding)
+# Optimization: Faster branding load
+try:
+    import config as branding
+except ImportError:
+    branding = None
 
 
 class Config:
-    APP_NAME        = getattr(branding, "APP_NAME",        os.getenv("APP_NAME",        "AFCON 360"))
+    APP_NAME = getattr(branding, "APP_NAME", os.getenv("APP_NAME", "AFCON 360"))
     TOURNAMENT_NAME = getattr(branding, "TOURNAMENT_NAME", os.getenv("TOURNAMENT_NAME", "AFCON 360"))
-    YEAR            = getattr(branding, "YEAR",            int(os.getenv("YEAR",        "2025")))
-    VERSION         = getattr(branding, "VERSION",         os.getenv("VERSION",         "0.1.0"))
+    YEAR = getattr(branding, "YEAR", int(os.getenv("YEAR", "2025")))
+    VERSION = getattr(branding, "VERSION", os.getenv("VERSION", "0.1.0"))
 
-    SECRET_KEY    = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
+    SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
     SECURITY_SALT = os.getenv("SECURITY_SALT")
 
     FLASK_ENV = os.getenv("FLASK_ENV", "development")
-    DEBUG     = FLASK_ENV != "production"
+    DEBUG = FLASK_ENV != "production"
 
-    DB_HOST      = os.getenv("DB_HOST",     "localhost")
-    DB_PORT      = int(os.getenv("DB_PORT", "5432"))
-    DB_NAME      = os.getenv("DB_NAME",     "afcon360_prod")
-    DB_USER      = os.getenv("DB_USER")
-    DB_PASS      = os.getenv("DB_PASS")
-    APP_DB_USER  = os.getenv("APP_DB_USER")
-    APP_DB_PASS  = os.getenv("APP_DB_PASS")
+    # Database Components
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_NAME = os.getenv("DB_NAME", "afcon360_prod")
+    DB_USER = os.getenv("APP_DB_USER") or os.getenv("DB_USER")
+    DB_PASS = os.getenv("APP_DB_PASS") or os.getenv("DB_PASS")
 
+    # Construct SQLALCHEMY_DATABASE_URI if not provided directly
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+    if not SQLALCHEMY_DATABASE_URI and DB_USER and DB_PASS:
+        SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Redis URL (single source of truth)
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     # Sessions
-    SESSION_TYPE              = "redis"
-    SESSION_PERMANENT         = True
+    SESSION_TYPE = "redis"
+    SESSION_PERMANENT = True
     PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
-    SESSION_USE_SIGNER        = True
-    SESSION_COOKIE_HTTPONLY   = True
-    SESSION_COOKIE_SAMESITE   = os.getenv("SESSION_COOKIE_SAMESITE", "Strict")
-    SESSION_COOKIE_SECURE     = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
-
-    # SECURITY FIX: "pickle" → "json"
-    # Pickle allows Remote Code Execution on deserialization if Redis is ever compromised.
-    # JSON is safe — it cannot execute code on deserialization.
-    # Migration note: existing sessions will be invalidated once (users log out once).
-    # This is acceptable for the security upgrade.
+    SESSION_USE_SIGNER = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Strict")
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
     SESSION_SERIALIZER = "json"
+    SESSION_REDIS_URL = REDIS_URL
 
-    # Rate limiting
+    # Rate limiting - using same Redis
     RATELIMIT_STORAGE_URL = REDIS_URL
-    RATELIMIT_DEFAULT     = os.getenv("RATELIMIT_DEFAULT", "2000 per day;500 per hour")
+    RATELIMIT_STRATEGY = "fixed-window"
+    RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "2000 per day;500 per hour")
+    RATELIMIT_ENABLED = True
+    RATELIMIT_HEADERS_ENABLED = True
+    RATELIMIT_SWALLOW_ERRORS = False
 
-    # Module toggles
+    # ============================================================================
+    # MODULE TOGGLES (KILL SWITCHES)
+    # ============================================================================
     MODULE_FLAGS = {
-        "wallet":        True,
-        "tourism":       os.getenv("ENABLE_TOURISM",       "false").lower() == "true",
-        "transport":     os.getenv("ENABLE_TRANSPORT",     "true").lower()  == "true",
-        "accommodation": os.getenv("ENABLE_ACCOMMODATION", "true").lower()  == "true",
-        "tournament":    True,
-        "agents":        os.getenv("ENABLE_AGENTS",        "false").lower() == "true",
-        "admin":         True,
+        "wallet": os.getenv("ENABLE_WALLET", "true").lower() == "true",
+        "tourism": os.getenv("ENABLE_TOURISM", "false").lower() == "true",
+        "transport": os.getenv("ENABLE_TRANSPORT", "true").lower() == "true",
+        "accommodation": os.getenv("ENABLE_ACCOMMODATION", "true").lower() == "true",
+        "tournament": os.getenv("ENABLE_TOURNAMENT", "true").lower() == "true",
+        "agents": os.getenv("ENABLE_AGENTS", "false").lower() == "true",
+        "admin": os.getenv("ENABLE_ADMIN", "true").lower() == "true",
     }
 
+    # ============================================================================
+    # WALLET FEATURE FLAGS
+    # ============================================================================
     WALLET_FEATURES = {
-        "enabled": True,
-        "deposit":       {"enabled": True},
-        "withdraw":      {"enabled": True, "daily_limit": int(os.getenv("WITHDRAW_LIMIT", "1000")), "require_verification": True},
-        "peer_send":     {"enabled": True},
-        "refund":        {"enabled": True},
-        "multi_currency":{"enabled": True},
-        "convert_currency":{"enabled": True},
-        "audit_trail":   {"enabled": True},
-    }
-
-    SUPPORTED_CURRENCIES  = ["USD", "UGX", "KES", "TZS", "NGN", "EUR", "CFA"]
-    CONVERSION_FEE_PCT    = os.getenv("CONVERSION_FEE_PCT", "0.02")
-    FX_PROVIDER           = os.getenv("FX_PROVIDER")
-    FX_CACHE_TTL_SECONDS  = int(os.getenv("FX_CACHE_TTL_SECONDS", "300"))
-
-    IDEMPOTENCY = {"enabled": True, "require_client_request_id": True}
-    AUDIT       = {"enabled": True, "retention_days": 3650, "archive_after_days": 365, "max_query_limit": 1000}
-    METRICS     = {"enabled": True, "namespace": "wallet"}
-    LOGGING     = {"level": os.getenv("LOG_LEVEL", "INFO"), "structured": True}
-
-    FEATURE_FLAGS = {
-        'accommodation': {
-            'enabled':      True,
-            'dependencies': ['wallet', 'identity'],
-            'version':      '1.0.0',
-            'description':  'Accommodation booking and hosting module',
+        "enabled": MODULE_FLAGS["wallet"],
+        "deposit": {"enabled": os.getenv("WALLET_DEPOSIT_ENABLED", "true").lower() == "true"},
+        "withdraw": {
+            "enabled": os.getenv("WALLET_WITHDRAW_ENABLED", "true").lower() == "true",
+            "daily_limit": int(os.getenv("WALLET_WITHDRAW_DAILY_LIMIT", "1000")),
+            "require_verification": os.getenv("WALLET_WITHDRAW_REQUIRE_VERIFICATION", "true").lower() == "true"
         },
-        'transport': {'enabled': False, 'dependencies': ['wallet', 'identity'], 'version': '1.0.0'},
-        'tourism':   {'enabled': False, 'dependencies': ['identity'],            'version': '1.0.0'},
+        "peer_send": {"enabled": os.getenv("WALLET_PEER_SEND_ENABLED", "true").lower() == "true"},
+        "refund": {"enabled": os.getenv("WALLET_REFUND_ENABLED", "true").lower() == "true"},
+        "multi_currency": {"enabled": os.getenv("WALLET_MULTI_CURRENCY_ENABLED", "true").lower() == "true"},
+        "convert_currency": {"enabled": os.getenv("WALLET_CONVERT_ENABLED", "true").lower() == "true"},
+        "audit_trail": {"enabled": os.getenv("WALLET_AUDIT_ENABLED", "true").lower() == "true"},
     }
 
-    ACCOMMODATION_SETTINGS = {
-        'max_photos_per_property': 20,
-        'max_guests_per_property': 50,
-        'default_currency':        'USD',
-        'service_fee_percentage':  10.0,
-        'booking_expiry_minutes':  15,
-        'refund_window_days':      7,
-        'enable_reviews':          True,
-        'enable_messaging':        True,
+    WALLET_DAILY_LIMIT_HOME = Decimal(os.getenv("WALLET_DAILY_LIMIT_HOME", "10000"))
+    WALLET_DAILY_LIMIT_LOCAL = Decimal(os.getenv("WALLET_DAILY_LIMIT_LOCAL", "37000000"))
+    WALLET_MAX_DEPOSIT = Decimal(os.getenv("WALLET_MAX_DEPOSIT", "10000"))
+    WALLET_MAX_WITHDRAWAL = Decimal(os.getenv("WALLET_MAX_WITHDRAWAL", "5000"))
+    WALLET_MAX_TRANSFER = Decimal(os.getenv("WALLET_MAX_TRANSFER", "2000"))
+
+    # ============================================================================
+    # IDEMPOTENCY & AUDIT
+    # ============================================================================
+    IDEMPOTENCY = {
+        "enabled": os.getenv("IDEMPOTENCY_ENABLED", "true").lower() == "true",
+        "require_client_request_id": os.getenv("IDEMPOTENCY_REQUIRE_CLIENT_ID", "true").lower() == "true",
+        "ttl_seconds": int(os.getenv("IDEMPOTENCY_TTL_SECONDS", "86400")),
+    }
+
+    AUDIT = {
+        "enabled": os.getenv("AUDIT_ENABLED", "true").lower() == "true",
+        "retention_days": int(os.getenv("AUDIT_RETENTION_DAYS", "3650")),
     }
 
     @classmethod
     def validate_for_production(cls):
+        """Validate required production configuration."""
         if cls.FLASK_ENV == "production":
             missing = []
-            if not cls.REDIS_URL:
-                missing.append("REDIS_URL")
+            if not cls.SQLALCHEMY_DATABASE_URI:
+                missing.append("DATABASE_URL or DB components")
             if not cls.SECRET_KEY:
                 missing.append("SECRET_KEY")
-            if not cls.SECURITY_SALT:
-                missing.append("SECURITY_SALT")
-            if cls.WALLET_FEATURES.get("multi_currency", {}).get("enabled") and not cls.FX_PROVIDER:
-                missing.append("FX_PROVIDER")
             if missing:
-                raise RuntimeError(
-                    f"Missing required production environment variables: {', '.join(missing)}"
-                )
+                raise RuntimeError(f"Missing required production environment variables: {', '.join(missing)}")

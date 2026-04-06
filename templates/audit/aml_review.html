@@ -1,0 +1,176 @@
+{% extends "audit/base_audit.html" %}
+
+{% block audit_title %}AML Review Dashboard{% endblock %}
+{% block audit_subtitle %}Review and resolve AML flagged transactions{% endblock %}
+{% block api_endpoint %}aml{% endblock %}
+{% block export_type %}aml{% endblock %}
+
+{% block filters %}
+<div class="col-md-3">
+    <label class="form-label">Review Status</label>
+    <select class="form-select filter-input" id="requires_review">
+        <option value="true">Needs Review</option>
+        <option value="false">Already Reviewed</option>
+        <option value="">All</option>
+    </select>
+</div>
+<div class="col-md-3">
+    <label class="form-label">Min Risk Score</label>
+    <input type="number" class="form-control filter-input" id="min_risk" placeholder="0-100" step="10">
+</div>
+<div class="col-md-3">
+    <label class="form-label">Start Date</label>
+    <input type="date" class="form-control filter-input" id="start_date">
+</div>
+<div class="col-md-3">
+    <label class="form-label">End Date</label>
+    <input type="date" class="form-control filter-input" id="end_date">
+</div>
+{% endblock %}
+
+{% block summary %}
+<div class="col-md-4">
+    <div class="card bg-danger text-white">
+        <div class="card-body">
+            <h6>Pending Review</h6>
+            <h3 id="pendingCount">0</h3>
+        </div>
+    </div>
+</div>
+<div class="col-md-4">
+    <div class="card bg-warning text-dark">
+        <div class="card-body">
+            <h6>High Risk (>70)</h6>
+            <h3 id="highRiskCount">0</h3>
+        </div>
+    </div>
+</div>
+<div class="col-md-4">
+    <div class="card bg-success text-white">
+        <div class="card-body">
+            <h6>Reviewed</h6>
+            <h3 id="reviewedCount">0</h3>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block table_header %}
+<thead>
+    <tr>
+        <th>Transaction ID</th>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Risk Score</th>
+        <th>Status</th>
+        <th>Created At</th>
+        <th>Actions</th>
+    </tr>
+</thead>
+{% endblock %}
+
+<script>
+function applyFilters() {
+    currentFilters = {
+        requires_review: document.getElementById('requires_review').value,
+        start_date: document.getElementById('start_date').value,
+        end_date: document.getElementById('end_date').value
+    };
+    if (currentFilters.requires_review === '') delete currentFilters.requires_review;
+    if (currentFilters.requires_review === 'true') currentFilters.requires_review = true;
+    if (currentFilters.requires_review === 'false') currentFilters.requires_review = false;
+    
+    Object.keys(currentFilters).forEach(k => !currentFilters[k] && delete currentFilters[k]);
+    currentPage = 1;
+    loadData();
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+    const transactions = data.transactions || [];
+    
+    if (!transactions.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No AML flagged transactions found</td></tr>';
+        return;
+    }
+    
+    const pendingCount = transactions.filter(t => t.requires_review).length;
+    const highRiskCount = transactions.filter(t => (t.risk_score || 0) > 70).length;
+    const reviewedCount = transactions.filter(t => !t.requires_review).length;
+    
+    document.getElementById('pendingCount').textContent = pendingCount;
+    document.getElementById('highRiskCount').textContent = highRiskCount;
+    document.getElementById('reviewedCount').textContent = reviewedCount;
+    
+    tbody.innerHTML = transactions.map(tx => `
+        <tr class="${tx.requires_review ? 'table-danger' : 'table-secondary'}">
+            <td><code>${tx.transaction_id.substring(0, 12)}...</code></td>
+            <td><span class="badge bg-${tx.transaction_type === 'deposit' ? 'success' : 'warning'}">${tx.transaction_type}</span></td>
+            <td class="${tx.amount > 1000 ? 'text-danger' : ''}">${parseFloat(tx.amount).toLocaleString()} ${tx.currency}</td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar bg-${tx.risk_score > 70 ? 'danger' : tx.risk_score > 40 ? 'warning' : 'info'}" 
+                         style="width: ${tx.risk_score || 0}%">
+                        ${tx.risk_score || 0}
+                    </div>
+                </div>
+            </td>
+            <td>
+                ${tx.requires_review ? 
+                    '<span class="badge bg-danger">⚠️ Needs Review</span>' : 
+                    '<span class="badge bg-success">✓ Reviewed</span>'}
+            </td>
+            <td><small>${new Date(tx.created_at).toLocaleString()}</small></td>
+            <td>
+                ${tx.requires_review ? `
+                    <button class="btn btn-sm btn-success me-1" onclick="reviewTransaction(${tx.id}, true)">
+                        <i class="bi bi-check-circle"></i> Approve
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="reviewTransaction(${tx.id}, false)">
+                        <i class="bi bi-x-circle"></i> Reject
+                    </button>
+                ` : `
+                    <span class="text-muted">Reviewed by ${tx.reviewed_by || 'unknown'}</span>
+                `}
+            </td>
+        </table>
+    `).join('');
+}
+
+async function reviewTransaction(transactionId, approved) {
+    const notes = prompt(
+        approved ? 
+        'Enter approval notes (optional):' : 
+        'Enter rejection reason (required):'
+    );
+    
+    if (!approved && !notes) {
+        alert('Rejection reason is required');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/audit/aml/${transactionId}/review`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value
+            },
+            body: JSON.stringify({ approved: approved, notes: notes || '' })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert(result.message);
+            loadData(); // Refresh the table
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error reviewing transaction:', error);
+        alert('Failed to review transaction');
+    }
+}
+</script>
+{% endblock %}

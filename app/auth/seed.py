@@ -149,6 +149,23 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
     PermDef("audit.export",       "Export audit log data",
             ["owner", "super_admin"]),
 
+    # Add to GLOBAL_PERMISSION_DEFS in app/auth/seed.py
+    # Place these with the other audit permissions (around line 150-160)
+
+    # Audit & AML (Enhanced)
+    PermDef("audit.view",         "View audit logs",
+            ["owner", "super_admin", "admin", "auditor", "compliance_officer"]),
+    PermDef("audit.export",       "Export audit log data",
+            ["owner", "super_admin", "admin", "auditor"]),
+    PermDef("audit.read",         "Read-only audit access",
+            ["owner", "super_admin", "admin", "auditor", "compliance_officer"]),
+    PermDef("aml.view",           "View AML flagged transactions",
+            ["owner", "super_admin", "compliance_officer"]),
+    PermDef("aml.review",         "Review AML flagged transactions",
+            ["owner", "super_admin", "compliance_officer"]),
+    PermDef("aml.resolve",        "Resolve AML flagged transactions",
+            ["owner", "super_admin"]),
+
     # Roles / Permissions (meta)
     PermDef("roles.view",         "View role definitions",
             ["owner", "super_admin"]),

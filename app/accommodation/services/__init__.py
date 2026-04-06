@@ -15,7 +15,6 @@ from app.accommodation.services.availability_service import AvailabilityService
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.services.wallet_service import WalletService
 from app.accommodation.services.abuse_prevention_service import AbusePreventionService
-from app.accommodation.services.events_service import EventService
 
 __all__ = [
     'search_properties',
@@ -28,7 +27,6 @@ __all__ = [
     'PricingService',
     'WalletService',
     'AbusePreventionService',
-    'EventService',
 ]
 """
 📋 Summary of Phase 2 Components Created

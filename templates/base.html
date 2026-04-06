@@ -9,12 +9,21 @@
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <!-- FontAwesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='deposit.css') }}">
+  <!-- Global Custom CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/home.css') }}"> {# For homepage specific styles #}
 
-  {% block styles %}{% endblock %}
+  <!-- Module-specific CSS (e.g., wallet, transport, events) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/deposit.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
+
+  {% block module_styles %}{% endblock %} {# For specific module pages #}
+  {% block styles %}{% endblock %} {# For page-specific styles #}
   {% block head %}{% endblock %}
 </head>
 <body class="afcon-root">
@@ -35,18 +44,20 @@
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
-          <a href="{{ url_for('accommodation.accommodation_event.list') }}">Events</a>
+          <a href="{{ url_for('events.list') }}">Events</a>
           <ul class="drop-menu" role="menu">
-            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.list') }}">📅 All Events</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.list') }}">📅 All Events</a></li>
             <li><hr class="drop-divider"></li>
             <li><span class="drop-header">✨ Upcoming Events</span></li>
-            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='afcon-2027') }}">🏆 AFCON 2027</a></li>
-            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='crusade-2026') }}">✝️ Great Crusade 2026</a></li>
-            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='world-cup-2026') }}">🌍 World Cup 2026</a></li>
-            {% if session.get('user_id') %}
+            <li><a class="drop-item" href="{{ url_for('events.landing', event_slug='afcon-2027') }}">🏆 AFCON 2027</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.landing', event_slug='crusade-2026') }}">✝️ Great Crusade 2026</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.landing', event_slug='world-cup-2026') }}">🌍 World Cup 2026</a></li>
+            {% if current_user.is_authenticated %}
             <li><hr class="drop-divider"></li>
-            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.create_event') }}">➕ Create Event</a></li>
-            <li><a class="drop-item" href="{{ url_for('accommodation.accommodation_event.my_events') }}">📋 My Events</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.create_event') }}">➕ Create Event</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.my_events') }}">📋 My Events</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.my_registrations') }}">🎟️ My Registrations</a></li>
+            <li><a class="drop-item" href="{{ url_for('events.events_hub') }}">🚀 Events Hub</a></li> {# New Hub Link #}
             {% endif %}
           </ul>
         </li>
@@ -55,10 +66,13 @@
         <li class="menu-item"><a href="{{ links.transport_home }}">Transport</a></li>
         <li class="menu-item"><a href="{{ links.accommodation_home }}">Accommodation</a></li>
 
-        {% if session.get('user_id') %}
-          <li class="menu-item"><a href="{{ links.wallet_dashboard }}">Wallet</a></li>
+        {% if current_user.is_authenticated %}
+          {% if user_has_wallet %}
+            <li class="menu-item"><a href="{{ links.wallet_dashboard }}">Wallet</a></li>
+          {% else %}
+            <li class="menu-item"><a href="{{ url_for('wallet_routes.activate_wallet') }}">Activate Wallet</a></li>
+          {% endif %}
           <li class="menu-item auth">
-            <!-- SECURITY FIX: POST form with CSRF token instead of anchor tag -->
             <form method="POST" action="{{ url_for('auth_routes.logout') }}" style="display: inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="logout-btn" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; font: inherit;">
@@ -72,7 +86,9 @@
           <li class="menu-item auth"><a href="{{ links.auth_register }}">Register</a></li>
         {% endif %}
 
-        <li class="menu-item auth"><a href="{{ url_for('admin.super_dashboard') }}">Super Admin</a></li>
+        {% if current_user.is_authenticated and current_user.has_global_role('admin') %}
+          <li class="menu-item auth"><a href="{{ url_for('admin.super_dashboard') }}">Super Admin</a></li>
+        {% endif %}
       </ul>
     </nav>
   </header>
@@ -88,18 +104,20 @@
 
       <div class="drawer-accordion">
         <div class="drawer-accordion-head">
-          <a class="drawer-link" href="{{ url_for('accommodation.accommodation_event.list') }}">📅 Events</a>
+          <a class="drawer-link" href="{{ url_for('events.list') }}">📅 Events</a>
           <button class="drawer-accordion-toggle" aria-label="Expand events">▾</button>
         </div>
         <div class="drawer-accordion-body">
-          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.list') }}">All Events</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.list') }}">All Events</a>
           <span class="drawer-sub-label">✨ Upcoming</span>
-          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='afcon-2027') }}">🏆 AFCON 2027</a>
-          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='crusade-2026') }}">✝️ Great Crusade 2026</a>
-          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.landing', event_slug='world-cup-2026') }}">🌍 World Cup 2026</a>
-          {% if session.get('user_id') %}
-          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.create_event') }}">➕ Create Event</a>
-          <a class="drawer-sub-link" href="{{ url_for('accommodation.accommodation_event.my_events') }}">📋 My Events</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.landing', event_slug='afcon-2027') }}">🏆 AFCON 2027</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.landing', event_slug='crusade-2026') }}">✝️ Great Crusade 2026</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.landing', event_slug='world-cup-2026') }}">🌍 World Cup 2026</a>
+          {% if current_user.is_authenticated %}
+          <a class="drawer-sub-link" href="{{ url_for('events.create_event') }}">➕ Create Event</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.my_events') }}">📋 My Events</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.my_registrations') }}">🎟️ My Registrations</a>
+          <a class="drawer-sub-link" href="{{ url_for('events.events_hub') }}">🚀 Events Hub</a> {# New Hub Link #}
           {% endif %}
         </div>
       </div>
@@ -110,9 +128,8 @@
 
       <div class="drawer-divider"></div>
 
-      {% if session.get('user_id') %}
+      {% if current_user.is_authenticated %}
         <a class="drawer-link" href="{{ links.wallet_dashboard }}">👛 Wallet</a>
-        <!-- SECURITY FIX: POST form with CSRF token for mobile drawer -->
         <form method="POST" action="{{ url_for('auth_routes.logout') }}" style="display: block; width: 100%; margin: 0; padding: 0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="drawer-link drawer-auth" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
@@ -125,7 +142,9 @@
         <a class="drawer-link drawer-auth" href="{{ links.auth_register }}">Register</a>
       {% endif %}
 
-      <a class="drawer-link" href="{{ url_for('admin.super_dashboard') }}">⚙️ Super Admin</a>
+      {% if current_user.is_authenticated and current_user.has_global_role('admin') %}
+        <a class="drawer-link" href="{{ url_for('admin.super_dashboard') }}">⚙️ Super Admin</a>
+      {% endif %}
     </nav>
   </aside>
 
@@ -145,57 +164,8 @@
   {% endblock %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <script>
-    (function () {
-      const hamburger = document.getElementById('hamburgerBtn');
-      const drawer    = document.getElementById('mobileDrawer');
-      const overlay   = document.getElementById('drawerOverlay');
-      const closeBtn  = document.getElementById('drawerClose');
-
-      function openDrawer() {
-        drawer.classList.add('open');
-        overlay.classList.add('open');
-        hamburger.classList.add('active');
-        hamburger.setAttribute('aria-expanded', 'true');
-        drawer.setAttribute('aria-hidden', 'false');
-        document.body.style.overflow = 'hidden';
-      }
-
-      function closeDrawer() {
-        drawer.classList.remove('open');
-        overlay.classList.remove('open');
-        hamburger.classList.remove('active');
-        hamburger.setAttribute('aria-expanded', 'false');
-        drawer.setAttribute('aria-hidden', 'true');
-        document.body.style.overflow = '';
-      }
-
-      hamburger.addEventListener('click', openDrawer);
-      closeBtn.addEventListener('click', closeDrawer);
-      overlay.addEventListener('click', closeDrawer);
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') closeDrawer();
-      });
-
-      document.querySelectorAll('.drawer-accordion-toggle').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var body = this.closest('.drawer-accordion').querySelector('.drawer-accordion-body');
-          var open = body.classList.toggle('open');
-          this.classList.toggle('rotated', open);
-        });
-      });
-
-      // Optional: Add logout confirmation to prevent accidental clicks
-      document.querySelectorAll('form[action*="logout"]').forEach(function(form) {
-        form.addEventListener('submit', function(e) {
-          if (!confirm('Are you sure you want to log out?')) {
-            e.preventDefault();
-          }
-        });
-      });
-    })();
-  </script>
-  {% block scripts %}{% endblock %}
+  <script src="{{ url_for('static', filename='js/global/main.js') }}"></script> {# Global main script #}
+  {% block module_scripts %}{% endblock %} {# For specific module pages #}
+  {% block scripts %}{% endblock %} {# For page-specific scripts #}
 </body>
 </html>

@@ -1,66 +1,269 @@
+{#
+  FILE: templates/owner/super_admins.html
+  LOCATION: /owner/super-admins (route: owner.super_admins)
+
+  PURPOSE:
+  Standalone Super Admin Management Page - Provides a focused interface for
+  managing system administrators without the full Owner Dashboard context.
+
+  WHY WE KEPT IT:
+  1. QUICK ACCESS - Direct URL for power users who want to jump straight to
+     admin management without loading the full dashboard
+  2. FOCUSED WORKFLOW - When you only need to manage admins, this page is
+     cleaner and faster
+  3. FUTURE ENHANCEMENTS - Can be extended with advanced features that would
+     clutter the main dashboard:
+     - Bulk admin assignment
+     - Admin permission auditing
+     - Temporary admin assignments with expiry dates
+     - Admin activity monitoring
+  4. BACKWARD COMPATIBILITY - Some users may have bookmarked this URL
+  5. MOBILE OPTIMIZED - Lighter page for mobile admin management
+
+  RELATIONSHIP TO OWNER DASHBOARD:
+  - Owner Dashboard (/owner/dashboard) ALSO has Super Admin Management as a card
+  - This page provides the SAME functionality but as a standalone view
+  - Both use the same backend routes (/owner/super-admins/add, /owner/super-admins/remove)
+
+  FUTURE ENHANCEMENTS PLANNED:
+  - [ ] Add admin permission levels (full vs restricted super admin)
+  - [ ] Add expiry dates for temporary super admin access
+  - [ ] Add audit trail showing admin actions
+  - [ ] Add ability to impersonate admin for testing
+  - [ ] Add admin activity summary (last login, actions taken)
+  - [ ] Add bulk import/export of admin assignments
+  - [ ] Add email notifications when someone becomes super admin
+  - [ ] Add approval workflow for super admin requests
+
+"""
+    Manage super admins - Standalone page.
+
+    WHY THIS PAGE EXISTS ALONGSIDE OWNER DASHBOARD:
+    - Provides a focused interface for admin management without dashboard clutter
+    - Direct URL access for power users (/owner/super-admins)
+    - Future enhancements planned: bulk assignment, expiry dates, audit trails
+    - Lighter weight for mobile admin management
+
+    RELATIONSHIP TO OWNER DASHBOARD:
+    - Owner dashboard also includes Super Admin Management as a card
+    - Both share the same backend routes for add/remove
+    - Users can use either interface based on preference
+
+    FUTURE ENHANCEMENTS:
+    - Add temporary admin assignments with auto-expiry
+    - Add admin permission levels (read-only vs full admin)
+    - Add bulk import/export of admin assignments
+    - Add admin activity dashboard
+    """
+    super_admin_role = Role.query.filter_by(name='super_admin').first()
+    super_admins = []
+#}
+
 {% extends "base.html" %}
+
+{% block title %}Super Admin Management - AFCON360{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
-    <h1 class="h2 mb-4">Super Admin Management</h1>
-    
+
+    {# PAGE HEADER #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">
+                <i class="bi bi-shield-lock-fill text-warning"></i>
+                Super Admin Management
+            </h1>
+            <p class="text-muted mb-0">
+                Manage platform-wide administrators who have full system access
+            </p>
+        </div>
+        <div>
+            <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Owner Dashboard
+            </a>
+        </div>
+    </div>
+
+    {# INFO ALERT - Explain what Super Admins can do #}
+    <div class="alert alert-info mb-4">
+        <i class="bi bi-info-circle-fill me-2"></i>
+        <strong>What Super Admins Can Do:</strong>
+        <ul class="mb-0 mt-2">
+            <li>✅ Access Events Admin Dashboard (<code>/events/admin/dashboard</code>)</li>
+            <li>✅ Approve or reject any event platform-wide</li>
+            <li>✅ View and manage all events regardless of organizer</li>
+            <li>✅ Manage event staff for any event</li>
+            <li>✅ Access Transport Admin, Wallet Admin, and other module dashboards</li>
+            <li>✅ View all users and organizations</li>
+            <li>⚠️ Cannot modify Owner-level settings (Owner only)</li>
+        </ul>
+    </div>
+
     <div class="row">
+
+        {# LEFT COLUMN: Current Super Admins List #}
         <div class="col-md-6">
-            <div class="card">
+            <div class="card shadow-sm">
                 <div class="card-header bg-warning">
-                    <h5 class="mb-0">Current Super Admins</h5>
+                    <h5 class="mb-0">
+                        <i class="bi bi-shield-fill-check me-2"></i>
+                        Current Super Admins
+                        <span class="badge bg-dark ms-2">{{ super_admins|length }} Active</span>
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <div class="list-group">
-                        {% for admin in super_admins %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>{{ admin.username }}</strong>
-                                <br>
-                                <small>{{ admin.email }}</small>
+                    {% if super_admins %}
+                        <div class="list-group">
+                            {% for admin in super_admins %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>
+                                        <i class="bi bi-person-badge-fill text-warning me-1"></i>
+                                        {{ admin.username }}
+                                    </strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="bi bi-envelope"></i> {{ admin.email }}
+                                    </small>
+                                    <br>
+                                    <small class="text-success">
+                                        <i class="bi bi-calendar-check"></i>
+                                        Since: {{ admin.created_at.strftime('%Y-%m-%d') if admin.created_at else 'Unknown' }}
+                                    </small>
+                                </div>
+                                <form method="POST" action="{{ url_for('owner.remove_super_admin', user_id=admin.id) }}"
+                                      onsubmit="return confirm('⚠️ WARNING: Remove super admin privileges from {{ admin.username }}?\n\nThey will lose access to all admin panels including Events Admin.')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-danger"
+                                            title="Remove super admin privileges">
+                                        <i class="bi bi-dash-circle"></i> Remove
+                                    </button>
+                                </form>
                             </div>
-                            <form method="POST" action="{{ url_for('owner.remove_super_admin', user_id=admin.id) }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-sm btn-danger" 
-                                        onclick="return confirm('Remove super admin?')">
-                                    Remove
-                                </button>
-                            </form>
+                            {% endfor %}
                         </div>
-                        {% else %}
-                        <p class="text-muted">No super admins found</p>
-                        {% endfor %}
-                    </div>
+                    {% else %}
+                        <div class="alert alert-warning mb-0">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            No super admins found. Add at least one to help manage the platform.
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="card-footer bg-transparent text-muted small">
+                    <i class="bi bi-info-circle"></i>
+                    Super Admins have full access to Events Admin and other module dashboards
                 </div>
             </div>
         </div>
-        
+
+        {# RIGHT COLUMN: Add New Super Admin Form #}
         <div class="col-md-6">
-            <div class="card">
+            <div class="card shadow-sm">
                 <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">Add New Super Admin</h5>
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-plus-fill me-2"></i>
+                        Add New Super Admin
+                    </h5>
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ url_for('owner.add_super_admin') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                         <div class="mb-3">
-                            <label class="form-label">Select User</label>
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-person"></i> Select User
+                            </label>
                             <select name="user_id" class="form-select" required>
-                                <option value="">Choose user...</option>
+                                <option value="">-- Choose a user to promote --</option>
                                 {% for user in regular_users %}
                                 <option value="{{ user.id }}">
                                     {{ user.username }} ({{ user.email }})
+                                    {% if user.is_verified %}✓ Verified{% endif %}
                                 </option>
                                 {% endfor %}
                             </select>
+                            <div class="form-text">
+                                Only regular users (non-admin) are shown. Users become Super Admins immediately upon promotion.
+                            </div>
                         </div>
-                        <button type="submit" class="btn btn-success">
-                            Make Super Admin
+
+                        <div class="alert alert-warning small">
+                            <i class="bi bi-shield-exclamation"></i>
+                            <strong>Important:</strong> Super Admins gain full access to:
+                            <ul class="mb-0 mt-1">
+                                <li>Events Admin Dashboard</li>
+                                <li>Event approval/rejection</li>
+                                <li>All event management features</li>
+                            </ul>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-plus-circle"></i> Make Super Admin
                         </button>
                     </form>
                 </div>
             </div>
         </div>
+
     </div>
+
+    {# OPTIONAL: Quick Links to Related Admin Areas #}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-compass"></i> Quick Navigation
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ url_for('events.admin_dashboard') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-calendar-event"></i> Events Admin Dashboard
+                        </a>
+                        <a href="{{ url_for('events.admin_events') }}?status=pending" class="btn btn-outline-warning">
+                            <i class="bi bi-clock-history"></i> Pending Events
+                        </a>
+                        <a href="{{ url_for('events.admin_events') }}" class="btn btn-outline-info">
+                            <i class="bi bi-list-ul"></i> All Events
+                        </a>
+                        <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-speedometer2"></i> Owner Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# FUTURE ENHANCEMENTS SECTION (Commented out - ready for implementation) #}
+    {#
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-rocket-takeoff"></i> Advanced Admin Management (Coming Soon)</h5>
+                </div>
+                <div class="card-body text-muted">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-clock"></i> Temporary Admin Access</h6>
+                            <p class="small">Assign super admin with expiry date for temporary needs</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-graph-up"></i> Admin Activity Audit</h6>
+                            <p class="small">Track all actions taken by super admins</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-envelope-paper"></i> Admin Notifications</h6>
+                            <p class="small">Email alerts when admin privileges are granted/revoked</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    #}
+
 </div>
 {% endblock %}

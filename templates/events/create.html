@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Create Event - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0 text-primary"><i class="fas fa-calendar-plus me-2"></i>Create New Event</h4>
+                    <p class="text-muted small mb-0">Define your event details and ticket tiers</p>
+                </div>
+                <div class="card-body">
+                    <form id="event-form">
+                        {# Basic Info #}
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label fw-bold">Event Name *</label>
+                                <input type="text" name="name" class="form-control form-control-lg" placeholder="e.g. AFCON Final Viewing" required>
+                            </div>
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label fw-bold">Description</label>
+                                <textarea name="description" class="form-control" rows="3" placeholder="What is your event about?"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Category</label>
+                                <select name="category" class="form-select">
+                                    <option value="sports">Sports</option>
+                                    <option value="religious">Religious</option>
+                                    <option value="concert">Concert</option>
+                                    <option value="conference">Conference</option>
+                                    <option value="cultural">Cultural</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">City *</label>
+                                <input type="text" name="city" class="form-control" placeholder="e.g. Kampala" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Venue</label>
+                                <input type="text" name="venue" class="form-control" placeholder="e.g. Namboole Stadium">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Start Date</label>
+                                <input type="date" name="start_date" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">End Date</label>
+                                <input type="date" name="end_date" class="form-control">
+                            </div>
+                        </div>
+
+                        {# Ticketing Logic #}
+                        <hr class="my-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>Ticketing & Registration</h5>
+                            <div class="form-check form-switch">
+                                <input class="form-check-switch input" type="checkbox" id="reg-required" name="registration_required" checked>
+                                <label class="form-check-label" for="reg-required">Registration Required</label>
+                            </div>
+                        </div>
+
+                        <div id="ticketing-section">
+                            <div class="alert alert-light border mb-3">
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="event_type" id="type-free" value="free" checked>
+                                    <label class="form-check-label" for="type-free">Free Event</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="event_type" id="type-paid" value="paid">
+                                    <label class="form-check-label" for="type-paid">Paid Event</label>
+                                </div>
+                            </div>
+
+                            <div id="ticket-tiers-container" class="d-none">
+                                <label class="form-label fw-bold">Define Ticket Tiers</label>
+                                <div id="ticket-rows">
+                                    {# Initial Row #}
+                                    <div class="row g-2 mb-2 ticket-row">
+                                        <div class="col-md-5">
+                                            <input type="text" name="tier_name[]" class="form-control" placeholder="Tier Name (e.g. VIP)">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="input-group">
+                                                <span class="input-group-text">$</span>
+                                                <input type="number" name="tier_price[]" class="form-control" placeholder="Price" step="0.01">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="number" name="tier_capacity[]" class="form-control" placeholder="Capacity">
+                                        </div>
+                                        <div class="col-md-1">
+                                            <button type="button" class="btn btn-outline-danger remove-tier w-100"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" id="add-tier-btn" class="btn btn-sm btn-outline-primary mt-2">
+                                    <i class="fas fa-plus me-1"></i> Add Another Tier
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="row mt-4">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Website</label>
+                                <input type="url" name="website" class="form-control" placeholder="https://...">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Contact Email</label>
+                                <input type="email" name="contact_email" class="form-control" value="{{ current_user.email }}">
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info small mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Your event will be submitted for review. Once approved, it will appear publicly on the platform.
+                        </div>
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('events.my_events') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary btn-lg px-5">Create Event</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle Visibility
+    const regRequired = document.getElementById('reg-required');
+    const ticketingSection = document.getElementById('ticketing-section');
+    const typePaid = document.getElementById('type-paid');
+    const typeFree = document.getElementById('type-free');
+    const tiersContainer = document.getElementById('ticket-tiers-container');
+
+    regRequired.addEventListener('change', () => {
+        ticketingSection.classList.toggle('d-none', !regRequired.checked);
+    });
+
+    const updateTierVisibility = () => {
+        tiersContainer.classList.toggle('d-none', !typePaid.checked);
+    };
+
+    typePaid.addEventListener('change', updateTierVisibility);
+    typeFree.addEventListener('change', updateTierVisibility);
+
+    // Add/Remove Tiers
+    document.getElementById('add-tier-btn').addEventListener('click', () => {
+        const row = document.querySelector('.ticket-row').cloneNode(true);
+        row.querySelectorAll('input').forEach(input => input.value = '');
+        document.getElementById('ticket-rows').appendChild(row);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('.remove-tier')) {
+            const rows = document.querySelectorAll('.ticket-row');
+            if (rows.length > 1) {
+                e.target.closest('.ticket-row').remove();
+            } else {
+                alert("You must have at least one ticket tier for a paid event.");
+            }
+        }
+    });
+
+    // Form Submission
+    document.getElementById('event-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+
+        // Handle boolean switch
+        data.registration_required = regRequired.checked;
+
+        // Collect Ticket Tiers
+        if (data.registration_required && data.event_type === 'paid') {
+            const tierNames = formData.getAll('tier_name[]');
+            const tierPrices = formData.getAll('tier_price[]');
+            const tierCapacities = formData.getAll('tier_capacity[]');
+
+            data.ticket_tiers = tierNames.map((name, i) => ({
+                name: name,
+                price: parseFloat(tierPrices[i]) || 0,
+                capacity: parseInt(tierCapacities[i]) || null
+            }));
+        }
+
+        const submitBtn = this.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Creating...';
+
+        try {
+            const response = await fetch("{{ url_for('events.create_event') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                window.location.href = result.redirect;
+            } else {
+                alert('Error: ' + result.error);
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Create Event';
+            }
+        } catch (error) {
+            alert('Request Failed: ' + error.message);
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Create Event';
+        }
+    });
+</script>
+{% endblock %}

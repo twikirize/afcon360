@@ -147,14 +147,12 @@ def dashboard():
 # Super Admin Management
 # ============================================================================
 
+@audit_owner_action('viewed_super_admins', 'user_management')
 @owner_bp.route('/super-admins')
 @login_required
 @owner_required
-# 🔴 NEW: Add decorator
 @audit_owner_action('viewed_super_admins', 'user_management')
 def super_admins():
-    """Manage super admins"""
-
     super_admin_role = Role.query.filter_by(name='super_admin').first()
     super_admins = []
     if super_admin_role:
@@ -162,7 +160,7 @@ def super_admins():
             UserRole.role_id == super_admin_role.id
         ).all()
 
-    # Get regular users
+    # Get regular users (excluding owners and current super admins)
     owner_role = Role.query.filter_by(name='owner').first()
     regular_users = User.query.filter(
         ~User.roles.any(UserRole.role_id.in_([
@@ -176,8 +174,6 @@ def super_admins():
         super_admins=super_admins,
         regular_users=regular_users
     )
-
-
 @owner_bp.route('/super-admins/add', methods=['POST'])
 @login_required
 @owner_required

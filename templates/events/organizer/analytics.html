@@ -1,0 +1,182 @@
+{# templates/events/organizer/analytics.html #}
+{% extends "base.html" %}
+
+{% block title %}Analytics - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1><i class="fas fa-chart-bar"></i> Event Analytics</h1>
+                    <p class="lead">{{ event.name }}</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="btn btn-outline-primary">
+                        <i class="fas fa-users"></i> View Attendees
+                    </a>
+                    <a href="{{ url_for('events.export_attendees', event_slug=event.slug) }}" class="btn btn-outline-success">
+                        <i class="fas fa-download"></i> Export CSV
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h2 class="mb-0">{{ stats.total }}</h2>
+                    <small>Total Registrations</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h2 class="mb-0">{{ stats.checked_in }}</h2>
+                    <small>Checked In</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h2 class="mb-0">{{ stats.checkin_rate }}%</h2>
+                    <small>Check-in Rate</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <h2 class="mb-0">${{ "%.2f"|format(stats.total_revenue) }}</h2>
+                    <small>Total Revenue</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Daily Trend -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Daily Registration Trend</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="dailyChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Check-in Trend -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Daily Check-in Trend</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="checkinChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Revenue by Ticket Type -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Revenue by Ticket Type</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="revenueChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Demographics -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-globe"></i> Attendee Nationalities</h5>
+                </div>
+                <div class="card-body">
+                    {% if demographics %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr><th>Nationality</th><th>Count</th><th>%</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for nat, count in demographics.items() %}
+                                    <tr>
+                                        <td>{{ nat }}</td>
+                                        <td>{{ count }}</td>
+                                        <td>{{ "%.1f"|format(count / stats.total * 100) }}%</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center py-4">No demographic data available</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Daily Registration Trend
+new Chart(document.getElementById('dailyChart'), {
+    type: 'line',
+    data: {
+        labels: {{ daily_trend|map(attribute='date')|list|tojson }},
+        datasets: [{
+            label: 'Registrations',
+            data: {{ daily_trend|map(attribute='count')|list|tojson }},
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: { responsive: true, maintainAspectRatio: true }
+});
+
+// Check-in Trend
+new Chart(document.getElementById('checkinChart'), {
+    type: 'line',
+    data: {
+        labels: {{ checkin_trend|map(attribute='date')|list|tojson }},
+        datasets: [{
+            label: 'Check-ins',
+            data: {{ checkin_trend|map(attribute='count')|list|tojson }},
+            borderColor: '#198754',
+            backgroundColor: 'rgba(25, 135, 84, 0.1)',
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: { responsive: true, maintainAspectRatio: true }
+});
+
+// Revenue by Ticket Type
+new Chart(document.getElementById('revenueChart'), {
+    type: 'pie',
+    data: {
+        labels: {{ revenue_by_ticket.keys()|list|tojson }},
+        datasets: [{
+            data: {{ revenue_by_ticket.values()|list|tojson }},
+            backgroundColor: ['#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14']
+        }]
+    },
+    options: { responsive: true, maintainAspectRatio: true }
+});
+</script>
+{% endblock %}

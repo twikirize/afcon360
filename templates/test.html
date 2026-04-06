@@ -1,14 +1,160 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Tailwind Test</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.3/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 p-6">
-  <div class="bg-red-500 text-white p-4 rounded shadow">
-  ✅ Tailwind is now working — this is a red box.
-</div>
-  </div>
-</body>
-</html>
+<!-- Two-column layout -->
+      <div class="sad-twocol">
+
+        <!-- LEFT COLUMN -->
+        <div class="sad-left">
+
+          <!-- Module Management -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(167,139,250,0.12);color:var(--sad-purple)">⚙</div>
+                Module Management
+              </div>
+              <span class="sad-tag">{{ modules|length }} modules</span>
+            </div>
+            <div class="sad-card-body flush">
+              <table class="sad-table">
+                <thead>
+                  <tr>
+                    <th style="width:42%">Module</th>
+                    <th>Status</th>
+                    <th>Toggle</th>
+                    <th>Access</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for name, status in modules.items() %}
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <div class="sad-mod-icon" style="background:{% if name=='transport' %}rgba(108,143,255,0.12){% elif name=='wallet' %}rgba(48,201,214,0.1){% elif name=='tourism' %}rgba(62,207,142,0.1){% else %}rgba(245,166,35,0.1){% endif %}">
+                          {% if name == 'transport' %}🚌
+                          {% elif name == 'wallet' %}💳
+                          {% elif name == 'tourism' %}🌿
+                          {% elif name == 'accommodation' %}🏨
+                          {% else %}📦{% endif %}
+                        </div>
+                        <div>
+                          <div class="sad-mod-name">{{ name|capitalize }}</div>
+                          <div class="sad-mod-desc">
+                            {% if name == 'transport' %}Bookings, drivers, routes
+                            {% elif name == 'tourism' %}Tour packages, guides
+                            {% elif name == 'accommodation' %}Hotels, lodges, hostels
+                            {% elif name == 'wallet' %}Payments, transactions
+                            {% else %}—{% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {% if status %}<span class="sad-badge on">Enabled</span>
+                      {% else %}<span class="sad-badge off">Disabled</span>{% endif %}
+                    </td>
+                    <td>
+                      <!-- UPDATED: Enhanced toggle with kill switch for wallet -->
+                      <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}"
+                            id="toggle-form-{{ name }}" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="reason" id="reason-{{ name }}" value="">
+                        <input type="hidden" name="confirm" id="confirm-{{ name }}" value="">
+                        <label class="sad-toggle" title="Toggle {{ name }}">
+                          <input type="checkbox" {{ 'checked' if status else '' }}
+                                 onchange="prepareModuleToggle('{{ name }}', this)">
+                          <span class="sad-toggle-slider"></span>
+                        </label>
+                      </form>
+                    </td>
+                    <td>
+                      {% if name == 'transport' %}
+                        <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-btn sm">Open →</a>
+                      {% elif name == 'wallet' %}
+                        <a href="{{ url_for('wallet_routes.wallet_dashboard') }}" class="sad-btn sm">Open →</a>
+                      {% else %}
+                        <span style="color:var(--sad-text3);font-size:11px">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div class="sad-card-body" style="padding-top:0">
+              <div class="sad-alert info">
+                Disabled modules are hidden from all user interfaces system-wide.
+              </div>
+            </div>
+          </div>
+
+          <!-- Wallet Features -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(48,201,214,0.1);color:var(--sad-cyan)">💳</div>
+                Wallet Features
+              </div>
+            </div>
+            <div class="sad-card-body flush">
+              {% for name, config in wallet_features.items() %}
+              {% set is_enabled = config.enabled if config is mapping else config %}
+              <div class="sad-feature-row">
+                <div>
+                  <div class="sad-feature-name">{{ name|replace('_', ' ')|title }}</div>
+                </div>
+                <div class="sad-feature-right">
+                  {% if is_enabled %}<span class="sad-badge on">On</span>
+                  {% else %}<span class="sad-badge off">Off</span>{% endif %}
+                  <form method="POST" action="{{ url_for('admin.toggle_wallet_feature', feature=name) }}" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label class="sad-toggle">
+                      <input type="checkbox" {{ 'checked' if is_enabled else '' }} onchange="this.form.submit()">
+                      <span class="sad-toggle-slider"></span>
+                    </label>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+
+          <!-- Withdrawal Settings -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(245,166,35,0.1);color:var(--sad-amber)">⚡</div>
+                Withdrawal Settings
+              </div>
+            </div>
+            <div class="sad-card-body">
+              <form method="POST" action="{{ url_for('admin.update_withdraw_settings') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="sad-settings-grid">
+                  <div class="sad-form-group">
+                    <label for="daily_limit">Daily Limit (USD)</label>
+                    <input class="sad-input" type="number" id="daily_limit" name="daily_limit"
+                           value="{{ wallet_features.get('withdraw', {}).get('daily_limit', 1000) }}" min="0" step="10">
+                  </div>
+                  <div class="sad-form-group">
+                    <label>Security</label>
+                    <div class="sad-checks" style="margin-bottom:0">
+                      <label class="sad-check">
+                        <input type="checkbox" id="require_verification" name="require_verification"
+                               {{ 'checked' if wallet_features.get('withdraw', {}).get('require_verification') else '' }}>
+                        Require KYC verification
+                      </label>
+                      <label class="sad-check">
+                        <input type="checkbox" id="require_2fa" name="require_2fa"
+                               {{ 'checked' if wallet_features.get('withdraw', {}).get('require_2fa', false) else '' }}>
+                        Require 2FA
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" class="sad-btn primary">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Save Settings
+                </button>
+              </form>
+            </div>
+          </div>

@@ -1,6 +1,27 @@
+{#
+  FILE: templates/super_admindashboard.html
+  PURPOSE: Super Admin Dashboard - Platform-wide administration
+  INCLUDES: User management, module toggles, wallet settings, transport admin, EVENT MANAGEMENT
+  ACCESS: Super Admin and Owner roles only
+  LAST UPDATED: 2026-04-04 (Added Emergency Kill Switch for Wallet module)
+#}
+
 {% extends "admin/admin.html" %}
 
 {% block content %}
+
+<div class="sad-card" style="border-color:rgba(240,106,106,0.4)">
+  <div class="sad-card-head">
+    <div class="sad-card-title">
+      🚨 Emergency Controls
+    </div>
+  </div>
+  <div class="sad-card-body">
+    <button class="sad-btn danger">Shutdown Platform</button>
+    <button class="sad-btn">Maintenance Mode</button>
+    <button class="sad-btn">Freeze Transactions</button>
+  </div>
+</div>
 
 <div class="sad-shell">
 
@@ -17,7 +38,7 @@
     <div class="sad-nav">
       <div class="sad-nav-label">Overview</div>
       <a href="#" class="sad-nav-item active">
-        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.4"/></svg>
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/></svg>
         Dashboard
       </a>
       <a href="{{ url_for('admin.manage_users') }}" class="sad-nav-item">
@@ -31,6 +52,19 @@
       </a>
 
       <div class="sad-nav-label">Modules</div>
+
+      <!-- NEW: Events Module Link -->
+      <a href="{{ url_for('events.admin_dashboard') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/>
+          <rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/>
+          <rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/>
+          <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/>
+        </svg>
+        Events
+        <span class="sad-nav-pill" id="pendingEventsCount">0</span>
+      </a>
+
       <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="5" width="13" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="4" cy="12" r="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="11" cy="12" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 8h13" stroke="currentColor" stroke-width="1.2"/></svg>
         Transport
@@ -53,7 +87,21 @@
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 8a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0z" fill="currentColor"/></svg>
         Wallet
         {% if modules.get('wallet') %}<span class="sad-nav-pill on">ON</span>
-        {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
+        {% else %}<span class="sad-nav-pill off emergency">⚠️ OFF</span>{% endif %}
+      </a>
+
+      <div class="sad-nav-label">Wallet Management</div>
+      <a href="{{ url_for('admin.wallet_list') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 8a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0z" fill="currentColor"/></svg>
+        All Wallets
+      </a>
+      <a href="{{ url_for('admin.wallet_stats') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5L9 5H13l-2.9 2.1 1 3.4L7.5 8.8 4.4 10.5l1-3.4L2.5 5H6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        Wallet Analytics
+      </a>
+      <a href="{{ url_for('admin.wallet_control') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 7.5h5M7.5 5v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Emergency Controls
       </a>
 
       <div class="sad-nav-label">Content</div>
@@ -67,6 +115,8 @@
         <span class="sad-nav-pill alert">!</span>
       </a>
     </div>
+
+
 
     <!-- Sidebar footer: owner button (owner only) + admin chip -->
     <div class="sad-sidebar-footer">
@@ -158,6 +208,40 @@
         </div>
       </div>
 
+      <!-- NEW: Events Statistics Card -->
+      <div class="sad-card">
+        <div class="sad-card-head">
+          <div class="sad-card-title">
+            <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">📅</div>
+            Events Overview
+          </div>
+          <a href="{{ url_for('events.admin_dashboard') }}" class="sad-btn sm">Manage Events →</a>
+        </div>
+        <div class="sad-card-body">
+          <div class="sad-stats" style="grid-template-columns:repeat(4,1fr)">
+            <div class="sad-stat s-blue">
+              <div class="sad-stat-label">Total Events</div>
+              <div class="sad-stat-value" id="totalEvents">0</div>
+            </div>
+            <div class="sad-stat s-green">
+              <div class="sad-stat-label">Active</div>
+              <div class="sad-stat-value" id="activeEvents">0</div>
+            </div>
+            <div class="sad-stat s-amber">
+              <div class="sad-stat-label">Pending</div>
+              <div class="sad-stat-value" id="pendingEvents">0</div>
+            </div>
+            <div class="sad-stat s-cyan">
+              <div class="sad-stat-label">Registrations</div>
+              <div class="sad-stat-value" id="totalRegistrations">0</div>
+            </div>
+          </div>
+          <div class="sad-alert info" style="margin-top:12px;font-size:11px">
+            <a href="{{ url_for('events.admin_events') }}?status=pending" style="color:var(--sad-amber)">📋 {{ pending_events_count|default(0) }} events pending approval</a>
+          </div>
+        </div>
+      </div>
+
       <!-- Quick Actions -->
       <div class="sad-card">
         <div class="sad-card-head">
@@ -187,6 +271,12 @@
               <div class="sad-qa-icon" style="background:rgba(240,106,106,0.1)">📋</div>
               <div class="sad-qa-label">Review Submissions</div>
               <div class="sad-qa-sub">Pending review</div>
+            </a>
+            <!-- NEW: Events Admin Quick Action -->
+            <a href="{{ url_for('events.admin_dashboard') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(108,143,255,0.1)">📅</div>
+              <div class="sad-qa-label">Events Admin</div>
+              <div class="sad-qa-sub">Manage events & registrations</div>
             </a>
           </div>
         </div>
@@ -246,10 +336,15 @@
                       {% else %}<span class="sad-badge off">Disabled</span>{% endif %}
                     </td>
                     <td>
-                      <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}" style="display:inline">
+                      <!-- UPDATED: Enhanced toggle with kill switch for wallet -->
+                      <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}"
+                            id="toggle-form-{{ name }}" style="display:inline">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="reason" id="reason-{{ name }}" value="">
+                        <input type="hidden" name="confirm" id="confirm-{{ name }}" value="">
                         <label class="sad-toggle" title="Toggle {{ name }}">
-                          <input type="checkbox" {{ 'checked' if status else '' }} onchange="this.form.submit()">
+                          <input type="checkbox" {% if status %}checked{% endif %}
+                                 onchange="prepareModuleToggle('{{ name }}', this)">
                           <span class="sad-toggle-slider"></span>
                         </label>
                       </form>
@@ -277,13 +372,15 @@
 
           <!-- Wallet Features -->
           <div class="sad-card">
-            <div class="sad-card-head">
+            <div class="sad-card-head" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#walletFeaturesCollapse">
               <div class="sad-card-title">
                 <div class="sad-card-icon" style="background:rgba(48,201,214,0.1);color:var(--sad-cyan)">💳</div>
                 Wallet Features
               </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="var(--sad-text3)" stroke-width="1.5" stroke-linecap="round"/></svg>
             </div>
-            <div class="sad-card-body flush">
+            <div id="walletFeaturesCollapse" class="collapse">
+              <div class="sad-card-body flush">
               {% for name, config in wallet_features.items() %}
               {% set is_enabled = config.enabled if config is mapping else config %}
               <div class="sad-feature-row">
@@ -296,15 +393,17 @@
                   <form method="POST" action="{{ url_for('admin.toggle_wallet_feature', feature=name) }}" style="display:inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label class="sad-toggle">
-                      <input type="checkbox" {{ 'checked' if is_enabled else '' }} onchange="this.form.submit()">
+                      <input type="checkbox" {% if is_enabled %}checked{% endif %} onchange="this.form.submit()">
                       <span class="sad-toggle-slider"></span>
                     </label>
                   </form>
                 </div>
               </div>
               {% endfor %}
+              </div>
             </div>
           </div>
+
 
           <!-- Withdrawal Settings -->
           <div class="sad-card">
@@ -328,12 +427,12 @@
                     <div class="sad-checks" style="margin-bottom:0">
                       <label class="sad-check">
                         <input type="checkbox" id="require_verification" name="require_verification"
-                               {{ 'checked' if wallet_features.get('withdraw', {}).get('require_verification') else '' }}>
+                               {% if wallet_features.get('withdraw', {}).get('require_verification') %}checked{% endif %}>
                         Require KYC verification
                       </label>
                       <label class="sad-check">
                         <input type="checkbox" id="require_2fa" name="require_2fa"
-                               {{ 'checked' if wallet_features.get('withdraw', {}).get('require_2fa', false) else '' }}>
+                               {% if wallet_features.get('withdraw', {}).get('require_2fa', false) %}checked{% endif %}>
                         Require 2FA
                       </label>
                     </div>
@@ -378,7 +477,7 @@
                     <form method="POST" action="{{ url_for('admin.toggle_transport_feature', feature=name) }}" style="display:inline">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <label class="sad-toggle">
-                        <input type="checkbox" {{ 'checked' if is_enabled else '' }} onchange="this.form.submit()">
+                        <input type="checkbox" {% if is_enabled %}checked{% endif %} onchange="this.form.submit()">
                         <span class="sad-toggle-slider"></span>
                       </label>
                     </form>
@@ -398,13 +497,15 @@
 
           <!-- Transport Settings -->
           <div class="sad-card">
-            <div class="sad-card-head">
+            <div class="sad-card-head" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#transportSettingsCollapse">
               <div class="sad-card-title">
                 <div class="sad-card-icon" style="background:rgba(48,201,214,0.1);color:var(--sad-cyan)">🔧</div>
                 Transport Settings
               </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="var(--sad-text3)" stroke-width="1.5" stroke-linecap="round"/></svg>
             </div>
-            <div class="sad-card-body">
+            <div id="transportSettingsCollapse" class="collapse">
+              <div class="sad-card-body">
               <form method="POST" action="{{ url_for('admin.update_transport_settings') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -428,7 +529,7 @@
                   <div class="sad-form-group" style="display:flex;align-items:flex-end">
                     <label class="sad-check">
                       <input type="checkbox" id="require_deposit" name="require_deposit"
-                             {{ 'checked' if transport_features.get('booking', {}).get('require_deposit') else '' }}>
+                             {% if transport_features.get('booking', {}).get('require_deposit') %}checked{% endif %}>
                       Require deposit
                     </label>
                   </div>
@@ -438,12 +539,12 @@
                 <div class="sad-checks">
                   <label class="sad-check">
                     <input type="checkbox" id="require_license" name="require_license"
-                           {{ 'checked' if transport_features.get('driver_verification', {}).get('require_license', True) else '' }}>
+                           {% if transport_features.get('driver_verification', {}).get('require_license', True) %}checked{% endif %}>
                     Require valid driver's license
                   </label>
                   <label class="sad-check">
                     <input type="checkbox" id="require_background_check" name="require_background_check"
-                           {{ 'checked' if transport_features.get('driver_verification', {}).get('require_background_check') else '' }}>
+                           {% if transport_features.get('driver_verification', {}).get('require_background_check') %}checked{% endif %}>
                     Require background check
                   </label>
                 </div>
@@ -466,12 +567,12 @@
                 <div class="sad-checks" style="margin-bottom:18px">
                   <label class="sad-check">
                     <input type="checkbox" id="require_insurance" name="require_insurance"
-                           {{ 'checked' if transport_features.get('vehicle_requirements', {}).get('require_insurance', True) else '' }}>
+                           {% if transport_features.get('vehicle_requirements', {}).get('require_insurance', True) %}checked{% endif %}>
                     Require vehicle insurance
                   </label>
                   <label class="sad-check">
                     <input type="checkbox" id="require_inspection" name="require_inspection"
-                           {{ 'checked' if transport_features.get('vehicle_requirements', {}).get('require_inspection') else '' }}>
+                           {% if transport_features.get('vehicle_requirements', {}).get('require_inspection') %}checked{% endif %}>
                     Require regular safety inspection
                   </label>
                 </div>
@@ -481,6 +582,7 @@
                   Save Transport Settings
                 </button>
               </form>
+              </div>
             </div>
           </div>
 
@@ -619,11 +721,143 @@
             </div>
           </div>
 
+          <!-- NEW: Events Quick Link -->
+          <div class="sad-card" style="border-color:rgba(108,143,255,0.25);margin-top:16px">
+            <div class="sad-card-head" style="background:rgba(108,143,255,0.06)">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">📅</div>
+                Events Admin
+              </div>
+            </div>
+            <div class="sad-card-body">
+              <p style="font-size:12px;color:var(--sad-text2);margin-bottom:14px;line-height:1.5">
+                Manage events, registrations, check-ins, approvals, and event staff.
+              </p>
+              <a href="{{ url_for('events.admin_dashboard') }}" class="sad-btn primary" style="width:100%;justify-content:center">
+                Open Events Admin →
+              </a>
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <a href="{{ url_for('events.admin_events') }}?status=pending" class="sad-btn sm" style="flex:1;justify-content:center">⏳ Pending</a>
+                <a href="{{ url_for('events.admin_events') }}?status=active" class="sad-btn sm" style="flex:1;justify-content:center">✅ Active</a>
+                <a href="{{ url_for('events.admin_events') }}" class="sad-btn sm" style="flex:1;justify-content:center">📋 All</a>
+              </div>
+            </div>
+          </div>
+
         </div><!-- /sad-right -->
       </div><!-- /sad-twocol -->
 
     </div><!-- /sad-content -->
   </div><!-- /sad-main -->
 </div><!-- /sad-shell -->
+
+<!-- ============================================================================ -->
+<!-- PHASE 1: EMERGENCY KILL SWITCH JAVASCRIPT FOR WALLET MODULE -->
+<!-- ============================================================================ -->
+<script>
+
+  setInterval(() => {
+  fetch('/admin/api/system-stats')
+    .then(res => res.json())
+    .then(updateDashboardUI);
+}, 15000);
+
+function prepareModuleToggle(moduleName, checkbox) {
+    const isDisabling = !checkbox.checked;
+
+    // For wallet module, require confirmation and reason (Emergency Kill Switch)
+
+    if (moduleName === 'wallet' && isDisabling) {
+        const reason = prompt(
+            '🚨 EMERGENCY KILL SWITCH - WALLET MODULE 🚨\n\n' +
+            '⚠️ WARNING: This will IMMEDIATELY disable ALL wallet operations!\n\n' +
+            'This blocks:\n' +
+            '• All deposits\n' +
+            '• All withdrawals\n' +
+            '• All peer-to-peer transfers\n' +
+            '• Agent commission payouts\n\n' +
+            'Existing balances remain intact but no transactions can be made.\n\n' +
+            'Enter the reason for this emergency action:'
+        );
+
+        if (!reason || reason.trim() === '') {
+            alert('❌ Reason is required to disable the Wallet module.\n\nThis is an emergency action that must be logged for compliance.');
+            checkbox.checked = true; // Revert the toggle
+            return false;
+        }
+
+        const confirmed = confirm(
+            '🔴 FINAL CONFIRMATION 🔴\n\n' +
+            'Are you ABSOLUTELY sure you want to DISABLE the wallet module?\n\n' +
+            'This is an EMERGENCY action that will affect ALL users.\n' +
+            'All financial transactions will be blocked.\n\n' +
+            'Click OK to proceed, Cancel to abort.'
+        );
+
+        if (!confirmed) {
+            checkbox.checked = true; // Revert the toggle
+            return false;
+        }
+
+        // Set the reason and confirmation flag
+        const reasonInput = document.getElementById(`reason-${moduleName}`);
+        const confirmInput = document.getElementById(`confirm-${moduleName}`);
+
+        if (reasonInput) reasonInput.value = reason;
+        if (confirmInput) confirmInput.value = 'yes';
+
+        // Submit the form
+        const form = document.getElementById(`toggle-form-${moduleName}`);
+        if (form) form.submit();
+
+    } else {
+        // Normal toggle (enabling wallet or other modules)
+        const action = checkbox.checked ? 'enable' : 'disable';
+        let message = `Are you sure you want to ${action} the ${moduleName} module?`;
+
+        // Add warning for enabling wallet after it was disabled
+        if (moduleName === 'wallet' && !isDisabling) {
+            message = '✅ RE-ENABLE WALLET MODULE ✅\n\n' +
+                      'Are you sure you want to re-enable the wallet module?\n\n' +
+                      'This will restore all wallet operations:\n' +
+                      '• Deposits\n' +
+                      '• Withdrawals\n' +
+                      '• Transfers\n' +
+                      '• Agent payouts\n\n' +
+                      'Click OK to proceed, Cancel to abort.';
+        }
+
+        if (confirm(message)) {
+            const form = document.getElementById(`toggle-form-${moduleName}`);
+            if (form) form.submit();
+        } else {
+            checkbox.checked = !checkbox.checked; // Revert
+            return false;
+        }
+    }
+
+}
+
+fetch('{{ url_for("events.api_admin_stats") }}')
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('totalEvents').textContent = data.total_events;
+            document.getElementById('activeEvents').textContent = data.active_events;
+            document.getElementById('pendingEvents').textContent = data.pending_events;
+            document.getElementById('totalRegistrations').textContent = data.total_registrations;
+            document.getElementById('pendingEventsCount').textContent = data.pending_events;
+        }
+    })
+    .catch(err => console.error('Error loading event stats:', err));
+
+setInterval(() => {
+    fetch('/admin/api/system-stats')
+        .then(res => res.json())
+        .then(updateDashboardUI)
+        .catch(err => console.error('Error updating system stats:', err));
+}, 15000);
+
+</script>
 
 {% endblock %}

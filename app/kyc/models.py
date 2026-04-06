@@ -1,4 +1,4 @@
-# app/kyc/user.py
+# app/kyc/models.py
 from app.extensions import db
 from app.models.base import TimestampMixin
 

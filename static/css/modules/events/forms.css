@@ -1,0 +1,99 @@
+/* static/css/modules/events/forms.css */
+
+/* Enhanced Styling for Event Forms */
+
+.event-form-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 30px;
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.form-step-indicator {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+}
+
+.step {
+    flex: 1;
+    text-align: center;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #eee;
+    font-weight: bold;
+    color: #ccc;
+    font-size: 0.9rem;
+}
+
+.step.active {
+    border-bottom-color: #007bff;
+    color: #007bff;
+}
+
+.step.completed {
+    border-bottom-color: #28a745;
+    color: #28a745;
+}
+
+.form-group-custom {
+    margin-bottom: 20px;
+}
+
+.form-label-custom {
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.form-input-custom {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-input-custom:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    outline: none;
+}
+
+/* Ticket Tier Adder Styling */
+.ticket-tier-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    align-items: flex-end;
+}
+
+.ticket-tier-row .form-group {
+    margin-bottom: 0;
+}
+
+.btn-remove-tier {
+    color: #dc3545;
+    background: none;
+    border: none;
+    padding: 10px;
+    font-size: 1.2rem;
+}
+
+.btn-remove-tier:hover {
+    color: #a71d2a;
+}
+
+/* Submit Section */
+.form-footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+}

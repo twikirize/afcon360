@@ -1,0 +1,223 @@
+{#
+  FILE: templates/events/organizer/organizer_dashboard.html
+  PURPOSE: Event-specific dashboard for organizers
+  ACCESS: Event organizer only
+  RELATED: events.organizer_dashboard route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Organizer Dashboard: {{ event.name }} - AFCON360{% endblock %}
+
+{% block module_styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/organizer.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-8">
+            <h1 class="display-5 mb-0">
+                <i class="fas fa-chart-line text-success me-2"></i>
+                Dashboard: {{ event.name }}
+            </h1>
+            <p class="text-muted">Real-time oversight and management for your event</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <div class="btn-group shadow-sm">
+                <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" class="btn btn-primary">
+                    <i class="fas fa-edit me-1"></i> Edit
+                </a>
+                <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-outline-secondary" target="_blank">
+                    <i class="fas fa-external-link-alt"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# Stats Row #}
+    <div class="dashboard-summary-row">
+        <div class="dashboard-summary-card">
+            <h3>{{ stats.total_registrations or 0 }}</h3>
+            <p>Registrations</p>
+        </div>
+        <div class="dashboard-summary-card">
+            <h3>${{ "%.2f"|format(stats.total_revenue or 0) }}</h3>
+            <p>Revenue</p>
+        </div>
+        <div class="dashboard-summary-card">
+            <h3>{{ stats.checked_in_count or 0 }}</h3>
+            <p>Checked In</p>
+        </div>
+        <div class="dashboard-summary-card">
+            <h3>
+                {% if event.max_capacity %}
+                    {{ "%.1f"|format((stats.total_registrations / event.max_capacity) * 100) if event.max_capacity else 0 }}%
+                {% else %}
+                    N/A
+                {% endif %}
+            </h3>
+            <p>Capacity</p>
+        </div>
+    </div>
+
+    <div class="row">
+        {# Ticket Tier Breakdown #}
+        <div class="col-lg-4 mb-4">
+            <div class="dashboard-content-card shadow-sm h-100">
+                <div class="dashboard-content-header">
+                    <h5 class="mb-0"><i class="fas fa-tags me-2"></i>Ticket Tiers</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    {% if event.ticket_types %}
+                        {% for tt in event.ticket_types %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong>{{ tt.name }}</strong>
+                                <span class="badge bg-light text-dark border">{{ tt.registration_count }} / {{ tt.capacity if tt.capacity else '∞' }}</span>
+                            </div>
+                            <div class="progress" style="height: 6px;">
+                                {% set percent = (tt.registration_count / tt.capacity * 100) if tt.capacity else 0 %}
+                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ percent }}%"
+                                     aria-valuenow="{{ tt.registration_count }}" aria-valuemin="0" aria-valuemax="{{ tt.capacity }}"></div>
+                            </div>
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted">${{ tt.price }}</small>
+                                <small class="text-muted">Total: ${{ "%.2f"|format(tt.registration_count * tt.price) }}</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="list-group-item text-center py-4 text-muted">
+                            No ticket tiers defined.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# Recent Registrations #}
+        <div class="col-lg-8 mb-4">
+            <div class="dashboard-content-card shadow-sm h-100">
+                <div class="dashboard-content-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h5>
+                    <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="btn btn-sm btn-link">See All</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Attendee</th>
+                                <th>Tier</th>
+                                <th>Status</th>
+                                <th>Registered</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if registrations %}
+                                {% for reg in registrations[:10] %} {# Only show last 10 here #}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ reg.full_name }}</div>
+                                        <small class="text-muted">{{ reg.email }}</small>
+                                    </td>
+                                    <td><span class="badge bg-info-subtle text-info border border-info-subtle">{{ reg.ticket_type }}</span></td>
+                                    <td>
+                                        <span class="badge badge-event-status badge-status-{{ reg.status }}">
+                                            {{ reg.status }}
+                                        </span>
+                                    </td>
+                                    <td><small class="text-muted">{{ reg.created_at[:10] }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-5 text-muted">No registrations yet.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Management Tools #}
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="dashboard-content-card shadow-sm">
+                <div class="dashboard-content-header">
+                    <h5 class="mb-0"><i class="fas fa-tools me-2"></i>Management Tools</h5>
+                </div>
+                <div class="dashboard-content-body">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                                <i class="fas fa-users fa-2x mb-2 text-primary"></i>
+                                <div class="small fw-bold text-dark">Attendee List</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                                <i class="fas fa-user-shield fa-2x mb-2 text-success"></i>
+                                <div class="small fw-bold text-dark">Staff Access</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('events.event_scanner', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                                <i class="fas fa-qrcode fa-2x mb-2 text-warning"></i>
+                                <div class="small fw-bold text-dark">QR Scanner</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="{{ url_for('events.event_analytics', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                                <i class="fas fa-chart-bar fa-2x mb-2 text-danger"></i>
+                                <div class="small fw-bold text-dark">Full Analytics</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Event Summary #}
+        <div class="col-md-6 mb-4">
+            <div class="dashboard-content-card shadow-sm h-100">
+                <div class="dashboard-content-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Event Configuration</h5>
+                </div>
+                <div class="dashboard-content-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span>Status</span>
+                            <span class="badge badge-event-status badge-status-{{ event.status }}">{{ event.status|upper }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span>Category</span>
+                            <span class="text-muted">{{ event.category|capitalize }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span>Location</span>
+                            <span class="text-muted">{{ event.city }}, {{ event.country }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span>Dates</span>
+                            <span class="text-muted small">{{ event.start_date[:10] }} to {{ event.end_date[:10] }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.hover-shadow-sm:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+    transition: all 0.2s;
+}
+</style>
+{% endblock %}

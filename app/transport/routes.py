@@ -23,6 +23,7 @@ from app.utils.module_switch import check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
+from app.extensions import db
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ def home():
         booking_service = get_booking_service()
         services = booking_service.list_services() if hasattr(booking_service, "list_services") else []
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading transport services: {e}")
         services = []
 
@@ -116,6 +118,7 @@ def service_detail(service_id):
         booking_service = get_booking_service()
         service = booking_service.get_service(service_id) if hasattr(booking_service, "get_service") else None
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading service {service_id} for user_id={_uid()}: {e}")
         service = None
 
@@ -208,6 +211,7 @@ def book_transport():
         return redirect(url_for("transport.home"))
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Booking error for user_id={_uid()}: {e}")
         flash(f"Booking error: {str(e)}", "danger")
         return redirect(url_for("transport.book_transport"))
@@ -221,6 +225,7 @@ def bookings_show(id):
     try:
         booking = get_booking_service().get_booking(id)
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading booking {id} for user_id={_uid()}: {e}")
         booking = None
 
@@ -312,6 +317,7 @@ def become_driver():
         return redirect(url_for("transport.driver_dashboard"))
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Driver registration error for user_id={_uid()}: {e}")
         flash(f"Registration error: {str(e)}", "danger")
         return redirect(url_for("transport.become_driver"))
@@ -325,6 +331,7 @@ def drivers_show(id):
     try:
         driver = get_provider_service().get_driver(id)
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading driver {id} for user_id={_uid()}: {e}")
         driver = None
 
@@ -378,6 +385,7 @@ def driver_dashboard():
             else []
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading driver dashboard for user_id={_uid()}: {e}")
         profile = None
         bookings = []
@@ -439,6 +447,7 @@ def register_vehicle():
         return redirect(url_for("transport.vehicle_dashboard"))
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Vehicle registration error for user_id={_uid()}: {e}")
         flash(f"Registration error: {str(e)}", "danger")
         return redirect(url_for("transport.register_vehicle"))
@@ -452,6 +461,7 @@ def vehicles_show(id):
     try:
         vehicle = get_provider_service().get_vehicle(id)
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading vehicle {id} for user_id={_uid()}: {e}")
         vehicle = None
 
@@ -500,6 +510,7 @@ def vehicle_dashboard():
     try:
         vehicles = get_provider_service().get_user_vehicles(current_user.id)
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error loading vehicle dashboard for user_id={_uid()}: {e}")
         vehicles = []
 
@@ -710,6 +721,7 @@ def organisation_dashboard():
         return render_template("transport/organisation/dashboard.html", **ctx)
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Organisation dashboard error: {e}", exc_info=True)
         flash("Unable to load dashboard", "danger")
         return redirect(url_for("transport.home"))
@@ -735,6 +747,7 @@ def list_bookings():
             bookings=bookings, page=page, per_page=per_page
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error listing bookings for user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to load bookings", "danger")
         return redirect(url_for("transport.home"))
@@ -766,6 +779,7 @@ def cancel_booking(booking_id):
         flash(str(e), "danger")
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Unexpected error cancelling booking {booking_id} — user_id={_uid()}: {e}", exc_info=True)
         flash("Unexpected error cancelling booking", "danger")
 
@@ -791,6 +805,7 @@ def list_drivers():
             drivers=drivers, page=page, per_page=per_page
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error listing drivers for user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to load drivers", "danger")
         return redirect(url_for("transport.home"))
@@ -818,6 +833,7 @@ def drivers_filter():
             status_filter=status, online_filter=online
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error filtering drivers for user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to load drivers", "danger")
         return redirect(url_for("transport_admin.list_drivers"))
@@ -845,6 +861,7 @@ def approve_driver(driver_id):
         flash(str(e), "danger")
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error approving driver {driver_id} — user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to approve driver", "danger")
 
@@ -873,6 +890,7 @@ def reject_driver(driver_id):
         flash(str(e), "danger")
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error rejecting driver {driver_id} — user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to reject driver", "danger")
 
@@ -898,6 +916,7 @@ def list_vehicles():
             vehicles=vehicles, page=page, per_page=per_page
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error listing vehicles for user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to load vehicles", "danger")
         return redirect(url_for("transport.home"))
@@ -925,6 +944,7 @@ def approve_vehicle(vehicle_id):
         flash(str(e), "danger")
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error approving vehicle {vehicle_id} — user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to approve vehicle", "danger")
 
@@ -953,6 +973,7 @@ def reject_vehicle(vehicle_id):
         flash(str(e), "danger")
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error rejecting vehicle {vehicle_id} — user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to reject vehicle", "danger")
 
@@ -1024,6 +1045,7 @@ def bookings_report():
         return redirect(url_for("transport_admin.admin_dashboard"))
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error generating booking report — user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to generate report", "danger")
         return redirect(url_for("transport_admin.admin_dashboard"))
@@ -1119,6 +1141,7 @@ def dashboard():
         return render_template("transport/admin/dashboard.html", **ctx)
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Transport admin dashboard error: {e}", exc_info=True)
         flash("Unable to load dashboard. Please try again.", "danger")
         return redirect(url_for("transport_admin.dashboard"))

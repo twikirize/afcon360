@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Wallet Terms and Conditions</h3>
+                </div>
+                <div class="card-body">
+                    <h5>1. Acceptance of Terms</h5>
+                    <p>By activating your wallet, you agree to be bound by these Terms and Conditions.</p>
+
+                    <h5>2. Eligibility</h5>
+                    <p>You must be at least 18 years old and have a verified account to use the wallet service.</p>
+
+                    <h5>3. Wallet Usage</h5>
+                    <p>The wallet may be used for deposits, withdrawals, and peer-to-peer transfers.</p>
+
+                    <h5>4. Fees</h5>
+                    <p>Transaction fees may apply. Current fee structure is available on the dashboard.</p>
+
+                    <h5>5. Security</h5>
+                    <p>You are responsible for maintaining the security of your account.</p>
+
+                    <h5>6. Limitations</h5>
+                    <p>Daily and monthly transaction limits apply as configured by administrators.</p>
+
+                    <h5>7. Termination</h5>
+                    <p>We reserve the right to suspend or terminate wallets that violate these terms.</p>
+
+                    <h5>8. Amendments</h5>
+                    <p>These terms may be updated from time to time. Continued use constitutes acceptance.</p>
+
+                    <hr>
+
+                    <div class="text-center">
+                        <a href="{{ url_for('wallet_routes.activate_wallet') }}" class="btn btn-primary">Back to Activation</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

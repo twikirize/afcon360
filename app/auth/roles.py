@@ -29,6 +29,41 @@ from app.identity.models.user import UserRole
 log = logging.getLogger(__name__)
 
 DEFAULT_SCOPE = "global"
+# ============================================================================
+# ROLE CONSTANTS
+# ============================================================================
+
+# Global roles
+ROLE_OWNER = "owner"
+ROLE_SUPER_ADMIN = "super_admin"
+ROLE_ADMIN = "admin"
+ROLE_AUDITOR = "auditor"                     # NEW: read-only audit access
+ROLE_COMPLIANCE_OFFICER = "compliance_officer"  # NEW: AML review access
+ROLE_USER = "user"
+
+# Org roles
+ROLE_ORG_ADMIN = "org_admin"
+ROLE_ORG_MEMBER = "org_member"
+
+# All global roles
+ALL_GLOBAL_ROLES = [
+    ROLE_OWNER,
+    ROLE_SUPER_ADMIN,
+    ROLE_ADMIN,
+    ROLE_AUDITOR,
+    ROLE_COMPLIANCE_OFFICER,
+    ROLE_USER,
+]
+
+# Role → permissions mapping
+ROLE_PERMISSIONS = {
+    ROLE_OWNER: ["audit:read", "audit:export", "audit:delete", "aml:review", "aml:resolve"],
+    ROLE_SUPER_ADMIN: ["audit:read", "audit:export", "aml:review"],
+    ROLE_ADMIN: ["audit:read", "audit:export"],
+    ROLE_AUDITOR: ["audit:read"],
+    ROLE_COMPLIANCE_OFFICER: ["audit:read", "aml:review", "aml:resolve"],
+    ROLE_USER: [],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -118,8 +153,13 @@ def assign_global_role(
         role_id=role.id,
         assigned_by=assigned_by_id,
     )
-    db.session.add(ur)
-    db.session.commit()
+    try:
+        db.session.add(ur)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("Failed to assign global role %s to user %s: %s", role_name, user_id, e)
+        raise
 
     log.info(
         "global_role_assigned",
@@ -160,8 +200,13 @@ def revoke_global_role(
     if not ur:
         return False
 
-    db.session.delete(ur)
-    db.session.commit()
+    try:
+        db.session.delete(ur)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("Failed to revoke global role %s from user %s: %s", role_name, user_id, e)
+        raise
 
     log.info(
         "global_role_revoked",
@@ -228,8 +273,13 @@ def assign_org_role(
         role_id=role.id,
         assigned_by=assigned_by_id,
     )
-    db.session.add(our)
-    db.session.commit()
+    try:
+        db.session.add(our)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("Failed to assign org role %s in org %s: %s", role_name, org_id, e)
+        raise
 
     log.info(
         "org_role_assigned",
@@ -285,8 +335,13 @@ def revoke_org_role(
     if not our:
         return False
 
-    db.session.delete(our)
-    db.session.commit()
+    try:
+        db.session.delete(our)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("Failed to revoke org role %s in org %s: %s", role_name, org_id, e)
+        raise
 
     log.info(
         "org_role_revoked",

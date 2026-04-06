@@ -42,7 +42,8 @@
   </div>
   <div class="trending-tags">
     <span class="trending-label">🔥 Trending:</span>
-    <a href="{{ url_for('accommodation.accommodation_event.landing', event_slug='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
+    <!-- FIXED: Changed to events.landing -->
+    <a href="{{ url_for('events.landing', event_slug='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
     <a href="#" class="trending-tag">CHOGM 2026</a>
     <a href="#" class="trending-tag">World Cup Qualifiers</a>
     <a href="#" class="trending-tag">East Africa Crusade</a>
@@ -100,9 +101,9 @@
       </div>
     </div>
 
-    <!-- Host CTA -->
+    <!-- Host CTA - FIXED: Changed to events.create_event -->
     {% if session.get('user_id') %}
-    <a href="{{ url_for('accommodation.accommodation_event.create_event') }}" class="left-host-cta">
+    <a href="{{ url_for('events.create_event') }}" class="left-host-cta">
     {% else %}
     <a href="{{ url_for('auth_routes.login') }}" class="left-host-cta">
     {% endif %}
@@ -124,13 +125,14 @@
     <section>
       <div class="section-head">
         <h2 class="section-title">Featured Events</h2>
-        <a href="{{ url_for('accommodation.accommodation_event.list') }}" class="section-link">View All →</a>
+        <!-- FIXED: Changed to events.list -->
+        <a href="{{ url_for('events.list') }}" class="section-link">View All →</a>
       </div>
 
       <div class="featured-grid">
 
-        <!-- AFCON 2027 -->
-        <a href="{{ url_for('accommodation.accommodation_event.landing', event_slug='afcon-2027') }}" class="feat-card afcon">
+        <!-- AFCON 2027 - FIXED: Changed to events.landing -->
+        <a href="{{ url_for('events.landing', event_slug='afcon-2027') }}" class="feat-card afcon">
           <div class="feat-card-bg"></div>
           <div class="feat-card-icon">🏟️</div>
           <div class="feat-card-overlay"></div>
@@ -254,13 +256,13 @@
       </div>
     </section>
 
-    <!-- Host Your Event Banner -->
+    <!-- Host Your Event Banner - FIXED: Changed to events.create_event -->
     <section>
       <div class="host-banner">
         <div class="host-banner-title">Host Your Event on <span>AFCON360</span></div>
         <div class="host-banner-sub">Reach Millions &amp; Make Your Event a Success!</div>
         {% if session.get('user_id') %}
-        <a href="{{ url_for('accommodation.accommodation_event.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        <a href="{{ url_for('events.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
         {% else %}
         <a href="{{ url_for('auth_routes.login') }}" class="host-banner-btn">Get Started &rsaquo;</a>
         {% endif %}

@@ -1,0 +1,167 @@
+{#
+  FILE: templates/events/events_hub.html
+  PURPOSE: Unified "Hub" dashboard for all user roles (Attendee, Organizer, Provider, Admin)
+  ACCESS: Authenticated users only
+  RELATED: events.events_hub route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Events Hub - AFCON360{% endblock %}
+
+{% block module_styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/hub.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-8">
+            <h1 class="display-4 mb-0">Events Hub</h1>
+            <p class="lead text-muted">Your central control room for everything events</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <div class="card bg-light border-0 shadow-sm">
+                <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
+                    <div>
+                        <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Wallet Balance</small>
+                        <span class="h5 mb-0 text-success">${{ "%.2f"|format(wallet_balance) }}</span>
+                    </div>
+                    <a href="{{ url_for('wallet.home') }}" class="btn btn-sm btn-success ms-3">
+                        <i class="fas fa-wallet"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# SECTION 1: ATTENDEE (Everyone) #}
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h4 class="mb-0 text-primary"><i class="fas fa-ticket-alt me-2"></i>My Registrations</h4>
+            <a href="{{ url_for('events.my_registrations') }}" class="btn btn-sm btn-outline-primary">Full Dashboard</a>
+        </div>
+        <div class="card-body">
+            {% if registrations %}
+                <div class="row row-cols-1 row-cols-md-3 g-3">
+                    {% for reg in registrations[:3] %}
+                    <div class="col">
+                        <div class="border rounded p-3 h-100 bg-light-hover position-relative">
+                            <span class="badge {% if reg.status == 'checked_in' %}bg-success{% else %}bg-primary{% endif %} position-absolute top-0 end-0 m-2">
+                                {{ reg.status }}
+                            </span>
+                            <h6 class="mb-1 text-truncate pe-5">{{ reg.event.name }}</h6>
+                            <p class="small text-muted mb-2"><i class="fas fa-calendar-day me-1"></i>{{ reg.event.start_date[:10] }}</p>
+                            <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn btn-sm btn-primary w-100">
+                                <i class="fas fa-qrcode me-1"></i> View Ticket
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <p class="text-muted mb-2">You haven't registered for any events yet.</p>
+                    <a href="{{ url_for('events.list') }}" class="btn btn-primary">Find Your Next Event</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        {# SECTION 2: ORGANIZER #}
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h4 class="mb-0 text-success"><i class="fas fa-briefcase me-2"></i>Events I Manage</h4>
+                    <a href="{{ url_for('events.my_events') }}" class="btn btn-sm btn-outline-success">Manage All</a>
+                </div>
+                <div class="card-body">
+                    {% if managed_events %}
+                        <div class="list-group list-group-flush">
+                            {% for event in managed_events[:4] %}
+                            <a href="{{ url_for('events.organizer_dashboard', event_slug=event.slug) }}" class="list-group-item list-group-item-action px-0 border-0 mb-2">
+                                <div class="d-flex w-100 justify-content-between align-items-center border rounded p-3">
+                                    <div>
+                                        <h6 class="mb-1">{{ event.name }}</h6>
+                                        <small class="text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{ event.city }}</small>
+                                    </div>
+                                    <span class="badge bg-light text-dark border">
+                                        {{ event.status|upper }}
+                                    </span>
+                                </div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <div class="d-grid mt-3">
+                        <a href="{{ url_for('events.create_event') }}" class="btn btn-outline-success border-dashed py-3">
+                            <i class="fas fa-plus-circle me-2"></i>Create New Event
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# SECTION 3: SERVICE PROVIDER (Accommodation/Transport) #}
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h4 class="mb-0 text-info"><i class="fas fa-handshake me-2"></i>Service Opportunities</h4>
+                    <a href="{{ url_for('events.service_provider_dashboard') }}" class="btn btn-sm btn-outline-info">Provider Dashboard</a>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">Events near your properties or service areas:</p>
+                    {% if relevant_events %}
+                        <div class="list-group list-group-flush">
+                            {% for event in relevant_events[:4] %}
+                            <div class="list-group-item px-0 border-0 mb-2">
+                                <div class="d-flex w-100 justify-content-between align-items-center border rounded p-3">
+                                    <div>
+                                        <h6 class="mb-1">{{ event.name }}</h6>
+                                        <small class="text-muted"><i class="fas fa-calendar-alt me-1"></i>{{ event.start_date[:10] }}</small>
+                                    </div>
+                                    <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-sm btn-info text-white">Offer Services</a>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-light border text-center py-4">
+                            <i class="fas fa-info-circle mb-2 fa-2x opacity-25"></i>
+                            <p class="mb-0 text-muted small">No events currently match your service locations.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# SECTION 4: SYSTEM ADMIN (Only for Super Admins) #}
+    {% if admin_stats %}
+    <div class="card shadow-sm mb-4 border-warning">
+        <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center py-3">
+            <h4 class="mb-0 text-dark"><i class="fas fa-user-shield me-2"></i>Global Administration</h4>
+            <a href="{{ url_for('events.admin_dashboard') }}" class="btn btn-sm btn-warning">Admin Dashboard</a>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-4">
+                    <h2 class="mb-0 text-primary">{{ admin_stats.total_events }}</h2>
+                    <small class="text-muted text-uppercase fw-bold">Total</small>
+                </div>
+                <div class="col-4">
+                    <h2 class="mb-0 text-success">{{ admin_stats.active_events }}</h2>
+                    <small class="text-muted text-uppercase fw-bold">Active</small>
+                </div>
+                <div class="col-4">
+                    <h2 class="mb-0 text-danger">{{ admin_stats.pending_events }}</h2>
+                    <small class="text-muted text-uppercase fw-bold">Pending</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

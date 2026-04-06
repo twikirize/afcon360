@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center">
+                    <h3 class="mb-0">
+                        <i class="bi bi-wallet2"></i> 
+                        {% if action == 'verify' %}Complete Wallet Activation
+                        {% else %}Create Your Wallet{% endif %}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    {% if action == 'verify' %}
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i>
+                            Your wallet has been created but needs activation to start using it.
+                        </div>
+                        <div class="wallet-info mb-4">
+                            <h5>Wallet Details:</h5>
+                            <p><strong>Reference:</strong> <code>{{ wallet.wallet_ref or 'Not assigned' }}</code></p>
+                            <p><strong>Home Currency:</strong> {{ wallet.home_currency }}</p>
+                            <p><strong>Local Currency:</strong> {{ wallet.local_currency }}</p>
+                        </div>
+                        <form method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                By activating your wallet, you agree to our 
+                                <a href="{{ url_for('wallet_routes.terms') }}">Wallet Terms and Conditions</a>.
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="bi bi-check-circle"></i> Activate Wallet
+                            </button>
+                        </form>
+                    {% else %}
+                        <p class="text-muted mb-4">
+                            Create your wallet to start making deposits, sending payments, and receiving payouts.
+                        </p>
+                        
+                        <form method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Home Currency</label>
+                                <select name="home_currency" class="form-select" required>
+                                    <option value="USD">USD - US Dollar</option>
+                                    <option value="EUR">EUR - Euro</option>
+                                    <option value="GBP">GBP - British Pound</option>
+                                </select>
+                                <small class="text-muted">Your primary currency for transactions.</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Local Currency</label>
+                                <select name="local_currency" class="form-select" required>
+                                    <option value="UGX">UGX - Ugandan Shilling</option>
+                                    <option value="KES">KES - Kenyan Shilling</option>
+                                    <option value="TZS">TZS - Tanzanian Shilling</option>
+                                    <option value="NGN">NGN - Nigerian Naira</option>
+                                </select>
+                                <small class="text-muted">Your local currency for everyday use.</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Nationality</label>
+                                <select name="nationality" class="form-select" required>
+                                    <option value="UG">Uganda</option>
+                                    <option value="KE">Kenya</option>
+                                    <option value="TZ">Tanzania</option>
+                                    <option value="NG">Nigeria</option>
+                                    <option value="US">United States</option>
+                                    <option value="GB">United Kingdom</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Location</label>
+                                <select name="location" class="form-select" required>
+                                    <option value="UG">Uganda</option>
+                                    <option value="KE">Kenya</option>
+                                    <option value="TZ">Tanzania</option>
+                                    <option value="NG">Nigeria</option>
+                                    <option value="US">United States</option>
+                                    <option value="GB">United Kingdom</option>
+                                </select>
+                            </div>
+                            
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                By creating a wallet, you agree to our 
+                                <a href="{{ url_for('wallet_routes.terms') }}">Wallet Terms and Conditions</a>.
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus-circle"></i> Create Wallet
+                            </button>
+                        </form>
+                    {% endif %}
+                    
+                    <hr class="my-4">
+                    
+                    <div class="text-center">
+                        <small class="text-muted">
+                            <i class="bi bi-shield-check"></i> Your wallet is secure and encrypted.<br>
+                            <i class="bi bi-currency-exchange"></i> Multi-currency support available.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

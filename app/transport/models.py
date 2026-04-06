@@ -574,7 +574,7 @@ class Vehicle(TransportBase):
         Index("ix_vehicle_owner", "owner_type", "owner_id"),
         Index("ix_vehicle_status", "status", "is_available", "is_deleted"),
         Index("ix_vehicle_class", "vehicle_class", "status"),
-        Index("ix_vehicle_location", "current_location", postgresql_using="gist"),
+        Index("ix_vehicle_location", "current_location", postgresql_using="gin"),
 
         # Check constraints
         CheckConstraint(

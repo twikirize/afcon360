@@ -140,3 +140,19 @@ def can_view_system_health(user: "User") -> bool:
 def can_manage_permissions(user: "User") -> bool:
     """Only the ``owner`` can create permissions and link them to roles."""
     return can(user, "permissions.manage")
+
+# Add to app/auth/policy.py
+
+def can_view_audit_logs(user: "User") -> bool:
+    """Check if user can view audit logs."""
+    return can(user, "audit.view") or can(user, "audit.read")
+
+
+def can_review_aml(user: "User") -> bool:
+    """Check if user can review AML flagged transactions."""
+    return can(user, "aml.review")
+
+
+def can_resolve_aml(user: "User") -> bool:
+    """Check if user can resolve AML flagged transactions."""
+    return can(user, "aml.resolve")

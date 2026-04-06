@@ -114,6 +114,38 @@
         </div>
       </div>
 
+      {# ── EVENTS STATS CARD (NEW) ── #}
+      <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 20px;">
+        <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+          <div class="stat-icon"><i class="bi bi-calendar-event"></i></div>
+          <div class="stat-content">
+            <div class="stat-value" id="totalEvents">0</div>
+            <div class="stat-label">Total Events</div>
+          </div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+          <div class="stat-icon"><i class="bi bi-check-circle"></i></div>
+          <div class="stat-content">
+            <div class="stat-value" id="activeEvents">0</div>
+            <div class="stat-label">Active Events</div>
+          </div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+          <div class="stat-icon"><i class="bi bi-clock-history"></i></div>
+          <div class="stat-content">
+            <div class="stat-value" id="pendingEvents">0</div>
+            <div class="stat-label">Pending Approval</div>
+          </div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+          <div class="stat-icon"><i class="bi bi-ticket-perforated"></i></div>
+          <div class="stat-content">
+            <div class="stat-value" id="totalRegistrations">0</div>
+            <div class="stat-label">Registrations</div>
+          </div>
+        </div>
+      </div>
+
       {# ── Quick Actions ── #}
       <div class="quick-actions">
         <div class="section-title">
@@ -150,10 +182,21 @@
             <h4>Danger Zone</h4>
             <p>Critical platform actions</p>
           </a>
+          <!-- NEW: Events Admin Actions -->
+          <a href="{{ url_for('events.admin_dashboard') }}" class="action-card">
+            <div class="action-icon">📅</div>
+            <h4>Events Admin</h4>
+            <p>Manage events, approvals, registrations</p>
+          </a>
+          <a href="{{ url_for('events.admin_events') }}?status=pending" class="action-card">
+            <div class="action-icon">⏳</div>
+            <h4>Pending Events</h4>
+            <p>Review and approve events</p>
+          </a>
         </div>
       </div>
 
-      {# ── Two-column: Super Admin Mgmt + Recent Activity ── #}
+      {# ── Two-column: Super Admin Mgmt + Events Overview (UPDATED) ── #}
       <div class="owner-twocol">
 
         {# LEFT: Super Admin Management #}
@@ -211,11 +254,22 @@
           </div>
         </div>
 
-        {# RIGHT: Recent Activity + Recent Signups #}
+        {# RIGHT: Events Overview + Recent Activity #}
         <div class="owner-right-col">
 
-          {# Recent Activity #}
+          {# NEW: Events Pending Approval Card #}
           <div class="super-admin-card">
+            <div class="super-admin-header">
+              <h3><i class="bi bi-calendar-check me-2"></i>Events Pending Approval</h3>
+              <a href="{{ url_for('events.admin_events') }}?status=pending" class="view-all-link">View all →</a>
+            </div>
+            <div class="activity-list" id="pendingEventsList">
+              <div class="text-center p-3">Loading pending events...</div>
+            </div>
+          </div>
+
+          {# Recent Activity #}
+          <div class="super-admin-card" style="margin-top:16px">
             <div class="super-admin-header">
               <h3><i class="bi bi-clock-history me-2"></i>Recent Owner Activity</h3>
               <a href="{{ url_for('admin.owner.audit_logs') }}" class="view-all-link">View all →</a>
@@ -297,11 +351,136 @@
     </div>{# /owner-container #}
   </div>{# /owner-wrapper #}
 </div>{# /owner-shell #}
+
+<!-- ============================================================================ -->
+<!-- PHASE 1: EMERGENCY KILL SWITCH JAVASCRIPT FOR WALLET MODULE -->
+<!-- Note: Owner dashboard inherits from base.html, wallet kill switch is managed -->
+<!-- via the Super Admin dashboard. Owners can access it by switching to Super Admin -->
+<!-- ============================================================================ -->
+
+<script>
+// Fetch event stats for the dashboard
+async function loadEventStats() {
+    try {
+        const response = await fetch('{{ url_for("events.api_admin_stats") }}');
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById('totalEvents').textContent = data.total_events || 0;
+            document.getElementById('activeEvents').textContent = data.active_events || 0;
+            document.getElementById('pendingEvents').textContent = data.pending_events || 0;
+            document.getElementById('totalRegistrations').textContent = data.total_registrations || 0;
+        }
+    } catch (error) {
+        console.error('Error loading event stats:', error);
+    }
+}
+
+// Fetch pending events list
+async function loadPendingEvents() {
+    try {
+        const response = await fetch('{{ url_for("events.api_pending_events") }}');
+        const data = await response.json();
+        const container = document.getElementById('pendingEventsList');
+
+        if (data.success && data.events && data.events.length > 0) {
+            container.innerHTML = data.events.map(event => `
+                <div class="activity-item">
+                    <div class="activity-icon">📅</div>
+                    <div class="activity-content">
+                        <div class="activity-action"><strong>${event.name}</strong></div>
+                        <div class="activity-meta">
+                            ${event.city} · Created by: ${event.organizer_name || 'User ' + event.organizer_id}
+                            <div style="margin-top: 5px;">
+                                <button onclick="approveEvent('${event.slug}')" class="btn-approve">Approve</button>
+                                <button onclick="rejectEvent('${event.slug}')" class="btn-reject">Reject</button>
+                                <a href="/events/${event.slug}" class="btn-view">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<div class="text-center p-3 text-muted">No pending events</div>';
+        }
+    } catch (error) {
+        console.error('Error loading pending events:', error);
+        document.getElementById('pendingEventsList').innerHTML = '<div class="text-center p-3 text-danger">Error loading pending events</div>';
+    }
+}
+
+function approveEvent(eventSlug) {
+    if (confirm('Approve this event?')) {
+        fetch(`/events/admin/${eventSlug}/approve`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            }
+        }).then(() => {
+            loadPendingEvents();
+            loadEventStats();
+        });
+    }
+}
+
+function rejectEvent(eventSlug) {
+    const reason = prompt('Enter rejection reason:');
+    if (reason) {
+        fetch(`/events/admin/${eventSlug}/reject`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({reason: reason})
+        }).then(() => {
+            loadPendingEvents();
+            loadEventStats();
+        });
+    }
+}
+
+// Load data on page load
+loadEventStats();
+loadPendingEvents();
+
+// Refresh every 30 seconds
+setInterval(() => {
+    loadEventStats();
+    loadPendingEvents();
+}, 30000);
+</script>
+
+<style>
+.btn-approve, .btn-reject, .btn-view {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin-right: 5px;
+    cursor: pointer;
+    border: none;
+}
+.btn-approve {
+    background-color: #28a745;
+    color: white;
+}
+.btn-reject {
+    background-color: #dc3545;
+    color: white;
+}
+.btn-view {
+    background-color: #6c757d;
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+}
+.btn-approve:hover, .btn-reject:hover, .btn-view:hover {
+    opacity: 0.8;
+}
+</style>
+
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
-<script>
-setTimeout(function() { location.reload(); }, 30000);
-</script>
 {% endblock %}

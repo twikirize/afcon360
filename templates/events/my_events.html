@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}My Events - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5">My Events</h1>
+            <p class="lead">Manage events you've created</p>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <a href="{{ url_for('events.create_event') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Create New Event
+            </a>
+            <a href="{{ url_for('events.list') }}" class="btn btn-outline-secondary ms-2">
+                <i class="fas fa-globe"></i> Browse All Events
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        {% if events %}
+            {% for event in events %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header bg-white">
+                        <span class="badge {% if event.status == 'active' %}bg-success{% elif event.status == 'pending' %}bg-warning{% else %}bg-danger{% endif %}">
+                            {{ event.status|upper }}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">{{ event.name }}</h5>
+                        <p class="card-text text-muted small">
+                            <i class="fas fa-map-marker-alt"></i> {{ event.city }}{% if event.venue %} - {{ event.venue }}{% endif %}
+                        </p>
+                        <p class="card-text">{{ event.description|truncate(100) }}</p>
+                        <div class="small text-muted">
+                            <i class="fas fa-calendar"></i>
+                            {% if event.start_date %}
+                                {{ event.start_date[:10] }}
+                                {% if event.end_date and event.end_date != event.start_date %}
+                                    - {{ event.end_date[:10] }}
+                                {% endif %}
+                            {% else %}
+                                Date TBD
+                            {% endif %}
+                        </div>
+                        <div class="small text-muted mt-1">
+                            <i class="fas fa-clock"></i> Created: {{ event.created_at[:10] if event.created_at else 'N/A' }}
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white">
+                        <div class="btn-group w-100">
+                            <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-sm btn-outline-primary">
+                                View
+                            </a>
+                            <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" class="btn btn-sm btn-outline-secondary">
+                                Edit
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ event.slug }}">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delete Modal - FIXED URL -->
+            <div class="modal fade" id="deleteModal{{ event.slug }}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form method="POST" action="{{ url_for('events.delete_event', event_slug=event.slug) }}">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Delete Event</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Are you sure you want to delete <strong>{{ event.name }}</strong>?</p>
+                                <p class="text-danger small">This cannot be undone if there are no bookings. If there are bookings, the event cannot be deleted.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-danger">Delete Event</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-info text-center py-5">
+                    <i class="fas fa-calendar-plus fa-3x mb-3"></i>
+                    <h4>No Events Yet</h4>
+                    <p>Create your first event to get started.</p>
+                    <!-- FIXED URL HERE TOO -->
+                    <a href="{{ url_for('events.create_event') }}" class="btn btn-primary">
+                        Create Event
+                    </a>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

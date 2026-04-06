@@ -1,0 +1,210 @@
+{#
+  FILE: templates/events/attendee/register.html
+  PURPOSE: Event registration form for attendees
+  ACCESS: Authenticated users only
+  RELATED: events.register route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Register for {{ event.name }} - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-ticket-alt"></i>
+                        Register for {{ event.name }}
+                    </h4>
+                </div>
+                <div class="card-body">
+
+                    {# Event Info Summary #}
+                    <div class="alert alert-info mb-4">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">Event Date</small>
+                                <div>
+                                    <i class="fas fa-calendar-alt"></i>
+                                    {{ event.start_date[:10] if event.start_date else 'TBD' }}
+                                    {% if event.end_date and event.end_date != event.start_date %}
+                                        - {{ event.end_date[:10] }}
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted">Location</small>
+                                <div>
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    {{ event.city }}{% if event.venue %} - {{ event.venue }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# Registration Form #}
+                    <form method="POST" id="registration-form">
+                        <div class="mb-3">
+                            <label class="form-label">Full Name *</label>
+                            <input type="text" name="full_name" class="form-control"
+                                   value="{{ user_data.full_name }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Email *</label>
+                            <input type="email" name="email" class="form-control"
+                                   value="{{ user_data.email }}" required>
+                            <small class="text-muted">Your ticket will be sent to this email</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Phone Number</label>
+                            <input type="tel" name="phone" class="form-control"
+                                   value="{{ user_data.phone }}">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nationality</label>
+                                <input type="text" name="nationality" class="form-control"
+                                       value="{{ user_data.nationality }}"
+                                       placeholder="e.g., Ugandan, Kenyan, Tanzanian">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Select Ticket Tier *</label>
+                                <select name="ticket_type_id" class="form-select" id="ticket-type-select" required>
+                                    <option value="">-- Choose Ticket --</option>
+                                    {% if event.ticket_types %}
+                                        {% for tt in event.ticket_types %}
+                                            {% if tt.is_active %}
+                                                <option value="{{ tt.id }}" data-price="{{ tt.price }}">
+                                                    {{ tt.name }} - {{ event.currency }} {{ tt.price }}
+                                                    {% if tt.capacity %} ({{ tt.capacity - tt.registration_count if tt.registration_count else tt.capacity }} left){% endif %}
+                                                </option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <option value="" disabled>No tickets available</option>
+                                    {% endif %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="ticket-info" class="mb-3 d-none">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <div id="ticket-description" class="small text-muted mb-2"></div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <strong>Total Amount:</strong>
+                                        <span class="h5 mb-0 text-primary" id="total-price-display"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">ID Type</label>
+                                <select name="id_type" class="form-select">
+                                    <option value="">Select ID Type (Optional)</option>
+                                    <option value="passport">Passport</option>
+                                    <option value="national_id">National ID</option>
+                                    <option value="drivers_license">Driver's License</option>
+                                    <option value="voter_card">Voter's Card</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">ID Number</label>
+                                <input type="text" name="id_number" class="form-control"
+                                       placeholder="Optional for verification">
+                            </div>
+                        </div>
+
+                        <div class="alert alert-warning small">
+                            <i class="fas fa-qrcode"></i>
+                            <strong>What happens next?</strong>
+                            <ul class="mb-0 mt-1">
+                                <li>You'll receive a confirmation email with your QR code</li>
+                                <li>Present the QR code at the event entrance for scanning</li>
+                                <li>Save your ticket number for reference</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                               class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Back to Event
+                            </a>
+                            <button type="submit" class="btn btn-primary" id="submit-btn">
+                                <i class="fas fa-check-circle"></i> Complete Registration
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ticketSelect = document.getElementById('ticket-type-select');
+const ticketInfo = document.getElementById('ticket-info');
+const totalPriceDisplay = document.getElementById('total-price-display');
+const ticketTypes = {{ event.ticket_types|tojson|safe if event.ticket_types else '[]' }};
+const currency = "{{ event.currency }}";
+
+ticketSelect.addEventListener('change', function() {
+    const ticketId = parseInt(this.value);
+    const selectedTicket = ticketTypes.find(tt => tt.id === ticketId);
+
+    if (selectedTicket) {
+        ticketInfo.classList.remove('d-none');
+        document.getElementById('ticket-description').textContent = selectedTicket.description || '';
+        totalPriceDisplay.textContent = `${currency} ${selectedTicket.price}`;
+    } else {
+        ticketInfo.classList.add('d-none');
+    }
+});
+
+document.getElementById('registration-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData.entries());
+
+    // Show loading state
+    const submitBtn = document.getElementById('submit-btn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    submitBtn.disabled = true;
+
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            window.location.href = result.redirect;
+        } else {
+            alert('Error: ' + result.error);
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

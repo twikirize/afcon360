@@ -1,0 +1,85 @@
+/* static/css/modules/events/hub.css */
+
+/* Events Hub Specific Styles */
+
+.hub-hero {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    padding: 40px 0;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.hub-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 10px;
+}
+
+.hub-summary-card {
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+    transition: transform 0.2s;
+}
+
+.hub-summary-card:hover {
+    transform: scale(1.02);
+}
+
+.hub-section-header {
+    margin-top: 40px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+}
+
+.hub-section-header h2 {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.hub-section-header h2 i {
+    margin-right: 10px;
+    color: #007bff;
+}
+
+.hub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+/* Role-specific highlights in Hub */
+.hub-highlight-attendee { border-left: 5px solid #007bff; }
+.hub-highlight-organizer { border-left: 5px solid #28a745; }
+.hub-highlight-provider { border-left: 5px solid #17a2b8; }
+.hub-highlight-admin { border-left: 5px solid #ffc107; }
+
+.hub-quick-link {
+    display: block;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: #fff;
+    border: 1px solid #e0e0e0;
+    text-decoration: none;
+    color: #333;
+    transition: all 0.2s;
+}
+
+.hub-quick-link:hover {
+    background-color: #f0f7ff;
+    border-color: #007bff;
+    color: #0056b3;
+    text-decoration: none;
+}
+
+.hub-quick-link i {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+    display: block;
+}

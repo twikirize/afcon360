@@ -1,0 +1,246 @@
+{#
+  FILE: templates/events/organizer/attendees.html
+  PURPOSE: Show attendee list for event organizers to manage check-ins
+  ACCESS: Event Organizer, Organization Admin, or System Admin only
+  RELATED: events.event_attendees route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Attendees - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1>
+                        <i class="fas fa-users"></i>
+                        Attendees: {{ event.name }}
+                    </h1>
+                    <p class="lead">Manage event attendees and check-ins</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('events.organizer_dashboard', event_slug=event.slug) }}"
+                       class="btn btn-outline-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Statistics Cards #}
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center bg-primary text-white">
+                <div class="card-body">
+                    <h2 class="mb-0">{{ stats.total }}</h2>
+                    <p class="mb-0">Total Registered</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-success text-white">
+                <div class="card-body">
+                    <h2 class="mb-0">{{ stats.checked_in }}</h2>
+                    <p class="mb-0">Checked In</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-info text-white">
+                <div class="card-body">
+                    <h2 class="mb-0">{{ stats.confirmed }}</h2>
+                    <p class="mb-0">Confirmed</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-secondary text-white">
+                <div class="card-body">
+                    <h2 class="mb-0">{{ stats.cancelled }}</h2>
+                    <p class="mb-0">Cancelled</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Search and Filter #}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <input type="text" id="searchInput" class="form-control"
+                           placeholder="🔍 Search by name, email, or ticket number...">
+                </div>
+                <div class="col-md-3">
+                    <select id="statusFilter" class="form-select">
+                        <option value="all">All Status</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="checked_in">Checked In</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select id="ticketFilter" class="form-select">
+                        <option value="all">All Ticket Types</option>
+                        <option value="general">General Admission</option>
+                        <option value="vip">VIP</option>
+                        <option value="media">Media</option>
+                        <option value="volunteer">Volunteer</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Attendee Table #}
+    <div class="card">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="fas fa-list"></i> Attendee List</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="attendeeTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Registration #</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Ticket Type</th>
+                            <th>Status</th>
+                            <th>Checked In At</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for reg in registrations %}
+                        <tr class="attendee-row"
+                            data-name="{{ reg.full_name|lower }}"
+                            data-email="{{ reg.email|lower }}"
+                            data-ticket="{{ reg.ticket_number|lower }}"
+                            data-status="{{ reg.status }}"
+                            data-ticket-type="{{ reg.ticket_type }}">
+                            <td><small>{{ reg.registration_ref }}</small></td>
+                            <td><strong>{{ reg.full_name }}</strong></td>
+                            <td>{{ reg.email }}</td>
+                            <td>
+                                <span class="badge {% if reg.ticket_type == 'vip' %}bg-warning{% elif reg.ticket_type == 'media' %}bg-info{% else %}bg-secondary{% endif %}">
+                                    {{ reg.ticket_type|upper }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if reg.status == 'checked_in' %}
+                                    <span class="badge bg-success">✓ Checked In</span>
+                                {% elif reg.status == 'confirmed' %}
+                                    <span class="badge bg-primary">Confirmed</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ reg.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ reg.checked_in_at[:16] if reg.checked_in_at else '-' }}
+                            </td>
+                            <td>
+                                {% if reg.status != 'checked_in' %}
+                                    <button class="btn btn-sm btn-success checkin-btn"
+                                            data-qr-token="{{ reg.qr_token }}"
+                                            data-name="{{ reg.full_name }}">
+                                        <i class="fas fa-check"></i> Check In
+                                    </button>
+                                {% else %}
+                                    <span class="text-success">
+                                        <i class="fas fa-check-circle"></i> Done
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Search and filter functionality
+const searchInput = document.getElementById('searchInput');
+const statusFilter = document.getElementById('statusFilter');
+const ticketFilter = document.getElementById('ticketFilter');
+const rows = document.querySelectorAll('.attendee-row');
+
+function filterTable() {
+    const searchTerm = searchInput.value.toLowerCase();
+    const statusValue = statusFilter.value;
+    const ticketValue = ticketFilter.value;
+
+    rows.forEach(row => {
+        const name = row.dataset.name;
+        const email = row.dataset.email;
+        const ticket = row.dataset.ticket;
+        const status = row.dataset.status;
+        const ticketType = row.dataset.ticketType;
+
+        const matchesSearch = searchTerm === '' ||
+                              name.includes(searchTerm) ||
+                              email.includes(searchTerm) ||
+                              ticket.includes(searchTerm);
+        const matchesStatus = statusValue === 'all' || status === statusValue;
+        const matchesTicket = ticketValue === 'all' || ticketType === ticketValue;
+
+        row.style.display = (matchesSearch && matchesStatus && matchesTicket) ? '' : 'none';
+    });
+}
+
+searchInput.addEventListener('input', filterTable);
+statusFilter.addEventListener('change', filterTable);
+ticketFilter.addEventListener('change', filterTable);
+
+// Check-in functionality
+async function checkInAttendee(qrToken, attendeeName) {
+    if (!confirm(`Check in "${attendeeName}"?`)) return;
+
+    const button = event.target.closest('.checkin-btn');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    button.disabled = true;
+
+    try {
+        const response = await fetch('{{ url_for("events.api_checkin") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ qr_token: qrToken })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert('Error: ' + result.error);
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+document.querySelectorAll('.checkin-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        const qrToken = this.dataset.qrToken;
+        const name = this.dataset.name;
+        checkInAttendee(qrToken, name);
+    });
+});
+</script>
+{% endblock %}
