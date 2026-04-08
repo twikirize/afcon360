@@ -17,7 +17,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <form method="GET" action="{{ url_for('accommodation.accommodation_guest.search') }}" class="row g-3">
+                    <form method="GET" action="{{ url_for('accommodation.guest.search') }}" class="row g-3">
                         <!-- Search Form -->
                         <div class="col-md-4">
                             <label class="form-label">City / Venue</label>
@@ -104,7 +104,7 @@
                                 <strong class="h5 text-primary">${{ property.price }}</strong>
                                 <small class="text-muted">/ night</small>
                             </div>
-                            <a href="{{ url_for('accommodation.accommodation_guest.detail', identifier=property.slug or property.id) }}"
+                            <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}"
                                class="btn btn-outline-primary">
                                 View Details <i class="fas fa-arrow-right"></i>
                             </a>
@@ -121,7 +121,7 @@
                     <p>Try adjusting your search criteria or check back later for new listings.</p>
                     <!-- Clear Filters -->
                     {% if request.args.get('city') %}
-                        <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="btn btn-primary">
+                        <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
                             Clear Filters
                         </a>
                     {% endif %}

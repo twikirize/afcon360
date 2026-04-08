@@ -11,7 +11,7 @@
     {% endif %}
   {% endwith %}
 
-  <form method="POST" action="{{ url_for('wallet_routes.deposit_form') }}">
+  <form method="POST" action="{{ url_for('wallet.deposit_form') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div>

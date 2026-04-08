@@ -63,14 +63,14 @@ function applyFilters() {
 function renderTable(data) {
     const tbody = document.getElementById('tableBody');
     const events = data.events || [];
-    
+
     if (!events.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No security events found</td></tr>';
         return;
     }
-    
+
     const severityColors = { info: 'info', warning: 'warning', critical: 'danger' };
-    
+
     tbody.innerHTML = events.map(e => `
         <tr>
             <td><code>${e.event_type}</code></td>

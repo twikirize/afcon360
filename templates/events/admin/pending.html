@@ -21,7 +21,7 @@
                         <p class="card-text">{{ event.description|truncate(100) }}</p>
                         <p class="text-muted">
                             <i class="fas fa-map-marker-alt"></i> {{ event.city }}<br>
-                            <i class="fas fa-calendar"></i> 
+                            <i class="fas fa-calendar"></i>
                             {% if event.start_date %}
                                 {{ event.start_date[:10] }} to {{ event.end_date[:10] }}
                             {% else %}

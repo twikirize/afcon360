@@ -19,7 +19,7 @@ def require_wallet_activated(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             flash("Please log in to access your wallet.", "warning")
-            return redirect(url_for("auth_routes.login"))
+            return redirect(url_for("auth.login"))
 
         repo = WalletRepository()
         wallet = repo.get_by_user_id(current_user.id)
@@ -27,7 +27,7 @@ def require_wallet_activated(f):
         if not wallet or not wallet.verified:
             # No wallet or wallet not activated
             flash("Please activate your wallet to access this feature.", "warning")
-            return redirect(url_for("wallet_routes.activate_wallet"))
+            return redirect(url_for("wallet.activate_wallet"))
 
         return f(*args, **kwargs)
 

@@ -210,8 +210,6 @@ class DriverProfile(TransportBase, AuditMixin):
 
         # Partial indexes for performance
         Index("ix_driver_not_deleted", "is_deleted", postgresql_where=text("is_deleted = false")),
-        Index("ix_driver_verified", "verification_tier",
-              postgresql_where=text("verification_tier IN ('platform_verified', 'event_certified')")),
         Index("ix_driver_deleted", "is_deleted"),
 
         # Foreign key constraints
@@ -574,7 +572,7 @@ class Vehicle(TransportBase):
         Index("ix_vehicle_owner", "owner_type", "owner_id"),
         Index("ix_vehicle_status", "status", "is_available", "is_deleted"),
         Index("ix_vehicle_class", "vehicle_class", "status"),
-        Index("ix_vehicle_location", "current_location", postgresql_using="gin"),
+        Index("ix_vehicle_location", "current_location"),
 
         # Check constraints
         CheckConstraint(
@@ -723,14 +721,14 @@ class Vehicle(TransportBase):
 
     @validates('current_location')
     def validate_location(self, key, value):
-        """Validate geographic coordinates"""
-        if value and not isinstance(value, str):
-            # Convert to WKT if needed
-            from geoalchemy2.shape import to_shape
-            try:
-                to_shape(value)
-            except Exception:
-                raise ValueError("Invalid geometry data")
+        """Validate geographic coordinates stored as JSONB"""
+        if value and isinstance(value, dict):
+            lat = value.get('latitude')
+            lng = value.get('longitude')
+            if lat is not None and not (-90 <= lat <= 90):
+                raise ValueError("Invalid latitude value")
+            if lng is not None and not (-180 <= lng <= 180):
+                raise ValueError("Invalid longitude value")
         return value
 
     # Get current active driver assignment (if any)
@@ -826,9 +824,9 @@ class Booking(TransportBase):
         Index("ix_booking_dates", "pickup_time", "created_at"),
         Index("ix_booking_reference", "booking_reference", unique=True),
 
-        # Spatial index for location queries
-        Index("ix_booking_pickup", "pickup_point", postgresql_using='gist'),
-        Index("ix_booking_dropoff", "dropoff_point", postgresql_using='gist'),
+        # Spatial reference indexes
+        Index("ix_booking_pickup", "pickup_point"),
+        Index("ix_booking_dropoff", "dropoff_point"),
 
         # Foreign keys
         ForeignKeyConstraint(
@@ -1126,7 +1124,7 @@ class BookingPayment(TransportBase):
     reconciled_by = db.Column(db.BigInteger)
 
     # Relationships
-    booking = relationship("app.transport.models.Booking", back_populates="payments")
+    booking = relationship("Booking", back_populates="payments")
 
     def generate_payment_reference(self):
         """Generate unique payment reference"""
@@ -1201,7 +1199,7 @@ class Rating(TransportBase):
     report_count = db.Column(db.Integer, default=0)
 
     # Relationships
-    booking = relationship("app.transport.models.Booking", back_populates="rating")
+    booking = relationship("Booking", back_populates="rating")
     user = relationship("User", backref="transport_ratings_given")
 
     @property
@@ -1275,7 +1273,7 @@ class ScheduledRoute(TransportBase):
     route_metadata = db.Column(JSONB, default=lambda: {})
 
     # Relationships
-    bookings = relationship("app.transport.models.Booking", back_populates="assigned_route")
+    bookings = relationship("Booking", back_populates="assigned_route")
 
     @property
     def is_full(self):
@@ -1539,7 +1537,7 @@ class TransportIncident(TransportBase):
     insurance_claim_details = db.Column(JSONB)
 
     # Relationships
-    booking = relationship("app.transport.models.Booking", back_populates="incidents")
+    booking = relationship("Booking", back_populates="incidents")
 
 
     def generate_reference(self):

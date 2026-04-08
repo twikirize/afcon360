@@ -1,8 +1,8 @@
 """initial migration
 
-Revision ID: 550e3b9f7b90
-Revises: 
-Create Date: 2026-04-06 05:04:09.833799
+Revision ID: 52c7be2e9c60
+Revises:
+Create Date: 2026-04-06 05:35:26.196930
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '550e3b9f7b90'
+revision = '52c7be2e9c60'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -441,7 +441,7 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_transport_vehicles_is_deleted'), ['is_deleted'], unique=False)
         batch_op.create_index(batch_op.f('ix_transport_vehicles_qr_code_hash'), ['qr_code_hash'], unique=True)
         batch_op.create_index('ix_vehicle_class', ['vehicle_class', 'status'], unique=False)
-        batch_op.create_index('ix_vehicle_location', ['current_location'], unique=False, postgresql_using='gin')
+        batch_op.create_index('ix_vehicle_location', ['current_location'], unique=False)
         batch_op.create_index('ix_vehicle_owner', ['owner_type', 'owner_id'], unique=False)
         batch_op.create_index('ix_vehicle_plate', ['license_plate'], unique=True)
         batch_op.create_index('ix_vehicle_status', ['status', 'is_available', 'is_deleted'], unique=False)
@@ -719,7 +719,6 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_driver_profiles_verification_tier'), ['verification_tier'], unique=False)
         batch_op.create_index('ix_driver_status', ['verification_tier', 'compliance_status', 'is_deleted'], unique=False)
         batch_op.create_index('ix_driver_user_id', ['user_id'], unique=True)
-        batch_op.create_index('ix_driver_verified', ['verification_tier'], unique=False, postgresql_where=sa.text("verification_tier IN ('platform_verified', 'event_certified')"))
 
     op.create_table('events',
     sa.Column('id', sa.BigInteger(), nullable=False),
@@ -1934,8 +1933,8 @@ def upgrade():
     )
     with op.batch_alter_table('transport_bookings', schema=None) as batch_op:
         batch_op.create_index('ix_booking_dates', ['pickup_time', 'created_at'], unique=False)
-        batch_op.create_index('ix_booking_dropoff', ['dropoff_point'], unique=False, postgresql_using='gist')
-        batch_op.create_index('ix_booking_pickup', ['pickup_point'], unique=False, postgresql_using='gist')
+        batch_op.create_index('ix_booking_dropoff', ['dropoff_point'], unique=False)
+        batch_op.create_index('ix_booking_pickup', ['pickup_point'], unique=False)
         batch_op.create_index('ix_booking_provider', ['provider_type', 'provider_id', 'status'], unique=False)
         batch_op.create_index('ix_booking_reference', ['booking_reference'], unique=True)
         batch_op.create_index('ix_booking_status', ['status', 'created_at'], unique=False)
@@ -2131,8 +2130,8 @@ def downgrade():
         batch_op.drop_index('ix_booking_status')
         batch_op.drop_index('ix_booking_reference')
         batch_op.drop_index('ix_booking_provider')
-        batch_op.drop_index('ix_booking_pickup', postgresql_using='gist')
-        batch_op.drop_index('ix_booking_dropoff', postgresql_using='gist')
+        batch_op.drop_index('ix_booking_pickup')
+        batch_op.drop_index('ix_booking_dropoff')
         batch_op.drop_index('ix_booking_dates')
 
     op.drop_table('transport_bookings')
@@ -2406,7 +2405,6 @@ def downgrade():
     op.drop_table('fan_profiles')
     op.drop_table('events')
     with op.batch_alter_table('driver_profiles', schema=None) as batch_op:
-        batch_op.drop_index('ix_driver_verified', postgresql_where=sa.text("verification_tier IN ('platform_verified', 'event_certified')"))
         batch_op.drop_index('ix_driver_user_id')
         batch_op.drop_index('ix_driver_status')
         batch_op.drop_index(batch_op.f('ix_driver_profiles_verification_tier'))
@@ -2473,7 +2471,7 @@ def downgrade():
         batch_op.drop_index('ix_vehicle_status')
         batch_op.drop_index('ix_vehicle_plate')
         batch_op.drop_index('ix_vehicle_owner')
-        batch_op.drop_index('ix_vehicle_location', postgresql_using='gin')
+        batch_op.drop_index('ix_vehicle_location')
         batch_op.drop_index('ix_vehicle_class')
         batch_op.drop_index(batch_op.f('ix_transport_vehicles_qr_code_hash'))
         batch_op.drop_index(batch_op.f('ix_transport_vehicles_is_deleted'))

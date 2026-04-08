@@ -132,7 +132,7 @@ class EventService:
                 else:
                     db.session.rollback()
                     return None, "Invalid ticket configuration for paid event."
-            
+
             db.session.commit()
 
             logger.info(f"Event created: {event.slug}")
@@ -255,7 +255,7 @@ class EventService:
 
         # Fetch registrations for this event
         registrations = EventRegistration.query.filter_by(event_id=event.id).all()
-        
+
         total_registrations = len(registrations)
         total_revenue = sum(float(r.registration_fee) for r in registrations if r.payment_status == 'paid')
         checked_in_count = len([r for r in registrations if r.status == 'checked_in'])
@@ -356,7 +356,7 @@ class EventService:
             "approved_by_id": event.approved_by_id,
             "rejected_at": event.rejected_at.isoformat() if event.rejected_at else None,
             "rejection_reason": event.rejection_reason,
-            
+
             # Ticket Types
             "ticket_types": [cls._ticket_type_to_dict(tt) for tt in event.ticket_types] if event.ticket_types else []
         }
@@ -366,7 +366,7 @@ class EventService:
         """Convert TicketType model to dict"""
         # Count registrations for this specific ticket type
         reg_count = EventRegistration.query.filter_by(ticket_type_id=ticket_type.id).count()
-        
+
         return {
             "id": ticket_type.id,
             "name": ticket_type.name,
@@ -427,10 +427,10 @@ class EventService:
 
             # 2. Identify the ticket type
             ticket_type_id = data.get("ticket_type_id")
-            
+
             # Start a transaction with explicit locking
             # We use with_for_update() to lock the relevant rows until commit
-            
+
             if ticket_type_id:
                 # Lock specific ticket type row
                 ticket_type = TicketType.query.with_for_update().get(ticket_type_id)
@@ -487,7 +487,7 @@ class EventService:
 
             registration.generate_refs(event.slug, sequence)
             db.session.add(registration)
-            
+
             # Commit the transaction (this releases the locks)
             db.session.commit()
 
@@ -757,10 +757,10 @@ class EventService:
         event = cls.get_event_model(event_slug)
         if not event:
             return None, "Event not found"
-        
+
         if event.organizer_id != user_id:
             return None, "Unauthorized"
-            
+
         try:
             ticket_type = TicketType(
                 event_id=event.id,
@@ -785,7 +785,7 @@ class EventService:
         Gathers data for the attendee dashboard.
         """
         all_registrations = EventRegistration.query.filter_by(user_id=user_id).all()
-        
+
         upcoming_registrations = []
         past_registrations = []
         attended_count = 0
@@ -827,7 +827,7 @@ class EventService:
         Gathers data for the organizer dashboard.
         """
         managed_events = cls.get_events_managed_by_user(user_id)
-        
+
         total_registrations = 0
         total_revenue = 0.0
         total_capacity = 0
@@ -836,7 +836,7 @@ class EventService:
 
         # Get event models for detailed stats
         event_ids = [e['event_id'] for e in managed_events if e.get('event_id')]
-        
+
         for event_dict in managed_events:
             event_model = Event.query.get(event_dict['event_id'])
             if not event_model:
@@ -917,7 +917,7 @@ class EventService:
         user_properties = []
         if Property:
             user_properties = Property.query.filter_by(owner_user_id=user_id).all()
-        
+
         user_vehicles = []
         if Vehicle:
             # Assuming Vehicle has an owner_user_id or similar
@@ -968,4 +968,3 @@ class EventService:
             'total_registrations': total_registrations,
             'checked_in_registrations': checked_in_registrations
         }
-

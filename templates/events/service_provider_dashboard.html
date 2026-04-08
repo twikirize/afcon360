@@ -28,7 +28,7 @@
                     </div>
                 </div>
                 <div class="card-footer bg-transparent border-top-0 text-end">
-                    <a href="{{ url_for('wallet.home') }}" class="text-white text-decoration-none">
+                    <a href="{{ url_for('wallet.wallet_home') }}" class="text-white text-decoration-none">
                         Manage Wallet <i class="fas fa-arrow-circle-right"></i>
                     </a>
                 </div>
@@ -41,7 +41,7 @@
                     <p class="card-text display-4">{{ user_properties|length }}</p>
                 </div>
                 <div class="card-footer bg-white text-end">
-                    <a href="{{ url_for('accommodation.accommodation_owner.my_properties') }}" class="text-decoration-none">
+                    <a href="{{ url_for('accommodation.host.dashboard') }}" class="text-decoration-none">
                         View Listings <i class="fas fa-arrow-circle-right"></i>
                     </a>
                 </div>
@@ -54,7 +54,7 @@
                     <p class="card-text display-4">{{ user_vehicles|length }}</p>
                 </div>
                 <div class="card-footer bg-white text-end">
-                    <a href="{{ url_for('transport.my_vehicles') if 'transport.my_vehicles' in request.endpoint else '#' }}" class="text-decoration-none">
+                    <a href="{{ url_for('transport.vehicle_dashboard') }}" class="text-decoration-none">
                         View Vehicles <i class="fas fa-arrow-circle-right"></i>
                     </a>
                 </div>
@@ -121,7 +121,7 @@
                 </div>
                 <div class="card-body">
                     <p class="small text-muted">Manage your service offerings and availability.</p>
-                    <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-sm btn-outline-secondary w-100">Edit Profile</a>
+                    <a href="{{ url_for('fan.view_fan_profile') }}" class="btn btn-sm btn-outline-secondary w-100">Edit Profile</a>
                 </div>
             </div>
         </div>

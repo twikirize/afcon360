@@ -171,6 +171,11 @@
     </div>
 </div>
 
+<!-- Hidden CSRF form -->
+<form id="csrfForm" style="display:none;">
+    {{ csrf_field() }}
+</form>
+
 <!-- Adjust Balance Modal -->
 <div class="modal fade" id="adjustModal" tabindex="-1">
     <div class="modal-dialog">
@@ -197,8 +202,8 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Reason <span class="text-danger">*</span></label>
-                    <textarea class="form-control" id="adjustReason" rows="3" 
-                              placeholder="e.g., Refund for overcharge, Correction of error, Bonus credit..."></textarea>
+                    <textarea class="form-control" id="adjustReason" rows="3"
+                              placeholder="e.g., Refund, Correction, Bonus..."></textarea>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Notes (Optional)</label>
@@ -213,25 +218,23 @@
     </div>
 </div>
 
-<!-- Freeze Modal (reuse from wallets.html) -->
-<!-- Unfreeze Modal (reuse from wallets.html) -->
-
 <script>
 const userId = window.location.pathname.split('/').pop();
+
+// Get CSRF securely from hidden form
+function getCSRF() {
+    return document.querySelector('#csrfForm input[name="csrf_token"]').value;
+}
 
 async function loadWalletDetails() {
     try {
         const response = await fetch(`/api/admin/wallet/wallets/${userId}`);
         const result = await response.json();
-        
-        if (result.status === 'success') {
-            renderWalletDetails(result.data);
-        } else {
-            showError(result.message);
-        }
+        if (result.status === 'success') renderWalletDetails(result.data);
+        else showToast('error', result.message);
     } catch (error) {
         console.error('Error loading wallet details:', error);
-        showError('Failed to load wallet details');
+        showToast('error', 'Failed to load wallet details');
     }
 }
 
@@ -239,16 +242,12 @@ function renderWalletDetails(data) {
     const wallet = data.wallet;
     const stats = data.statistics;
     const transactions = data.recent_transactions;
-    
-    // Header info
+
     document.getElementById('username').textContent = wallet.username || 'N/A';
     document.getElementById('walletRef').textContent = wallet.wallet_ref || 'N/A';
-    
-    // Balance
     document.getElementById('balanceHome').textContent = parseFloat(wallet.balance_home).toLocaleString();
     document.getElementById('balanceLocal').textContent = parseFloat(wallet.balance_local).toLocaleString();
-    
-    // Status
+
     if (wallet.is_frozen) {
         document.getElementById('walletStatusBadge').className = 'badge bg-warning text-dark';
         document.getElementById('walletStatusBadge').textContent = 'Frozen';
@@ -264,36 +263,32 @@ function renderWalletDetails(data) {
         document.getElementById('unfreezeBtn').style.display = 'none';
         document.getElementById('frozenInfo').style.display = 'none';
     }
-    
+
     document.getElementById('verifiedBadge').className = wallet.verified ? 'badge bg-info' : 'badge bg-secondary';
     document.getElementById('verifiedBadge').textContent = wallet.verified ? 'Verified' : 'Unverified';
     document.getElementById('createdAt').textContent = new Date(wallet.created_at).toLocaleString();
     document.getElementById('updatedAt').textContent = new Date(wallet.updated_at).toLocaleString();
-    
-    // User info
+
     document.getElementById('userId').textContent = wallet.user_id;
     document.getElementById('userUsername').textContent = wallet.username || 'N/A';
     document.getElementById('userEmail').textContent = wallet.email || 'N/A';
     document.getElementById('nationality').textContent = wallet.nationality || 'N/A';
-    
-    // Statistics
+
     document.getElementById('depositTotal30d').textContent = parseFloat(stats.deposit_total_30d).toLocaleString();
     document.getElementById('withdrawalTotal30d').textContent = parseFloat(stats.withdrawal_total_30d).toLocaleString();
     document.getElementById('sentTotal30d').textContent = parseFloat(stats.sent_total_30d).toLocaleString();
     document.getElementById('receivedTotal30d').textContent = parseFloat(stats.received_total_30d).toLocaleString();
-    
-    // Transactions
+
     renderTransactions(transactions);
 }
 
 function renderTransactions(transactions) {
     const tbody = document.getElementById('transactionsTableBody');
-    
     if (!transactions || transactions.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No transactions found</td></tr>';
         return;
     }
-    
+
     const typeBadges = {
         'deposit': '<span class="badge bg-success">Deposit</span>',
         'withdrawal': '<span class="badge bg-danger">Withdrawal</span>',
@@ -301,18 +296,18 @@ function renderTransactions(transactions) {
         'receive': '<span class="badge bg-info">Received</span>',
         'admin_adjustment': '<span class="badge bg-secondary">Admin Adj</span>'
     };
-    
+
     tbody.innerHTML = transactions.map(tx => `
         <tr>
-            <td><code>${tx.id.substring(0, 8)}...</code></td>
+            <td><code>${tx.id.slice(0,4)}****${tx.id.slice(-4)}</code></td>
             <td>${typeBadges[tx.type] || tx.type}</td>
-            <td class="${tx.type === 'withdrawal' || tx.type === 'send' ? 'text-danger' : 'text-success'}">
-                ${tx.type === 'withdrawal' || tx.type === 'send' ? '-' : ''}${parseFloat(tx.amount).toLocaleString()}
+            <td class="${tx.type==='withdrawal'||tx.type==='send'?'text-danger':'text-success'}">
+                ${tx.type==='withdrawal'||tx.type==='send'?'-':''}${parseFloat(tx.amount).toLocaleString()}
             </td>
             <td>${tx.currency}</td>
             <td><small>${new Date(tx.created_at).toLocaleString()}</small></td>
             <td>
-                <button class="btn btn-sm btn-outline-secondary" onclick="showTransactionDetails(${JSON.stringify(tx.meta).replace(/"/g, '&quot;')})">
+                <button class="btn btn-sm btn-outline-secondary" onclick="showTransactionDetails(${JSON.stringify(tx.meta).replace(/"/g,'&quot;')})">
                     <i class="bi bi-info-circle"></i>
                 </button>
             </td>
@@ -329,103 +324,64 @@ function confirmAdjust() {
     const currency = document.getElementById('adjustCurrency').value;
     const reason = document.getElementById('adjustReason').value.trim();
     const notes = document.getElementById('adjustNotes').value;
-    
-    if (!amount) {
-        alert('Please enter an amount');
-        return;
-    }
-    if (!reason) {
-        alert('Please provide a reason for the adjustment');
-        return;
-    }
-    
+
+    if (!amount) return alert('Please enter an amount');
+    if (!reason) return alert('Please provide a reason');
+
     fetch(`/api/admin/wallet/wallets/${userId}/adjust`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value
-        },
-        body: JSON.stringify({ amount: amount, currency: currency, reason: reason, notes: notes })
+        headers: { 'Content-Type':'application/json', 'X-CSRFToken': getCSRF() },
+        body: JSON.stringify({ amount, currency, reason, notes })
     })
     .then(res => res.json())
     .then(data => {
-        if (data.status === 'success') {
+        if (data.status==='success') {
             bootstrap.Modal.getInstance(document.getElementById('adjustModal')).hide();
             loadWalletDetails();
             showToast('success', data.message);
-            document.getElementById('adjustAmount').value = '';
-            document.getElementById('adjustReason').value = '';
-            document.getElementById('adjustNotes').value = '';
-        } else {
-            showToast('error', data.message);
-        }
+            document.getElementById('adjustAmount').value='';
+            document.getElementById('adjustReason').value='';
+            document.getElementById('adjustNotes').value='';
+        } else showToast('error', data.message);
     })
-    .catch(error => {
-        console.error('Error adjusting balance:', error);
-        showToast('error', 'Failed to adjust balance');
-    });
+    .catch(()=>showToast('error','Failed to adjust balance'));
 }
 
 function showFreezeModal() {
     const reason = prompt('Enter reason for freezing this wallet:');
-    if (reason && reason.trim()) {
-        fetch(`/api/admin/wallet/wallets/${userId}/freeze`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value
-            },
-            body: JSON.stringify({ reason: reason, notes: '' })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'success') {
-                loadWalletDetails();
-                showToast('success', data.message);
-            } else {
-                showToast('error', data.message);
-            }
-        });
-    }
+    if (!reason?.trim()) return;
+    fetch(`/api/admin/wallet/wallets/${userId}/freeze`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'X-CSRFToken': getCSRF() },
+        body: JSON.stringify({ reason, notes: '' })
+    }).then(res=>res.json()).then(data=> {
+        if(data.status==='success'){loadWalletDetails(); showToast('success', data.message);}
+        else showToast('error', data.message);
+    });
 }
 
 function showUnfreezeModal() {
-    const reason = prompt('Enter reason for unfreezing this wallet:');
+    const reason = prompt('Enter reason for unfreezing this wallet:') || '';
     fetch(`/api/admin/wallet/wallets/${userId}/unfreeze`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value
-        },
-        body: JSON.stringify({ reason: reason || '' })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'success') {
-            loadWalletDetails();
-            showToast('success', data.message);
-        } else {
-            showToast('error', data.message);
-        }
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'X-CSRFToken': getCSRF() },
+        body: JSON.stringify({ reason })
+    }).then(res=>res.json()).then(data=>{
+        if(data.status==='success'){loadWalletDetails(); showToast('success', data.message);}
+        else showToast('error', data.message);
     });
 }
 
 function showToast(type, message) {
     const toast = document.createElement('div');
-    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed bottom-0 end-0 m-3`;
-    toast.style.zIndex = 9999;
-    toast.style.padding = '12px 20px';
-    toast.style.borderRadius = '8px';
+    toast.className = `alert alert-${type==='success'?'success':'danger'} position-fixed bottom-0 end-0 m-3`;
+    toast.style.zIndex=9999; toast.style.padding='12px 20px'; toast.style.borderRadius='8px';
     toast.innerHTML = message;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 5000);
+    setTimeout(()=>toast.remove(),5000);
 }
 
-function showError(message) {
-    showToast('error', message);
-}
-
-// Load on page load
+// Load wallet details on page load
 loadWalletDetails();
 </script>
 {% endblock %}

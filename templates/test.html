@@ -69,7 +69,7 @@
                       {% if name == 'transport' %}
                         <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-btn sm">Open →</a>
                       {% elif name == 'wallet' %}
-                        <a href="{{ url_for('wallet_routes.wallet_dashboard') }}" class="sad-btn sm">Open →</a>
+                        <a href="{{ url_for('wallet.wallet_dashboard') }}" class="sad-btn sm">Open →</a>
                       {% else %}
                         <span style="color:var(--sad-text3);font-size:11px">—</span>
                       {% endif %}

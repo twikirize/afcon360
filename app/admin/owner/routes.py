@@ -1,818 +1,489 @@
-#app/admin/owner/routes.py
+# app/admin/owner/routes.py
 """
 Owner routes - Highest privilege level
-All routes are under /admin/owner/
-Templates are in templates/owner/ (main templates folder)
+Includes Master Key Impersonation by Role
 """
 
 from datetime import datetime, timedelta
-import pyotp
-import qrcode
-import io
-import base64
-import csv
-from io import StringIO
+import logging
 from flask import (
     render_template, redirect, url_for, flash,
-    request, session, jsonify, make_response
+    request, session, jsonify, current_app
 )
-from flask_login import login_required, current_user
+from flask_login import login_required, current_user, login_user, logout_user
 
-from app.extensions import db, redis_client
+from app.extensions import db
 from app.identity.models.organisation import Organisation
 from app.identity.models.roles_permission import Role
 from app.identity.models import User, UserRole
-from app.identity.models.organisation_member import OrganisationMember
-from app.profile.models import UserProfile
-from app.admin.owner.models import OwnerSettings, OwnerAuditLog
-from app.admin.owner.decorators import owner_required, owner_password_confirm_required
+from sqlalchemy import func
+from app.admin.owner.decorators import owner_required
 from app.admin.owner.utils import log_owner_action, get_system_health
 from app.auth.roles import assign_global_role, revoke_global_role
 
-# 🔴 NEW: Import audit decorators
-from app.admin.owner.audit import audit_owner_action, audit_danger_zone_action, audit_batch_operation
+# Import audit decorators
+from app.admin.owner.audit import audit_owner_action
 
 # Import owner blueprint
 from app.admin.owner import owner_bp
 
+logger = logging.getLogger(__name__)
+
+# Helper for login required + owner check
+def owner_login_required(f):
+    return login_required(owner_required(f))
+
 @owner_bp.context_processor
 def utility_processor():
-    """Add utility functions to template context"""
-    def format_datetime(dt, format='%Y-%m-%d %H:%M'):
-        if dt:
-            return dt.strftime(format)
-        return ''
     def now():
-        """Return current UTC datetime"""
         return datetime.utcnow()
 
-    return dict(
-        format_datetime=format_datetime,
-        now=now  # This makes {{ now() }} work in templates
-    )
+    def is_impersonating():
+        return session.get('is_impersonating', False)
+
+    def impersonated_by():
+        return session.get('impersonated_by_name', None)
+
+    def impersonated_role():
+        return session.get('impersonated_role', None)
+
+    return {
+        'now': now,
+        'is_impersonating': is_impersonating,
+        'impersonated_by': impersonated_by,
+        'impersonated_role': impersonated_role
+    }
 
 # ============================================================================
-# Owner Dashboard
+# Dashboard & Core
 # ============================================================================
 
 @owner_bp.route('/dashboard')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator - REMOVE the manual log_owner_action inside function
-@audit_owner_action('viewed_dashboard', 'navigation')
+@owner_login_required
 def dashboard():
     """Owner dashboard - platform overview"""
+    try:
+        db.session.rollback()
+        total_users = User.query.count()
+        active_users = User.query.filter_by(is_active=True).count()
+        verified_users = User.query.filter_by(is_verified=True).count()
 
-    # Platform stats
-    total_users = User.query.count()
-    verified_users = User.query.filter_by(is_verified=True).count()
-    active_users = User.query.filter_by(is_active=True).count()
-    new_users_today = User.query.filter(
-        User.created_at >= datetime.utcnow().date()
-    ).count()
+        # Get counts for the Master Key section - with error handling
+        try:
+            role_stats = db.session.query(Role.name, func.count(UserRole.user_id))\
+                .join(UserRole, Role.id == UserRole.role_id).group_by(Role.name).all()
+        except Exception as role_error:
+            logger.warning(f"Role stats query error: {role_error}")
+            db.session.rollback()
+            role_stats = []
 
-    # Organisation stats
-    total_orgs = Organisation.query.count()
-    active_orgs = Organisation.query.filter_by(is_active=True).count()
-    pending_orgs = Organisation.query.filter_by(verification_status='pending').count()
+        # Get organization stats - with error handling
+        try:
+            from app.identity.models.organisation import Organisation
+            total_orgs = Organisation.query.count()
+        except Exception as org_error:
+            logger.warning(f"Organization query error: {org_error}")
+            total_orgs = 0
+        pending_orgs = 0  # Temporarily disabled due to schema issue
 
-    # Role stats
-    total_roles = Role.query.count()
+        # Get role stats - with error handling
+        try:
+            total_roles = Role.query.count()
+        except Exception as role_count_error:
+            logger.warning(f"Role count error: {role_count_error}")
+            total_roles = 0
 
-    # Get super admins
-    super_admin_role = Role.query.filter_by(name='super_admin').first()
-    super_admins = []
-    if super_admin_role:
-        super_admins = User.query.join(User.roles).filter(
-            UserRole.role_id == super_admin_role.id
-        ).all()
+        # Get super admins - with error handling
+        super_admins = []
+        try:
+            super_admin_role = Role.query.filter_by(name='super_admin').first()
+            if super_admin_role:
+                super_admins = db.session.query(User).join(UserRole, User.id == UserRole.user_id).join(Role, Role.id == UserRole.role_id)\
+                    .filter(Role.name == 'super_admin').all()
+        except Exception as super_admin_error:
+            logger.warning(f"Super admin query error: {super_admin_error}")
+            db.session.rollback()
 
-    # Get regular users (not super admin, not owner)
-    owner_role = Role.query.filter_by(name='owner').first()
-    regular_users = []
-    if super_admin_role and owner_role:
-        regular_users = User.query.filter(
-            ~User.roles.any(UserRole.role_id.in_([
-                super_admin_role.id,
-                owner_role.id
-            ]))
-        ).order_by(User.username).limit(20).all()
+        # Get regular users (non-super admins) - with error handling
+        regular_users = []
+        try:
+            regular_users = db.session.query(User).outerjoin(UserRole, User.id == UserRole.user_id).outerjoin(Role, Role.id == UserRole.role_id)\
+                .filter((Role.name != 'super_admin') | (Role.name.is_(None))).all()
+        except Exception as regular_error:
+            logger.warning(f"Regular users query error: {regular_error}")
+            db.session.rollback()
 
-    # Recent signups
-    recent_users = User.query.order_by(User.created_at.desc()).limit(10).all()
+        # Get recent users - with error handling
+        recent_users = []
+        try:
+            recent_users = User.query.order_by(User.created_at.desc()).limit(5).all()
+        except Exception as recent_error:
+            logger.warning(f"Recent users query error: {recent_error}")
+            db.session.rollback()
 
-    # System health
-    health = get_system_health()
+        # Get new users today - with error handling
+        new_users_today = 0
+        try:
+            from datetime import date
+            new_users_today = User.query.filter(
+                func.date(User.created_at) == date.today()
+            ).count()
+        except Exception as new_users_error:
+            logger.warning(f"New users today query error: {new_users_error}")
+            db.session.rollback()
 
-    # Recent audit logs
-    recent_logs = OwnerAuditLog.query.order_by(
-        OwnerAuditLog.created_at.desc()
-    ).limit(10).all()
+        # Get recent audit logs - temporarily disabled due to schema issues
+        recent_logs = []
 
-    # User growth chart data (last 7 days)
-    from sqlalchemy import func
-    dates = []
-    counts = []
-    for i in range(6, -1, -1):
-        date = (datetime.utcnow() - timedelta(days=i)).date()
-        count = User.query.filter(
-            func.date(User.created_at) == date
-        ).count()
-        dates.append(date.strftime('%a'))
-        counts.append(count)
+        # Get system health - with error handling
+        health = None
+        try:
+            health = get_system_health()
+        except Exception as health_error:
+            logger.warning(f"System health error: {health_error}")
 
-    # 🔴 REMOVED: Manual log_owner_action call (now handled by decorator)
+        return render_template('owner/dashboard.html',
+                               # User stats
+                               total_users=total_users,
+                               active_users=active_users,
+                               verified_users=verified_users,
+                               new_users_today=new_users_today,
 
-    return render_template(
-        'owner/dashboard.html',
-        total_users=total_users,
-        verified_users=verified_users,
-        active_users=active_users,
-        new_users_today=new_users_today,
-        total_orgs=total_orgs,
-        active_orgs=active_orgs,
-        pending_orgs=pending_orgs,
-        total_roles=total_roles,
-        super_admins=super_admins,
-        regular_users=regular_users,
-        recent_users=recent_users,
-        recent_logs=recent_logs,
-        health=health,
-        chart_labels=dates,
-        chart_data=counts
-    )
+                               # Organization stats
+                               total_orgs=total_orgs,
+                               pending_orgs=pending_orgs,
 
+                               # Role stats
+                               total_roles=total_roles,
+                               role_stats=dict(role_stats),
+
+                               # Super admin management
+                               super_admins=super_admins,
+                               regular_users=regular_users,
+                               total_super_admins=len(super_admins),
+
+                               # Recent data
+                               recent_users=recent_users,
+                               recent_logs=recent_logs,
+
+                               # System info
+                               health=health,
+                               owner_username=current_user.username,
+                               owner_is_verified=current_user.is_verified)
+    except Exception as e:
+        logger.error(f"Owner dashboard error: {e}")
+        return render_template('owner/dashboard.html',
+                               total_users=0, active_users=0, verified_users=0,
+                               new_users_today=0, total_orgs=0, pending_orgs=0,
+                               total_roles=0, role_stats={}, super_admins=[],
+                               regular_users=[], total_super_admins=0,
+                               recent_users=[], recent_logs=[], health=None,
+                               owner_username=current_user.username,
+                               owner_is_verified=current_user.is_verified)
+
+# ============================================================================
+# Master Key: Impersonate by Role
+# ============================================================================
+
+@owner_bp.route('/master-key/act-as/<string:role_name>', methods=['POST'])
+@owner_login_required
+def impersonate_role(role_name):
+    """
+    MASTER KEY: Instantly switch to a user with the specified role.
+    If no user exists, the system will find the best match or fail gracefully.
+    """
+    try:
+        # 1. Find a user that HAS this role
+        target_user = User.query.join(UserRole, User.id == UserRole.user_id).join(Role, Role.id == UserRole.role_id).filter(Role.name == role_name).first()
+
+        if not target_user:
+            flash(f"No existing users found with role: {role_name}. Please create one first.", "warning")
+            return redirect(url_for('admin.owner.dashboard'))
+
+        # 2. Store original owner ID for the 'Stop Impersonating' function
+        session['impersonated_by'] = current_user.id
+        session['impersonated_by_name'] = current_user.username
+        session['is_impersonating'] = True
+        session['impersonated_role'] = role_name
+
+        # 3. Log the action
+        log_owner_action(
+            action='role_impersonation_started',
+            category='security',
+            details={'role': role_name, 'target_user': target_user.username}
+        )
+
+        # 4. Perform the switch
+        logout_user()
+        login_user(target_user)
+
+        flash(f"🗝️ Master Key Activated: You are now acting as a {role_name.replace('_', ' ').title()} ({target_user.username})", "success")
+
+        # 5. Redirect to the appropriate dashboard based on role
+        dashboard_redirects = {
+            'owner': url_for('admin.owner.dashboard'),
+            'super_admin': url_for('admin.super_dashboard'),
+            'admin': url_for('admin.super_dashboard'),
+            'auditor': url_for('admin.auditor_dashboard'),
+            'compliance_officer': url_for('admin.auditor_dashboard'),
+            'moderator': url_for('admin.moderator_dashboard'),
+            'support': url_for('admin.support_dashboard'),
+            'event_manager': url_for('events.admin_dashboard'),
+            'transport_admin': url_for('transport.admin_dashboard'),
+            'wallet_admin': url_for('wallet.wallet_dashboard'),
+            'accommodation_admin': url_for('accommodation.admin_dashboard'),
+            'tourism_admin': url_for('tourism.home'),
+            'org_admin': url_for('events.events_hub'),
+            'org_member': url_for('events.events_hub'),
+            'user': url_for('fan.fan_dashboard')
+        }
+
+        redirect_url = dashboard_redirects.get(role_name, url_for('events.events_hub'))
+        return redirect(redirect_url)
+
+    except Exception as e:
+        logger.error(f"Master Key Error: {e}")
+        flash("Failed to activate Master Key.", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/master-key/exit', methods=['POST'])
+@login_required
+def exit_impersonation():
+    """Exit impersonation and return to Owner state"""
+    original_id = session.get('impersonated_by')
+    if not original_id:
+        return redirect(url_for('index'))
+
+    owner_user = User.query.get(original_id)
+    if owner_user:
+        logout_user()
+        login_user(owner_user)
+        session.pop('impersonated_by', None)
+        session.pop('impersonated_by_name', None)
+        session.pop('is_impersonating', None)
+        flash("✅ Returned to Owner Dashboard", "info")
+        return redirect(url_for('admin.owner.dashboard'))
+
+    return redirect(url_for('auth_routes.login'))
+
+# Keep existing user-specific impersonation for fine-grained testing
+@owner_bp.route('/impersonate/<string:user_id>', methods=['POST'])
+@owner_login_required
+def impersonate_user(user_id):
+    """Impersonate a specific user"""
+    try:
+        target_user = User.query.get(user_id)
+        if not target_user:
+            flash("User not found", "danger")
+            return redirect(url_for('admin.owner.dashboard'))
+
+        session['impersonated_by'] = current_user.id
+        session['impersonated_by_name'] = current_user.username
+        session['is_impersonating'] = True
+
+        log_owner_action(
+            action='user_impersonation_started',
+            category='security',
+            details={'target_user': target_user.username}
+        )
+
+        logout_user()
+        login_user(target_user)
+
+        flash(f"🎭 You are now acting as {target_user.username}", "success")
+        return redirect(url_for('index'))
+
+    except Exception as e:
+        logger.error(f"User impersonation error: {e}")
+        flash("Failed to impersonate user", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+# ============================================================================
+# Management Routes
+# ============================================================================
+
+@owner_bp.route('/audit-logs')
+@owner_login_required
+def audit_logs():
+    """View owner audit logs - temporarily disabled"""
+    try:
+        # Temporarily disabled due to schema issues
+        logs = []
+        flash("Audit logs temporarily disabled due to database schema issues", "warning")
+        return render_template('owner/audit_logs.html', logs=logs)
+    except Exception as e:
+        logger.error(f"Audit logs error: {e}")
+        flash("Error loading audit logs", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/settings', methods=['GET', 'POST'])
+@owner_login_required
+@audit_owner_action('viewed_settings', 'settings')
+def settings():
+    """Owner settings page"""
+    try:
+        from app.admin.owner.models import OwnerSettings
+
+        if request.method == 'POST':
+            # Update settings
+            session_timeout = request.form.get('session_timeout', type=int, default=120)
+
+            settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
+            if not settings:
+                settings = OwnerSettings(owner_id=current_user.id)
+                db.session.add(settings)
+
+            settings.session_timeout_minutes = session_timeout
+            db.session.commit()
+
+            flash("✅ Settings updated successfully", "success")
+            log_owner_action(
+                action='updated_settings',
+                category='settings',
+                details={'session_timeout': session_timeout}
+            )
+            return redirect(url_for('owner.settings'))
+
+        # GET request - show settings page
+        settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
+        return render_template('owner/settings.html', settings=settings)
+    except Exception as e:
+        logger.error(f"Settings error: {e}")
+        flash("Error loading settings", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/users')
+@owner_login_required
+@audit_owner_action('viewed_users', 'user_management')
+def users():
+    """Manage all users"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        users = User.query.paginate(
+            page=page, per_page=50, error_out=False
+        )
+        return render_template('owner/users.html', users=users)
+    except Exception as e:
+        logger.error(f"Users management error: {e}")
+        flash("Error loading users", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/manage-roles')
+@owner_login_required
+@audit_owner_action('viewed_roles', 'user_management')
+def manage_roles():
+    """Manage system roles"""
+    try:
+        roles = Role.query.all()
+        users = User.query.all()
+        return render_template('owner/manage_roles.html', roles=roles, users=users)
+    except Exception as e:
+        logger.error(f"Role management error: {e}")
+        flash("Error loading roles", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/danger-zone')
+@owner_login_required
+@audit_owner_action('viewed_danger_zone', 'danger')
+def danger_zone():
+    """Danger zone - critical platform actions"""
+    try:
+        return render_template('owner/danger_zone.html')
+    except Exception as e:
+        logger.error(f"Danger zone error: {e}")
+        flash("Error loading danger zone", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/system-health')
+@owner_login_required
+@audit_owner_action('viewed_system_health', 'navigation')
+def system_health():
+    """View system health metrics"""
+    try:
+        health = get_system_health()
+        return render_template('owner/system_health.html', health=health)
+    except Exception as e:
+        logger.error(f"System health error: {e}")
+        flash("Error loading system health", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/impersonate-page')
+@owner_login_required
+@audit_owner_action('viewed_impersonate_page', 'security')
+def impersonate_page():
+    """Master key impersonation page"""
+    try:
+        # Get all roles
+        roles = Role.query.all()
+
+        # Get all users with their roles for display
+        users = User.query.all()
+
+        # Enhance user data with role information
+        enhanced_users = []
+        for user in users:
+            user_roles = db.session.query(Role.name).join(UserRole, Role.id == UserRole.role_id).filter(UserRole.user_id == user.id).all()
+            role_names = [role[0] for role in user_roles]
+            enhanced_users.append({
+                'user': user,
+                'roles': role_names,
+                'primary_role': role_names[0] if role_names else 'user'
+            })
+
+        return render_template('owner/impersonate.html',
+                          roles=roles,
+                          users=enhanced_users,
+                          global_roles=roles)
+    except Exception as e:
+        logger.error(f"Impersonate page error: {e}")
+        flash("Error loading impersonate page", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
 
 # ============================================================================
 # Super Admin Management
 # ============================================================================
 
-@audit_owner_action('viewed_super_admins', 'user_management')
-@owner_bp.route('/super-admins')
-@login_required
-@owner_required
-@audit_owner_action('viewed_super_admins', 'user_management')
-def super_admins():
-    super_admin_role = Role.query.filter_by(name='super_admin').first()
-    super_admins = []
-    if super_admin_role:
-        super_admins = User.query.join(User.roles).filter(
-            UserRole.role_id == super_admin_role.id
-        ).all()
-
-    # Get regular users (excluding owners and current super admins)
-    owner_role = Role.query.filter_by(name='owner').first()
-    regular_users = User.query.filter(
-        ~User.roles.any(UserRole.role_id.in_([
-            super_admin_role.id if super_admin_role else 0,
-            owner_role.id if owner_role else 0
-        ]))
-    ).order_by(User.username).all()
-
-    return render_template(
-        'owner/super_admins.html',
-        super_admins=super_admins,
-        regular_users=regular_users
-    )
-@owner_bp.route('/super-admins/add', methods=['POST'])
-@login_required
-@owner_required
-# 🔴 NOTE: No decorator here - we keep manual logs for detailed context
+@owner_bp.route('/add-super-admin', methods=['POST'])
+@owner_login_required
+@audit_owner_action('added_super_admin', 'user_management')
 def add_super_admin():
-    """Add a super admin"""
-    user_id = request.form.get('user_id')
-
-    if not user_id:
-        flash('Please select a user', 'danger')
-        return redirect(url_for('owner.dashboard'))
-
-    user = User.query.get(user_id)
-    if not user:
-        flash('User not found', 'danger')
-        return redirect(url_for('owner.dashboard'))
-
+    """Add a new super admin"""
     try:
-        assign_global_role(
-            user_id=user.id,
-            role_name='super_admin',
-            assigned_by_id=current_user.id
-        )
+        user_id = request.form.get('user_id')
+        if not user_id:
+            flash("Please select a user", "warning")
+            return redirect(url_for('admin.owner.dashboard'))
 
-        # ✅ KEEP manual log for detailed context
-        log_owner_action(
-            action='added_super_admin',
-            category='user_management',
-            details={
-                'target_user_id': user.id,
-                'target_email': user.email
-            }
-        )
+        user = User.query.get(user_id)
+        if not user:
+            flash("User not found", "danger")
+            return redirect(url_for('admin.owner.dashboard'))
 
-        flash(f'{user.email} is now a super admin', 'success')
+        assign_global_role(user, 'super_admin')
+        flash(f"✅ {user.username} is now a Super Admin", "success")
 
     except Exception as e:
-        flash(f'Error: {str(e)}', 'danger')
-        # ✅ KEEP manual log for error details
-        log_owner_action(
-            action='add_super_admin_failed',
-            category='user_management',
-            status='failure',
-            failure_reason=str(e)
-        )
+        logger.error(f"Add super admin error: {e}")
+        flash("Failed to add super admin", "danger")
 
-    return redirect(url_for('owner.dashboard'))
+    return redirect(url_for('admin.owner.dashboard'))
 
-
-@owner_bp.route('/super-admins/<int:user_id>/remove', methods=['POST'])
-@login_required
-@owner_required
-# 🔴 NOTE: No decorator - keep manual logs
+@owner_bp.route('/remove-super-admin/<int:user_id>', methods=['POST'])
+@owner_login_required
+@audit_owner_action('removed_super_admin', 'user_management')
 def remove_super_admin(user_id):
     """Remove super admin privileges"""
-    user = User.query.get_or_404(user_id)
-
-    # Don't allow removing owner
-    if any(r.role.name == 'owner' for r in user.roles):
-        flash('Cannot remove owner privileges', 'danger')
-        return redirect(url_for('owner.dashboard'))
-
     try:
-        revoke_global_role(
-            user_id=user.id,
-            role_name='super_admin',
-            revoked_by_id=current_user.id
-        )
+        user = User.query.get(user_id)
+        if not user:
+            flash("User not found", "danger")
+            return redirect(url_for('admin.owner.dashboard'))
 
-        # ✅ KEEP manual log
-        log_owner_action(
-            action='removed_super_admin',
-            category='user_management',
-            details={
-                'target_user_id': user.id,
-                'target_email': user.email
-            }
-        )
-
-        flash(f'Super admin privileges removed from {user.email}', 'warning')
+        revoke_global_role(user, 'super_admin')
+        flash(f"✅ Super admin privileges removed from {user.username}", "success")
 
     except Exception as e:
-        flash(f'Error: {str(e)}', 'danger')
+        logger.error(f"Remove super admin error: {e}")
+        flash("Failed to remove super admin", "danger")
 
-    return redirect(url_for('owner.dashboard'))
-
-
-# ============================================================================
-# User Management
-# ============================================================================
-
-@owner_bp.route('/users')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator
-@audit_owner_action('viewed_users_list', 'user_management')
-def users():
-    """View all users"""
-    page = request.args.get('page', 1, type=int)
-    per_page = 50
-
-    users = User.query.order_by(User.created_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-
-    return render_template('owner/users.html', users=users)
-
-
-@owner_bp.route('/users/<int:user_id>')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator
-@audit_owner_action('viewed_user_details', 'user_management')
-def view_user(user_id):
-    """View specific user details"""
-    user = User.query.get_or_404(user_id)
-
-    # Get user's roles
-    roles = [ur.role.name for ur in user.roles if ur.role]
-
-    # Get user's organisations
-    orgs = OrganisationMember.query.filter_by(
-        user_id=user.id,
-        is_deleted=False
-    ).all()
-
-    return render_template(
-        'owner/view_user.html',
-        user=user,
-        roles=roles,
-        organisations=orgs
-    )
-
-
-@owner_bp.route('/users/<int:user_id>/impersonate')
-@login_required
-@owner_required
-# 🔴 NOTE: Keep manual log for sensitive action
-def impersonate_user(user_id):
-    """Impersonate a user"""
-    user = User.query.get_or_404(user_id)
-
-    # Store original owner session
-    session['owner_impersonating'] = True
-    session['original_owner_id'] = current_user.id
-
-    # Log in as user
-    from flask_login import login_user
-    login_user(user)
-
-    # ✅ KEEP manual log for sensitive action
-    log_owner_action(
-        action='user_impersonated',
-        category='user_management',
-        details={
-            'target_user_id': user.id,
-            'target_username': user.username
-        }
-    )
-
-    flash(f'Now impersonating {user.username}', 'warning')
-    return redirect(url_for('index'))
-
-
-@owner_bp.route('/stop-impersonating')
-@login_required
-# 🔴 NEW: Add decorator
-@audit_owner_action('stopped_impersonating', 'user_management')
-def stop_impersonating():
-    """Stop impersonating and return to owner"""
-    if session.get('owner_impersonating'):
-        owner_id = session.pop('original_owner_id', None)
-        session.pop('owner_impersonating', None)
-
-        if owner_id:
-            from flask_login import login_user
-            owner = User.query.get(owner_id)
-            if owner:
-                login_user(owner)
-                flash('Returned to owner account', 'success')
-
-    return redirect(url_for('owner.dashboard'))
-
-
-# ============================================================================
-# Role Management
-# ============================================================================
-
-@owner_bp.route('/roles')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator
-@audit_owner_action('viewed_roles', 'role_management')
-def manage_roles():
-    """Manage all roles"""
-    roles = Role.query.order_by(Role.level).all()
-    users = User.query.limit(100).all()
-
-    return render_template(
-        'owner/manage_roles.html',
-        roles=roles,
-        users=users
-    )
-
-
-# ============================================================================
-# Audit Logs
-# ============================================================================
-
-@owner_bp.route('/audit-logs')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator - REMOVE manual log inside
-@audit_owner_action('viewed_audit_logs', 'audit')
-def audit_logs():
-    """View owner audit logs"""
-    page = request.args.get('page', 1, type=int)
-    per_page = 50
-    category = request.args.get('category')
-
-    query = OwnerAuditLog.query.filter_by(owner_id=current_user.id)
-    if category and category != 'all':
-        query = query.filter_by(category=category)
-
-    logs = query.order_by(
-        OwnerAuditLog.created_at.desc()
-    ).paginate(page=page, per_page=per_page, error_out=False)
-
-    # Get distinct categories for filter
-    categories = db.session.query(OwnerAuditLog.category).distinct().all()
-    categories = [c[0] for c in categories]
-
-    return render_template(
-        'owner/audit_logs.html',
-        logs=logs,
-        categories=categories,
-        current_category=category
-    )
-
-
-@owner_bp.route('/audit-logs/export')
-@login_required
-@owner_required
-# 🔴 NOTE: Keep manual log for action with details
-def export_audit_logs():
-    """Export audit logs as CSV"""
-    # Get logs
-    logs = OwnerAuditLog.query.filter_by(
-        owner_id=current_user.id
-    ).order_by(OwnerAuditLog.created_at.desc()).all()
-
-    # Create CSV
-    si = StringIO()
-    cw = csv.writer(si)
-    cw.writerow(['Timestamp', 'Action', 'Category', 'Details', 'IP Address', 'Status', 'Failure Reason'])
-
-    for log in logs:
-        cw.writerow([
-            log.created_at,
-            log.action,
-            log.category,
-            str(log.details) if log.details else '',
-            log.ip_address or '',
-            log.status,
-            log.failure_reason or ''
-        ])
-
-    output = make_response(si.getvalue())
-    output.headers["Content-Disposition"] = f"attachment; filename=owner_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
-    output.headers["Content-type"] = "text/csv"
-
-    # ✅ KEEP manual log to track export
-    log_owner_action(
-        action='audit_exported',
-        category='audit'
-    )
-
-    return output
-
-
-# ============================================================================
-# System Health
-# ============================================================================
-
-@owner_bp.route('/system-health')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator - REMOVE manual log inside
-@audit_owner_action('viewed_system_health', 'system')
-def system_health():
-    """System health monitoring"""
-    health = get_system_health()
-
-    # Get database stats
-    db_size = db.session.execute(
-        "SELECT pg_database_size(current_database())"
-    ).scalar() if 'postgresql' in str(db.engine.url) else 0
-
-    # Get user growth (last 30 days)
-    from sqlalchemy import func
-    growth_data = db.session.query(
-        func.date_trunc('day', User.created_at).label('day'),
-        func.count().label('count')
-    ).group_by('day').order_by('day').limit(30).all()
-
-    # 🔴 REMOVED: Manual log_owner_action call
-
-    return render_template(
-        'owner/system_health.html',
-        health=health,
-        db_size=db_size,
-        growth_data=growth_data
-    )
-
-
-# ============================================================================
-# Owner Settings & 2FA
-# ============================================================================
-
-@owner_bp.route('/settings', methods=['GET', 'POST'])
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator for GET requests
-@audit_owner_action('accessed_settings', 'settings')
-def settings():
-    """Owner account settings"""
-
-    settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-    if not settings:
-        settings = OwnerSettings(owner_id=current_user.id)
-        db.session.add(settings)
-        db.session.commit()
-
-    if request.method == 'POST':
-        # Update settings
-        settings.session_timeout_minutes = int(request.form.get('session_timeout', 120))
-        settings.max_login_attempts = int(request.form.get('max_attempts', 5))
-        settings.lockout_minutes = int(request.form.get('lockout_minutes', 15))
-        settings.email_alerts = 'email_alerts' in request.form
-        settings.alert_on_new_device = 'alert_on_new_device' in request.form
-        settings.alert_on_danger_action = 'alert_on_danger_action' in request.form
-        settings.require_password_for_danger = 'require_password' in request.form
-        settings.danger_action_delay_hours = int(request.form.get('danger_delay', 24))
-
-        db.session.commit()
-
-        # ✅ KEEP manual log for detailed changes
-        log_owner_action(
-            action='updated_settings',
-            category='settings',
-            details={'fields': list(request.form.keys())}
-        )
-
-        flash('Settings updated successfully', 'success')
-        return redirect(url_for('owner.settings'))
-
-    return render_template('owner/settings.html', settings=settings)
-
-
-@owner_bp.route('/setup-2fa', methods=['GET', 'POST'])
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator
-@audit_owner_action('accessed_2fa_setup', 'security')
-def setup_2fa():
-    """Setup 2FA"""
-    settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-
-    if request.method == 'POST':
-        code = request.form.get('code')
-        totp = pyotp.TOTP(session.get('2fa_secret'))
-
-        if totp.verify(code):
-            settings.twofa_secret = session.get('2fa_secret')
-            settings.twofa_enabled = True
-            db.session.commit()
-
-            # Generate backup codes
-            import secrets
-            from werkzeug.security import generate_password_hash
-
-            codes = []
-            hashed_codes = []
-            for _ in range(10):
-                code = secrets.token_hex(4)
-                codes.append(code)
-                hashed_codes.append(generate_password_hash(code))
-            settings.twofa_backup_codes = hashed_codes
-            db.session.commit()
-
-            session.pop('2fa_secret', None)
-
-            # ✅ KEEP manual log for success
-            log_owner_action(
-                action='enabled_2fa',
-                category='security'
-            )
-
-            flash('2FA enabled successfully', 'success')
-            return render_template('owner/backup_codes.html', codes=codes, new=True)
-        else:
-            flash('Invalid verification code', 'danger')
-
-    # Generate new secret
-    secret = pyotp.random_base32()
-    session['2fa_secret'] = secret
-
-    # Generate QR code
-    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-        name=current_user.email,
-        issuer_name="AFCON360 Platform"
-    )
-
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(totp_uri)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-
-    buffered = io.BytesIO()
-    img.save(buffered, format="PNG")
-    qr_code = base64.b64encode(buffered.getvalue()).decode()
-
-    return render_template(
-        'owner/setup_2fa.html',
-        secret=secret,
-        qr_code=qr_code
-    )
-
-
-@owner_bp.route('/disable-2fa', methods=['POST'])
-@login_required
-@owner_required
-# 🔴 NOTE: Keep manual log for action with result
-def disable_2fa():
-    """Disable 2FA"""
-    settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-
-    settings.twofa_enabled = False
-    settings.twofa_secret = None
-    settings.twofa_backup_codes = None
-    db.session.commit()
-
-    # ✅ KEEP manual log
-    log_owner_action(
-        action='disabled_2fa',
-        category='security'
-    )
-
-    flash('2FA disabled', 'warning')
-    return redirect(url_for('owner.settings'))
-
-
-@owner_bp.route('/backup-codes')
-@login_required
-@owner_required
-# 🔴 NEW: Add decorator
-@audit_owner_action('viewed_backup_codes', 'security')
-def backup_codes():
-    """View backup codes"""
-    settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-
-    if not settings or not settings.twofa_enabled:
-        flash('Enable 2FA first', 'danger')
-        return redirect(url_for('owner.settings'))
-
-    # Generate new codes if requested
-    if request.args.get('generate'):
-        import secrets
-        from werkzeug.security import generate_password_hash
-
-        codes = []
-        hashed_codes = []
-        for _ in range(10):
-            code = secrets.token_hex(4)
-            codes.append(code)
-            hashed_codes.append(generate_password_hash(code))
-        settings.twofa_backup_codes = hashed_codes
-        db.session.commit()
-
-        # ✅ KEEP manual log for generation
-        log_owner_action(
-            action='generated_backup_codes',
-            category='security'
-        )
-
-        return render_template('owner/backup_codes.html', codes=codes, new=True)
-
-    # Show masked codes
-    masked_codes = ['••••••••' for _ in range(10)] if settings.twofa_backup_codes else []
-    return render_template(
-        'owner/backup_codes.html',
-        codes=masked_codes,
-        masked=True
-    )
-
-
-# ============================================================================
-# Danger Zone
-# ============================================================================
-
-@owner_bp.route('/danger-zone')
-@login_required
-@owner_required
-@owner_password_confirm_required
-# 🔴 NEW: Use danger zone decorator
-@audit_danger_zone_action('accessed_danger_zone')
-def danger_zone():
-    """Danger zone - critical platform actions"""
-
-    # Check for pending actions
-    pending_email_change = session.get('pending_email_change')
-    pending_platform_disable = session.get('pending_platform_disable')
-
-    return render_template(
-        'owner/danger_zone.html',
-        pending_email_change=pending_email_change,
-        pending_platform_disable=pending_platform_disable
-    )
-
-
-@owner_bp.route('/danger-zone/change-email', methods=['POST'])
-@login_required
-@owner_required
-@owner_password_confirm_required
-# 🔴 NEW: Use danger zone decorator
-@audit_danger_zone_action('email_change_requested')
-def change_email():
-    """Request email change with delay"""
-    new_email = request.form.get('new_email')
-
-    if not new_email:
-        flash('Email required', 'danger')
-        return redirect(url_for('owner.danger_zone'))
-
-    # Check if email already exists
-    existing = User.query.filter_by(email=new_email).first()
-    if existing and existing.id != current_user.id:
-        flash('Email already in use', 'danger')
-        return redirect(url_for('owner.danger_zone'))
-
-    # Get delay from settings
-    settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-    delay_hours = settings.danger_action_delay_hours if settings else 24
-
-    # Store pending change with delay
-    session['pending_email_change'] = {
-        'new_email': new_email,
-        'requested_at': datetime.utcnow().isoformat(),
-        'confirm_by': (datetime.utcnow() + timedelta(hours=delay_hours)).isoformat()
-    }
-
-    # ✅ KEEP manual log for details
-    log_owner_action(
-        action='email_change_requested',
-        category='danger',
-        details={'new_email': new_email, 'delay_hours': delay_hours}
-    )
-
-    flash(f'Email change requested. Confirmation required after {delay_hours} hours.', 'warning')
-    return redirect(url_for('owner.danger_zone'))
-
-
-@owner_bp.route('/danger-zone/confirm-email-change')
-@login_required
-@owner_required
-# 🔴 NEW: Use danger zone decorator
-@audit_danger_zone_action('email_change_confirmed')
-def confirm_email_change():
-    """Confirm email change after delay"""
-    pending = session.get('pending_email_change')
-    if not pending:
-        flash('No pending email change', 'danger')
-        return redirect(url_for('owner.danger_zone'))
-
-    # Check if delay has passed
-    confirm_by = datetime.fromisoformat(pending['confirm_by'])
-    if datetime.utcnow() < confirm_by:
-        remaining = (confirm_by - datetime.utcnow()).seconds // 3600
-        flash(f'Please wait {remaining} more hours', 'warning')
-        return redirect(url_for('owner.danger_zone'))
-
-    # Apply change
-    old_email = current_user.email
-    current_user.email = pending['new_email']
-    db.session.commit()
-
-    # ✅ KEEP manual log for details
-    log_owner_action(
-        action='email_changed',
-        category='danger',
-        details={'old_email': old_email, 'new_email': pending['new_email']}
-    )
-
-    session.pop('pending_email_change', None)
-    flash('Email changed successfully', 'success')
-    return redirect(url_for('owner.settings'))
-
-
-@owner_bp.route('/danger-zone/export-data', methods=['POST'])
-@login_required
-@owner_required
-@owner_password_confirm_required
-# 🔴 NEW: Use danger zone decorator
-@audit_danger_zone_action('data_export_requested')
-def export_data():
-    """Request full platform data export"""
-
-    # In production, this would queue a Celery task
-    # ✅ KEEP manual log
-    log_owner_action(
-        action='data_export_requested',
-        category='danger'
-    )
-
-    flash('Data export requested. You will receive an email when ready.', 'info')
-    return redirect(url_for('owner.danger_zone'))
-
-
-@owner_bp.route('/danger-zone/disable-platform', methods=['POST'])
-@login_required
-@owner_required
-@owner_password_confirm_required
-# 🔴 NEW: Use danger zone decorator
-@audit_danger_zone_action('platform_disable_requested')
-def disable_platform():
-    """Request platform disable with 7-day delay"""
-
-    session['pending_platform_disable'] = {
-        'requested_at': datetime.utcnow().isoformat(),
-        'confirm_by': (datetime.utcnow() + timedelta(days=7)).isoformat(),
-        'confirmed': False
-    }
-
-    # ✅ KEEP manual log for status
-    log_owner_action(
-        action='platform_disable_requested',
-        category='danger',
-        status='pending'
-    )
-
-    flash('Platform disable requested. This will take effect after 7 days if confirmed.', 'danger')
-    return redirect(url_for('owner.danger_zone'))
+    return redirect(url_for('admin.owner.dashboard'))

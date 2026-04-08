@@ -54,13 +54,16 @@
         <div class="owner-header-content">
           <div class="owner-title">
             <h1><span class="owner-crown">👑</span> Platform Owner Dashboard</h1>
-            <p>Welcome back, <strong>{{ current_user.username }}</strong> · {{ now().strftime('%B %d, %Y') }}</p>
+            <p>Welcome back, <strong>{{ owner_username }}</strong> · {{ now().strftime('%B %d, %Y') }}</p>
           </div>
           <div class="owner-header-meta">
-            <span class="role-badge"><i class="bi bi-crown-fill"></i> Owner</span>
-            <span class="health-pill health-{{ health.database.status }}">
+            <span class="role-badge {{ 'verified' if owner_is_verified else 'pending' }}">
+              <i class="bi bi-crown-fill"></i> Owner
+              {% if not owner_is_verified %}(Unverified){% endif %}
+            </span>
+            <span class="health-pill health-{{ health.database.status if health and health.database else 'unknown' }}">
               <span class="health-dot"></span>
-              System {{ health.database.status }}
+              System {{ health.database.status if health and health.database else 'Unknown' }}
             </span>
           </div>
         </div>
@@ -71,50 +74,62 @@
         <div class="stat-card">
           <div class="stat-icon primary"><i class="bi bi-people"></i></div>
           <div class="stat-content">
-            <div class="stat-value">{{ total_users }}</div>
+            <div class="stat-value">{{ total_users or 0 }}</div>
             <div class="stat-label">Total Users</div>
-            <div class="stat-trend">+{{ new_users_today }} today</div>
+            <div class="stat-trend">+{{ new_users_today or 0 }} today</div>
           </div>
         </div>
 
         <div class="stat-card">
           <div class="stat-icon success"><i class="bi bi-check-circle"></i></div>
           <div class="stat-content">
-            <div class="stat-value">{{ verified_users }}</div>
+            <div class="stat-value">{{ verified_users or 0 }}</div>
             <div class="stat-label">Verified Users</div>
-            <div class="stat-trend">{{ ((verified_users / total_users) * 100)|round|int if total_users > 0 else 0 }}% of total</div>
+            <div class="stat-trend">
+              {% if total_users and total_users > 0 %}
+                {{ ((verified_users / total_users) * 100)|round|int }}% of total
+              {% else %}
+                0% of total
+              {% endif %}
+            </div>
           </div>
         </div>
 
         <div class="stat-card">
           <div class="stat-icon warning"><i class="bi bi-building"></i></div>
           <div class="stat-content">
-            <div class="stat-value">{{ total_orgs }}</div>
+            <div class="stat-value">{{ total_orgs or 0 }}</div>
             <div class="stat-label">Organizations</div>
-            <div class="stat-trend">{{ pending_orgs }} pending</div>
+            <div class="stat-trend">{{ pending_orgs or 0 }} pending</div>
           </div>
         </div>
 
         <div class="stat-card">
           <div class="stat-icon info"><i class="bi bi-shield-lock"></i></div>
           <div class="stat-content">
-            <div class="stat-value">{{ total_roles }}</div>
+            <div class="stat-value">{{ total_roles or 0 }}</div>
             <div class="stat-label">System Roles</div>
-            <div class="stat-trend">{{ super_admins|length }} super admins</div>
+            <div class="stat-trend">{{ super_admins|length if super_admins else 0 }} super admins</div>
           </div>
         </div>
 
         <div class="stat-card">
           <div class="stat-icon purple"><i class="bi bi-activity"></i></div>
           <div class="stat-content">
-            <div class="stat-value">{{ active_users }}</div>
+            <div class="stat-value">{{ active_users or 0 }}</div>
             <div class="stat-label">Active Users</div>
-            <div class="stat-trend">{{ ((active_users / total_users) * 100)|round|int if total_users > 0 else 0 }}% active</div>
+            <div class="stat-trend">
+              {% if total_users and total_users > 0 %}
+                {{ ((active_users / total_users) * 100)|round|int }}% active
+              {% else %}
+                0% active
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
 
-      {# ── EVENTS STATS CARD (NEW) ── #}
+      {# ── EVENTS STATS CARD ── #}
       <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 20px;">
         <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
           <div class="stat-icon"><i class="bi bi-calendar-event"></i></div>
@@ -182,13 +197,17 @@
             <h4>Danger Zone</h4>
             <p>Critical platform actions</p>
           </a>
-          <!-- NEW: Events Admin Actions -->
+          <a href="{{ url_for('admin.owner.impersonate_page') }}" class="action-card">
+            <div class="action-icon">🎭</div>
+            <h4>Overseer Master Key</h4>
+            <p>Impersonate any user role</p>
+          </a>
           <a href="{{ url_for('events.admin_dashboard') }}" class="action-card">
             <div class="action-icon">📅</div>
             <h4>Events Admin</h4>
             <p>Manage events, approvals, registrations</p>
           </a>
-          <a href="{{ url_for('events.admin_events') }}?status=pending" class="action-card">
+          <a href="{{ url_for('events.admin_events', status='pending') }}" class="action-card">
             <div class="action-icon">⏳</div>
             <h4>Pending Events</h4>
             <p>Review and approve events</p>
@@ -196,14 +215,14 @@
         </div>
       </div>
 
-      {# ── Two-column: Super Admin Mgmt + Events Overview (UPDATED) ── #}
+      {# ── Two-column: Super Admin Mgmt + Events Overview ── #}
       <div class="owner-twocol">
 
         {# LEFT: Super Admin Management #}
         <div class="super-admin-card">
           <div class="super-admin-header">
             <h3><i class="bi bi-shield-fill-check me-2"></i>Super Admin Management</h3>
-            <span class="badge bg-warning text-dark">{{ super_admins|length }} Active</span>
+            <span class="badge bg-warning text-dark">{{ total_super_admins or 0 }} Active</span>
           </div>
           <div class="super-admin-body">
 
@@ -216,7 +235,7 @@
                   <strong>{{ admin.username }}</strong>
                   <small>{{ admin.email }}</small>
                 </div>
-                <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.id) }}"
+                <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.user_id) }}"
                       onsubmit="return confirm('Remove super admin privileges from {{ admin.username }}?')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn-remove">
@@ -224,9 +243,9 @@
                   </button>
                 </form>
               </div>
-              {% else %}
+            {% else %}
               <p class="owner-empty">No super admins found</p>
-              {% endfor %}
+            {% endfor %}
             </div>
 
             <div class="owner-divider"></div>
@@ -239,7 +258,7 @@
                 <select name="user_id" class="owner-select" required>
                   <option value="">Select user...</option>
                   {% for user in regular_users %}
-                  <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                  <option value="{{ user.user_id }}">{{ user.username }} ({{ user.email }})</option>
                   {% endfor %}
                 </select>
                 <button type="submit" class="owner-btn-primary">
@@ -257,11 +276,11 @@
         {# RIGHT: Events Overview + Recent Activity #}
         <div class="owner-right-col">
 
-          {# NEW: Events Pending Approval Card #}
+          {# Events Pending Approval Card #}
           <div class="super-admin-card">
             <div class="super-admin-header">
               <h3><i class="bi bi-calendar-check me-2"></i>Events Pending Approval</h3>
-              <a href="{{ url_for('events.admin_events') }}?status=pending" class="view-all-link">View all →</a>
+              <a href="{{ url_for('events.admin_events', status='pending') }}" class="view-all-link">View all →</a>
             </div>
             <div class="activity-list" id="pendingEventsList">
               <div class="text-center p-3">Loading pending events...</div>
@@ -320,7 +339,9 @@
                   </div>
                 </div>
               </div>
-              {% endfor %}
+              {% else %}
+              <p class="owner-empty" style="padding:14px 8px">No recent signups</p>
+                       bn             {% endfor %}
             </div>
           </div>
 
@@ -329,16 +350,18 @@
 
       {# ── System Health Footer Bar ── #}
       <div class="owner-health-bar">
-        <div class="health-item">
-          <span class="health-indicator health-{{ health.database.status }}"></span>
-          Database: <strong>{{ health.database.status }}</strong>
-          <span class="health-latency">{{ health.database.latency }}ms</span>
-        </div>
-        <div class="health-item">
-          <span class="health-indicator health-{{ health.redis.status }}"></span>
-          Redis: <strong>{{ health.redis.status }}</strong>
-          <span class="health-latency">{{ health.redis.latency }}ms</span>
-        </div>
+        {% if health %}
+          <div class="health-item">
+            <span class="health-indicator health-{{ health.database.status if health.database else 'unknown' }}"></span>
+            Database: <strong>{{ health.database.status if health.database else 'Unknown' }}</strong>
+            <span class="health-latency">{{ health.database.latency if health.database else 'N/A' }}ms</span>
+          </div>
+          <div class="health-item">
+            <span class="health-indicator health-{{ health.redis.status if health.redis else 'unknown' }}"></span>
+            Redis: <strong>{{ health.redis.status if health.redis else 'Unknown' }}</strong>
+            <span class="health-latency">{{ health.redis.latency if health.redis else 'N/A' }}ms</span>
+          </div>
+        {% endif %}
         <div class="health-item">
           <i class="bi bi-clock"></i>
           Last updated: {{ now().strftime('%H:%M:%S') }}
@@ -351,12 +374,6 @@
     </div>{# /owner-container #}
   </div>{# /owner-wrapper #}
 </div>{# /owner-shell #}
-
-<!-- ============================================================================ -->
-<!-- PHASE 1: EMERGENCY KILL SWITCH JAVASCRIPT FOR WALLET MODULE -->
-<!-- Note: Owner dashboard inherits from base.html, wallet kill switch is managed -->
-<!-- via the Super Admin dashboard. Owners can access it by switching to Super Admin -->
-<!-- ============================================================================ -->
 
 <script>
 // Fetch event stats for the dashboard
@@ -404,7 +421,9 @@ async function loadPendingEvents() {
         }
     } catch (error) {
         console.error('Error loading pending events:', error);
-        document.getElementById('pendingEventsList').innerHTML = '<div class="text-center p-3 text-danger">Error loading pending events</div>';
+        if (container) {
+          container.innerHTML = '<div class="text-center p-3 text-danger">Error loading pending events</div>';
+        }
     }
 }
 
@@ -477,6 +496,8 @@ setInterval(() => {
 .btn-approve:hover, .btn-reject:hover, .btn-view:hover {
     opacity: 0.8;
 }
+.role-badge.verified { color: #28a745; }
+.role-badge.pending { color: #ffc107; }
 </style>
 
 {% endblock %}

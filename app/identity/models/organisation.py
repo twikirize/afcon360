@@ -225,4 +225,3 @@ def organisation_before_insert(mapper, connection, target):
 @event.listens_for(Organisation, "before_update")
 def organisation_before_update(mapper, connection, target):
     check_org_duplicates(connection, target, is_update=True)
-

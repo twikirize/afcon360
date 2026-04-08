@@ -11,16 +11,16 @@
 
   <!-- Quick Actions -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <a href="{{ url_for('wallet_routes.deposit_page') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-green-50 transition">
+    <a href="{{ url_for('wallet.deposit_page') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-green-50 transition">
       <span class="block text-green-600 font-bold text-lg">Deposit</span>
     </a>
-    <a href="{{ url_for('wallet_routes.send_page') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-yellow-50 transition">
+    <a href="{{ url_for('wallet.send_page') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-yellow-50 transition">
       <span class="block text-yellow-600 font-bold text-lg">Send</span>
     </a>
-    <a href="{{ url_for('wallet_routes.withdraw_page') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-red-50 transition">
+    <a href="{{ url_for('wallet.withdraw_page') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-red-50 transition">
       <span class="block text-red-600 font-bold text-lg">Withdraw</span>
     </a>
-    <a href="{{ url_for('wallet_routes.wallet_transactions') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-blue-50 transition">
+    <a href="{{ url_for('wallet.wallet_transactions') }}" class="bg-white rounded-lg shadow p-4 text-center hover:bg-blue-50 transition">
       <span class="block text-blue-600 font-bold text-lg">Transactions</span>
     </a>
   </div>
@@ -54,7 +54,7 @@
     {% else %}
       <p class="text-gray-500">No recent transactions.</p>
     {% endif %}
-    <a href="{{ url_for('wallet_routes.wallet_transactions') }}" class="mt-4 inline-block text-blue-600 font-semibold hover:underline">View All Transactions →</a>
+    <a href="{{ url_for('wallet.wallet_transactions') }}" class="mt-4 inline-block text-blue-600 font-semibold hover:underline">View All Transactions →</a>
   </div>
 
 </section>

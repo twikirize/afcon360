@@ -2,11 +2,10 @@
 from datetime import datetime, timedelta
 import uuid
 from app.extensions import db
-from app.models.base import TimestampMixin
+from app.models.base import BaseModel
 
-class ServerSession(TimestampMixin, db.Model):
+class ServerSession(BaseModel):
     __tablename__ = "server_sessions"
-    id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.String(128), unique=True, nullable=False, index=True)
     user_id = db.Column(db.String(64), nullable=False, index=True)  # public user_id (UUID/ULID)
     ip_address = db.Column(db.String(45), nullable=True)

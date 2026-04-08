@@ -8,10 +8,10 @@ from flask import Blueprint
 # Create single blueprint
 events_bp = Blueprint('events', __name__, url_prefix='/events')
 
-# Import routes directly
+# Import routes directly - this registers them with the blueprint
 from app.events import routes
 
 # Expose service for easier imports
 from app.events.services import EventService
 
-__all__ = ['events_bp', 'EventService']
+__all__ = ['events_bp', 'EventService', 'routes']

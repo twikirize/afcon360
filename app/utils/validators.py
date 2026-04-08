@@ -679,4 +679,3 @@ def validate_payment(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
 def validate_rating(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """Convenience wrapper for rating validation"""
     return TransportValidators.validate_rating(data)
-

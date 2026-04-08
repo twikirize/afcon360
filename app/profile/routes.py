@@ -14,5 +14,3 @@ def view_profile():
 
     user = User.query.filter_by(user_id=user_id).first_or_404()
     return render_template("view.html", user=user)
-
-

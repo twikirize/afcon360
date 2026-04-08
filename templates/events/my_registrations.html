@@ -48,7 +48,7 @@
                     </div>
                 </div>
                 <div class="card-footer bg-transparent border-top-0 text-end">
-                    <a href="{{ url_for('wallet.home') }}" class="text-white text-decoration-none">
+                    <a href="{{ url_for('wallet.wallet_home') }}" class="text-white text-decoration-none">
                         Manage Wallet <i class="fas fa-arrow-circle-right"></i>
                     </a>
                 </div>
@@ -62,7 +62,7 @@
                         <a href="{{ url_for('events.list') }}" class="btn btn-outline-primary">
                             <i class="fas fa-search me-2"></i>Browse More Events
                         </a>
-                        <a href="{{ url_for('wallet.deposit') if links.wallet_home else '#' }}" class="btn btn-outline-success">
+                        <a href="{{ url_for('wallet.deposit_page') }}" class="btn btn-outline-success">
                             <i class="fas fa-plus-circle me-2"></i>Top Up Wallet
                         </a>
                     </div>

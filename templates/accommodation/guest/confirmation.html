@@ -14,13 +14,13 @@
                     </div>
                     <h1 class="h2 mb-3">Booking Confirmed!</h1>
                     <p class="lead">Your accommodation is now reserved.</p>
-                    
+
                     <div class="bg-light p-4 rounded my-4">
                         <p class="mb-2"><strong>Booking Reference:</strong></p>
                         <h3 class="text-primary">{{ booking.booking_reference }}</h3>
                         <p class="mb-0 small text-muted">Keep this reference for your records</p>
                     </div>
-                    
+
                     <div class="row text-start mt-4">
                         <div class="col-md-6">
                             <h5>Property Details</h5>
@@ -34,18 +34,18 @@
                             <p class="mb-0"><strong>Guests:</strong> {{ booking.num_guests }}</p>
                         </div>
                     </div>
-                    
+
                     <hr class="my-4">
-                    
+
                     <div class="d-flex justify-content-center gap-3">
-                        <a href="{{ url_for('accommodation.accommodation_guest.my_bookings') }}" class="btn btn-outline-primary">
+                        <a href="{{ url_for('accommodation.guest.my_bookings') }}" class="btn btn-outline-primary">
                             <i class="fas fa-calendar-alt"></i> View My Bookings
                         </a>
-                        <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="btn btn-primary">
+                        <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
                             <i class="fas fa-search"></i> Search More Stays
                         </a>
                     </div>
-                    
+
                     <div class="alert alert-info mt-4 mb-0">
                         <i class="fas fa-envelope"></i> A confirmation email has been sent to {{ booking.guest_email }}
                     </div>

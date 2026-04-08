@@ -18,7 +18,7 @@ try:
 except Exception as e:
     print("❌ Error connecting to the database:", e)
 
-""" 
+"""
 ------------------------------------
 import os
 
@@ -42,7 +42,7 @@ import os
 print(os.getenv("DATABASE_URL"))
 
 
-""/" 
+""/"
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -54,7 +54,7 @@ try:
 except ModuleNotFoundError as e:
     print("❌ ERROR:", e)
 """
-""" 
+"""
 from app.extensions import db
 from app.auth.models import User
 print(User.__table__)

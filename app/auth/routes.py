@@ -16,7 +16,8 @@ from flask_login import current_user, login_required, login_user, logout_user
 from app.auth.decorators import require_role  # noqa: F401
 from app.extensions import db, limiter
 
-auth_routes = Blueprint("auth_routes", __name__, url_prefix="")
+# Standardized blueprint name: auth
+auth_bp = Blueprint("auth", __name__, url_prefix="")
 
 
 # ---------------------------------------------------------------------------
@@ -26,24 +27,47 @@ auth_routes = Blueprint("auth_routes", __name__, url_prefix="")
 def _dashboard_for_user(user) -> str:
     """
     Return the URL for this user's home dashboard based on their
-    highest-privilege role.
+    HIGHEST-PRIVILEGE role (role hierarchy aware).
     """
-    role_names = set(user.role_names)
+    # Get user's role names safely
+    role_names = set()
+    try:
+        for user_role in user.roles:
+            if user_role.role:
+                role_names.add(user_role.role.name)
+    except Exception as e:
+        current_app.logger.warning(f"Error getting user roles: {e}")
 
-    if role_names & {"owner", "super_admin"}:
+    # Check roles in priority order (highest first)
+    if "owner" in role_names:
+        return url_for("admin.owner.dashboard")
+
+    if "super_admin" in role_names or "admin" in role_names:
         return url_for("admin.super_dashboard")
 
-    if "admin" in role_names:
-        return url_for("admin.super_dashboard")
+    if "org_admin" in role_names:
+        try:
+            return url_for("org.dashboard")
+        except:
+            return url_for("index")
 
     if "moderator" in role_names:
-        return url_for("index")
+        try:
+            return url_for("moderator.dashboard")
+        except:
+            return url_for("index")
 
     if "support" in role_names:
+        try:
+            return url_for("support.dashboard")
+        except:
+            return url_for("index")
+
+    # Default for regular users
+    try:
+        return url_for("fan.fan_dashboard")
+    except:
         return url_for("index")
-
-    return url_for("index")
-
 
 # ---------------------------------------------------------------------------
 # Security helpers
@@ -58,7 +82,7 @@ def _ct_delay() -> None:
 # Registration
 # ---------------------------------------------------------------------------
 
-@auth_routes.route("/register", methods=["GET", "POST"], endpoint="register")
+@auth_bp.route("/register", methods=["GET", "POST"], endpoint="register")
 @limiter.limit("10 per minute")
 def register():
     # Lazy imports
@@ -93,7 +117,7 @@ def register():
             return render_template("register.html", username=username, email=email)
 
         flash("Registration successful! Please check your email.", "success")
-        return redirect(url_for("auth_routes.login"))
+        return redirect(url_for("auth.login"))
 
     return render_template("register.html")
 
@@ -102,7 +126,7 @@ def register():
 # Email verification
 # ---------------------------------------------------------------------------
 
-@auth_routes.route("/verify", methods=["GET"], endpoint="verify")
+@auth_bp.route("/verify", methods=["GET"], endpoint="verify")
 @limiter.limit("30 per hour")
 def verify():
     from app.auth.services import verify_email
@@ -110,10 +134,10 @@ def verify():
     token = token[:128] if token else None
     if not token or not verify_email(token):
         flash("Invalid or expired verification link.", "danger")
-        return redirect(url_for("auth_routes.login"))
+        return redirect(url_for("auth.login"))
 
     flash("Email verified. You can now log in.", "success")
-    return redirect(url_for("auth_routes.login"))
+    return redirect(url_for("auth.login"))
 
 
 # ---------------------------------------------------------------------------
@@ -125,11 +149,11 @@ def is_safe_url(target):
     test_url = urlparse(urljoin(host_url, target))
     return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
 
-@auth_routes.route("/login", methods=["GET", "POST"], endpoint="login")
+@auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
 @limiter.limit("5 per minute")
 def login():
     from app.auth.services import authenticate_user, AuthResult
-    
+
     require_verification = current_app.config.get("VERIFY_EMAIL_REQUIRED", False)
 
     if request.method == "POST":
@@ -186,7 +210,7 @@ def login():
 # Logout
 # ---------------------------------------------------------------------------
 
-@auth_routes.route("/logout", methods=["POST"], endpoint="logout")
+@auth_bp.route("/logout", methods=["POST"], endpoint="logout")
 @login_required
 def logout():
     from app.auth.services import revoke_session
@@ -202,14 +226,14 @@ def logout():
         session.pop(key, None)
 
     flash("You have been logged out.", "info")
-    return redirect(url_for("auth_routes.login"))
+    return redirect(url_for("auth.login"))
 
 
 # ---------------------------------------------------------------------------
 # Password reset
 # ---------------------------------------------------------------------------
 
-@auth_routes.route("/reset/request", methods=["GET", "POST"], endpoint="reset_request")
+@auth_bp.route("/reset/request", methods=["GET", "POST"], endpoint="reset_request")
 @limiter.limit("10 per hour")
 def reset_request():
     from app.identity.models.user import User
@@ -223,7 +247,7 @@ def reset_request():
             request_password_reset(user)
 
         flash("If that account exists, a reset link has been sent.", "info")
-        return redirect(url_for("auth_routes.login"))
+        return redirect(url_for("auth.login"))
 
     return render_template("reset_request.html")
 
@@ -232,7 +256,7 @@ def reset_request():
 # MFA
 # ---------------------------------------------------------------------------
 
-@auth_routes.route("/mfa/<user_id>", methods=["GET", "POST"], endpoint="mfa")
+@auth_bp.route("/mfa/<user_id>", methods=["GET", "POST"], endpoint="mfa")
 def mfa(user_id: str):
     flash("Multi-factor authentication is not yet active.", "danger")
-    return redirect(url_for("auth_routes.login"))
+    return redirect(url_for("auth.login"))

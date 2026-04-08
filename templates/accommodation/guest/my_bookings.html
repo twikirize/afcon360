@@ -8,7 +8,7 @@
     <div class="row">
         <div class="col-12">
             <h1 class="h2 mb-4">My Bookings</h1>
-            
+
             {% if bookings %}
                 <div class="list-group">
                     {% for item in bookings %}
@@ -31,7 +31,7 @@
                                     <i class="fas fa-map-marker-alt"></i> {{ property.city if property else 'Location' }}
                                 </p>
                                 <p class="mb-1">
-                                    <strong>{{ booking.check_in.strftime('%b %d') }}</strong> → 
+                                    <strong>{{ booking.check_in.strftime('%b %d') }}</strong> →
                                     <strong>{{ booking.check_out.strftime('%b %d, %Y') }}</strong>
                                 </p>
                                 <p class="mb-0 small text-muted">{{ booking.num_guests }} guest{{ 's' if booking.num_guests > 1 else '' }}</p>
@@ -53,12 +53,12 @@
                                 </p>
                             </div>
                             <div class="col-md-2 text-end">
-                                <a href="{{ url_for('accommodation.accommodation_guest.confirmation', reference=booking.booking_reference) }}"
+                                <a href="{{ url_for('accommodation.guest.confirmation', reference=booking.booking_reference) }}"
                                    class="btn btn-sm btn-outline-primary mb-2">
                                     View Details
                                 </a>
                                 {% if booking.status.value in ['pending', 'confirmed'] %}
-                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                <button type="button" class="btn btn-sm btn-outline-danger"
                                         data-bs-toggle="modal" data-bs-target="#cancelModal{{ booking.id }}">
                                     Cancel
                                 </button>
@@ -66,13 +66,14 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Cancel Modal -->
                     {% if booking.status.value in ['pending', 'confirmed'] %}
                     <div class="modal fade" id="cancelModal{{ booking.id }}" tabindex="-1">
                         <div class="modal-dialog">
                             <div class="modal-content">
-                                <form method="POST" action="{{ url_for('accommodation.accommodation_guest.cancel_booking', reference=booking.booking_reference) }}">
+                                <form method="POST" action="{{ url_for('accommodation.guest.cancel_booking', reference=booking.booking_reference) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <div class="modal-header">
                                         <h5 class="modal-title">Cancel Booking</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -86,7 +87,7 @@
                                             <textarea name="reason" class="form-control" rows="2"></textarea>
                                         </div>
                                         <div class="alert alert-warning">
-                                            <i class="fas fa-info-circle"></i> 
+                                            <i class="fas fa-info-circle"></i>
                                             Refund amount will be calculated based on the cancellation policy.
                                         </div>
                                     </div>
@@ -106,7 +107,7 @@
                     <i class="fas fa-calendar-alt fa-3x text-muted mb-3"></i>
                     <h3>No Bookings Yet</h3>
                     <p class="text-muted">You haven't made any accommodation bookings.</p>
-                    <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="btn btn-primary">
+                    <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
                         Search for Stays
                     </a>
                 </div>

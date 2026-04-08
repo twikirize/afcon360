@@ -13,22 +13,22 @@ from app.extensions import db
 from app.wallet.middleware.kill_switch import require_wallet_enabled
 from app.wallet.middleware.wallet_activation import require_wallet_activated
 
-# HTML template blueprint only - NO JSON endpoints
-wallet_routes = Blueprint("wallet_routes", __name__)
+# Standardized blueprint name: wallet
+wallet_bp = Blueprint("wallet", __name__)
 
 
 # ============================================================================
 # CORE PAGE ROUTES
 # ============================================================================
 
-@wallet_routes.route("/wallet", endpoint="wallet_home")
+@wallet_bp.route("/wallet", endpoint="wallet_home")
 @require_wallet_enabled
 def wallet_home():
     """Wallet home page - HTML."""
     return render_template("wallet_home.html")
 
 
-@wallet_routes.route("/wallet/dashboard")
+@wallet_bp.route("/wallet/dashboard", endpoint="wallet_dashboard")
 @require_wallet_activated
 @require_wallet_enabled
 def wallet_dashboard():
@@ -67,7 +67,7 @@ def wallet_dashboard():
 # WALLET ACTIVATION
 # ============================================================================
 
-@wallet_routes.route("/wallet/activate", methods=["GET", "POST"])
+@wallet_bp.route("/wallet/activate", methods=["GET", "POST"], endpoint="activate_wallet")
 @login_required
 def activate_wallet():
     """Wallet activation page."""
@@ -81,7 +81,7 @@ def activate_wallet():
 
     if existing_wallet and existing_wallet.verified:
         flash("Your wallet is already activated.", "info")
-        return redirect(url_for("wallet_routes.wallet_dashboard"))
+        return redirect(url_for("wallet.wallet_dashboard"))
 
     if existing_wallet and not existing_wallet.verified:
         if request.method == "POST":
@@ -96,7 +96,7 @@ def activate_wallet():
                 created_by=current_user.id
             )
             flash("Your wallet has been activated successfully!", "success")
-            return redirect(url_for("wallet_routes.wallet_dashboard"))
+            return redirect(url_for("wallet.wallet_dashboard"))
         return render_template("wallet_activate.html", wallet=existing_wallet, action="verify")
 
     if request.method == "POST":
@@ -128,7 +128,7 @@ def activate_wallet():
         )
         db.session.commit()
         flash("Your wallet has been created and activated successfully!", "success")
-        return redirect(url_for("wallet_routes.wallet_dashboard"))
+        return redirect(url_for("wallet.wallet_dashboard"))
 
     return render_template("wallet_activate.html", action="create")
 
@@ -137,7 +137,7 @@ def activate_wallet():
 # FORM PAGES (GET) - These render the HTML forms
 # ============================================================================
 
-@wallet_routes.route("/wallet/deposit", endpoint="deposit_page")
+@wallet_bp.route("/wallet/deposit", endpoint="deposit_page")
 @login_required
 @require_wallet_enabled
 def deposit_page():
@@ -145,7 +145,7 @@ def deposit_page():
     return render_template("deposit.html", title="Deposit Funds")
 
 
-@wallet_routes.route("/wallet/send", endpoint="send_page")
+@wallet_bp.route("/wallet/send", endpoint="send_page")
 @login_required
 @require_wallet_enabled
 def send_page():
@@ -153,7 +153,7 @@ def send_page():
     return render_template("send.html", title="Send Funds")
 
 
-@wallet_routes.route("/wallet/withdraw", endpoint="withdraw_page")
+@wallet_bp.route("/wallet/withdraw", endpoint="withdraw_page")
 @login_required
 @require_wallet_enabled
 def withdraw_page():
@@ -165,7 +165,7 @@ def withdraw_page():
 # TRANSACTION HISTORY
 # ============================================================================
 
-@wallet_routes.route("/wallet/transactions")
+@wallet_bp.route("/wallet/transactions", endpoint="wallet_transactions")
 @login_required
 @require_wallet_activated
 @require_wallet_enabled
@@ -198,14 +198,14 @@ def wallet_transactions():
     except Exception as e:
         current_app.logger.error(f"Transactions error: {e}")
         flash("Unable to load transactions", "danger")
-        return redirect(url_for("wallet_routes.wallet_dashboard"))
+        return redirect(url_for("wallet.wallet_dashboard"))
 
 
 # ============================================================================
 # AGENT COMMISSIONS
 # ============================================================================
 
-@wallet_routes.route("/wallet/commissions")
+@wallet_bp.route("/wallet/commissions", endpoint="agent_commissions")
 @login_required
 @require_wallet_activated
 @require_wallet_enabled
@@ -235,14 +235,14 @@ def agent_commissions():
     except Exception as e:
         current_app.logger.error(f"Agent commissions error: {e}")
         flash("Unable to load commission history", "danger")
-        return redirect(url_for("wallet_routes.wallet_dashboard"))
+        return redirect(url_for("wallet.wallet_dashboard"))
 
 
 # ============================================================================
 # AGENT PAYOUTS
 # ============================================================================
 
-@wallet_routes.route("/wallet/payouts")
+@wallet_bp.route("/wallet/payouts", endpoint="agent_payout_history")
 @login_required
 @require_wallet_activated
 @require_wallet_enabled
@@ -282,10 +282,10 @@ def agent_payout_history():
     except Exception as e:
         current_app.logger.error(f"Agent payout history error: {e}")
         flash("Unable to load payout history", "danger")
-        return redirect(url_for("wallet_routes.wallet_dashboard"))
+        return redirect(url_for("wallet.wallet_dashboard"))
 
 
-@wallet_routes.route("/wallet/payouts/request")
+@wallet_bp.route("/wallet/payouts/request", endpoint="agent_payout_request_page")
 @login_required
 @require_wallet_activated
 @require_wallet_enabled
@@ -314,14 +314,14 @@ def agent_payout_request_page():
     except Exception as e:
         current_app.logger.error(f"Payout request page error: {e}")
         flash("Unable to load payout request page", "danger")
-        return redirect(url_for("wallet_routes.agent_payout_history"))
+        return redirect(url_for("wallet.agent_payout_history"))
 
 
 # ============================================================================
 # FORM HANDLERS (POST)
 # ============================================================================
 
-@wallet_routes.route("/wallet/deposit-form", methods=["POST"])
+@wallet_bp.route("/wallet/deposit-form", methods=["POST"], endpoint="deposit_form")
 @require_wallet_enabled
 @require_wallet_activated
 def deposit_form():
@@ -333,7 +333,7 @@ def deposit_form():
         amount = parse_amount(request.form.get("amount"))
         if amount is None or amount <= 0:
             flash("Invalid amount.", "danger")
-            return redirect(url_for("wallet_routes.deposit_page"))
+            return redirect(url_for("wallet.deposit_page"))
 
         currency = request.form.get("currency", "USD")
         service = WalletService()
@@ -348,10 +348,10 @@ def deposit_form():
         current_app.logger.error(f"Deposit form error: {e}")
         flash("Deposit failed.", "danger")
 
-    return redirect(url_for("wallet_routes.wallet_dashboard"))
+    return redirect(url_for("wallet.wallet_dashboard"))
 
 
-@wallet_routes.route("/wallet/send-form", methods=["POST"])
+@wallet_bp.route("/wallet/send-form", methods=["POST"], endpoint="send_funds")
 @require_wallet_enabled
 @require_wallet_activated
 def send_funds():
@@ -369,13 +369,13 @@ def send_funds():
 
         if not receiver_id or amount is None or amount <= 0:
             flash("Invalid input.", "danger")
-            return redirect(url_for("wallet_routes.send_page"))
+            return redirect(url_for("wallet.send_page"))
 
         receiver_user = User.query.filter_by(user_id=receiver_id).first() or \
                         User.query.filter_by(username=receiver_id).first()
         if not receiver_user:
             flash(f"User not found: {receiver_id}", "danger")
-            return redirect(url_for("wallet_routes.send_page"))
+            return redirect(url_for("wallet.send_page"))
 
         service = WalletService()
         result = service.transfer(
@@ -410,10 +410,10 @@ def send_funds():
         current_app.logger.error(f"Send funds error: {e}")
         flash("Transfer failed.", "danger")
 
-    return redirect(url_for("wallet_routes.wallet_dashboard"))
+    return redirect(url_for("wallet.wallet_dashboard"))
 
 
-@wallet_routes.route("/wallet/withdraw-form", methods=["POST"])
+@wallet_bp.route("/wallet/withdraw-form", methods=["POST"], endpoint="withdraw_funds")
 @require_wallet_enabled
 @require_wallet_activated
 def withdraw_funds():
@@ -426,7 +426,7 @@ def withdraw_funds():
         amount = parse_amount(request.form.get("amount"))
         if amount is None or amount <= 0:
             flash("Invalid amount.", "danger")
-            return redirect(url_for("wallet_routes.withdraw_page"))
+            return redirect(url_for("wallet.withdraw_page"))
 
         currency = request.form.get("currency", "UGX")
         method = request.form.get("method", "ATM")
@@ -450,10 +450,10 @@ def withdraw_funds():
         current_app.logger.error(f"Withdraw form error: {e}")
         flash("Withdrawal failed.", "danger")
 
-    return redirect(url_for("wallet_routes.wallet_dashboard"))
+    return redirect(url_for("wallet.wallet_dashboard"))
 
 
-@wallet_routes.route("/wallet/payouts/request-form", methods=["POST"])
+@wallet_bp.route("/wallet/payouts/request-form", methods=["POST"], endpoint="payout_request_form")
 @login_required
 @require_wallet_activated
 @require_wallet_enabled
@@ -469,7 +469,7 @@ def payout_request_form():
 
         if amount is None or amount <= 0:
             flash("Invalid amount.", "danger")
-            return redirect(url_for("wallet_routes.agent_payout_request_page"))
+            return redirect(url_for("wallet.agent_payout_request_page"))
 
         payout_service = PayoutService()
 
@@ -495,14 +495,14 @@ def payout_request_form():
         current_app.logger.error(f"Payout request error: {e}")
         flash("Failed to create payout request. Please try again.", "danger")
 
-    return redirect(url_for("wallet_routes.agent_payout_history"))
+    return redirect(url_for("wallet.agent_payout_history"))
 
 
 # ============================================================================
 # LEGAL PAGES
 # ============================================================================
 
-@wallet_routes.route("/wallet/terms")
+@wallet_bp.route("/wallet/terms", endpoint="terms")
 @require_wallet_enabled
 def terms():
     """Wallet terms and conditions page."""

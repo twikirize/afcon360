@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Auditor Dashboard - AFCON360{% endblock %}
+
+{% block styles %}
+<style>
+    .auditor-header {
+        background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .audit-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .audit-stat {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        text-align: center;
+        border-top: 4px solid #9b59b6;
+    }
+
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #9b59b6;
+        margin-bottom: 10px;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .audit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .audit-card {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        border-left: 4px solid #9b59b6;
+    }
+
+    .audit-card h3 {
+        color: #9b59b6;
+        margin-bottom: 15px;
+        font-size: 1.2rem;
+    }
+
+    .audit-card.critical { border-left-color: #dc3545; }
+    .audit-card.warning { border-left-color: #ffc107; }
+    .audit-card.info { border-left-color: #17a2b8; }
+    .audit-card.success { border-left-color: #28a745; }
+
+    .btn-audit {
+        background: #9b59b6;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        text-decoration: none;
+        display: inline-block;
+        transition: background 0.3s ease;
+    }
+
+    .btn-audit:hover {
+        background: #8e44ad;
+        color: white;
+    }
+
+    .risk-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .risk-critical { background: #dc3545; color: white; }
+    .risk-high { background: #fd7e14; color: white; }
+    .risk-medium { background: #ffc107; color: #212529; }
+    .risk-low { background: #28a745; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="auditor-header">
+        <h1><i class="bi bi-shield-check"></i> Auditor Dashboard</h1>
+        <p>System audit and compliance monitoring</p>
+    </div>
+
+    <!-- Audit Statistics -->
+    <div class="audit-stats">
+        <div class="audit-stat">
+            <div class="stat-number">{{ critical_findings or 0 }}</div>
+            <div class="stat-label">Critical Findings</div>
+        </div>
+        <div class="audit-stat">
+            <div class="stat-number">{{ pending_reviews or 0 }}</div>
+            <div class="stat-label">Pending Reviews</div>
+        </div>
+        <div class="audit-stat">
+            <div class="stat-number">{{ compliance_score or '95%' }}</div>
+            <div class="stat-label">Compliance Score</div>
+        </div>
+        <div class="audit-stat">
+            <div class="stat-number">{{ audits_completed or 0 }}</div>
+            <div class="stat-label">Audits Completed</div>
+        </div>
+    </div>
+
+    <!-- Audit Categories -->
+    <div class="audit-grid">
+        <div class="audit-card critical">
+            <h3><i class="bi bi-exclamation-triangle"></i> Critical Issues</h3>
+            <p>Immediate security and compliance concerns</p>
+            <div class="audit-count">
+                <span class="risk-badge risk-critical">{{ critical_count or 0 }} Critical</span>
+            </div>
+            <a href="{{ url_for('auditor.critical') }}" class="btn-audit">
+                <i class="bi bi-lightning"></i> Review Critical
+            </a>
+        </div>
+
+        <div class="audit-card warning">
+            <h3><i class="bi bi-shield-exclamation"></i> Security Audit</h3>
+            <p>Security vulnerabilities and access controls</p>
+            <div class="audit-count">
+                <span class="risk-badge risk-high">{{ security_issues or 0 }} High Risk</span>
+            </div>
+            <a href="{{ url_for('auditor.security') }}" class="btn-audit">
+                <i class="bi bi-lock"></i> Security Review
+            </a>
+        </div>
+
+        <div class="audit-card info">
+            <h3><i class="bi bi-file-text"></i> Compliance Audit</h3>
+            <p>Regulatory compliance and policy adherence</p>
+            <div class="audit-count">
+                <span class="risk-badge risk-medium">{{ compliance_issues or 0 }} Medium</span>
+            </div>
+            <a href="{{ url_for('auditor.compliance') }}" class="btn-audit">
+                <i class="bi bi-clipboard-check"></i> Compliance Check
+            </a>
+        </div>
+
+        <div class="audit-card success">
+            <h3><i class="bi bi-clock-history"></i> Audit Logs</h3>
+            <p>System activity and transaction logs</p>
+            <div class="audit-count">
+                <span class="risk-badge risk-low">{{ log_reviews or 0 }} Reviews</span>
+            </div>
+            <a href="{{ url_for('auditor.logs') }}" class="btn-audit">
+                <i class="bi bi-journal-text"></i> View Logs
+            </a>
+        </div>
+    </div>
+
+    <!-- Audit Reports -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="bi bi-file-earmark-text"></i> Recent Audit Reports</h3>
+        </div>
+        <div class="card-body">
+            {% if recent_reports %}
+                {% for report in recent_reports %}
+                <div class="report-item">
+                    <div class="report-icon">
+                        <i class="bi bi-{{ report.icon }}"></i>
+                    </div>
+                    <div class="report-content">
+                        <strong>{{ report.title }}</strong>
+                        <span class="risk-badge risk-{{ report.risk_level }}">{{ report.risk_level }}</span>
+                        <small class="text-muted">{{ report.date }}</small>
+                        <p class="text-muted">{{ report.summary }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No recent audit reports.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="bi bi-lightning"></i> Quick Actions</h3>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <a href="{{ url_for('auditor.new_audit') }}" class="btn btn-primary w-100 mb-2">
+                        <i class="bi bi-plus-circle"></i> New Audit
+                    </a>
+                </div>
+                <div class="col-md-3">
+                    <a href="{{ url_for('auditor.generate_report') }}" class="btn btn-info w-100 mb-2">
+                        <i class="bi bi-file-earmark-pdf"></i> Generate Report
+                    </a>
+                </div>
+                <div class="col-md-3">
+                    <a href="{{ url_for('auditor.schedule_audit') }}" class="btn btn-secondary w-100 mb-2">
+                        <i class="bi bi-calendar"></i> Schedule Audit
+                    </a>
+                </div>
+                <div class="col-md-3">
+                    <a href="{{ url_for('auditor.export_data') }}" class="btn btn-success w-100 mb-2">
+                        <i class="bi bi-download"></i> Export Data
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

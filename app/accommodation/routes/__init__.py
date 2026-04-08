@@ -5,16 +5,12 @@ Accommodation Routes - Sub-blueprints
 
 from flask import Blueprint
 
-# Define blueprints
-guest = Blueprint('accommodation_guest', __name__)
-host = Blueprint('accommodation_host', __name__)
-admin = Blueprint('accommodation_admin', __name__)
-event = Blueprint('accommodation_event', __name__)
+# Import blueprint instances from their respective files
+from .guest_routes import guest_bp as guest
+from .host_routes import host_bp as host
+from .admin_routes import admin_bp as admin
 
-# Import route files (these attach routes to blueprints)
-from app.accommodation.routes import guest_routes, host_routes, admin_routes
+# No longer needed as event routes are not defined here
+# event = Blueprint('accommodation_event', __name__)
 
-# NOTE:
-# Do NOT import event_routes here (avoid circular imports)
-
-__all__ = ['guest', 'host', 'admin', 'event']
+__all__ = ['guest', 'host', 'admin']

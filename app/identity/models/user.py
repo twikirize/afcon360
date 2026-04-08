@@ -1,13 +1,16 @@
 # app/identity/user.py
 
 from datetime import datetime, timedelta
+import uuid as uuid_lib
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, ForeignKey, JSON,
     Index, UniqueConstraint, event, select
 )
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
+from app.models.base import ProtectedModel
 from flask_login import UserMixin
 from flask import current_app
 
@@ -15,16 +18,11 @@ from flask import current_app
 # --------------------------------------
 # User Model (Core Identity)
 # --------------------------------------
-class User(UserMixin, db.Model):
+class User(UserMixin, ProtectedModel):
     """
-    Enterprise user:
-    - Login identifiers: email, phone
-    - Display username
-    - One-to-one profile
-    - Organisation memberships & roles
-    - Global roles
-    - MFA secrets & sessions
-    - Lifecycle: KYC, failed logins, lockout
+    Enterprise user with Dual ID System:
+    - id: BIGINT (internal, for database relations/FKs)
+    - user_id: String(64) (external, for public exposure/APIs/URLs)
     """
     __tablename__ = "users"
     __table_args__ = (
@@ -35,9 +33,11 @@ class User(UserMixin, db.Model):
         Index("ix_user_is_deleted", "is_deleted"),
     )
 
-    # Core identifiers
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    user_id = Column(String(64), unique=True, nullable=False, index=True)
+    # INTERNAL ID (BIGINT) - PK Inherited from ProtectedModel
+
+    # EXTERNAL ID (UUID) - Use for ALL public exposure
+    user_id = Column(String(64), unique=True, nullable=False, index=True, default=lambda: str(uuid_lib.uuid4()))
+
     username = Column(String(80), nullable=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     phone = Column(String(32), unique=True, nullable=True, index=True)
@@ -69,9 +69,7 @@ class User(UserMixin, db.Model):
         index=True
     )
 
-    # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    # Timestamps Inherited from ProtectedModel
 
     # ---------------------------
     # Relationships
@@ -104,10 +102,41 @@ class User(UserMixin, db.Model):
     )
 
     # ---------------------------
+    # Dual ID Helpers
+    # ---------------------------
+    @property
+    def public_id(self):
+        """Use this for URLs, APIs, any public exposure"""
+        return self.user_id
+
+    @property
+    def private_id(self):
+        """Use this for internal database relations"""
+        return self.id
+
+    def get_id_for_fk(self):
+        """Explicit method for foreign key usage"""
+        return self.id
+
+    def get_id_for_url(self):
+        """Explicit method for URL/public usage"""
+        return self.user_id
+
+    @classmethod
+    def get_by_public_id(cls, public_uuid):
+        """Find user by public UUID (for API endpoints)"""
+        return cls.query.filter_by(user_id=public_uuid).first()
+
+    @classmethod
+    def get_by_private_id(cls, internal_id):
+        """Find user by internal ID (for database operations)"""
+        return cls.query.get(internal_id)
+
+    # ---------------------------
     # Flask-Login integration
     # ---------------------------
     def get_id(self):
-        """Return the UUID-style user_id for session tracking."""
+        """Return the UUID-style user_id for session tracking (external reference)."""
         return str(self.user_id)
 
     # ---------------------------
@@ -216,7 +245,7 @@ class User(UserMixin, db.Model):
         return False
 
     def __repr__(self):
-        return f"<User id={self.id} username={self.username} email={self.email}>"
+        return f"<User id={self.id} user_id={self.user_id} username={self.username} email={self.email}>"
 
     # ---------------------------
     # Validators
@@ -268,6 +297,8 @@ def check_user_duplicates(connection, target, is_update=False):
 
 @event.listens_for(User, "before_insert")
 def user_before_insert(mapper, connection, target):
+    if not target.user_id:
+        target.user_id = str(uuid_lib.uuid4())
     check_user_duplicates(connection, target, is_update=False)
 
 @event.listens_for(User, "before_update")
@@ -278,10 +309,10 @@ def user_before_update(mapper, connection, target):
 # --------------------------------------
 # UserRole (global role)
 # --------------------------------------
-class UserRole(db.Model):
+class UserRole(ProtectedModel):
     __tablename__ = "user_roles"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # id inherited from ProtectedModel
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     role_id = Column(BigInteger, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False, index=True)
     assigned_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -303,15 +334,16 @@ class UserRole(db.Model):
 # --------------------------------------
 # MFASecret
 # --------------------------------------
-class MFASecret(db.Model):
+class MFASecret(ProtectedModel):
     __tablename__ = "mfa_secrets"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # id inherited from ProtectedModel
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     mfa_type = Column(String(32), nullable=False, index=True)  # totp, sms, webauthn
     secret = Column(String(1024), nullable=False)  # encrypted
     is_active = Column(Boolean, default=True, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Timestamps inherited from ProtectedModel
 
     user = relationship("User", back_populates="mfa_secrets", lazy="joined")
 
@@ -333,16 +365,17 @@ class MFASecret(db.Model):
 # --------------------------------------
 # Session
 # --------------------------------------
-class Session(db.Model):
+class Session(ProtectedModel):
     __tablename__ = "sessions"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # id inherited from ProtectedModel
     session_id = Column(String(128), unique=True, nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     device_id = Column(String(128), index=True)
     ip = Column(String(64), index=True)
     user_agent = Column(String(512))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Timestamps inherited from ProtectedModel
     expires_at = Column(DateTime, nullable=False, index=True)
     revoked_at = Column(DateTime, nullable=True, index=True)
     revoked_reason = Column(String(255))
@@ -356,16 +389,17 @@ class Session(db.Model):
 # --------------------------------------
 # APIKey
 # --------------------------------------
-class APIKey(db.Model):
+class APIKey(ProtectedModel):
     __tablename__ = "api_keys"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # id inherited from ProtectedModel
     key_id = Column(String(64), nullable=False, index=True)
     key_hash = Column(String(512), nullable=False)
     owner_type = Column(String(32), nullable=False, index=True)  # user or organisation
     owner_id = Column(BigInteger, nullable=False, index=True)
     scopes = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Timestamps inherited from ProtectedModel
     revoked_at = Column(DateTime, nullable=True, index=True)
 
     __table_args__ = (

@@ -4,13 +4,14 @@ Admin routes for accommodation module oversight
 To be implemented in Phase 5
 """
 
-from flask import render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.accommodation.routes import admin
 from app.auth.policy import can
 
+admin_bp = Blueprint('admin', __name__)
 
-@admin.route("/dashboard", endpoint="dashboard")
+
+@admin_bp.route("/dashboard", endpoint="dashboard")
 @login_required
 def dashboard():
     """
@@ -25,7 +26,7 @@ def dashboard():
     return render_template("accommodation/admin/dashboard.html")
 
 
-@admin.route("/listings", endpoint="listings")
+@admin_bp.route("/listings", endpoint="listings")
 @login_required
 def listings():
     """
@@ -39,7 +40,7 @@ def listings():
     return render_template("accommodation/admin/listings.html")
 
 
-@admin.route("/hosts", endpoint="hosts")
+@admin_bp.route("/hosts", endpoint="hosts")
 @login_required
 def hosts():
     """

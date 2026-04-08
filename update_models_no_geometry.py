@@ -134,7 +134,7 @@ else:
     print(result.stderr)
 """
 
-    with open('generate_migration.py', 'w') as f:
+    with open('tests/generate_migration.py', 'w') as f:
         f.write(script)
 
     print("✅ Created migration script: generate_migration.py")

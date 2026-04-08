@@ -50,6 +50,16 @@ def get_metadata():
         return target_db.metadatas[None]
     return target_db.metadata
 
+def include_object(object, name, type_, reflected, compare_to):
+    # 🚨 BLOCK column type changes completely
+    # Prevents Alembic from generating dangerous BIGINT <-> INTEGER swaps
+    if type_ == "column" and compare_to is not None:
+        try:
+            if object.type.__class__ != compare_to.type.__class__:
+                return False
+        except Exception:
+            return False
+    return True
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode.
@@ -65,7 +75,8 @@ def run_migrations_offline():
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=get_metadata(), literal_binds=True
+        url=url, target_metadata=get_metadata(), literal_binds=True,
+        include_object=include_object
     )
 
     with context.begin_transaction():
@@ -92,7 +103,7 @@ def run_migrations_online():
 
     conf_args = current_app.extensions['migrate'].configure_args
     if conf_args.get("process_revision_directives") is None:
-        conf_args["process_revision_directives"] = process_revision_directives
+        conf_args["process_directives"] = process_revision_directives
 
     connectable = get_engine()
 
@@ -100,6 +111,7 @@ def run_migrations_online():
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
+            include_object=include_object,
             **conf_args
         )
 

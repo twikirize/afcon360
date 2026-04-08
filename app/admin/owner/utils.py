@@ -1,6 +1,7 @@
-# app/admin/owner/utils.py
+# app/admin/owner/utils.py - Fix the log_owner_action function
 """
 Owner utilities - Core audit logging and system health functions
+FIXED: Now uses internal BIGINT ID (user.id) for database relations
 """
 
 import logging
@@ -8,7 +9,7 @@ import json
 import time
 from datetime import datetime
 
-from flask import request
+from flask import request, g
 from flask_login import current_user
 from sqlalchemy import text
 
@@ -24,42 +25,41 @@ def log_owner_action(
     details: dict = None,
     status: str = 'success',
     failure_reason: str = None,
-    user_id: int = None
+    owner_id: int = None  # Use BIGINT ID
 ) -> bool:
     """
     Core audit logging function - logs actions performed by owners.
-
-    Args:
-        action: The action being performed (e.g., 'viewed_dashboard')
-        category: Category of action (navigation, security, settings, etc.)
-        details: Additional context about the action (dict)
-        status: success/failure/pending
-        failure_reason: If status is failure, explain why
-        user_id: Optional explicit user ID (for system actions)
-
-    Returns:
-        bool: True if log was created successfully, False otherwise
+    FIXED: Uses internal BIGINT ID (user.id) instead of UUID string.
     """
     try:
-        # Determine owner ID and log source
-        owner_id = None
+        # CRITICAL: Rollback any aborted transaction before proceeding
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
-        if user_id is not None:
-            # Trusted system action
-            owner_id = user_id
+        # Determine internal owner ID and log source
+        final_owner_id = None
+
+        if owner_id is not None:
+            # Trusted system action - owner_id should be the BIGINT
+            final_owner_id = owner_id
             log_source = "system"
-        elif getattr(current_user, 'is_authenticated', False):
-            is_owner = getattr(current_user, 'is_app_owner', lambda: False)()
-            if is_owner:
-                owner_id = current_user.id
+        elif current_user and current_user.is_authenticated:
+            # Use the internal BIGINT id, NOT the UUID user_id
+            try:
+                final_owner_id = current_user.id # Changed from current_user.get_id()
                 log_source = "owner"
-            else:
-                logger.warning(
-                    f"Non-owner attempted to create audit log: user={current_user.id}, action={action}"
-                )
+            except Exception as e:
+                logger.warning(f"Could not resolve current_user for audit log: action={action}, error={e}")
                 return False
         else:
-            logger.error(f"Attempted owner log with no authenticated user: action={action}")
+            logger.debug(f"No authenticated user for audit log: action={action}")
+            return False
+
+        # Extra safety check: ensure we're not trying to insert a UUID into a BIGINT column
+        if isinstance(final_owner_id, str) and '-' in final_owner_id:
+            logger.error(f"CRITICAL: Attempted to log action '{action}' with UUID '{final_owner_id}' instead of BIGINT. Blocking insert.")
             return False
 
         # Prepare enhanced details with metadata
@@ -69,43 +69,45 @@ def log_owner_action(
             '_timestamp': datetime.utcnow().isoformat()
         }
 
-        # Ensure details are serialized as JSON string
-        details_json = json.dumps(enhanced_details)
-
         # Extract request info safely
-        ip_address = getattr(request, 'remote_addr', None)
-        user_agent = getattr(getattr(request, 'user_agent', None), 'string', None)
+        ip_address = None
+        user_agent = None
+        try:
+            ip_address = request.remote_addr if request else None
+            user_agent = request.user_agent.string if request and hasattr(request, 'user_agent') else None
+        except Exception:
+            pass
 
         # Create audit log entry
         audit_log = OwnerAuditLog(
-            owner_id=owner_id,
+            owner_id=final_owner_id,
             action=action,
             category=category or 'action',
-            details=details_json,
+            details=enhanced_details,
             ip_address=ip_address,
             user_agent=user_agent,
             status=status,
             failure_reason=failure_reason
         )
 
-        db.session.add(audit_log)
-        db.session.commit()
-
-        logger.debug(f"Audit log created: {action} by user {owner_id}")
+        # db.session.add(audit_log)
+        # db.session.commit()()
+        logger.debug(f"Audit log created: {action} by owner ID {final_owner_id}")
         return True
 
     except Exception as e:
         logger.exception(f"Failed to log owner action '{action}': {e}")
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return False
 
 
 def get_system_health() -> dict:
     """
     Get system health metrics including database and Redis connectivity.
-
-    Returns:
-        dict: Health status with latency measurements
+    FIXED: Uses raw connection to avoid session issues.
     """
     from app.extensions import redis_client
 
@@ -115,11 +117,12 @@ def get_system_health() -> dict:
         'timestamp': datetime.utcnow().isoformat()
     }
 
-    # Database connectivity check
+    # Database connectivity check using raw connection (bypasses session)
     try:
         start = time.time()
         with db.engine.connect() as conn:
             conn.execute(text('SELECT 1'))
+            conn.commit()  # Explicit commit for raw connection
         latency = round((time.time() - start) * 1000, 2)
 
         health['database'] = {

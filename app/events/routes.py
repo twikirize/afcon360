@@ -33,15 +33,15 @@ def is_system_admin(user):
 # PUBLIC ROUTES
 # ============================================================
 
-@events_bp.route("/", endpoint="list")
-def event_list():
+@events_bp.route("/")
+def list():
     """List all events"""
     events = EventService.get_all_events(status='active')
     return render_template('events/public/list.html', events=events)
 
 
-@events_bp.route("/<event_slug>", endpoint="landing")
-def event_landing(event_slug):
+@events_bp.route("/<event_slug>")
+def landing(event_slug):
     """Landing page for an event"""
     event = EventService.get_event(event_slug)
     if not event:
@@ -63,8 +63,8 @@ def event_landing(event_slug):
     )
 
 
-@events_bp.route("/api/<event_slug>/properties", endpoint="api_properties")
-def api_event_properties(event_slug):
+@events_bp.route("/api/<event_slug>/properties")
+def api_properties(event_slug):
     """JSON API for event properties"""
     event = EventService.get_event(event_slug)
     if not event:
@@ -82,17 +82,17 @@ def api_event_properties(event_slug):
 # DASHBOARDS (THE HUB)
 # ============================================================
 
-@events_bp.route("/hub", endpoint="events_hub")
+@events_bp.route("/hub")
 @login_required
 def events_hub():
     """Unified landing page for all event-related activities"""
     from app.wallet.services.wallet_service import WalletService
-    
+
     # Fetch unified data
     attendee_data = EventService.get_attendee_dashboard_data(current_user.id)
     organizer_data = EventService.get_organizer_dashboard_data(current_user.id)
     provider_data = EventService.get_service_provider_dashboard_data(current_user.id)
-    
+
     wallet_balance = 0
     try:
         wallet = WalletService.get_wallet_by_user_id(current_user.id)
@@ -113,12 +113,12 @@ def events_hub():
                            admin_stats=admin_stats)
 
 
-@events_bp.route("/my-registrations", endpoint="my_registrations")
+@events_bp.route("/my-registrations")
 @login_required
 def my_registrations():
     """Attendee Dashboard - Detailed view of user's event registrations"""
     data = EventService.get_attendee_dashboard_data(current_user.id)
-    
+
     # Get wallet balance
     from app.wallet.services.wallet_service import WalletService
     wallet_balance = 0
@@ -129,12 +129,12 @@ def my_registrations():
     except Exception:
         pass
 
-    return render_template('events/attendee/my_registrations.html', 
+    return render_template('events/attendee/my_registrations.html',
                            registrations=data['upcoming_registrations'] + data['past_registrations'],
                            wallet_balance=wallet_balance)
 
 
-@events_bp.route("/organizer/dashboard/<event_slug>", endpoint="organizer_dashboard")
+@events_bp.route("/organizer/dashboard/<event_slug>")
 @login_required
 def organizer_dashboard(event_slug):
     """Specific Event Organizer Dashboard"""
@@ -145,21 +145,21 @@ def organizer_dashboard(event_slug):
 
     stats = EventService.get_event_stats(event_slug)
     registrations = EventService.get_registrations_by_event(event_slug)
-    
-    return render_template('events/organizer/organizer_dashboard.html', 
-                           event=event, 
+
+    return render_template('events/organizer/organizer_dashboard.html',
+                           event=event,
                            stats=stats,
                            registrations=registrations)
 
 
-@events_bp.route("/service-provider/dashboard", endpoint="service_provider_dashboard")
+@events_bp.route("/service-provider/dashboard")
 @login_required
 def service_provider_dashboard():
     """Service Provider Dashboard"""
     from app.wallet.services.wallet_service import WalletService
-    
+
     data = EventService.get_service_provider_dashboard_data(current_user.id)
-    
+
     wallet_balance = 0
     try:
         wallet = WalletService.get_wallet_by_user_id(current_user.id)
@@ -180,7 +180,7 @@ def service_provider_dashboard():
 # ORGANIZER ACTIONS
 # ============================================================
 
-@events_bp.route("/my-events", endpoint="my_events")
+@events_bp.route("/my-events")
 @login_required
 def my_events():
     """Organizer List - User's managed events page"""
@@ -188,12 +188,12 @@ def my_events():
     return render_template('events/organizer/my_events.html', events=events)
 
 
-@events_bp.route("/create", methods=['GET', 'POST'], endpoint="create_event")
+@events_bp.route("/create", methods=['GET', 'POST'])
 @login_required
 def create_event():
     """Create event page"""
     if request.method == 'GET':
-        return render_template('events/organizer/create.html')
+        return render_template('events/create.html')
 
     try:
         data = request.get_json()
@@ -210,7 +210,7 @@ def create_event():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@events_bp.route("/<event_slug>/edit", methods=['GET', 'POST'], endpoint="edit_event")
+@events_bp.route("/<event_slug>/edit", methods=['GET', 'POST'])
 @login_required
 def edit_event(event_slug):
     """Edit event page"""
@@ -220,7 +220,7 @@ def edit_event(event_slug):
         return redirect(url_for('events.my_events'))
 
     if request.method == 'GET':
-        return render_template('events/organizer/edit.html', event=event)
+        return render_template('events/edit.html', event=event)
 
     try:
         data = request.get_json()
@@ -233,7 +233,7 @@ def edit_event(event_slug):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@events_bp.route("/<event_slug>/delete", methods=['POST'], endpoint="delete_event")
+@events_bp.route("/<event_slug>/delete", methods=['POST'])
 @login_required
 def delete_event(event_slug):
     """Delete event"""
@@ -247,9 +247,9 @@ def delete_event(event_slug):
     return redirect(url_for('events.my_events'))
 
 
-@events_bp.route("/<event_slug>/scanner", endpoint="scanner")
+@events_bp.route("/<event_slug>/scanner")
 @login_required
-def event_scanner(event_slug):
+def scanner(event_slug):
     """Scanner interface for event staff"""
     event = EventService.get_event(event_slug)
     if not event:
@@ -263,7 +263,7 @@ def event_scanner(event_slug):
     return render_template('events/organizer/scanner.html', event=event)
 
 
-@events_bp.route("/<event_slug>/analytics", endpoint="event_analytics")
+@events_bp.route("/<event_slug>/analytics")
 @login_required
 def event_analytics(event_slug):
     """Detailed event analytics for organizers"""
@@ -274,25 +274,25 @@ def event_analytics(event_slug):
 
     # Mock data for charts
     daily_trend = [
-        {'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'), 'count': 5 + i} 
+        {'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'), 'count': 5 + i}
         for i in range(7, 0, -1)
     ]
     checkin_trend = [
-        {'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'), 'count': 2 + i} 
+        {'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'), 'count': 2 + i}
         for i in range(7, 0, -1)
     ]
-    
+
     stats = EventService.get_event_stats(event_slug)
     # Add rate calculation
     stats['checked_in'] = stats.get('checked_in_count', 0)
     stats['total'] = stats.get('total_registrations', 0)
     stats['checkin_rate'] = round((stats['checked_in'] / stats['total'] * 100), 1) if stats['total'] > 0 else 0
-    
-    revenue_by_ticket = {tt['name']: tt['registration_count'] * tt['price'] for tt in event.get('ticket_types', [])}
-    demographics = {'Uganda': 45, 'Kenya': 12, 'Tanzania': 8, 'Other': 15} # Mock data
 
-    return render_template('events/organizer/analytics.html', 
-                           event=event, 
+    revenue_by_ticket = {tt['name']: tt['registration_count'] * tt['price'] for tt in event.get('ticket_types', [])}
+    demographics = {'Uganda': 45, 'Kenya': 12, 'Tanzania': 8, 'Other': 15}  # Mock data
+
+    return render_template('events/organizer/analytics.html',
+                           event=event,
                            stats=stats,
                            daily_trend=daily_trend,
                            checkin_trend=checkin_trend,
@@ -300,7 +300,7 @@ def event_analytics(event_slug):
                            demographics=demographics)
 
 
-@events_bp.route("/<event_slug>/export", endpoint="export_attendees")
+@events_bp.route("/<event_slug>/export")
 @login_required
 def export_attendees(event_slug):
     """Export attendee list as CSV"""
@@ -310,7 +310,7 @@ def export_attendees(event_slug):
         return redirect(url_for('events.my_events'))
 
     registrations = EventService.get_registrations_by_event(event_slug)
-    
+
     import io
     import csv
     from flask import Response
@@ -318,7 +318,7 @@ def export_attendees(event_slug):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['Ref', 'Name', 'Email', 'Ticket Type', 'Status', 'Registered At'])
-    
+
     for reg in registrations:
         writer.writerow([
             reg['registration_ref'],
@@ -328,7 +328,7 @@ def export_attendees(event_slug):
             reg['status'],
             reg['created_at']
         ])
-    
+
     output.seek(0)
     return Response(
         output,
@@ -341,9 +341,9 @@ def export_attendees(event_slug):
 # REGISTRATION & CHECK-IN
 # ============================================================
 
-@events_bp.route("/<event_slug>/register", methods=['GET', 'POST'], endpoint="register")
+@events_bp.route("/<event_slug>/register", methods=['GET', 'POST'])
 @login_required
-def register_for_event(event_slug):
+def register(event_slug):
     """Register for an event with async processing and payment integration"""
     event = EventService.get_event(event_slug)
     if not event:
@@ -360,7 +360,7 @@ def register_for_event(event_slug):
 
     try:
         data = request.get_json()
-        
+
         # 1. Perform database transaction (Atomic Registration)
         registration, _, error = EventService.register_for_event(
             event_slug, current_user.id, data
@@ -385,7 +385,7 @@ def register_for_event(event_slug):
         return jsonify({'success': False, 'error': "An unexpected error occurred."}), 500
 
 
-@events_bp.route("/registration-confirmation/<reg_ref>", endpoint="registration_confirmation")
+@events_bp.route("/registration-confirmation/<reg_ref>")
 @login_required
 def registration_confirmation(reg_ref):
     """Show registration confirmation with QR code"""
@@ -394,7 +394,6 @@ def registration_confirmation(reg_ref):
 
     if not reg_data or reg_data['registration']['registration_ref'] != reg_ref:
         # Fetch from database
-        from app.events.models import EventRegistration
         registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
         if not registration or registration.user_id != current_user.id:
             flash('Registration not found', 'danger')
@@ -413,7 +412,7 @@ def registration_confirmation(reg_ref):
     return render_template('events/attendee/registration_confirmation.html', **reg_data)
 
 
-@events_bp.route("/event/<event_slug>/attendees", endpoint="event_attendees")
+@events_bp.route("/event/<event_slug>/attendees")
 @login_required
 def event_attendees(event_slug):
     """Show attendees for an event (organizer only)"""
@@ -437,7 +436,7 @@ def event_attendees(event_slug):
     return render_template('events/organizer/attendees.html', event=event, registrations=registrations, stats=stats)
 
 
-@events_bp.route("/api/checkin", methods=['POST'], endpoint="api_checkin")
+@events_bp.route("/api/checkin", methods=['POST'])
 def api_checkin():
     """JSON API for QR code check-in"""
     data = request.get_json()
@@ -454,7 +453,7 @@ def api_checkin():
 # SYSTEM ADMIN ROUTES
 # ============================================================
 
-@events_bp.route("/admin/dashboard", endpoint="admin_dashboard")
+@events_bp.route("/admin/dashboard")
 @login_required
 def admin_dashboard():
     """Super admin dashboard"""
@@ -466,7 +465,7 @@ def admin_dashboard():
     from app.events.models import Event
     recent_events = Event.query.order_by(Event.created_at.desc()).limit(10).all()
     pending_approval = Event.query.filter_by(status='pending').all()
-    
+
     # Categories for chart
     categories = db.session.query(Event.category, func.count(Event.id)).group_by(Event.category).all()
 
@@ -477,7 +476,7 @@ def admin_dashboard():
                            categories=categories)
 
 
-@events_bp.route("/admin/<event_slug>/approve", methods=['POST'], endpoint="admin_approve")
+@events_bp.route("/admin/<event_slug>/approve", methods=['POST'])
 @login_required
 def admin_approve(event_slug):
     """Admin approve event"""
@@ -490,7 +489,7 @@ def admin_approve(event_slug):
     return redirect(url_for('events.admin_dashboard'))
 
 
-@events_bp.route("/admin/<event_slug>/reject", methods=['POST'], endpoint="admin_reject")
+@events_bp.route("/admin/<event_slug>/reject", methods=['POST'])
 @login_required
 def admin_reject(event_slug):
     """Admin reject event"""
@@ -501,23 +500,63 @@ def admin_reject(event_slug):
     success, error = EventService.reject_event(event_slug, current_user.id, reason)
     return jsonify({'success': success})
 
-@events_bp.route("/admin/events", endpoint="admin_events")
+
+@events_bp.route("/admin/events")
 @login_required
 def admin_events():
     """View all events as admin"""
     if not is_system_admin(current_user):
         return redirect(url_for('events.list'))
-    
+
     status = request.args.get('status', 'all')
     if status == 'all':
         events = Event.query.all()
     else:
         events = Event.query.filter_by(status=status).all()
-        
+
     return render_template('events/admin/events.html', events=events, current_filter=status)
 
 
-@events_bp.route("/<event_slug>/staff", endpoint="event_staff")
+@events_bp.route("/api/admin/stats")
+@login_required
+def api_admin_stats():
+    """JSON API for admin dashboard stats — used by the super admin panel."""
+    if not is_system_admin(current_user):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    try:
+        data = EventService.get_admin_dashboard_data()
+        return jsonify({"success": True, **data})
+    except Exception as e:
+        logger.error(f"api_admin_stats error: {e}")
+        return jsonify({"success": False, "error": "Could not load stats"}), 500
+
+
+@events_bp.route("/api/admin/pending-events")
+@login_required
+def api_pending_events():
+    """JSON API for pending events list — used by the owner dashboard."""
+    if not is_system_admin(current_user):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    try:
+        pending_events = Event.query.filter_by(status='pending').order_by(Event.created_at.desc()).all()
+        events_data = []
+        for event in pending_events:
+            events_data.append({
+                'name': event.name,
+                'slug': event.slug,
+                'city': event.city,
+                'organizer_id': event.organizer_id,
+                'organizer_name': event.organizer.username if event.organizer else f"User {event.organizer_id}"
+            })
+        return jsonify({"success": True, "events": events_data})
+    except Exception as e:
+        logger.error(f"api_pending_events error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@events_bp.route("/<event_slug>/staff")
 @login_required
 def event_staff(event_slug):
     """Manage event staff"""

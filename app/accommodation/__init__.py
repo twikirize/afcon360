@@ -49,11 +49,6 @@ def require_accommodation_permission(permission):
 from app.accommodation.routes import guest, host, admin
 
 # ==============================
-# REMOVED - events_routes no longer exists in accommodation
-# import app.accommodation.routes.events_routes  # ← DELETE THIS LINE
-
-
-# ==============================
 # REGISTER BLUEPRINTS
 # ==============================
 accommodation_bp.register_blueprint(guest, url_prefix='/guest')
@@ -67,14 +62,14 @@ accommodation_bp.register_blueprint(admin, url_prefix='/admin')
 @accommodation_bp.route("/")
 @module_enabled
 def index():
-    return redirect(url_for('accommodation.accommodation_guest.search'))
+    return redirect(url_for('accommodation.guest.search'))
 
 
 @accommodation_bp.route("/<identifier>", endpoint="legacy_detail")
 @module_enabled
 def legacy_detail(identifier):
     return redirect(
-        url_for('accommodation.accommodation_guest.detail', identifier=identifier)
+        url_for('accommodation.guest.detail', identifier=identifier)
     )
 
 

@@ -5,12 +5,12 @@
 /* Hero section for event landing page */
 .event-hero {
     position: relative;
-    padding: 80px 0;
+    padding: var(--space-12) 0;
     color: white;
     background-size: cover;
     background-position: center;
-    border-radius: 0 0 20px 20px;
-    margin-bottom: 40px;
+    border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
+    margin-bottom: var(--space-8);
 }
 
 .event-hero::before {
@@ -20,24 +20,24 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5); /* Overlay for readability */
+    background: rgba(0, 0, 0, var(--opacity-overlay)); /* Overlay for readability */
     border-radius: inherit;
 }
 
 .event-hero-content {
     position: relative;
-    z-index: 1;
+    z-index: var(--z-elevate);
 }
 
 .event-hero h1 {
-    font-size: 3rem;
-    font-weight: 800;
-    margin-bottom: 15px;
+    font-size: var(--font-size-4xl);
+    font-weight: var(--font-weight-extrabold);
+    margin-bottom: var(--space-4);
     color: white;
 }
 
 .event-hero .lead {
-    font-size: 1.25rem;
+    font-size: var(--font-size-lg);
     max-width: 700px;
 }
 
@@ -45,45 +45,47 @@
 .event-details-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 30px;
+    gap: var(--space-7);
 }
 
 .event-info-main {
-    background-color: #fff;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    background-color: var(--bg-surface);
+    padding: var(--space-7);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
 }
 
 .event-sidebar {
     position: sticky;
-    top: 80px;
+    top: var(--header-height);
 }
 
 .registration-card {
-    background-color: #fff;
-    padding: 25px;
-    border-radius: 15px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    background-color: var(--bg-surface);
+    padding: var(--space-6);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     text-align: center;
+    border: 1px solid var(--border-light);
 }
 
 .registration-card h3 {
-    margin-bottom: 20px;
-    color: #333;
+    margin-bottom: var(--space-5);
+    color: var(--text-primary);
 }
 
 .registration-price {
-    font-size: 2.5rem;
-    font-weight: 800;
-    color: #007bff;
-    margin-bottom: 20px;
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-extrabold);
+    color: var(--brand-primary);
+    margin-bottom: var(--space-5);
 }
 
 .registration-price small {
-    font-size: 1rem;
-    color: #777;
-    font-weight: normal;
+    font-size: var(--font-size-base);
+    color: var(--text-muted);
+    font-weight: var(--font-weight-normal);
 }
 
 /* Responsive adjustments */
@@ -95,6 +97,6 @@
         position: static;
     }
     .event-hero h1 {
-        font-size: 2.2rem;
+        font-size: var(--font-size-2xl);
     }
 }

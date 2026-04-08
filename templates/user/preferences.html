@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}My Preferences - Accessibility Settings{% endblock %}
+
+{% block styles %}
+<style>
+    .preference-card {
+        background: var(--bg-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .preference-title {
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .preference-title i {
+        font-size: 20px;
+        color: var(--brand-primary);
+    }
+    .preview-box {
+        background: var(--bg-surface-alt);
+        border-radius: var(--radius-md);
+        padding: 15px;
+        margin-top: 15px;
+        text-align: center;
+        border: 1px dashed var(--border-medium);
+    }
+    .font-size-demo {
+        font-size: 1rem;
+        transition: font-size 0.2s ease;
+    }
+    .slider-value {
+        display: inline-block;
+        min-width: 50px;
+        text-align: center;
+        font-weight: 600;
+        color: var(--brand-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <h1 class="h2 mb-2">👤 My Preferences</h1>
+            <p class="text-muted mb-4">
+                Customize your experience. These settings are saved to your account and
+                will apply wherever you log in.
+            </p>
+
+            <form id="preferencesForm">
+                <!-- Font Size -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-text-height"></i>
+                        <span>Font Size</span>
+                    </div>
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <span>A</span>
+                        </div>
+                        <div class="col">
+                            <input type="range" id="fontSizeSlider" class="form-range" min="0.75" max="1.5" step="0.05" value="1.0">
+                        </div>
+                        <div class="col-auto">
+                            <span class="slider-value" id="fontSizeValue">1.0x</span>
+                        </div>
+                    </div>
+                    <div class="preview-box">
+                        <p class="font-size-demo mb-0">
+                            The quick brown fox jumps over the lazy dog.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Font Family -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-font"></i>
+                        <span>Font Family (Dyslexia Friendly)</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="dyslexicFont">
+                        <label class="form-check-label" for="dyslexicFont">
+                            Enable Dyslexic-friendly font
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Open Dyslexic font is designed to increase readability for users with dyslexia.
+                    </div>
+                </div>
+
+                <!-- High Contrast -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-adjust"></i>
+                        <span>High Contrast Mode</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="highContrast" id="contrastOff" value="off" checked>
+                                <label class="form-check-label" for="contrastOff">Off (Default)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="highContrast" id="contrastYellowBlack" value="yellow_black">
+                                <label class="form-check-label" for="contrastYellowBlack">Yellow on Black</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="highContrast" id="contrastWhiteBlack" value="white_black">
+                                <label class="form-check-label" for="contrastWhiteBlack">White on Black</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Color Blindness -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-eye"></i>
+                        <span>Color Blindness Mode</span>
+                    </div>
+                    <select id="colorBlindMode" class="form-select">
+                        <option value="none">No adjustment</option>
+                        <option value="protanopia">Protanopia (Red-blind)</option>
+                        <option value="deuteranopia">Deuteranopia (Green-blind)</option>
+                        <option value="tritanopia">Tritanopia (Blue-blind)</option>
+                        <option value="monochromacy">Monochromacy (Full color blindness)</option>
+                    </select>
+                </div>
+
+                <!-- Dark/Light Mode -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-moon"></i>
+                        <span>Theme Mode</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="darkMode" id="darkModeLight" value="light">
+                                <label class="form-check-label" for="darkModeLight">Light Mode</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="darkMode" id="darkModeDark" value="dark">
+                                <label class="form-check-label" for="darkModeDark">Dark Mode</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="darkMode" id="darkModeSystem" value="system" checked>
+                                <label class="form-check-label" for="darkModeSystem">Use System Setting</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reading Width -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-align-center"></i>
+                        <span>Reading Width</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="readingWidth" id="widthFull" value="full" checked>
+                                <label class="form-check-label" for="widthFull">Full Width</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="readingWidth" id="widthMedium" value="medium">
+                                <label class="form-check-label" for="widthMedium">Medium (1000px)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="readingWidth" id="widthNarrow" value="narrow">
+                                <label class="form-check-label" for="widthNarrow">Narrow (800px)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Motion & Animation -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-video"></i>
+                        <span>Motion & Animation</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="reducedMotion">
+                        <label class="form-check-label" for="reducedMotion">
+                            Reduce motion (disable animations)
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Recommended for users with vestibular disorders or motion sensitivity.
+                    </div>
+                </div>
+
+                <!-- Compact Mode -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-compress"></i>
+                        <span>Compact Mode</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="compactMode">
+                        <label class="form-check-label" for="compactMode">
+                            Enable compact spacing
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Reduces padding and margins to fit more content on screen.
+                    </div>
+                </div>
+
+                <!-- Custom Accent Color -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-palette"></i>
+                        <span>Personal Accent Color</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <input type="color" id="customAccent" class="form-control form-control-color" style="width: 60px;" value="#2d5a2d">
+                        <span>Choose your preferred accent color</span>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        This overrides the site's primary color for your view only.
+                    </div>
+                </div>
+
+                <div class="d-flex gap-3 mt-4">
+                    <button type="submit" class="btn btn-primary">💾 Save Preferences</button>
+                    <button type="button" id="resetPreferences" class="btn btn-outline-secondary">↺ Reset to Defaults</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Font size demo logic
+    const fontSizeSlider = document.getElementById('fontSizeSlider');
+    const fontSizeValue = document.getElementById('fontSizeValue');
+    const fontSizeDemo = document.querySelector('.font-size-demo');
+
+    if (fontSizeSlider) {
+        fontSizeSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            fontSizeValue.textContent = parseFloat(value).toFixed(1) + 'x';
+            if (fontSizeDemo) {
+                fontSizeDemo.style.fontSize = (16 * parseFloat(value)) + 'px';
+            }
+        });
+    }
+
+    // Handled by window.themeManager defined in static/js/theme-manager.js
+    // We just need to make sure the form submission is intercepted if themeManager handles it
+    const form = document.getElementById('preferencesForm');
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        // The theme-manager.js already has listeners for inputs, but we'll trigger a save
+        if (window.themeManager) {
+            window.themeManager.savePreferences().then(result => {
+                if(result.success) {
+                    // Success is handled by showToast in theme-manager.js
+                }
+            });
+        }
+    });
+});
+</script>
+{% endblock %}

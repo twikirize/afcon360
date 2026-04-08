@@ -3,83 +3,85 @@
 /* Events Hub Specific Styles */
 
 .hub-hero {
-    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%);
     color: white;
-    padding: 40px 0;
-    border-radius: 12px;
-    margin-bottom: 30px;
+    padding: var(--space-9) 0;
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-7);
     text-align: center;
 }
 
 .hub-hero h1 {
-    font-size: 2.5rem;
-    font-weight: 800;
-    margin-bottom: 10px;
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-extrabold);
+    margin-bottom: var(--space-2);
 }
 
 .hub-summary-card {
-    border: none;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    border-radius: 10px;
-    transition: transform 0.2s;
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius-md);
+    transition: transform var(--transition-fast);
+    background-color: var(--bg-surface);
 }
 
 .hub-summary-card:hover {
     transform: scale(1.02);
+    box-shadow: var(--shadow-md);
 }
 
 .hub-section-header {
-    margin-top: 40px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #eee;
-    padding-bottom: 10px;
+    margin-top: var(--space-8);
+    margin-bottom: var(--space-4);
+    border-bottom: 2px solid var(--border-light);
+    padding-bottom: var(--space-2);
 }
 
 .hub-section-header h2 {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #333;
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
     display: flex;
     align-items: center;
 }
 
 .hub-section-header h2 i {
-    margin-right: 10px;
-    color: #007bff;
+    margin-right: var(--space-2);
+    color: var(--brand-primary);
 }
 
 .hub-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
+    gap: var(--space-5);
 }
 
 /* Role-specific highlights in Hub */
-.hub-highlight-attendee { border-left: 5px solid #007bff; }
-.hub-highlight-organizer { border-left: 5px solid #28a745; }
-.hub-highlight-provider { border-left: 5px solid #17a2b8; }
-.hub-highlight-admin { border-left: 5px solid #ffc107; }
+.hub-highlight-attendee { border-left: 5px solid var(--brand-primary); }
+.hub-highlight-organizer { border-left: 5px solid var(--success); }
+.hub-highlight-provider { border-left: 5px solid var(--info); }
+.hub-highlight-admin { border-left: 5px solid var(--warning); }
 
 .hub-quick-link {
     display: block;
-    padding: 15px;
-    border-radius: 8px;
-    background-color: #fff;
-    border: 1px solid #e0e0e0;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-medium);
     text-decoration: none;
-    color: #333;
-    transition: all 0.2s;
+    color: var(--text-primary);
+    transition: all var(--transition-fast);
 }
 
 .hub-quick-link:hover {
-    background-color: #f0f7ff;
-    border-color: #007bff;
-    color: #0056b3;
+    background-color: var(--bg-surface-alt);
+    border-color: var(--brand-primary);
+    color: var(--brand-primary-dark);
     text-decoration: none;
 }
 
 .hub-quick-link i {
-    font-size: 1.5rem;
-    margin-bottom: 10px;
+    font-size: var(--font-size-xl);
+    margin-bottom: var(--space-2);
     display: block;
 }

@@ -3,9 +3,8 @@
 Guest-facing routes - Search, detail, and booking
 """
 
-from flask import render_template, abort, request, jsonify, redirect, url_for, flash, session
+from flask import Blueprint, render_template, abort, request, jsonify, redirect, url_for, flash, session
 from flask_login import login_required, current_user
-from app.accommodation.routes import guest
 from app.accommodation.services import search_service
 from app.accommodation.services.booking_service import BookingService
 from app.accommodation.services.availability_service import AvailabilityService
@@ -16,8 +15,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+guest_bp = Blueprint('guest', __name__)
 
-@guest.route("/", endpoint="search")
+
+@guest_bp.route("/", endpoint="search")
 def search():
     """Accommodation search page"""
     city = request.args.get('city')
@@ -42,7 +43,7 @@ def search():
     )
 
 
-@guest.route("/api/search", endpoint="api_search")
+@guest_bp.route("/api/search", endpoint="api_search")
 def api_search():
     """JSON API for accommodation search"""
     city = request.args.get('city')
@@ -64,7 +65,7 @@ def api_search():
     })
 
 
-@guest.route("/<identifier>", endpoint="detail")
+@guest_bp.route("/<identifier>", endpoint="detail")
 def detail(identifier):
     """Property detail page"""
     property_data = search_service.get_property_by_identifier(identifier)
@@ -120,7 +121,7 @@ def detail(identifier):
     )
 
 
-@guest.route("/checkout", methods=['GET', 'POST'], endpoint="checkout")
+@guest_bp.route("/checkout", methods=['GET', 'POST'], endpoint="checkout")
 @login_required
 def checkout():
     """Booking checkout page"""
@@ -235,7 +236,7 @@ def checkout():
         return redirect(url_for('accommodation.guest.search'))
 
 
-@guest.route("/confirmation/<reference>", endpoint="confirmation")
+@guest_bp.route("/confirmation/<reference>", endpoint="confirmation")
 @login_required
 def confirmation(reference):
     """Booking confirmation page"""
@@ -259,7 +260,7 @@ def confirmation(reference):
     )
 
 
-@guest.route("/my-bookings", endpoint="my_bookings")
+@guest_bp.route("/my-bookings", endpoint="my_bookings")
 @login_required
 def my_bookings():
     """User's booking history"""
@@ -280,7 +281,7 @@ def my_bookings():
     )
 
 
-@guest.route("/booking/<reference>/cancel", methods=['POST'], endpoint="cancel_booking")
+@guest_bp.route("/booking/<reference>/cancel", methods=['POST'], endpoint="cancel_booking")
 @login_required
 def cancel_booking(reference):
     """Cancel a booking"""
@@ -324,7 +325,7 @@ def cancel_booking(reference):
 
 
 # Keep legacy routes for backward compatibility
-@guest.route("/old/", endpoint="old_home")
+@guest_bp.route("/old/", endpoint="old_home")
 def old_home():
     """Legacy hardcoded route"""
     from app.accommodation.services import search_service as old_svc
@@ -332,7 +333,7 @@ def old_home():
     return render_template("accommodation_home.html", hotels=hotels)
 
 
-@guest.route("/old/<hotel_id>", endpoint="old_detail")
+@guest_bp.route("/old/<hotel_id>", endpoint="old_detail")
 def old_detail(hotel_id):
     """Legacy hardcoded detail route"""
     from app.accommodation.services import search_service as old_svc

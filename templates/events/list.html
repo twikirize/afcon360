@@ -30,7 +30,7 @@
                         </p>
                         <p class="card-text">{{ event.description|truncate(100) }}</p>
                         <div class="small text-muted mb-2">
-                            <i class="fas fa-calendar"></i> 
+                            <i class="fas fa-calendar"></i>
                             {% if event.start_date %}
                                 {{ event.start_date[:10] }}
                                 {% if event.end_date and event.end_date != event.start_date %}

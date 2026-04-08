@@ -47,6 +47,44 @@ from flask_login import current_user
 
 log = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Arrange roles for logging in
+# ---------------------------------------------------------------------------
+
+def get_highest_role(user) -> str:
+    """
+    Return the user's highest role based on hierarchy.
+
+    Role hierarchy:
+    owner > super_admin > admin > org_admin > moderator > support > fan
+    """
+    if not user or not user.is_authenticated:
+        return None
+
+    role_hierarchy = [
+        "owner",
+        "super_admin",
+        "admin",
+        "org_admin",
+        "moderator",
+        "support",
+        "fan"
+    ]
+
+    try:
+        user_roles = set()
+        for user_role in user.roles:
+            if user_role.role:
+                user_roles.add(user_role.role.name)
+
+        for role in role_hierarchy:
+            if role in user_roles:
+                return role
+    except Exception as e:
+        log.warning(f"Error getting highest role: {e}")
+
+    return "fan"  # Default
+
 
 # ---------------------------------------------------------------------------
 # Internal: resolve current user

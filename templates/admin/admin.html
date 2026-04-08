@@ -1,16 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Admin{% endblock %} - AFCON Admin</title>
-    <!-- Path to your CSS file in the admin subfolder -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='admin/admin.css') }}">
-    {% block extra_head %}{% endblock %}
-</head>
-<body>
-    {% block content %}{% endblock %}
+{% extends "base.html" %}
 
-    {% block scripts %}{% endblock %}
-</body>
-</html>
+{% block title %}{% block admin_title %}Admin{% endblock %} - AFCON360{% endblock %}
+
+{% block module_styles %}
+    {# Base admin styles #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
+    {# Owner-specific styles, if applicable and extending this base admin template #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+    {% block admin_module_styles %}{% endblock %} {# For sub-modules within admin #}
+{% endblock %}
+
+{% block content %}
+    <div class="container-fluid py-4">
+        {% block admin_content %}{% endblock %}
+    </div>
+{% endblock %}
+
+{% block module_scripts %}
+    {% block admin_module_scripts %}{% endblock %}
+{% endblock %}

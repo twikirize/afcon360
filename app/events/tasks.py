@@ -36,10 +36,10 @@ def process_event_registration(registration_id: int, event_slug: str):
         try:
             # 1. Generate QR Code
             qr_code_base64 = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
-            
+
             # TODO: Implement actual QR code storage (e.g., S3, local file system)
             # For now, we'll just log it or store it in metadata if needed
-            # registration.qr_code_url = "url_to_stored_qr_code" 
+            # registration.qr_code_url = "url_to_stored_qr_code"
             # db.session.add(registration)
             # db.session.commit()
 

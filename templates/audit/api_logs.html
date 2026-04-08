@@ -97,22 +97,22 @@ function applyFilters() {
 function renderTable(data) {
     const tbody = document.getElementById('tableBody');
     const apiCalls = data.api_calls || [];
-    
+
     if (!apiCalls.length) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No API calls found</td></tr>';
         return;
     }
-    
+
     // Calculate summary stats
     const total = apiCalls.length;
     const successCount = apiCalls.filter(c => c.status === 'success').length;
     const failedCount = apiCalls.filter(c => c.status === 'failure').length;
     const avgTime = apiCalls.reduce((sum, c) => sum + (c.response_time_ms || 0), 0) / total;
-    
+
     document.getElementById('successRate').textContent = Math.round((successCount / total) * 100) + '%';
     document.getElementById('failedCount').textContent = failedCount;
     document.getElementById('avgResponseTime').textContent = Math.round(avgTime) + 'ms';
-    
+
     tbody.innerHTML = apiCalls.map(call => `
         <tr class="${call.status === 'failure' ? 'table-danger' : call.status === 'timeout' ? 'table-warning' : ''}">
             <td><strong>${call.service_name}</strong></td>

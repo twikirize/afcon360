@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Moderator Dashboard - AFCON360{% endblock %}
+
+{% block styles %}
+<style>
+    .moderator-header {
+        background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .content-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .content-card {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        border-left: 4px solid #f39c12;
+    }
+
+    .content-card h3 {
+        color: #f39c12;
+        margin-bottom: 15px;
+        font-size: 1.3rem;
+    }
+
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .stat-box {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        text-align: center;
+    }
+
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #f39c12;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+    }
+
+    .btn-moderate {
+        background: #f39c12;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        text-decoration: none;
+        display: inline-block;
+        transition: background 0.3s ease;
+    }
+
+    .btn-moderate:hover {
+        background: #e67e22;
+        color: white;
+    }
+
+    .priority-high { border-left-color: #dc3545; }
+    .priority-medium { border-left-color: #ffc107; }
+    .priority-low { border-left-color: #28a745; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="moderator-header">
+        <h1><i class="bi bi-shield-check"></i> Moderator Dashboard</h1>
+        <p>Content moderation and community management</p>
+    </div>
+
+    <!-- Moderation Stats -->
+    <div class="stats-row">
+        <div class="stat-box">
+            <div class="stat-number">{{ pending_reports or 0 }}</div>
+            <div class="stat-label">Pending Reports</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number">{{ flagged_content or 0 }}</div>
+            <div class="stat-label">Flagged Content</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number">{{ moderated_today or 0 }}</div>
+            <div class="stat-label">Moderated Today</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number">{{ active_users or 0 }}</div>
+            <div class="stat-label">Active Users</div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="content-grid">
+        <div class="content-card priority-high">
+            <h3><i class="bi bi-exclamation-triangle"></i> High Priority</h3>
+            <p>Urgent content requiring immediate attention</p>
+            <a href="{{ url_for('moderator.urgent_reviews') }}" class="btn-moderate">
+                <i class="bi bi-eye"></i> Review Now
+            </a>
+        </div>
+
+        <div class="content-card priority-medium">
+            <h3><i class="bi bi-flag"></i> Reported Content</h3>
+            <p>User-reported content awaiting moderation</p>
+            <a href="{{ url_for('moderator.reports') }}" class="btn-moderate">
+                <i class="bi bi-list-check"></i> View Reports
+            </a>
+        </div>
+
+        <div class="content-card priority-low">
+            <h3><i class="bi bi-chat-dots"></i> Comments</h3>
+            <p>Moderate user comments and discussions</p>
+            <a href="{{ url_for('moderator.comments') }}" class="btn-moderate">
+                <i class="bi bi-chat-square"></i> Moderate Comments
+            </a>
+        </div>
+
+        <div class="content-card">
+            <h3><i class="bi bi-people"></i> User Management</h3>
+            <p>Manage user reports and suspensions</p>
+            <a href="{{ url_for('moderator.users') }}" class="btn-moderate">
+                <i class="bi bi-person-gear"></i> User Actions
+            </a>
+        </div>
+
+        <div class="content-card">
+            <h3><i class="bi bi-image"></i> Media Content</h3>
+            <p>Review and moderate uploaded images and videos</p>
+            <a href="{{ url_for('moderator.media') }}" class="btn-moderate">
+                <i class="bi bi-photo-video"></i> Media Review
+            </a>
+        </div>
+
+        <div class="content-card">
+            <h3><i class="bi bi-journal-text"></i> Moderation Log</h3>
+            <p>View moderation history and actions taken</p>
+            <a href="{{ url_for('moderator.history') }}" class="btn-moderate">
+                <i class="bi bi-clock-history"></i> View History
+            </a>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="bi bi-clock-history"></i> Recent Moderation Activity</h3>
+        </div>
+        <div class="card-body">
+            {% if recent_moderation %}
+                {% for activity in recent_moderation %}
+                <div class="activity-item">
+                    <div class="activity-icon">
+                        <i class="bi bi-{{ activity.icon }}"></i>
+                    </div>
+                    <div class="activity-content">
+                        <strong>{{ activity.moderator }}</strong> {{ activity.action }}
+                        <span class="badge bg-{{ activity.severity }}">{{ activity.type }}</span>
+                        <small class="text-muted">{{ activity.time }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No recent moderation activity.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

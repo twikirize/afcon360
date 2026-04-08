@@ -167,7 +167,7 @@ document.getElementById('event-form').addEventListener('submit', async function(
 
     const formData = new FormData(this);
     const data = Object.fromEntries(formData.entries());
-    
+
     try {
         const response = await fetch(window.location.href, {
             method: 'POST',
@@ -196,10 +196,10 @@ document.getElementById('add-ticket-form').addEventListener('submit', async func
     e.preventDefault();
     const addBtn = document.getElementById('add-ticket-btn');
     addBtn.disabled = true;
-    
+
     const formData = new FormData(this);
     const data = Object.fromEntries(formData.entries());
-    
+
     try {
         const response = await fetch('{{ url_for("events.add_ticket_type", event_slug=event.slug) }}', {
             method: 'POST',

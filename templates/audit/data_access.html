@@ -63,14 +63,14 @@ function applyFilters() {
 function renderTable(data) {
     const tbody = document.getElementById('tableBody');
     const accessLogs = data.access_logs || [];
-    
+
     if (!accessLogs.length) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No data access logs found</td></tr>';
         return;
     }
-    
+
     const accessTypeColors = { read: 'info', export: 'warning', delete: 'danger', modify: 'primary' };
-    
+
     tbody.innerHTML = accessLogs.map(log => `
         <tr>
             <td>${log.accessed_by || '-'}</td>

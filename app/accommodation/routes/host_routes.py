@@ -4,13 +4,14 @@ Host dashboard routes - For property owners
 To be implemented in Phase 4
 """
 
-from flask import render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.accommodation.routes import host
 from app.accommodation.services.identity_service import AccommodationIdentityService
 
+host_bp = Blueprint('host', __name__)
 
-@host.route("/dashboard", endpoint="dashboard")
+
+@host_bp.route("/dashboard", endpoint="dashboard")
 @login_required
 def dashboard():
     """
@@ -37,7 +38,7 @@ def dashboard():
     )
 
 
-@host.route("/listings/create", methods=['GET', 'POST'], endpoint="create_listing")
+@host_bp.route("/listings/create", methods=['GET', 'POST'], endpoint="create_listing")
 @login_required
 def create_listing():
     """
@@ -54,7 +55,7 @@ def create_listing():
     return render_template("accommodation/host/create_listing.html")
 
 
-@host.route("/listings/<int:property_id>/edit", methods=['GET', 'POST'], endpoint="edit_listing")
+@host_bp.route("/listings/<int:property_id>/edit", methods=['GET', 'POST'], endpoint="edit_listing")
 @login_required
 def edit_listing(property_id):
     """
@@ -65,7 +66,7 @@ def edit_listing(property_id):
     return render_template("accommodation/host/edit_listing.html", property_id=property_id)
 
 
-@host.route("/calendar", endpoint="calendar")
+@host_bp.route("/calendar", endpoint="calendar")
 @login_required
 def calendar():
     """
@@ -75,7 +76,7 @@ def calendar():
     return render_template("accommodation/host/calendar.html")
 
 
-@host.route("/bookings", endpoint="bookings")
+@host_bp.route("/bookings", endpoint="bookings")
 @login_required
 def bookings():
     """
@@ -85,7 +86,7 @@ def bookings():
     return render_template("accommodation/host/bookings.html")
 
 
-@host.route("/earnings", endpoint="earnings")
+@host_bp.route("/earnings", endpoint="earnings")
 @login_required
 def earnings():
     """

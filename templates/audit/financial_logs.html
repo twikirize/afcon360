@@ -107,12 +107,12 @@ function applyFilters() {
 function renderTable(data) {
     const tbody = document.getElementById('tableBody');
     const transactions = data.transactions || [];
-    
+
     if (!transactions.length) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No transactions found</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = transactions.map(tx => `
         <tr class="${tx.aml_flagged ? 'table-warning' : ''}">
             <td><code>${tx.transaction_id.substring(0, 12)}...</code></td>

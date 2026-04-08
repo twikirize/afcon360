@@ -42,7 +42,6 @@
   </div>
   <div class="trending-tags">
     <span class="trending-label">🔥 Trending:</span>
-    <!-- FIXED: Changed to events.landing -->
     <a href="{{ url_for('events.landing', event_slug='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
     <a href="#" class="trending-tag">CHOGM 2026</a>
     <a href="#" class="trending-tag">World Cup Qualifiers</a>
@@ -56,7 +55,7 @@
   <!-- ====== LEFT SIDEBAR ====== -->
   <aside class="home-left">
 
-    <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="left-nav-item">
+    <a href="{{ url_for('accommodation.guest.search') }}" class="left-nav-item">
       <div class="left-nav-icon">🏨</div>
       Accommodation
     </a>
@@ -68,11 +67,11 @@
       <div class="left-nav-icon">🌴</div>
       Tourism
     </a>
-    <a href="{% if session.get('user_id') %}{{ url_for('wallet_routes.wallet_dashboard') }}{% else %}{{ url_for('wallet_routes.wallet_home') }}{% endif %}" class="left-nav-item">
+    <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
       <div class="left-nav-icon">👛</div>
       Wallet
     </a>
-    <a href="{% if session.get('user_id') %}{{ url_for('wallet_routes.wallet_dashboard') }}{% else %}{{ url_for('wallet_routes.wallet_home') }}{% endif %}" class="left-nav-item">
+    <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
       <div class="left-nav-icon">🎟️</div>
       Tickets
     </a>
@@ -101,11 +100,11 @@
       </div>
     </div>
 
-    <!-- Host CTA - FIXED: Changed to events.create_event -->
+    <!-- Host CTA -->
     {% if session.get('user_id') %}
     <a href="{{ url_for('events.create_event') }}" class="left-host-cta">
     {% else %}
-    <a href="{{ url_for('auth_routes.login') }}" class="left-host-cta">
+    <a href="{{ url_for('auth.login') }}" class="left-host-cta">
     {% endif %}
       <div class="left-host-cta-icon">⚙️</div>
       <div class="left-host-cta-text">
@@ -125,13 +124,12 @@
     <section>
       <div class="section-head">
         <h2 class="section-title">Featured Events</h2>
-        <!-- FIXED: Changed to events.list -->
         <a href="{{ url_for('events.list') }}" class="section-link">View All →</a>
       </div>
 
       <div class="featured-grid">
 
-        <!-- AFCON 2027 - FIXED: Changed to events.landing -->
+        <!-- AFCON 2027 -->
         <a href="{{ url_for('events.landing', event_slug='afcon-2027') }}" class="feat-card afcon">
           <div class="feat-card-bg"></div>
           <div class="feat-card-icon">🏟️</div>
@@ -237,7 +235,7 @@
           <span class="quick-action-icon">✈️</span>
           <span>Book Flights</span>
         </a>
-        <a href="{{ url_for('accommodation.accommodation_guest.search') }}" class="quick-action">
+        <a href="{{ url_for('accommodation.guest.search') }}" class="quick-action">
           <span class="quick-action-icon">🏨</span>
           <span>Find Accommodation</span>
         </a>
@@ -249,14 +247,14 @@
           <span class="quick-action-icon">🌍</span>
           <span>Explore Tourism</span>
         </a>
-        <a href="{% if session.get('user_id') %}{{ url_for('wallet_routes.wallet_dashboard') }}{% else %}{{ url_for('wallet_routes.wallet_home') }}{% endif %}" class="quick-action">
+        <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="quick-action">
           <span class="quick-action-icon">🎟️</span>
           <span>Buy Tickets &amp; Open Wallet</span>
         </a>
       </div>
     </section>
 
-    <!-- Host Your Event Banner - FIXED: Changed to events.create_event -->
+    <!-- Host Your Event Banner -->
     <section>
       <div class="host-banner">
         <div class="host-banner-title">Host Your Event on <span>AFCON360</span></div>
@@ -264,7 +262,7 @@
         {% if session.get('user_id') %}
         <a href="{{ url_for('events.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
         {% else %}
-        <a href="{{ url_for('auth_routes.login') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        <a href="{{ url_for('auth.login') }}" class="host-banner-btn">Get Started &rsaquo;</a>
         {% endif %}
       </div>
     </section>

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Owner Settings - AFCON360{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='owner.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="owner-shell owner-theme">
+  <div class="owner-topbar">
+    <a href="{{ url_for('owner.dashboard') }}" class="owner-back-link">
+      <i class="bi bi-arrow-left"></i>
+      <span>Back to Dashboard</span>
+    </a>
+    <div class="owner-topbar-brand">
+      <span class="owner-crown">👑</span>
+      <span>Owner Settings</span>
+    </div>
+  </div>
+
+  <div class="owner-wrapper">
+    <div class="owner-container">
+      <div class="owner-header">
+        <h1><span class="owner-crown">👑</span> Owner Settings</h1>
+        <p>Configure your owner preferences and security settings</p>
+      </div>
+
+      <div class="settings-section">
+        <h3>Security Settings</h3>
+        <form method="POST" action="{{ url_for('owner.update_settings') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="form-group">
+            <label for="session_timeout">Session Timeout (minutes)</label>
+            <input type="number" id="session_timeout" name="session_timeout"
+                   value="{{ settings.session_timeout_minutes if settings else 120 }}"
+                   class="owner-input" min="5" max="1440">
+            <small>How long until you're automatically logged out</small>
+          </div>
+
+          <button type="submit" class="owner-btn-primary">Save Settings</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

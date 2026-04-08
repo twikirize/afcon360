@@ -25,17 +25,17 @@
         <div class="dashboard-summary-card">
             <h3>${{ "%.2f"|format(wallet_balance) }}</h3>
             <p>Wallet Balance</p>
-            <a href="{{ url_for('wallet.home') }}" class="btn btn-sm btn-link mt-2">Manage Wallet</a>
+            <a href="{{ url_for('wallet.wallet_home') }}" class="btn btn-sm btn-link mt-2">Manage Wallet</a>
         </div>
         <div class="dashboard-summary-card">
             <h3>{{ user_properties|length }}</h3>
             <p>Accommodation Listings</p>
-            <a href="{{ url_for('accommodation.accommodation_owner.my_properties') }}" class="btn btn-sm btn-link mt-2">View Listings</a>
+            <a href="{{ url_for('accommodation.host.dashboard') }}" class="btn btn-sm btn-link mt-2">View Listings</a>
         </div>
         <div class="dashboard-summary-card">
             <h3>{{ user_vehicles|length }}</h3>
             <p>Transport Vehicles</p>
-            <a href="{{ url_for('transport.my_vehicles') if 'transport.my_vehicles' in request.endpoint else '#' }}" class="btn btn-sm btn-link mt-2">View Vehicles</a>
+            <a href="{{ url_for('transport.vehicle_dashboard') }}" class="btn btn-sm btn-link mt-2">View Vehicles</a>
         </div>
     </div>
 
@@ -94,7 +94,7 @@
                 </div>
                 <div class="dashboard-content-body text-center">
                     <p class="text-muted mb-3">Manage your service offerings and availability.</p>
-                    <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline-secondary w-100">Edit Profile</a>
+                    <a href="{{ url_for('fan.view_fan_profile') }}" class="btn btn-outline-secondary w-100">Edit Profile</a>
                 </div>
             </div>
         </div>

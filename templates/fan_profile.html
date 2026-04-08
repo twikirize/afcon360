@@ -8,7 +8,7 @@
 </head>
 <body class="container py-4">
   <h2>Fan Profile</h2>
-  <form method="POST" action="{{ url_for('fan_routes.update_fan_profile_route') }}">
+  <form method="POST" action="{{ url_for('fan.update_fan_profile_route') }}">
     <label>Name:</label>
     <input type="text" name="name" value="{{ profile.name }}" class="form-control">
     <label>Nationality:</label>

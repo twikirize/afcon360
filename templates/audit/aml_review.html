@@ -79,7 +79,7 @@ function applyFilters() {
     if (currentFilters.requires_review === '') delete currentFilters.requires_review;
     if (currentFilters.requires_review === 'true') currentFilters.requires_review = true;
     if (currentFilters.requires_review === 'false') currentFilters.requires_review = false;
-    
+
     Object.keys(currentFilters).forEach(k => !currentFilters[k] && delete currentFilters[k]);
     currentPage = 1;
     loadData();
@@ -88,20 +88,20 @@ function applyFilters() {
 function renderTable(data) {
     const tbody = document.getElementById('tableBody');
     const transactions = data.transactions || [];
-    
+
     if (!transactions.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No AML flagged transactions found</td></tr>';
         return;
     }
-    
+
     const pendingCount = transactions.filter(t => t.requires_review).length;
     const highRiskCount = transactions.filter(t => (t.risk_score || 0) > 70).length;
     const reviewedCount = transactions.filter(t => !t.requires_review).length;
-    
+
     document.getElementById('pendingCount').textContent = pendingCount;
     document.getElementById('highRiskCount').textContent = highRiskCount;
     document.getElementById('reviewedCount').textContent = reviewedCount;
-    
+
     tbody.innerHTML = transactions.map(tx => `
         <tr class="${tx.requires_review ? 'table-danger' : 'table-secondary'}">
             <td><code>${tx.transaction_id.substring(0, 12)}...</code></td>
@@ -109,15 +109,15 @@ function renderTable(data) {
             <td class="${tx.amount > 1000 ? 'text-danger' : ''}">${parseFloat(tx.amount).toLocaleString()} ${tx.currency}</td>
             <td>
                 <div class="progress" style="height: 20px;">
-                    <div class="progress-bar bg-${tx.risk_score > 70 ? 'danger' : tx.risk_score > 40 ? 'warning' : 'info'}" 
+                    <div class="progress-bar bg-${tx.risk_score > 70 ? 'danger' : tx.risk_score > 40 ? 'warning' : 'info'}"
                          style="width: ${tx.risk_score || 0}%">
                         ${tx.risk_score || 0}
                     </div>
                 </div>
             </td>
             <td>
-                ${tx.requires_review ? 
-                    '<span class="badge bg-danger">⚠️ Needs Review</span>' : 
+                ${tx.requires_review ?
+                    '<span class="badge bg-danger">⚠️ Needs Review</span>' :
                     '<span class="badge bg-success">✓ Reviewed</span>'}
             </td>
             <td><small>${new Date(tx.created_at).toLocaleString()}</small></td>
@@ -139,16 +139,16 @@ function renderTable(data) {
 
 async function reviewTransaction(transactionId, approved) {
     const notes = prompt(
-        approved ? 
-        'Enter approval notes (optional):' : 
+        approved ?
+        'Enter approval notes (optional):' :
         'Enter rejection reason (required):'
     );
-    
+
     if (!approved && !notes) {
         alert('Rejection reason is required');
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/admin/audit/aml/${transactionId}/review`, {
             method: 'POST',
@@ -158,9 +158,9 @@ async function reviewTransaction(transactionId, approved) {
             },
             body: JSON.stringify({ approved: approved, notes: notes || '' })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.status === 'success') {
             alert(result.message);
             loadData(); // Refresh the table

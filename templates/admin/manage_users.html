@@ -1,322 +1,731 @@
 {% extends "base.html" %}
 
-{% block content %}
-<head>
-    <title>User Management</title>
-    <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-        .actions form { display: inline; margin: 0 2px; }
-        .badge { padding: 2px 6px; border-radius: 4px; background: #eee; }
-    </style>
-</head>
-<body>
-    <h2>User Management</h2>
+{% block styles %}
+{{ super() }}
+<style>
+    .version-section {
+        margin-bottom: 40px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
 
-    {% if users and users|length > 0 %}
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Roles</th>
-                    <th>Verified</th>
-                    <th>Active</th>
-                    <th>Actions (future)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>{{ user.id }}</td>
-                    <td>{{ user.username }}</td>
-                    <td>{{ user.email or "-" }}</td>
-                    <td>
-                        {% if user.roles %}
-                            {% for role in user.roles %}
-                                <span class="badge">{{ role.name }}</span>
-                            {% endfor %}
-                        {% else %}
-                            <span class="badge">none</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ "✔" if user.is_verified else "✖" }}</td>
-                    <td>{{ "✔" if user.is_active else "✖" }}</td>
-                    <td class="actions">
-                        <!-- Lifecycle actions (to be implemented later) -->
-                        {% if not user.is_verified %}
-                        <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit">Verify</button>
-                        </form>
-                       {% endif %}
+    .version-header {
+        background: #f8f9fa;
+        padding: 12px 20px;
+        border-bottom: 2px solid #ddd;
+        font-weight: bold;
+        font-size: 18px;
+    }
 
-                        <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit">Activate</button>
-                        </form>
-                        <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit">Deactivate</button>
-                        </form>
-                        {#
-                            <!--
-                            <form method="post" action="{{ url_for('admin.suspend_user', user_id=user.user_id) }}">
-                                <button type="submit">Suspend</button>
-                            </form>
-                            <form method="post" action="{{ url_for('admin.delete_user', user_id=user.user_id) }}">
-                                <button type="submit" onclick="return confirm('Delete this user?')">Delete</button>
-                            </form>
-                            <form method="post" action="{{ url_for('admin.resend_activation', user_id=user.user_id) }}">
-                                <button type="submit">Resend Activation</button>
-                            </form>
+    .version-header.v0 { background: #e3f2fd; border-left: 5px solid #2196f3; }
+    .version-header.v1 { background: #e8f5e9; border-left: 5px solid #4caf50; }
+    .version-header.v2 { background: #fff3e0; border-left: 5px solid #ff9800; }
 
-                            <-- Role management (to be implemented later) -->
-                            <form method="post" action="{{ url_for('admin.promote_user', user_id=user.user_id) }}">
-                                <button type="submit">Promote</button>
-                            </form>
-                            <form method="post" action="{{ url_for('admin.demote_user', user_id=user.user_id) }}">
-                                <button type="submit">Demote</button>
-                            </form>
+    .version-content {
+        padding: 20px;
+        background: white;
+    }
 
-                            <!-- Account management (to be implemented later) -->
-                            <a href="{{ url_for('admin.view_user', user_id=user.user_id) }}">View</a>
-                            <a href="{{ url_for('admin.update_user', user_id=user.user_id) }}">Update</a>
-                            <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}">
-                                <button type="submit">Sign in as</button>
-                            </form>
-                            -->
-                        #}
+    .version-actions {
+        padding: 10px 15px;
+        background: #f5f5f5;
+        border-top: 1px solid #ddd;
+        text-align: right;
+    }
 
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <p>No users found in the system yet.</p>
-    {% endif %}
-</body>
-{% endblock%}}
+    .keep-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
 
-{# ====Read it later==================
-VERSION 1
-==============================================
-{% extends "base.html" %}
+    .remove-btn {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-left: 10px;
+    }
 
-{% block content %}
-<head>
-    <title>User Management</title>
-    <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-        .actions form { display: inline; margin: 0 2px; }
-        .badge { padding: 2px 6px; border-radius: 4px; background: #eee; }
-        .placeholder { color: #999; font-style: italic; }
-    </style>
-</head>
-<body>
-    <h2>User Management</h2>
+    .append-btn {
+        background: #17a2b8;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-left: 10px;
+    }
 
-    {% if users and users|length > 0 %}
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Roles</th>
-                    <th>Verified</th>
-                    <th>Active</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>{{ user.id }}</td>
-                    <td>
-                        <a href="{{ url_for('admin.view_user', user_id=user.user_id) }}">
-                            {{ user.username }}
-                        </a>
-                    </td>
-                    <td>{{ user.email or "-" }}</td>
-                    <td>
-                        {% if user.roles %}
-                            {% for role in user.roles %}
-                                <span class="badge">{{ role.name }}</span>
-                            {% endfor %}
-                        {% else %}
-                            <span class="badge">none</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ "✔" if user.is_verified else "✖" }}</td>
-                    <td>{{ "✔" if user.is_active else "✖" }}</td>
-                    <td class="actions">
-                        {% if not user.is_verified %}
-                        <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit">Verify</button>
-                        </form>
-                        {% endif %}
+    .users-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
 
-                        {% if not user.is_active %}
-                        <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit">Activate</button>
-                        </form>
-                        {% else %}
-                        <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit">Deactivate</button>
-                        </form>
-                        {% endif %}
+    .users-table th,
+    .users-table td {
+        border: 1px solid #ccc;
+        padding: 6px;
+        text-align: left;
+    }
 
-                        <!-- Future actions placeholders -->
-                        <span class="placeholder">Suspend (coming soon)</span>
-                        <span class="placeholder">Delete (coming soon)</span>
-                        <span class="placeholder">Resend Activation (coming soon)</span>
-                        <span class="placeholder">Promote/Demote (coming soon)</span>
-                        <span class="placeholder">Impersonate (coming soon)</span>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <p>No users found in the system yet.</p>
-    {% endif %}
-</body>
+    .actions form {
+        display: inline;
+        margin: 0 2px;
+    }
+
+    .badge {
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: #eee;
+        display: inline-block;
+        margin: 1px;
+    }
+
+    .placeholder {
+        color: #999;
+        font-style: italic;
+        font-size: 11px;
+    }
+
+    .flash-messages {
+        margin-bottom: 15px;
+    }
+
+    .alert {
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+
+    .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .alert-danger {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .alert-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeeba;
+    }
+
+    .stats-bar {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .stat {
+        text-align: center;
+        flex: 1;
+    }
+
+    .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #007bff;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 12px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    .search-box {
+        margin-bottom: 10px;
+        padding: 5px;
+        width: 300px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .decision-panel {
+        margin-top: 30px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        text-align: center;
+        border: 2px solid #007bff;
+    }
+
+    .decision-summary {
+        margin: 15px 0;
+        padding: 15px;
+        background: #e9ecef;
+        border-radius: 5px;
+        text-align: left;
+    }
+
+    .decision-buttons {
+        margin-top: 15px;
+    }
+
+    .finalize-btn {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        margin: 0 10px;
+    }
+
+    hr {
+        margin: 30px 0;
+        border: 1px solid #ddd;
+    }
+</style>
 {% endblock %}
 
-=================================================
-Version 2
-{% extends "base.html" %}
-
 {% block content %}
-<head>
-    <title>User Management | Admin</title>
-    <!-- TODO: Add meta description, robots, and OG tags for SEO if needed -->
-    <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-        .actions form { display: inline; margin: 0 2px; }
-        .badge { padding: 2px 6px; border-radius: 4px; background: #eee; }
-        .flash { margin: 5px 0; padding: 5px; border-radius: 3px; }
-        .flash-success { background: #d4edda; color: #155724; }
-        .flash-warning { background: #fff3cd; color: #856404; }
-        .flash-danger { background: #f8d7da; color: #721c24; }
-    </style>
-</head>
-<body>
-    <h2>User Management (Admin View)</h2>
+<div class="container-fluid">
+    <h1>User Management - Version Comparison</h1>
+    <p>Compare all three versions below. Use the buttons at the bottom of each version to decide what to keep, remove, or append.</p>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="flash flash-{{ category }}">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
+    <!-- ==================== VERSION 0: ORIGINAL ==================== -->
+    <div class="version-section">
+        <div class="version-header v0">
+            📌 VERSION 0 - Current (Basic)
+            <span style="float: right; font-size: 12px;">Working but limited</span>
+        </div>
+        <div class="version-content">
+            <h3>User Management</h3>
 
-    {% if users %}
-        <!-- Search box for future enhancement -->
-        <input type="text" id="search_box" placeholder="Search users (username, email, roles)">
-
-        <form id="bulk_form" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <table id="user_table">
-                <thead>
-                    <tr>
-                        <th><input type="checkbox" id="select_all"></th>
-                        <th>ID</th>
-                        <!-- <th>UUID</th> Hidden for now, can show on click in future -->
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Roles</th>
-                        <th>Verified</th>
-                        <th>Active</th>
-                        <th>Actions (future)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                    <tr>
-                        <td><input type="checkbox" name="user_ids" value="{{ user.user_id }}"></td>
-                        <td>{{ user.id }}</td>
-                        <!-- <td>{{ user.user_id }}</td> UUID hidden -->
-                        <td>
-                            <a href="{{ url_for('admin.view_user', user_id=user.user_id) }}">
-                                {{ user.username }}
-                            </a>
-                        </td>
-                        <td>{{ user.email or "-" }}</td>
-                        <td>
-                            {% if user.roles %}
-                                {% for role in user.roles %}
-                                    <span class="badge">{{ role.name }}</span>
-                                {% endfor %}
-                            {% else %}
-                                <span class="badge">none</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ "✔" if user.is_verified else "✖" }}</td>
-                        <td>{{ "✔" if user.is_active else "✖" }}</td>
-                        <td class="actions">
-                            {% if not user.is_verified %}
-                                <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button>Verify</button>
-                                </form>
-                            {% endif %}
-                            {% if not user.is_active %}
-                                <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button>Activate</button>
-                                </form>
-                            {% else %}
-                                <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button>Deactivate</button>
-                                </form>
-                            {% endif %}
-
-                            <!-- Future Enterprise/Admin Actions (visible in UI as placeholders) -->
-                            <!--
-                                <form method="post" action="#">Suspend</form>
-                                <form method="post" action="#">Delete</form>
-                                <form method="post" action="#">Resend Activation</form>
-                                <form method="post" action="#">Promote</form>
-                                <form method="post" action="#">Demote</form>
-                                <form method="post" action="#">Impersonate</form>
-                            -->
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-
-            <div style="margin-top:10px;">
-                <button type="submit" formaction="{{ url_for('admin.bulk_verify_users') }}">Bulk Verify Selected</button>
-                <button type="submit" formaction="{{ url_for('admin.bulk_deactivate_users') }}">Bulk Deactivate Selected</button>
+            <div class="stats-bar">
+                <div class="stat">
+                    <div class="stat-number">{{ users|length if users else 0 }}</div>
+                    <div class="stat-label">Total Users</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ users|selectattr('is_verified', 'equalto', true)|list|length if users else 0 }}</div>
+                    <div class="stat-label">Verified</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ users|selectattr('is_active', 'equalto', true)|list|length if users else 0 }}</div>
+                    <div class="stat-label">Active</div>
+                </div>
             </div>
-        </form>
 
-        <!-- Client-side select all functionality -->
-        <script>
-            document.getElementById('select_all').addEventListener('change', function() {
-                document.querySelectorAll('input[name="user_ids"]').forEach(cb => cb.checked = this.checked);
-            });
-            // TODO: Add search/filter + pagination for >50 users
-        </script>
-    {% else %}
-        <p>No users in the system yet.</p>
-    {% endif %}
+            {% if users and users|length > 0 %}
+            <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Roles</th>
+                            <th>Verified</th>
+                            <th>Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id }}</td>
+                            <td>{{ user.username }}</a></td>
+                            <td>{{ user.email or "-" }}</a></td>
+                            <td>
+                                {% if user.roles %}
+                                    {% for role in user.roles %}
+                                        <span class="badge">{{ role.name }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="badge">none</span>
+                                {% endif %}
+                            </a></td>
+                            <td>{{ "✔" if user.is_verified else "✖" }}</a></td>
+                            <td>{{ "✔" if user.is_active else "✖" }}</a></td>
+                            <td class="actions">
+                                <form method="get" action="{{ url_for('admin.view_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <button type="submit" class="btn-sm" style="background:#17a2b8; color:white;">View</button>
+                                </form>
 
-    <footer style="margin-top:20px; font-size:0.8em; color:#666;">
-        &copy; AFCON 360 | Home · Support
-    </footer>
-</body>
+                                {% if not user.is_verified %}
+                                <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Verify</button>
+                                </form>
+                                {% endif %}
+
+                                {% if not user.is_active %}
+                                <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Activate</button>
+                                </form>
+                                {% else %}
+                                <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#ffc107; color:#333;">Deactivate</button>
+                                </form>
+                                {% endif %}
+
+                                {% if user.user_id != current_user.user_id %}
+                                <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#6f42c1; color:white;" title="Impersonate User">Impersonate</button>
+                                </form>
+
+                                <form method="post" action="{{ url_for('admin.delete_user', user_id=user.user_id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#dc3545; color:white;">Delete</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </form>
+            {% else %}
+                <p>No users found in the system yet.</p>
+            {% endif %}
+        </div>
+        <div class="version-actions">
+            <button class="keep-btn" onclick="markKeep('Version 0 - Basic')">✓ Keep This Version</button>
+            <button class="remove-btn" onclick="markRemove('Version 0 - Basic')">✗ Remove This Version</button>
+            <button class="append-btn" onclick="markAppend('Version 0 - Basic')">+ Append Features to Final</button>
+        </div>
+    </div>
+
+    <!-- ==================== VERSION 1: ENHANCED ==================== -->
+    <div class="version-section">
+        <div class="version-header v1">
+            🚀 VERSION 1 - Enhanced
+            <span style="float: right; font-size: 12px;">Added: View links, conditional buttons, placeholders</span>
+        </div>
+        <div class="version-content">
+            <h3>User Management (Enhanced)</h3>
+
+            <div class="stats-bar">
+                <div class="stat">
+                    <div class="stat-number">{{ users|length if users else 0 }}</div>
+                    <div class="stat-label">Total Users</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ users|selectattr('is_verified', 'equalto', true)|list|length if users else 0 }}</div>
+                    <div class="stat-label">Verified</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ users|selectattr('is_active', 'equalto', true)|list|length if users else 0 }}</div>
+                    <div class="stat-label">Active</div>
+                </div>
+            </div>
+
+            {% if users and users|length > 0 %}
+            <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Roles</th>
+                            <th>Verified</th>
+                            <th>Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id }}</td>
+                            <td>
+                                <a href="{{ url_for('admin.view_user', user_id=user.user_id) }}">
+                                    {{ user.username }}
+                                </a>
+                            </a></td>
+                            <td>{{ user.email or "-" }}</a></td>
+                            <td>
+                                {% if user.roles %}
+                                    {% for role in user.roles %}
+                                        <span class="badge">{{ role.name }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="badge">none</span>
+                                {% endif %}
+                            </a></td>
+                            <td>{{ "✔" if user.is_verified else "✖" }}</a></td>
+                            <td>{{ "✔" if user.is_active else "✖" }}</a></td>
+                            <td class="actions">
+                                {% if not user.is_verified %}
+                                <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Verify</button>
+                                </form>
+                                {% endif %}
+
+                                {% if not user.is_active %}
+                                <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Activate</button>
+                                </form>
+                                {% else %}
+                                <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#ffc107; color:#333;">Deactivate</button>
+                                </form>
+                                {% endif %}
+
+                                {% if user.user_id != current_user.user_id %}
+                                <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn-sm" style="background:#6f42c1; color:white;">Impersonate</button>
+                                </form>
+                                {% endif %}
+
+                                <span class="placeholder">Suspend (soon)</span>
+                                <span class="placeholder">Delete (soon)</span>
+                                <span class="placeholder">Promote/Demote (soon)</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </form>
+            {% else %}
+                <p>No users found in the system yet.</p>
+            {% endif %}
+        </div>
+        <div class="version-actions">
+            <button class="keep-btn" onclick="markKeep('Version 1 - Enhanced')">✓ Keep This Version</button>
+            <button class="remove-btn" onclick="markRemove('Version 1 - Enhanced')">✗ Remove This Version</button>
+            <button class="append-btn" onclick="markAppend('Version 1 - Enhanced')">+ Append Features to Final</button>
+        </div>
+    </div>
+
+    <!-- ==================== VERSION 2: ADVANCED ==================== -->
+    <div class="version-section">
+        <div class="version-header v2">
+            💎 VERSION 2 - Advanced
+            <span style="float: right; font-size: 12px;">Added: Flash messages, bulk actions, search</span>
+        </div>
+        <div class="version-content">
+            <h3>User Management (Advanced)</h3>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <div class="stats-bar">
+                <div class="stat">
+                    <div class="stat-number">{{ users|length if users else 0 }}</div>
+                    <div class="stat-label">Total Users</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ users|selectattr('is_verified', 'equalto', true)|list|length if users else 0 }}</div>
+                    <div class="stat-label">Verified</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ users|selectattr('is_active', 'equalto', true)|list|length if users else 0 }}</div>
+                    <div class="stat-label">Active</div>
+                </div>
+            </div>
+
+            {% if users %}
+                <input type="text" id="searchBox" class="search-box" placeholder="Search users...">
+
+                <form method="post" id="bulkForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div style="margin-bottom: 10px;">
+                        <button type="button" onclick="selectAll()" class="btn-sm">Select All</button>
+                        <button type="button" onclick="deselectAll()" class="btn-sm">Deselect All</button>
+                        <button type="submit" formaction="{{ url_for('admin.bulk_verify_users') }}" class="btn-sm" style="background:#28a745; color:white;">Bulk Verify</button>
+                        <button type="submit" formaction="{{ url_for('admin.bulk_deactivate_users') }}" class="btn-sm" style="background:#dc3545; color:white;">Bulk Deactivate</button>
+                    </div>
+
+                    <table class="users-table" id="userTable">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAllCheckbox"></th>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Roles</th>
+                                <th>Verified</th>
+                                <th>Active</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr class="user-row">
+                                <td><input type="checkbox" name="user_ids" value="{{ user.user_id }}" class="user-checkbox"></td>
+                                <td>{{ user.id }}</a></td>
+                                <td>
+                                    <a href="{{ url_for('admin.view_user', user_id=user.user_id) }}">
+                                        {{ user.username }}
+                                    </a>
+                                </a></td>
+                                <td>{{ user.email or "-" }}</a></td>
+                                <td>
+                                    {% if user.roles %}
+                                        {% for role in user.roles %}
+                                            <span class="badge">{{ role.name }}</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="badge">none</span>
+                                    {% endif %}
+                                </a></td>
+                                <td>{{ "✔" if user.is_verified else "✖" }}</a></td>
+                                <td>{{ "✔" if user.is_active else "✖" }}</a></td>
+                                <td class="actions">
+                                    <form method="get" action="{{ url_for('admin.view_user', user_id=user.user_id) }}" style="display: inline;">
+                                        <button type="submit" class="btn-sm" style="background:#17a2b8; color:white;">View</button>
+                                    </form>
+
+                                    {% if not user.is_verified %}
+                                    <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Verify</button>
+                                    </form>
+                                    {% endif %}
+
+                                    {% if not user.is_active %}
+                                    <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Activate</button>
+                                    </form>
+                                    {% else %}
+                                    <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#ffc107; color:#333;">Deactivate</button>
+                                    </form>
+                                    {% endif %}
+
+                                    {% if user.user_id != current_user.user_id %}
+                                    <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#6f42c1; color:white;" title="Sign in as this user">Impersonate</button>
+                                    </form>
+
+                                    <form method="post" action="{{ url_for('admin.delete_user', user_id=user.user_id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#dc3545; color:white;">Delete</button>
+                                    </form>
+                                    {% endif %}
+
+                                    <form method="post" action="{{ url_for('admin.promote_user', user_id=user.user_id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#6c757d; color:white;">Promote</button>
+                                    </form>
+
+                                    <form method="post" action="{{ url_for('admin.demote_user', user_id=user.user_id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn-sm" style="background:#6c757d; color:white;">Demote</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </form>
+            {% else %}
+                <p>No users in the system yet.</p>
+            {% endif %}
+        </div>
+        <div class="version-actions">
+            <button class="keep-btn" onclick="markKeep('Version 2 - Advanced')">✓ Keep This Version</button>
+            <button class="remove-btn" onclick="markRemove('Version 2 - Advanced')">✗ Remove This Version</button>
+            <button class="append-btn" onclick="markAppend('Version 2 - Advanced')">+ Append Features to Final</button>
+        </div>
+    </div>
+
+    <!-- ==================== DECISION PANEL ==================== -->
+    <div class="decision-panel">
+        <h3>📋 Version Comparison Decision Panel</h3>
+        <p>Select which version(s) to keep, remove, or append features from.</p>
+
+        <div class="decision-summary">
+            <strong>Current selections:</strong><br>
+            ✅ Keep: <span id="keepList">None</span><br>
+            ❌ Remove: <span id="removeList">None</span><br>
+            ➕ Append: <span id="appendList">None</span>
+        </div>
+
+        <div class="decision-buttons">
+            <button class="finalize-btn" onclick="finalizeDecision()">📄 Finalize Decision</button>
+            <button class="finalize-btn" onclick="resetSelections()" style="background: #6c757d;">🔄 Reset Selections</button>
+        </div>
+
+        <div id="finalOutput" style="display: none; margin-top: 20px; padding: 15px; background: white; border: 2px solid #28a745; border-radius: 5px; text-align: left;">
+            <h4>📝 Final Template Decision:</h4>
+            <pre id="decisionOutput" style="white-space: pre-wrap; background: #f8f9fa; padding: 10px; overflow-x: auto;"></pre>
+        </div>
+    </div>
+</div>
 {% endblock %}
-#}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // Store decisions
+    let decisions = {
+        keep: [],
+        remove: [],
+        append: []
+    };
+
+    // Version 2: Select All functionality
+    function selectAll() {
+        document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = true);
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        if (selectAllCheckbox) selectAllCheckbox.checked = true;
+    }
+
+    function deselectAll() {
+        document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = false);
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    }
+
+    // Version 2: Select All checkbox toggle
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = this.checked);
+        });
+    }
+
+    // Version 2: Search functionality
+    const searchBox = document.getElementById('searchBox');
+    if (searchBox) {
+        searchBox.addEventListener('keyup', function() {
+            let searchTerm = this.value.toLowerCase();
+            let rows = document.querySelectorAll('#userTable tbody tr');
+            rows.forEach(row => {
+                let text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        });
+    }
+
+    // Decision functions
+    function markKeep(version) {
+        if (!decisions.keep.includes(version)) {
+            decisions.keep.push(version);
+            decisions.remove = decisions.remove.filter(v => v !== version);
+            decisions.append = decisions.append.filter(v => v !== version);
+            updateSummary();
+            alert(`✅ "${version}" marked to KEEP`);
+        } else {
+            alert(`"${version}" is already marked to KEEP`);
+        }
+    }
+
+    function markRemove(version) {
+        if (!decisions.remove.includes(version)) {
+            decisions.remove.push(version);
+            decisions.keep = decisions.keep.filter(v => v !== version);
+            decisions.append = decisions.append.filter(v => v !== version);
+            updateSummary();
+            alert(`❌ "${version}" marked to REMOVE`);
+        } else {
+            alert(`"${version}" is already marked to REMOVE`);
+        }
+    }
+
+    function markAppend(version) {
+        if (!decisions.append.includes(version)) {
+            decisions.append.push(version);
+            decisions.keep = decisions.keep.filter(v => v !== version);
+            decisions.remove = decisions.remove.filter(v => v !== version);
+            updateSummary();
+            alert(`➕ Features from "${version}" will be APPENDED to final version`);
+        } else {
+            alert(`"${version}" is already marked to APPEND`);
+        }
+    }
+
+    function updateSummary() {
+        document.getElementById('keepList').textContent = decisions.keep.length ? decisions.keep.join(', ') : 'None';
+        document.getElementById('removeList').textContent = decisions.remove.length ? decisions.remove.join(', ') : 'None';
+        document.getElementById('appendList').textContent = decisions.append.length ? decisions.append.join(', ') : 'None';
+    }
+
+    function resetSelections() {
+        decisions = { keep: [], remove: [], append: [] };
+        updateSummary();
+        document.getElementById('finalOutput').style.display = 'none';
+        alert('🔄 Selections have been reset');
+    }
+
+    function finalizeDecision() {
+        let output = "═══════════════════════════════════════\n";
+        output += "     FINAL TEMPLATE DECISION\n";
+        output += "═══════════════════════════════════════\n\n";
+
+        if (decisions.keep.length > 0) {
+            output += `✅ KEEP Version(s): ${decisions.keep.join(', ')}\n`;
+            output += `   → These will be the base for the final template\n\n`;
+        }
+
+        if (decisions.remove.length > 0) {
+            output += `❌ REMOVE Version(s): ${decisions.remove.join(', ')}\n`;
+            output += `   → These versions will be discarded\n\n`;
+        }
+
+        if (decisions.append.length > 0) {
+            output += `➕ APPEND Features from: ${decisions.append.join(', ')}\n`;
+            output += `   → Additional features will be added to the final template\n\n`;
+        }
+
+        if (decisions.keep.length === 0 && decisions.append.length === 0) {
+            output += "⚠️  WARNING: No versions selected to keep or append!\n";
+            output += "   Please select at least one version to keep or append features from.\n\n";
+        }
+
+        output += "═══════════════════════════════════════\n";
+        output += "RECOMMENDED ACTION\n";
+        output += "═══════════════════════════════════════\n";
+
+        if (decisions.keep.includes('Version 2 - Advanced')) {
+            output += "🏆 Version 2 is the most feature-rich.\n";
+            output += "   → Consider using it as the base template.\n";
+        } else if (decisions.keep.includes('Version 1 - Enhanced')) {
+            output += "👍 Version 1 has good enhancements.\n";
+            output += "   → Consider adding search and bulk actions from Version 2.\n";
+        } else if (decisions.keep.includes('Version 0 - Basic')) {
+            output += "📌 Version 0 is basic but stable.\n";
+            output += "   → Consider adding features from Version 1 or 2.\n";
+        }
+
+        document.getElementById('decisionOutput').textContent = output;
+        document.getElementById('finalOutput').style.display = 'block';
+    }
+</script>
+{% endblock %}

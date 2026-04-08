@@ -1,11 +1,10 @@
 # app/kyc/models.py
 from app.extensions import db
-from app.models.base import TimestampMixin
+from app.models.base import BaseModel
 
-class KycRecord(TimestampMixin, db.Model):
+class KycRecord(BaseModel):
     __tablename__ = "kyc_records"
 
-    id = db.Column(db.Integer, primary_key=True)
     #user_id = db.Column(db.String(36), db.ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 

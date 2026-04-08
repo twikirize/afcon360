@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}👑 Owner Master Key - Impersonation Portal{% endblock %}
+
+{% block styles %}
+<style>
+    .impersonate-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 2rem;
+    }
+
+    .master-key-banner {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    .stats-card {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+
+    .stats-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #667eea;
+    }
+
+    .role-filter-bar {
+        background: white;
+        padding: 1rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .role-btn {
+        background: #f0f0f0;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 25px;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+
+    .role-btn:hover, .role-btn.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        transform: translateY(-2px);
+    }
+
+    .user-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .user-card {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .user-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .role-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .badge-owner { background: #ff4757; color: white; }
+    .badge-super_admin { background: #ffa502; color: white; }
+    .badge-admin { background: #1e90ff; color: white; }
+    .badge-auditor { background: #9b59b6; color: white; }
+    .badge-compliance_officer { background: #e74c3c; color: white; }
+    .badge-moderator { background: #f39c12; color: white; }
+    .badge-support { background: #27ae60; color: white; }
+    .badge-event_manager { background: #8e44ad; color: white; }
+    .badge-transport_admin { background: #2980b9; color: white; }
+    .badge-wallet_admin { background: #16a085; color: white; }
+    .badge-accommodation_admin { background: #d35400; color: white; }
+    .badge-tourism_admin { background: #c0392b; color: white; }
+    .badge-org_admin { background: #2ed573; color: white; }
+    .badge-org_member { background: #95a5a6; color: white; }
+    .badge-user { background: #747d8c; color: white; }
+
+    .search-box input {
+        width: 100%;
+        padding: 1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 50px;
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .impersonate-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-weight: 600;
+        width: 100%;
+    }
+
+    .impersonate-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="impersonate-container">
+    <div class="container">
+        <div class="master-key-banner">
+            <h1>🗝️ Owner Master Key</h1>
+            <p class="lead">Impersonate any user to test their dashboard experience</p>
+            <small>You have full access to all user accounts for development and testing</small>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number">{{ users|length }}</div>
+                    <p class="text-muted">Total Users</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number">{{ users|selectattr('is_active', 'equalto', true)|list|length }}</div>
+                    <p class="text-muted">Active Users</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number">{{ global_roles|length }}</div>
+                    <p class="text-muted">Available Roles</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="userSearch" placeholder="🔍 Search by username, email, or role..." class="form-control">
+        </div>
+
+        <div class="role-filter-bar">
+            <button class="role-btn active" data-filter="all">👥 All Users</button>
+            {% for role in global_roles %}
+            <button class="role-btn" data-filter="{{ role.name }}">
+                {{ role.name|replace('_', ' ')|title }}
+            </button>
+            {% endfor %}
+        </div>
+
+        <div class="user-grid" id="userContainer">
+            {% for user_data in users %}
+            {% set user = user_data.user %}
+            {% set primary_role = user_data.primary_role %}
+            <div class="user-card"
+                 data-search="{{ user.username|lower }} {{ (user.email or '')|lower }} {{ primary_role|lower }} {{ user_data.roles|join(' ')|lower }}"
+                 data-role="{{ primary_role }}">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="mb-1">{{ user.username }}</h5>
+                        <small class="text-muted">{{ user.email or 'No email' }}</small>
+                        <div class="mt-1">
+                            {% for role in user_data.roles %}
+                            <span class="role-badge badge-{{ role }} me-1">
+                                {{ role|replace('_', ' ')|title }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <span class="role-badge badge-{{ primary_role }}">
+                        {{ primary_role|replace('_', ' ')|title }}
+                    </span>
+                </div>
+
+                <div class="mb-3">
+                    <small class="text-muted">ID: {{ user.user_id[:8] if user.user_id else str(user.id)[:8] }}...</small><br>
+                    <small class="text-muted">Joined: {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'Unknown' }}</small><br>
+                    <small class="text-muted">Status:
+                        <span class="{{ 'text-success' if user.is_active else 'text-danger' }}">
+                            {{ 'Active' if user.is_active else 'Inactive' }}
+                        </span>
+                    </small>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <form action="{{ url_for('admin.owner.impersonate_user', user_id=user.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="impersonate-btn">
+                            🔑 Enter as {{ user.username }}
+                        </button>
+                    </form>
+
+                    <!-- Quick role-based impersonation -->
+                    {% for role in user_data.roles %}
+                    <form action="{{ url_for('admin.owner.impersonate_role', role_name=role) }}" method="POST" class="mt-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-sm btn-secondary w-100">
+                            🎭 As {{ role|replace('_', ' ')|title }}
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('userSearch');
+    const roleBtns = document.querySelectorAll('.role-btn');
+    const userCards = document.querySelectorAll('.user-card');
+
+    function filterUsers() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const activeRole = document.querySelector('.role-btn.active').dataset.filter;
+
+        userCards.forEach(card => {
+            const searchData = card.getAttribute('data-search');
+            const cardRole = card.getAttribute('data-role');
+
+            const matchesSearch = searchData.includes(searchTerm);
+            const matchesRole = activeRole === 'all' || cardRole === activeRole;
+
+            if (matchesSearch && matchesRole) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    searchInput.addEventListener('input', filterUsers);
+
+    roleBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            roleBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            filterUsers();
+        });
+    });
+</script>
+{% endblock %}

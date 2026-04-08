@@ -9,6 +9,16 @@
     <tr><th>Email</th><td>{{ user.email or "-" }}</td></tr>
     <tr><th>Verified</th><td>{{ "✔" if user.is_verified else "✖" }}</td></tr>
     <tr><th>Active</th><td>{{ "✔" if user.is_active else "✖" }}</td></tr>
+    <tr>
+        <th>Platform Status</th>
+        <td>
+            {% if user.roles | selectattr('name', 'equalto', 'owner') | list %}
+                <span class="badge" style="background-color: #ffd700; color: #000;">👑 SYSTEM OWNER</span>
+            {% else %}
+                <span class="badge">Standard User</span>
+            {% endif %}
+        </td>
+    </tr>
     <tr><th>Roles</th>
         <td>
             {% if user.roles %}

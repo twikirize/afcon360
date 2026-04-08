@@ -36,7 +36,7 @@ with app.app_context():
             SELECT DISTINCT
                 conrelid::regclass::text as dependent_table,
                 conname as constraint_name
-            FROM pg_constraint 
+            FROM pg_constraint
             WHERE confrelid = '{suspect}'::regclass
             AND contype = 'f'
             ORDER BY dependent_table
@@ -55,7 +55,7 @@ with app.app_context():
             SELECT DISTINCT
                 confrelid::regclass::text as referenced_table,
                 conname as constraint_name
-            FROM pg_constraint 
+            FROM pg_constraint
             WHERE conrelid = '{suspect}'::regclass
             AND contype = 'f'
             ORDER BY referenced_table

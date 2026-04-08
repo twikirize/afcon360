@@ -74,7 +74,7 @@
                                         </span>
                                     </div>
                                     <p class="card-text text-muted">{{ category.description or 'No description' }}</p>
-                                    
+
                                     <!-- Permissions Badges -->
                                     <div class="mb-3">
                                         {% if category.editable_by_admins %}
@@ -87,14 +87,14 @@
                                         <span class="badge bg-success me-1">Users</span>
                                         {% endif %}
                                     </div>
-                                    
+
                                     <!-- Action Buttons -->
                                     <div class="d-flex gap-2">
-                                        <a href="{{ url_for('admin.manage_category_items', category_slug=category.slug) }}" 
+                                        <a href="{{ url_for('admin.manage_category_items', category_slug=category.slug) }}"
                                            class="btn btn-sm btn-outline-primary">
                                             <i class="bi bi-eye"></i> View Items
                                         </a>
-                                        <a href="{{ url_for('admin.create_item', category_slug=category.slug) }}" 
+                                        <a href="{{ url_for('admin.create_item', category_slug=category.slug) }}"
                                            class="btn btn-sm btn-outline-success">
                                             <i class="bi bi-plus"></i> Add Item
                                         </a>
@@ -108,7 +108,7 @@
                         {% else %}
                         <div class="col-12">
                             <div class="alert alert-info">
-                                <i class="bi bi-info-circle"></i> No categories found. 
+                                <i class="bi bi-info-circle"></i> No categories found.
                                 <a href="{{ url_for('admin.create_category') }}">Create your first category</a>
                             </div>
                         </div>

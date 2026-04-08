@@ -93,7 +93,7 @@
                                     <td><small>{{ event.created_at.strftime('%Y-%m-%d') if event.created_at else 'N/A' }}</small></td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{{ url_for('events.event_landing', event_slug=event.slug) }}"
+                                            <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
                                                class="btn btn-outline-primary">View</a>
                                             <form method="POST" action="{{ url_for('events.admin_approve', event_slug=event.slug) }}"
                                                   style="display:inline;">
@@ -185,7 +185,7 @@
                         <a href="{{ url_for('events.admin_events', status='pending') }}" class="btn btn-outline-warning btn-sm text-start">
                             <i class="fas fa-clock me-2"></i>Pending Review
                         </a>
-                        <a href="{{ url_for('events.event_list') }}" class="btn btn-outline-info btn-sm text-start">
+                        <a href="{{ url_for('events.list') }}" class="btn btn-outline-info btn-sm text-start">
                             <i class="fas fa-globe me-2"></i>Public Portal
                         </a>
                     </div>

@@ -1,18 +1,22 @@
 # app/admin/owner/audit.py
 """
 Decorator-based audit logging for owner routes
+FIXED: Prevents double rollback and handles aborted transactions
 """
+import logging
 from functools import wraps
-from flask import request, g
-from flask_login import current_user  # 🔴 FIXED: Import from flask_login, not flask
+from flask import request, g, current_app
+from flask_login import current_user
 from app.extensions import db
-from app.admin.owner.models import OwnerAuditLog
 from app.admin.owner.utils import log_owner_action
+
+logger = logging.getLogger(__name__)
 
 
 def audit_owner_action(action, category=None, capture_response=False):
     """
     Decorator to automatically log owner actions with rich context
+    FIXED: Safe transaction handling
 
     Args:
         action: The action being performed
@@ -28,52 +32,65 @@ def audit_owner_action(action, category=None, capture_response=False):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
+            # CRITICAL: Rollback any aborted transaction at start
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
             # Capture request details before execution
             request_details = {
-                'method': request.method,
-                'path': request.path,
-                'args': str(request.args),
-                'form_keys': list(request.form.keys()) if request.form else [],
-                'endpoint': request.endpoint
+                'method': request.method if request else 'unknown',
+                'path': request.path if request else 'unknown',
+                'endpoint': request.endpoint if request else 'unknown'
             }
+
+            try:
+                if request and request.args:
+                    request_details['args'] = str(request.args)[:200]
+                if request and request.form:
+                    request_details['form_keys'] = list(request.form.keys())[:10]
+            except Exception:
+                pass
 
             # Execute the function
             try:
                 result = f(*args, **kwargs)
 
-                # Log success
-                details = {
-                    'request': request_details,
-                    'response_status': 'success'
-                }
-
-                if capture_response:
-                    # Be careful not to log sensitive data
-                    details['response'] = str(result)[:500]
-
-                log_owner_action(
-                    action=action,
-                    category=category or 'route_action',
-                    details=details,
-                    status='success'
-                )
+                # Log success (don't let audit failure break the response)
+                try:
+                    log_owner_action(
+                        action=action,
+                        category=category or 'route_action',
+                        details={
+                            'request': request_details,
+                            'response_status': 'success'
+                        },
+                        status='success'
+                    )
+                except Exception as log_err:
+                    logger.warning(f"Audit log failed silently for {action}: {log_err}")
 
                 return result
 
             except Exception as e:
                 # Log failure
-                log_owner_action(
-                    action=action,
-                    category=category or 'route_action',
-                    details={
-                        'request': request_details,
-                        'error': str(e),
-                        'error_type': type(e).__name__
-                    },
-                    status='failure',
-                    failure_reason=str(e)
-                )
-                # Re-raise the exception
+                try:
+                    log_owner_action(
+                        action=action,
+                        category=category or 'route_action',
+                        details={
+                            'request': request_details,
+                            'error': str(e)[:500],
+                            'error_type': type(e).__name__
+                        },
+                        status='failure',
+                        failure_reason=str(e)[:255]
+                    )
+                except Exception as log_err:
+                    logger.warning(f"Audit log failed silently for {action}: {log_err}")
+
+                # Re-raise the original exception
                 raise
 
         return decorated_function

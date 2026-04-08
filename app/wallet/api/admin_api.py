@@ -1,9 +1,10 @@
 """
 app/wallet/api/admin_api.py
 Admin API endpoints for wallet management.
+Uses UUID-based user identification for external exposure.
 """
 
-from flask import Blueprint, request, jsonify, current_app, render_template
+from flask import Blueprint, request, jsonify, current_app, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
 from decimal import Decimal
 from datetime import datetime
@@ -12,11 +13,13 @@ from app.auth.policy import can
 from app.wallet.middleware.kill_switch import wallet_enabled, require_wallet_enabled
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.wallet_admin_service import WalletAdminService
+from app.wallet.services.payout_service import PayoutService
 from app.wallet.exceptions import (
     WalletNotFoundError,
     WalletFrozenError,
     WalletError
 )
+from app.identity.models.user import User
 
 admin_wallet_bp = Blueprint('admin_wallet_api', __name__, url_prefix='/api/admin/wallet')
 
@@ -39,21 +42,14 @@ def require_admin():
 
 
 # ============================================================================
-# EXISTING ENDPOINTS (KEPT AS IS)
+# CORE ENDPOINTS
 # ============================================================================
 
 @admin_wallet_bp.route('/toggle', methods=['POST'])
 @login_required
 @require_admin()
 def toggle_wallet():
-    """
-    Toggle wallet module ON/OFF.
-
-    POST /api/admin/wallet/toggle
-    Body: {"enabled": true} or {"enabled": false}
-
-    This updates the runtime config. To make permanent, also update .env file.
-    """
+    """Toggle wallet module ON/OFF."""
     data = request.get_json()
     enabled = data.get('enabled')
 
@@ -64,20 +60,16 @@ def toggle_wallet():
             "message": "enabled field required (true/false)"
         }), 400
 
-    # Update runtime config
     current_app.config["MODULE_FLAGS"]["wallet"] = enabled
-
-    # Log the change
     current_app.logger.warning(
-        f"Wallet module {'ENABLED' if enabled else 'DISABLED'} by admin user {current_user.id}"
+        f"Wallet module {'ENABLED' if enabled else 'DISABLED'} by admin user {current_user.user_id}"
     )
 
     return jsonify({
         "status": "success",
         "data": {
             "wallet_enabled": enabled,
-            "message": f"Wallet module {'enabled' if enabled else 'disabled'} successfully",
-            "persistent_note": "To make permanent, update ENABLE_WALLET in .env file"
+            "message": f"Wallet module {'enabled' if enabled else 'disabled'} successfully"
         }
     })
 
@@ -85,15 +77,8 @@ def toggle_wallet():
 @admin_wallet_bp.route('/status', methods=['GET'])
 @login_required
 def wallet_status():
-    """
-    Get current wallet module status.
-
-    GET /api/admin/wallet/status
-
-    Accessible to all authenticated users (not just admins) for UI display.
-    """
+    """Get current wallet module status."""
     enabled = wallet_enabled()
-
     return jsonify({
         "status": "success",
         "data": {
@@ -103,55 +88,42 @@ def wallet_status():
     })
 
 
-@admin_wallet_bp.route('/users/<int:user_id>/balance', methods=['GET'])
+@admin_wallet_bp.route('/users/<string:user_id>/balance', methods=['GET'])
 @login_required
 @require_admin()
 def get_user_balance(user_id):
-    """
-    Get balance for any user (admin only).
-
-    GET /api/admin/wallet/users/123/balance
-    """
+    """Get balance for any user by UUID."""
     try:
+        user = User.query.filter_by(user_id=user_id).first_or_404()
         service = WalletService()
-        balance = service.get_balance(user_id)
+        balance = service.get_balance(user.id) # Internal logic uses BigInt id
 
         return jsonify({
             "status": "success",
             "data": {
-                "user_id": user_id,
+                "user_id": user.user_id,
                 "balance": balance
             }
         })
-
     except Exception as e:
         current_app.logger.error(f"Admin balance error for user {user_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": "Unable to retrieve balance"
-        }), 500
+        return jsonify({"status": "error", "message": "Unable to retrieve balance"}), 500
 
 
-@admin_wallet_bp.route('/users/<int:user_id>/transactions', methods=['GET'])
+@admin_wallet_bp.route('/users/<string:user_id>/transactions', methods=['GET'])
 @login_required
 @require_admin()
 def get_user_transactions(user_id):
-    """
-    Get transaction history for any user (admin only).
-
-    GET /api/admin/wallet/users/123/transactions?limit=50&offset=0
-    """
+    """Get transaction history for any user by UUID."""
     try:
-        limit = request.args.get('limit', 50, type=int)
+        user = User.query.filter_by(user_id=user_id).first_or_404()
+        limit = min(request.args.get('limit', 50, type=int), 100)
         offset = request.args.get('offset', 0, type=int)
         transaction_type = request.args.get('type')
 
-        limit = min(limit, 100)
-
         service = WalletService()
         result = service.get_transaction_history(
-            user_id=user_id,
+            user_id=user.id, # Internal logic uses BigInt id
             limit=limit,
             offset=offset,
             transaction_type=transaction_type
@@ -160,432 +132,212 @@ def get_user_transactions(user_id):
         return jsonify({
             "status": "success",
             "data": {
-                "user_id": user_id,
+                "user_id": user.user_id,
                 **result
             }
         })
-
     except Exception as e:
         current_app.logger.error(f"Admin transactions error for user {user_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": "Unable to retrieve transactions"
-        }), 500
+        return jsonify({"status": "error", "message": "Unable to retrieve transactions"}), 500
 
 
 # ============================================================================
-# PHASE 2: NEW ADMIN WALLET MANAGEMENT ENDPOINTS
+# WALLET MANAGEMENT
 # ============================================================================
 
 @admin_wallet_bp.route('/wallets', methods=['GET'])
 @login_required
 @require_admin()
 def list_wallets():
-    """
-    List all wallets with pagination and filters.
-
-    GET /api/admin/wallet/wallets?page=1&per_page=50&search=john&status=active&frozen=true
-    """
+    """List all wallets with pagination and filters."""
     try:
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 50, type=int)
-        search = request.args.get('search', None)
-        status = request.args.get('status', None)
-        verified = request.args.get('verified', None)
-        frozen = request.args.get('frozen', None)
-        sort_by = request.args.get('sort_by', 'created_at')
-        sort_order = request.args.get('sort_order', 'desc')
-
-        # Convert string params to boolean
-        if verified is not None:
-            verified = verified.lower() == 'true'
-        if frozen is not None:
-            frozen = frozen.lower() == 'true'
-
-        # Limit per_page
-        per_page = min(per_page, 100)
+        per_page = min(request.args.get('per_page', 50, type=int), 100)
+        search = request.args.get('search')
+        status = request.args.get('status')
+        verified = request.args.get('verified', '').lower() == 'true' if 'verified' in request.args else None
+        frozen = request.args.get('frozen', '').lower() == 'true' if 'frozen' in request.args else None
 
         admin_service = WalletAdminService()
         result = admin_service.list_all_wallets(
-            page=page,
-            per_page=per_page,
-            search=search,
-            status=status,
-            verified=verified,
-            frozen=frozen,
-            sort_by=sort_by,
-            sort_order=sort_order
+            page=page, per_page=per_page, search=search,
+            status=status, verified=verified, frozen=frozen
         )
 
-        return jsonify({
-            "status": "success",
-            "data": result
-        })
-
+        return jsonify({"status": "success", "data": result})
     except Exception as e:
         current_app.logger.error(f"Error listing wallets: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@admin_wallet_bp.route('/wallets/<int:user_id>', methods=['GET'])
+@admin_wallet_bp.route('/wallets/<string:user_id>', methods=['GET'])
 @login_required
 @require_admin()
 def get_wallet_details(user_id):
-    """
-    Get detailed wallet information for a specific user.
-
-    GET /api/admin/wallet/wallets/123
-    """
+    """Get detailed wallet information by User UUID."""
     try:
+        user = User.query.filter_by(user_id=user_id).first_or_404()
         admin_service = WalletAdminService()
-        result = admin_service.get_wallet_details(user_id)
+        result = admin_service.get_wallet_details(user.id) # Internal BigInt
 
-        return jsonify({
-            "status": "success",
-            "data": result
-        })
-
+        return jsonify({"status": "success", "data": result})
     except WalletNotFoundError as e:
-        return jsonify({
-            "status": "error",
-            "code": "NOT_FOUND",
-            "message": str(e)
-        }), 404
+        return jsonify({"status": "error", "message": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error getting wallet details for user {user_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@admin_wallet_bp.route('/wallets/<int:user_id>/freeze', methods=['POST'])
+@admin_wallet_bp.route('/wallets/<string:user_id>/freeze', methods=['POST'])
 @login_required
 @require_admin()
 def freeze_wallet(user_id):
-    """
-    Freeze a wallet, preventing all transactions.
-
-    POST /api/admin/wallet/wallets/123/freeze
-    Body: {"reason": "Suspicious activity", "notes": "Optional notes"}
-    """
+    """Freeze a wallet using User UUID."""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({
-                "status": "error",
-                "code": "INVALID_REQUEST",
-                "message": "Request body is required"
-            }), 400
-
+        user = User.query.filter_by(user_id=user_id).first_or_404()
+        data = request.get_json() or {}
         reason = data.get('reason', '').strip()
         if not reason:
-            return jsonify({
-                "status": "error",
-                "code": "VALIDATION_ERROR",
-                "message": "Reason is required to freeze a wallet"
-            }), 400
-
-        notes = data.get('notes', '')
+            return jsonify({"status": "error", "message": "Reason required"}), 400
 
         admin_service = WalletAdminService()
         admin_service.freeze_wallet(
-            user_id=user_id,
+            user_id=user.id,
             admin_user_id=current_user.id,
             reason=reason,
-            notes=notes
+            notes=data.get('notes', '')
         )
 
         return jsonify({
             "status": "success",
-            "message": f"Wallet for user {user_id} has been frozen",
-            "data": {
-                "user_id": user_id,
-                "reason": reason,
-                "frozen_at": datetime.utcnow().isoformat()
-            }
+            "message": f"Wallet for user {user_id} frozen",
+            "data": {"user_id": user.user_id, "reason": reason}
         })
-
     except WalletNotFoundError as e:
-        return jsonify({
-            "status": "error",
-            "code": "NOT_FOUND",
-            "message": str(e)
-        }), 404
-    except WalletFrozenError as e:
-        return jsonify({
-            "status": "error",
-            "code": "ALREADY_FROZEN",
-            "message": str(e)
-        }), 409
+        return jsonify({"status": "error", "message": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error freezing wallet for user {user_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@admin_wallet_bp.route('/wallets/<int:user_id>/unfreeze', methods=['POST'])
+@admin_wallet_bp.route('/wallets/<string:user_id>/unfreeze', methods=['POST'])
 @login_required
 @require_admin()
 def unfreeze_wallet(user_id):
-    """
-    Unfreeze a wallet, restoring transaction capabilities.
-
-    POST /api/admin/wallet/wallets/123/unfreeze
-    Body: {"reason": "Issue resolved"}
-    """
+    """Unfreeze a wallet using User UUID."""
     try:
+        user = User.query.filter_by(user_id=user_id).first_or_404()
         data = request.get_json() or {}
-        reason = data.get('reason', '')
-
         admin_service = WalletAdminService()
         admin_service.unfreeze_wallet(
-            user_id=user_id,
+            user_id=user.id,
             admin_user_id=current_user.id,
-            reason=reason
+            reason=data.get('reason', '')
         )
-
-        return jsonify({
-            "status": "success",
-            "message": f"Wallet for user {user_id} has been unfrozen"
-        })
-
+        return jsonify({"status": "success", "message": f"Wallet for user {user_id} unfrozen"})
     except WalletNotFoundError as e:
-        return jsonify({
-            "status": "error",
-            "code": "NOT_FOUND",
-            "message": str(e)
-        }), 404
-    except WalletError as e:
-        return jsonify({
-            "status": "error",
-            "code": "NOT_FROZEN",
-            "message": str(e)
-        }), 409
+        return jsonify({"status": "error", "message": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error unfreezing wallet for user {user_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@admin_wallet_bp.route('/wallets/<int:user_id>/adjust', methods=['POST'])
+@admin_wallet_bp.route('/wallets/<string:user_id>/adjust', methods=['POST'])
 @login_required
 @require_admin()
 def adjust_balance(user_id):
-    """
-    Manually adjust wallet balance.
-
-    POST /api/admin/wallet/wallets/123/adjust
-    Body: {
-        "amount": "100.00",
-        "currency": "USD",
-        "reason": "Refund for overcharge",
-        "notes": "Customer was charged twice"
-    }
-
-    Note: Positive amount adds funds, negative amount deducts funds.
-    """
+    """Manually adjust wallet balance using User UUID."""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({
-                "status": "error",
-                "code": "INVALID_REQUEST",
-                "message": "Request body is required"
-            }), 400
-
-        amount_str = data.get('amount')
-        currency = data.get('currency', '').upper()
+        user = User.query.filter_by(user_id=user_id).first_or_404()
+        data = request.get_json() or {}
+        amount = Decimal(str(data.get('amount', '0')))
+        currency = data.get('currency', 'USD').upper()
         reason = data.get('reason', '').strip()
-        notes = data.get('notes', '')
-
-        if not amount_str:
-            return jsonify({
-                "status": "error",
-                "code": "VALIDATION_ERROR",
-                "message": "Amount is required"
-            }), 400
 
         if not reason:
-            return jsonify({
-                "status": "error",
-                "code": "VALIDATION_ERROR",
-                "message": "Reason is required for balance adjustment"
-            }), 400
-
-        try:
-            amount = Decimal(str(amount_str))
-        except:
-            return jsonify({
-                "status": "error",
-                "code": "VALIDATION_ERROR",
-                "message": "Invalid amount format"
-            }), 400
+            return jsonify({"status": "error", "message": "Reason required"}), 400
 
         admin_service = WalletAdminService()
         result = admin_service.adjust_balance(
-            user_id=user_id,
+            user_id=user.id,
             admin_user_id=current_user.id,
             amount=amount,
             currency=currency,
             reason=reason,
-            notes=notes
+            notes=data.get('notes', '')
         )
 
-        return jsonify({
-            "status": "success",
-            "message": f"Balance adjusted by {amount} {currency}",
-            "data": result
-        })
-
+        return jsonify({"status": "success", "data": result})
     except WalletNotFoundError as e:
-        return jsonify({
-            "status": "error",
-            "code": "NOT_FOUND",
-            "message": str(e)
-        }), 404
-    except WalletFrozenError as e:
-        return jsonify({
-            "status": "error",
-            "code": "WALLET_FROZEN",
-            "message": str(e)
-        }), 403
-    except ValueError as e:
-        return jsonify({
-            "status": "error",
-            "code": "VALIDATION_ERROR",
-            "message": str(e)
-        }), 400
+        return jsonify({"status": "error", "message": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error adjusting balance for user {user_id}: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @admin_wallet_bp.route('/stats/detailed', methods=['GET'])
 @login_required
 @require_admin()
 def get_detailed_wallet_stats():
-    """
-    Get comprehensive wallet statistics for admin dashboard.
-
-    GET /api/admin/wallet/stats/detailed
-    """
+    """Get comprehensive system statistics."""
     try:
         admin_service = WalletAdminService()
-        result = admin_service.get_wallet_stats()
-
-        return jsonify({
-            "status": "success",
-            "data": result
-        })
-
+        return jsonify({"status": "success", "data": admin_service.get_wallet_stats()})
     except Exception as e:
         current_app.logger.error(f"Error getting wallet stats: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @admin_wallet_bp.route('/control', methods=['GET'])
 @login_required
 @require_admin()
 def wallet_control():
-    """Render wallet control page (kill switch)."""
+    """Render wallet control page."""
     return render_template('admin/wallet_control.html')
 
 
 # ============================================================================
-# EXISTING STATS ENDPOINT (UPDATED TO USE NEW SERVICE)
+# PAYOUT MANAGEMENT
 # ============================================================================
 
-@admin_wallet_bp.route('/stats', methods=['GET'])
+@admin_wallet_bp.route('/payouts', methods=['GET'], endpoint="admin_list_payouts")
 @login_required
 @require_admin()
-def get_wallet_stats():
-    """
-    Get wallet system statistics (admin only).
+def admin_list_payouts():
+    """List all payout requests for admin review."""
+    status = request.args.get('status')
+    limit = request.args.get('limit', 50, type=int)
 
-    GET /api/admin/wallet/stats
+    payout_service = PayoutService()
+    requests = payout_service.list_requests(status=status, limit=limit)
 
-    Note: For detailed statistics, use /stats/detailed
-    """
+    return render_template('admin_payouts.html', requests=requests)
+
+
+@admin_wallet_bp.route('/payouts/<int:req_id>/process', methods=['POST'], endpoint="admin_process_payout")
+@login_required
+@require_admin()
+def admin_process_payout(req_id):
+    """Process a payout request (approve/reject/mark_paid)."""
+    action = request.form.get('action')
+    notes = request.form.get('notes', '')
+
+    payout_service = PayoutService()
+
     try:
-        from app.wallet.models import Wallet as WalletModel, Transaction as TransactionModel
-        from datetime import datetime, timedelta
-
-        today = datetime.utcnow().date()
-        today_start = datetime(today.year, today.month, today.day)
-
-        # Total wallets
-        total_wallets = WalletModel.query.count()
-
-        # Total balances
-        from app.extensions import db
-        result = db.session.query(
-            db.func.sum(WalletModel.balance_home).label('total_home'),
-            db.func.sum(WalletModel.balance_local).label('total_local')
-        ).first()
-
-        total_home = result.total_home or 0
-        total_local = result.total_local or 0
-
-        # Active wallets today (with transactions)
-        active_wallets = db.session.query(
-            TransactionModel.wallet_id
-        ).filter(
-            TransactionModel.created_at >= today_start
-        ).distinct().count()
-
-        # Transactions today
-        transactions_today = TransactionModel.query.filter(
-            TransactionModel.created_at >= today_start
-        ).count()
-
-        # Volume today
-        volume_result = db.session.query(
-            db.func.sum(TransactionModel.amount).filter(
-                TransactionModel.type.in_(['deposit', 'send'])
-            ).label('volume_home')
-        ).filter(
-            TransactionModel.created_at >= today_start,
-            TransactionModel.currency == 'USD'
-        ).first()
-
-        return jsonify({
-            "status": "success",
-            "data": {
-                "total_wallets": total_wallets,
-                "total_balance_home": str(total_home),
-                "total_balance_local": str(total_local),
-                "active_wallets_today": active_wallets,
-                "transactions_today": transactions_today,
-                "volume_today_home": str(volume_result.volume_home or 0),
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        })
-
+        if action == 'approve':
+            payout_service.approve_request(req_id, current_user.id, notes)
+            flash(f"Payout request #{req_id} approved.", "success")
+        elif action == 'reject':
+            reason = notes or "Rejected by admin"
+            payout_service.reject_request(req_id, current_user.id, reason)
+            flash(f"Payout request #{req_id} rejected.", "warning")
+        elif action == 'mark_paid':
+            payout_service.mark_as_paid(req_id, current_user.id, notes=notes)
+            flash(f"Payout request #{req_id} marked as paid.", "success")
+        else:
+            flash("Invalid action specified.", "danger")
     except Exception as e:
-        current_app.logger.error(f"Wallet stats error: {e}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": "Unable to retrieve statistics"
-        }), 500
+        flash(f"Error processing payout: {str(e)}", "danger")
+
+    return redirect(url_for('admin_wallet_api.admin_list_payouts'))

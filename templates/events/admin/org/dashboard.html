@@ -10,7 +10,7 @@
             <p class="lead">Manage events for organizations you administer</p>
         </div>
     </div>
-    
+
     {% for org in orgs_managed %}
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
@@ -23,13 +23,13 @@
                     <p><strong>Events:</strong> {{ org.event_count }} total</p>
                 </div>
                 <div class="col-md-6 text-end">
-                    <a href="{{ url_for('events.create_event') }}?org_id={{ org.organisation.id }}" 
+                    <a href="{{ url_for('events.create_event') }}?org_id={{ org.organisation.id }}"
                        class="btn btn-success">
                         <i class="fas fa-plus"></i> Create Event for {{ org.organisation.legal_name }}
                     </a>
                 </div>
             </div>
-            
+
             {% if org.events %}
             <div class="table-responsive">
                 <table class="table table-hover">
@@ -58,13 +58,13 @@
                             <td>{{ event.start_date[:10] if event.start_date else 'TBD' }}</td>
                             <td>{{ event.registration_count or 0 }}</td>
                             <td>
-                                <a href="{{ url_for('events.landing', event_slug=event.slug) }}" 
+                                <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
                                    class="btn btn-sm btn-outline-primary">View</a>
-                                <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" 
+                                <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}"
                                    class="btn btn-sm btn-outline-secondary">Edit</a>
-                                <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" 
+                                <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}"
                                    class="btn btn-sm btn-outline-info">Attendees</a>
-                                <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}" 
+                                <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}"
                                    class="btn btn-sm btn-outline-warning">Staff</a>
                             </td>
                         </tr>

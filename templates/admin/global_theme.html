@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+
+{% block title %}Global Theme Settings - Admin{% endblock %}
+
+{% block styles %}
+<style>
+    .theme-preview {
+        position: sticky;
+        top: 20px;
+        background: var(--bg-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+        overflow: hidden;
+    }
+    .preview-header {
+        background: var(--brand-primary);
+        color: white;
+        padding: 15px;
+        text-align: center;
+    }
+    .preview-body {
+        padding: 20px;
+    }
+    .preview-card {
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-md);
+        padding: 15px;
+        margin-top: 15px;
+    }
+    .color-preview {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-md);
+        border: 2px solid var(--border-medium);
+        cursor: pointer;
+    }
+    .setting-group {
+        margin-bottom: 25px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border-light);
+    }
+    .setting-label {
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--text-primary);
+    }
+    .setting-desc {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <h1 class="h2 mb-4">🎨 Global Theme Settings</h1>
+            <p class="text-muted mb-4">
+                Control the global appearance of the entire platform.
+                These settings affect all users and cannot be overridden by individual preferences.
+            </p>
+
+            <form id="themeForm">
+                <!-- Brand Colors -->
+                <div class="setting-group">
+                    <h3 class="h5 mb-3">Brand Colors</h3>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="setting-label">Primary Color</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="primaryColor" name="primary" class="form-control form-control-color w-auto" style="width: 60px;">
+                                <input type="text" id="primaryColorHex" class="form-control" style="font-family: monospace;">
+                            </div>
+                            <div class="setting-desc">Main brand color (currently #2d5a2d)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">Primary Dark</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="primaryDarkColor" name="primary_dark" class="form-control form-control-color w-auto" style="width: 60px;">
+                                <input type="text" id="primaryDarkColorHex" class="form-control" style="font-family: monospace;">
+                            </div>
+                            <div class="setting-desc">Darker variant for hover states</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="setting-label">Accent Color</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="accentColor" name="accent" class="form-control form-control-color w-auto" style="width: 60px;">
+                                <input type="text" id="accentColorHex" class="form-control" style="font-family: monospace;">
+                            </div>
+                            <div class="setting-desc">Secondary accent color (gold/warning)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Typography -->
+                <div class="setting-group">
+                    <h3 class="h5 mb-3">Typography</h3>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="setting-label">Heading Font</label>
+                            <select id="fontHeading" name="font_heading" class="form-select">
+                                <option value="Montserrat">Montserrat</option>
+                                <option value="Poppins">Poppins</option>
+                                <option value="Inter">Inter</option>
+                                <option value="Roboto">Roboto</option>
+                                <option value="Playfair Display">Playfair Display</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">Body Font</label>
+                            <select id="fontBody" name="font_body" class="form-select">
+                                <option value="Open Sans">Open Sans</option>
+                                <option value="Inter">Inter</option>
+                                <option value="Roboto">Roboto</option>
+                                <option value="Lato">Lato</option>
+                                <option value="System UI">System UI Default</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Layout -->
+                <div class="setting-group">
+                    <h3 class="h5 mb-3">Layout</h3>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="setting-label">Border Radius</label>
+                            <select id="borderRadius" name="border_radius" class="form-select">
+                                <option value="4px">Small (4px)</option>
+                                <option value="8px">Medium (8px)</option>
+                                <option value="12px">Large (12px)</option>
+                                <option value="16px">Extra Large (16px)</option>
+                                <option value="24px">Pill (24px)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="setting-label">Container Width</label>
+                            <select id="containerWidth" name="container_width" class="form-select">
+                                <option value="1140px">Default (1140px)</option>
+                                <option value="1280px">Wide (1280px)</option>
+                                <option value="1440px">Extra Wide (1440px)</option>
+                                <option value="100%">Full Width</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="setting-label">Shadow Intensity</label>
+                            <select id="shadowIntensity" name="shadow_intensity" class="form-select">
+                                <option value="none">None</option>
+                                <option value="light">Light</option>
+                                <option value="medium">Medium</option>
+                                <option value="heavy">Heavy</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="setting-label">Header Style</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="header_style" id="headerGradient" value="gradient">
+                                <label class="form-check-label" for="headerGradient">Gradient</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="header_style" id="headerSolid" value="solid">
+                                <label class="form-check-label" for="headerSolid">Solid</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="header_style" id="headerTransparent" value="transparent">
+                                <label class="form-check-label" for="headerTransparent">Transparent</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Features -->
+                <div class="setting-group">
+                    <h3 class="h5 mb-3">Features</h3>
+
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="enableDarkMode" name="enable_dark_mode">
+                        <label class="form-check-label" for="enableDarkMode">
+                            Allow users to use Dark Mode
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="enableUserOverrides" name="enable_user_overrides">
+                        <label class="form-check-label" for="enableUserOverrides">
+                            Allow users to customize their experience
+                        </label>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-3 mt-4">
+                    <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+                    <button type="button" id="resetGlobalTheme" class="btn btn-outline-secondary">↺ Reset to Defaults</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="theme-preview">
+                <div class="preview-header">
+                    <strong>Live Preview</strong>
+                </div>
+                <div class="preview-body">
+                    <h5>Sample Heading</h5>
+                    <p>This is how your theme will look. Changes appear instantly.</p>
+
+                    <div class="preview-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Sample Card</strong>
+                                <div class="small text-muted">With some content</div>
+                            </div>
+                            <button class="btn btn-primary btn-sm">Action</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <span class="badge bg-primary">Primary Badge</span>
+                        <span class="badge bg-success">Success</span>
+                        <span class="badge bg-warning">Warning</span>
+                        <span class="badge bg-danger">Danger</span>
+                    </div>
+
+                    <div class="mt-3">
+                        <button class="btn btn-primary w-100">Primary Button</button>
+                        <button class="btn btn-outline-primary w-100 mt-2">Outline Button</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load current theme settings
+async function loadThemeSettings() {
+    try {
+        const response = await fetch('/theme/api/global');
+        const settings = await response.json();
+
+        if (Object.keys(settings).length > 0) {
+            // Apply to form
+            document.getElementById('primaryColor').value = settings.primary || '#2d5a2d';
+            document.getElementById('primaryColorHex').value = settings.primary || '#2d5a2d';
+            document.getElementById('primaryDarkColor').value = settings.primary_dark || '#1a3a1a';
+            document.getElementById('primaryDarkColorHex').value = settings.primary_dark || '#1a3a1a';
+            document.getElementById('accentColor').value = settings.accent || '#ffcc00';
+            document.getElementById('accentColorHex').value = settings.accent || '#ffcc00';
+
+            document.getElementById('fontHeading').value = settings.font_heading || 'Montserrat';
+            document.getElementById('fontBody').value = settings.font_body || 'Open Sans';
+            document.getElementById('borderRadius').value = settings.border_radius || '8px';
+            document.getElementById('containerWidth').value = settings.container_width || '1140px';
+            document.getElementById('shadowIntensity').value = settings.shadow_intensity || 'medium';
+
+            const headerStyle = settings.header_style || 'gradient';
+            const headerRadio = document.getElementById(`header${headerStyle.charAt(0).toUpperCase() + headerStyle.slice(1)}`);
+            if (headerRadio) headerRadio.checked = true;
+
+            document.getElementById('enableDarkMode').checked = settings.enable_dark_mode !== false;
+            document.getElementById('enableUserOverrides').checked = settings.enable_user_overrides !== false;
+        }
+
+        // Apply preview
+        updatePreview();
+    } catch (error) {
+        console.error('Failed to load theme settings:', error);
+    }
+}
+
+// Update live preview
+function updatePreview() {
+    const primary = document.getElementById('primaryColor').value;
+    const primaryDark = document.getElementById('primaryDarkColor').value;
+    const accent = document.getElementById('accentColor').value;
+    const borderRadius = document.getElementById('borderRadius').value;
+    const fontHeading = document.getElementById('fontHeading').value;
+    const fontBody = document.getElementById('fontBody').value;
+
+    document.documentElement.style.setProperty('--brand-primary', primary);
+    document.documentElement.style.setProperty('--brand-primary-dark', primaryDark);
+    document.documentElement.style.setProperty('--brand-accent', accent);
+    document.documentElement.style.setProperty('--radius-md', borderRadius);
+    document.documentElement.style.setProperty('--font-family-heading', `${fontHeading}, sans-serif`);
+    document.documentElement.style.setProperty('--font-family-body', `${fontBody}, sans-serif`);
+
+    // Update direct elements in preview
+    const previewHeader = document.querySelector('.preview-header');
+    if (previewHeader) previewHeader.style.backgroundColor = primary;
+}
+
+// Save theme settings
+document.getElementById('themeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const settings = {
+        primary: document.getElementById('primaryColor').value,
+        primary_dark: document.getElementById('primaryDarkColor').value,
+        accent: document.getElementById('accentColor').value,
+        font_heading: document.getElementById('fontHeading').value,
+        font_body: document.getElementById('fontBody').value,
+        border_radius: document.getElementById('borderRadius').value,
+        container_width: document.getElementById('containerWidth').value,
+        shadow_intensity: document.getElementById('shadowIntensity').value,
+        header_style: document.querySelector('input[name="header_style"]:checked')?.value || 'gradient',
+        enable_dark_mode: document.getElementById('enableDarkMode').checked,
+        enable_user_overrides: document.getElementById('enableUserOverrides').checked
+    };
+
+    const saveBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    saveBtn.disabled = true;
+
+    try {
+        const response = await fetch('/theme/admin/global/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify(settings)
+        });
+
+        if (response.ok) {
+            alert('Theme settings saved successfully!');
+            location.reload();
+        } else {
+            const error = await response.json();
+            alert('Error: ' + (error.error || 'Failed to save'));
+        }
+    } catch (error) {
+        alert('Error saving theme: ' + error.message);
+    } finally {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+    }
+});
+
+// Reset to defaults
+document.getElementById('resetGlobalTheme').addEventListener('click', async () => {
+    if (confirm('Reset all theme settings to default values?')) {
+        const defaults = {
+            primary: '#2d5a2d',
+            primary_dark: '#1a3a1a',
+            accent: '#ffcc00',
+            font_heading: 'Montserrat',
+            font_body: 'Open Sans',
+            border_radius: '8px',
+            container_width: '1140px',
+            shadow_intensity: 'medium',
+            header_style: 'gradient',
+            enable_dark_mode: true,
+            enable_user_overrides: true
+        };
+
+        // Apply to form
+        document.getElementById('primaryColor').value = defaults.primary;
+        document.getElementById('primaryColorHex').value = defaults.primary;
+        document.getElementById('primaryDarkColor').value = defaults.primary_dark;
+        document.getElementById('primaryDarkColorHex').value = defaults.primary_dark;
+        document.getElementById('accentColor').value = defaults.accent;
+        document.getElementById('accentColorHex').value = defaults.accent;
+        document.getElementById('fontHeading').value = defaults.font_heading;
+        document.getElementById('fontBody').value = defaults.font_body;
+        document.getElementById('borderRadius').value = defaults.border_radius;
+        document.getElementById('containerWidth').value = defaults.container_width;
+        document.getElementById('shadowIntensity').value = defaults.shadow_intensity;
+        document.getElementById(`header${defaults.header_style.charAt(0).toUpperCase() + defaults.header_style.slice(1)}`).checked = true;
+        document.getElementById('enableDarkMode').checked = defaults.enable_dark_mode;
+        document.getElementById('enableUserOverrides').checked = defaults.enable_user_overrides;
+
+        updatePreview();
+    }
+});
+
+// Color picker sync
+document.getElementById('primaryColor').addEventListener('input', (e) => {
+    document.getElementById('primaryColorHex').value = e.target.value;
+    updatePreview();
+});
+document.getElementById('primaryColorHex').addEventListener('input', (e) => {
+    document.getElementById('primaryColor').value = e.target.value;
+    updatePreview();
+});
+document.getElementById('primaryDarkColor').addEventListener('input', (e) => {
+    document.getElementById('primaryDarkColorHex').value = e.target.value;
+    updatePreview();
+});
+document.getElementById('primaryDarkColorHex').addEventListener('input', (e) => {
+    document.getElementById('primaryDarkColor').value = e.target.value;
+    updatePreview();
+});
+document.getElementById('accentColor').addEventListener('input', (e) => {
+    document.getElementById('accentColorHex').value = e.target.value;
+    updatePreview();
+});
+document.getElementById('accentColorHex').addEventListener('input', (e) => {
+    document.getElementById('accentColor').value = e.target.value;
+    updatePreview();
+});
+
+// Other preview updates
+document.querySelectorAll('select, input[type="radio"]').forEach(el => {
+    el.addEventListener('change', updatePreview);
+});
+
+// Load settings on page load
+loadThemeSettings();
+</script>
+{% endblock %}

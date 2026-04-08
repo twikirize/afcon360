@@ -25,6 +25,7 @@ from app.extensions import db
 from app.identity.models.organisation_member import OrgUserRole, OrganisationMember
 from app.identity.models.roles_permission import Role
 from app.identity.models.user import UserRole
+from app.utils.transactions import db_transaction
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,13 @@ ROLE_SUPER_ADMIN = "super_admin"
 ROLE_ADMIN = "admin"
 ROLE_AUDITOR = "auditor"                     # NEW: read-only audit access
 ROLE_COMPLIANCE_OFFICER = "compliance_officer"  # NEW: AML review access
+ROLE_MODERATOR = "moderator"               # NEW: content moderation
+ROLE_SUPPORT = "support"                   # NEW: customer support
+ROLE_EVENT_MANAGER = "event_manager"         # NEW: event management
+ROLE_TRANSPORT_ADMIN = "transport_admin"     # NEW: transport management
+ROLE_WALLET_ADMIN = "wallet_admin"         # NEW: wallet management
+ROLE_ACCOMMODATION_ADMIN = "accommodation_admin"  # NEW: accommodation management
+ROLE_TOURISM_ADMIN = "tourism_admin"       # NEW: tourism management
 ROLE_USER = "user"
 
 # Org roles
@@ -52,16 +60,30 @@ ALL_GLOBAL_ROLES = [
     ROLE_ADMIN,
     ROLE_AUDITOR,
     ROLE_COMPLIANCE_OFFICER,
+    ROLE_MODERATOR,
+    ROLE_SUPPORT,
+    ROLE_EVENT_MANAGER,
+    ROLE_TRANSPORT_ADMIN,
+    ROLE_WALLET_ADMIN,
+    ROLE_ACCOMMODATION_ADMIN,
+    ROLE_TOURISM_ADMIN,
     ROLE_USER,
 ]
 
 # Role → permissions mapping
 ROLE_PERMISSIONS = {
-    ROLE_OWNER: ["audit:read", "audit:export", "audit:delete", "aml:review", "aml:resolve"],
-    ROLE_SUPER_ADMIN: ["audit:read", "audit:export", "aml:review"],
-    ROLE_ADMIN: ["audit:read", "audit:export"],
+    ROLE_OWNER: ["audit:read", "audit:export", "audit:delete", "aml:review", "aml:resolve", "system:admin", "impersonate:any"],
+    ROLE_SUPER_ADMIN: ["audit:read", "audit:export", "aml:review", "system:admin"],
+    ROLE_ADMIN: ["audit:read", "audit:export", "content:manage"],
     ROLE_AUDITOR: ["audit:read"],
     ROLE_COMPLIANCE_OFFICER: ["audit:read", "aml:review", "aml:resolve"],
+    ROLE_MODERATOR: ["content:moderate", "audit:read"],
+    ROLE_SUPPORT: ["support:tickets", "user:view", "audit:read"],
+    ROLE_EVENT_MANAGER: ["events:manage", "events:approve", "events:analytics"],
+    ROLE_TRANSPORT_ADMIN: ["transport:manage", "transport:analytics"],
+    ROLE_WALLET_ADMIN: ["wallet:manage", "transactions:view", "wallet:approve"],
+    ROLE_ACCOMMODATION_ADMIN: ["accommodation:manage", "accommodation:approve"],
+    ROLE_TOURISM_ADMIN: ["tourism:manage", "content:manage"],
     ROLE_USER: [],
 }
 
@@ -148,29 +170,14 @@ def assign_global_role(
     if existing:
         return existing
 
-    ur = UserRole(
-        user_id=user_id,
-        role_id=role.id,
-        assigned_by=assigned_by_id,
-    )
-    try:
+    with db_transaction(f"Assign global role '{role_name}' to user {user_id}"):
+        ur = UserRole(
+            user_id=user_id,
+            role_id=role.id,
+            assigned_by=assigned_by_id,
+        )
         db.session.add(ur)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        log.error("Failed to assign global role %s to user %s: %s", role_name, user_id, e)
-        raise
-
-    log.info(
-        "global_role_assigned",
-        extra={
-            "user_id":     user_id,
-            "role":        role_name,
-            "assigned_by": assigned_by_id,
-        },
-    )
-
-    return ur
+        return ur
 
 
 def revoke_global_role(
@@ -200,24 +207,9 @@ def revoke_global_role(
     if not ur:
         return False
 
-    try:
+    with db_transaction(f"Revoke global role '{role_name}' from user {user_id}"):
         db.session.delete(ur)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        log.error("Failed to revoke global role %s from user %s: %s", role_name, user_id, e)
-        raise
-
-    log.info(
-        "global_role_revoked",
-        extra={
-            "user_id":    user_id,
-            "role":       role_name,
-            "revoked_by": revoked_by_id,
-        },
-    )
-
-    return True
+        return True
 
 
 # ---------------------------------------------------------------------------

@@ -12,18 +12,19 @@
                     <h4 class="mb-0">Complete Your Booking</h4>
                 </div>
                 <div class="card-body">
-                    <form method="POST" id="checkout-form">
+                    <form method="POST" id="checkout-form" action="{{ url_for('accommodation.guest.checkout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <!-- Guest Information -->
                         <h5 class="mb-3">Guest Details</h5>
                         <div class="row mb-4">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Full Name *</label>
-                                <input type="text" name="guest_name" class="form-control" 
+                                <input type="text" name="guest_name" class="form-control"
                                        value="{{ current_user.username or '' }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Email *</label>
-                                <input type="email" name="guest_email" class="form-control" 
+                                <input type="email" name="guest_email" class="form-control"
                                        value="{{ current_user.email }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
@@ -31,7 +32,7 @@
                                 <input type="tel" name="guest_phone" class="form-control">
                             </div>
                         </div>
-                        
+
                         <!-- Booking Details -->
                         <h5 class="mb-3">Booking Details</h5>
                         <div class="bg-light p-3 rounded mb-4">
@@ -53,31 +54,31 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Hidden fields -->
                         <input type="hidden" name="property_id" value="{{ booking.property_id }}">
                         <input type="hidden" name="host_user_id" value="{{ booking.host_user_id }}">
                         <input type="hidden" name="check_in" value="{{ booking.check_in }}">
                         <input type="hidden" name="check_out" value="{{ booking.check_out }}">
                         <input type="hidden" name="num_guests" value="{{ booking.num_guests }}">
-                        
+
                         <!-- Special Requests -->
                         <h5 class="mb-3">Special Requests</h5>
                         <div class="mb-4">
-                            <textarea name="special_requests" class="form-control" rows="3" 
+                            <textarea name="special_requests" class="form-control" rows="3"
                                       placeholder="Any special requests? (e.g., late check-in, dietary requirements)"></textarea>
                             <small class="text-muted">We'll pass these on to the host</small>
                         </div>
-                        
+
                         <!-- Terms -->
                         <div class="form-check mb-4">
                             <input type="checkbox" class="form-check-input" id="terms" required>
                             <label class="form-check-label" for="terms">
-                                I agree to the <a href="#" target="_blank">terms and conditions</a> and 
+                                I agree to the <a href="#" target="_blank">terms and conditions</a> and
                                 <a href="#" target="_blank">cancellation policy</a>
                             </label>
                         </div>
-                        
+
                         <button type="submit" class="btn btn-primary btn-lg w-100" id="submit-btn">
                             Confirm and Pay
                         </button>
@@ -85,7 +86,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Price Summary -->
         <div class="col-lg-4">
             <div class="card shadow-sm sticky-top" style="top: 20px;">

@@ -35,7 +35,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-4 mb-3">
             <div class="card h-100 text-center border-success">
                 <div class="card-body">
@@ -48,7 +48,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-4 mb-3">
             <div class="card h-100 text-center border-warning">
                 <div class="card-body">
@@ -82,7 +82,7 @@
                                 <span class="badge bg-{{ service.status_color|default('primary') }}">
                                     {{ service.status|default('Available') }}
                                 </span>
-                                <a href="{{ url_for('transport.service_detail', service_id=service.id) }}" 
+                                <a href="{{ url_for('transport.service_detail', service_id=service.id) }}"
                                    class="btn btn-sm btn-outline-primary">
                                     View Details
                                 </a>

@@ -489,4 +489,3 @@ def register_commands(app) -> None:
             roles       = {r.name: r for r in Role.query.all()}
             permissions = {p.name: p for p in Permission.query.all()}
             seed_role_permissions(roles, permissions)
-

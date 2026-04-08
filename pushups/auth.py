@@ -21,6 +21,3 @@ def login():
 def logout():
     print("Logged out")
     session.clear()
-
-
-

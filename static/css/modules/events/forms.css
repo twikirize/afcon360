@@ -5,71 +5,74 @@
 .event-form-container {
     max-width: 800px;
     margin: 0 auto;
-    padding: 30px;
-    background-color: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    padding: var(--space-7);
+    background-color: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-light);
 }
 
 .form-step-indicator {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 30px;
+    margin-bottom: var(--space-7);
 }
 
 .step {
     flex: 1;
     text-align: center;
-    padding-bottom: 10px;
-    border-bottom: 3px solid #eee;
-    font-weight: bold;
-    color: #ccc;
-    font-size: 0.9rem;
+    padding-bottom: var(--space-2);
+    border-bottom: 3px solid var(--border-light);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-disabled);
+    font-size: var(--font-size-sm);
 }
 
 .step.active {
-    border-bottom-color: #007bff;
-    color: #007bff;
+    border-bottom-color: var(--brand-primary);
+    color: var(--brand-primary);
 }
 
 .step.completed {
-    border-bottom-color: #28a745;
-    color: #28a745;
+    border-bottom-color: var(--success);
+    color: var(--success);
 }
 
 .form-group-custom {
-    margin-bottom: 20px;
+    margin-bottom: var(--space-5);
 }
 
 .form-label-custom {
-    font-weight: 600;
-    color: #444;
-    margin-bottom: 8px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-2);
     display: block;
 }
 
 .form-input-custom {
     width: 100%;
-    padding: 12px 15px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
 }
 
 .form-input-custom:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb), 0.1);
     outline: none;
 }
 
 /* Ticket Tier Adder Styling */
 .ticket-tier-row {
     display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
-    padding: 15px;
-    background-color: #f8f9fa;
-    border-radius: 8px;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: var(--space-4);
+    background-color: var(--bg-surface-alt);
+    border-radius: var(--radius-md);
     align-items: flex-end;
 }
 
@@ -78,22 +81,22 @@
 }
 
 .btn-remove-tier {
-    color: #dc3545;
+    color: var(--danger);
     background: none;
     border: none;
-    padding: 10px;
-    font-size: 1.2rem;
+    padding: var(--space-2);
+    font-size: var(--font-size-xl);
 }
 
 .btn-remove-tier:hover {
-    color: #a71d2a;
+    color: var(--danger-rgb);
 }
 
 /* Submit Section */
 .form-footer {
-    margin-top: 40px;
-    padding-top: 20px;
-    border-top: 1px solid #eee;
+    margin-top: var(--space-9);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border-light);
     display: flex;
     justify-content: space-between;
 }

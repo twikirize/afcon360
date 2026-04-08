@@ -418,10 +418,10 @@ JSON fields for flexible data storage
 Query Examples
 sql
 -- Efficient date range availability check
-SELECT * FROM accommodation_bookings 
-WHERE property_id = 1 
+SELECT * FROM accommodation_bookings
+WHERE property_id = 1
   AND status IN ('confirmed', 'checked_in')
-  AND check_in < '2026-04-13' 
+  AND check_in < '2026-04-13'
   AND check_out > '2026-04-10';
 🐛 Troubleshooting
 Common Issues
@@ -443,8 +443,8 @@ SELECT * FROM accommodation_bookings WHERE guest_user_id = 1;
 SELECT * FROM accommodation_bookings WHERE status = 'pending';
 
 -- Check expired pending bookings
-SELECT * FROM accommodation_bookings 
-WHERE status = 'pending' 
+SELECT * FROM accommodation_bookings
+WHERE status = 'pending'
   AND expires_at < NOW();
 Debug Mode
 Enable debug logging:

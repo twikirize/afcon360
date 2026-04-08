@@ -1,121 +1,160 @@
-/* static/css/modules/events/dashboard.css */
-
-/* Shared Styles for Attendee, Organizer, and Service Provider Dashboards */
+/* ============================================
+   DASHBOARD STYLES
+   Refactored to use CSS variables
+   ============================================ */
 
 .dashboard-summary-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    margin-bottom: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-7);
 }
 
 .dashboard-summary-card {
-    flex: 1;
-    min-width: 200px;
-    padding: 20px;
-    border-radius: 10px;
-    background-color: #fff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    border: 1px solid #eee;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
+  flex: 1;
+  min-width: 200px;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.dashboard-summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .dashboard-summary-card h3 {
-    font-size: 2.5rem;
-    font-weight: 800;
-    margin-bottom: 5px;
-    color: #007bff;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-extrabold);
+  margin-bottom: var(--space-2);
+  color: var(--brand-primary);
 }
 
 .dashboard-summary-card p {
-    font-size: 0.9rem;
-    color: #777;
-    margin-bottom: 0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-bottom: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .dashboard-content-card {
-    background-color: #fff;
-    border-radius: 10px;
-    border: 1px solid #eee;
-    overflow: hidden;
-    margin-bottom: 20px;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  overflow: hidden;
+  margin-bottom: var(--space-5);
 }
 
 .dashboard-content-header {
-    padding: 15px 20px;
-    background-color: #fcfcfc;
-    border-bottom: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--bg-surface-alt);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .dashboard-content-header h4 {
-    font-size: 1.1rem;
-    font-weight: bold;
-    margin-bottom: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: 0;
+  color: var(--text-primary);
 }
 
 .dashboard-content-body {
-    padding: 20px;
+  padding: var(--space-5);
 }
 
 /* Event mini-cards for dashboard lists */
 .dashboard-event-item {
-    padding: 15px;
-    border-bottom: 1px solid #f0f0f0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: background-color 0.2s;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color var(--transition-fast);
 }
 
 .dashboard-event-item:hover {
-    background-color: #f9f9f9;
+  background-color: var(--bg-surface-alt);
 }
 
 .dashboard-event-item:last-child {
-    border-bottom: none;
+  border-bottom: none;
 }
 
 .dashboard-event-info h6 {
-    margin-bottom: 5px;
-    font-weight: bold;
+  margin-bottom: var(--space-1);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
 }
 
 .dashboard-event-info p {
-    font-size: 0.8rem;
-    color: #888;
-    margin-bottom: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-bottom: 0;
 }
 
 /* Wallet widget in dashboards */
 .dashboard-wallet-widget {
-    background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-    color: white;
-    padding: 20px;
-    border-radius: 10px;
-    margin-bottom: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  background: linear-gradient(135deg, var(--success) 0%, var(--brand-primary) 100%);
+  color: white;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: var(--shadow-md);
 }
 
 .dashboard-wallet-balance h2 {
-    font-size: 2rem;
-    font-weight: 800;
-    margin-bottom: 0;
-    color: white;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-extrabold);
+  margin-bottom: 0;
+  color: white;
 }
 
 .dashboard-wallet-balance small {
-    font-size: 0.75rem;
-    opacity: 0.8;
-    text-transform: uppercase;
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Quick actions */
+.dashboard-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dashboard-summary-row {
+    gap: var(--space-3);
+  }
+  .dashboard-summary-card {
+    min-width: 150px;
+    padding: var(--space-3);
+  }
+  .dashboard-summary-card h3 {
+    font-size: var(--font-size-xl);
+  }
+  .dashboard-content-header {
+    padding: var(--space-3) var(--space-4);
+  }
+  .dashboard-content-body {
+    padding: var(--space-3);
+  }
 }

@@ -9,7 +9,7 @@
     <nav aria-label="breadcrumb" class="mb-4">
         <ol class="breadcrumb">
             <li class="breadcrumb-item">
-                <a href="{{ url_for('accommodation.accommodation_guest.search') }}">Accommodation</a>
+                <a href="{{ url_for('accommodation.guest.search') }}">Accommodation</a>
             </li>
             <li class="breadcrumb-item active" aria-current="page">{{ property.name }}</li>
         </ol>
@@ -112,7 +112,7 @@
                     </div>
 
                     <!-- Availability Check Form -->
-                    <form method="GET" action="{{ url_for('accommodation.accommodation_guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
+                    <form method="GET" action="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
                         <div class="mb-3">
                             <label class="form-label">Check-in Date</label>
                             <input type="date" class="form-control" name="check_in"
@@ -172,7 +172,7 @@
                             </div>
 
                             <!-- Booking Form - POST to checkout -->
-                            <form method="POST" action="{{ url_for('accommodation.accommodation_guest.checkout') }}">
+                            <form method="POST" action="{{ url_for('accommodation.guest.checkout') }}">
                                 <!-- Add these hidden fields inside the booking form -->
                                 <input type="hidden" name="context_type" value="{{ request.args.get('context_type', 'none') }}">
                                 <input type="hidden" name="context_id" value="{{ request.args.get('context_id', '') }}">
@@ -196,7 +196,7 @@
                                         <i class="fas fa-credit-card"></i> Proceed to Checkout
                                     </button>
                                 {% else %}
-                                    <a href="{{ url_for('auth_routes.login') }}?next={{ request.path }}" class="btn btn-primary w-100 btn-lg">
+                                    <a href="{{ url_for('auth.login') }}?next={{ request.path }}" class="btn btn-primary w-100 btn-lg">
                                         Login to Book
                                     </a>
                                 {% endif %}
