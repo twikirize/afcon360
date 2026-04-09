@@ -279,10 +279,17 @@ class Role(db.Model):
 
     # --- computed properties -------------------------------------------------
 
-    @property
+    @cached_property
     def permission_names(self) -> Set[str]:
         """Return the set of permission name strings granted to this role."""
         return {rp.permission.name for rp in self.permissions if rp.permission}
+    
+    def clear_permission_cache(self):
+        """Clear cached permissions when role-permission mappings change"""
+        try:
+            del self.permission_names
+        except AttributeError:
+            pass
 
     @property
     def is_global(self) -> bool:

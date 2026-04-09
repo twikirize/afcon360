@@ -14,7 +14,13 @@ def db_transaction(operation_name: str, audit_context: Optional[dict] = None):
     - Rolls back and logs detailed error + traceback if any exception occurs.
     """
     try:
-        logger.info(f"🔧 Starting operation: {operation_name}")
+        logger.info(f"🔧 Starting operation: {operation_name}", extra={
+            'audit': {
+                'operation': operation_name,
+                'status': 'started',
+                **audit_context or {}
+            }
+        })
         yield
         db.session.commit()
         logger.info(f"✅ Completed operation: {operation_name}")
