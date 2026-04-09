@@ -35,7 +35,12 @@ class ThemeManager {
 
     async loadPreferences() {
         try {
-            const response = await fetch('/theme/api/preferences');
+            const response = await fetch('/theme/api/preferences', {
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
             if (response.ok) {
                 this.preferences = await response.json();
             } else {

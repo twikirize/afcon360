@@ -7,7 +7,7 @@ from app.extensions import db
 logger = logging.getLogger(__name__)
 
 @contextmanager
-def db_transaction(operation_name: str):
+def db_transaction(operation_name: str, audit_context: Optional[dict] = None):
     """
     Context manager for database operations.
     - Commits if no errors.

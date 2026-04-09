@@ -42,6 +42,8 @@ class User(UserMixin, ProtectedModel):
     email = Column(String(255), unique=True, nullable=False, index=True)
     phone = Column(String(32), unique=True, nullable=True, index=True)
     password_hash = Column(String(512), nullable=False)
+    password_changed_at = Column(DateTime, nullable=True)
+    password_expires_at = Column(DateTime, nullable=True)
 
     # Lifecycle flags
     is_verified = Column(Boolean, default=False, nullable=False)

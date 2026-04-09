@@ -85,10 +85,10 @@ def hash_field(data: str, salt: bytes = None) -> tuple:
         salt = os.urandom(16)
 
     kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
+        algorithm=hashes.SHA512(),
+        length=64,
         salt=salt,
-        iterations=100000,
+        iterations=480000,  # OWASP 2023 recommendation
     )
 
     key = base64.urlsafe_b64encode(kdf.derive(data.encode()))
