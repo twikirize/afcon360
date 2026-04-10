@@ -3,8 +3,9 @@ from sqlalchemy import Column, BigInteger, String, DateTime, Enum, ForeignKey, J
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
-class ComplianceAuditLog(db.Model):
+class ComplianceAuditLog(BaseModel):
     """
     ComplianceAuditLog records every compliance enforcement decision.
     Unlike OrganisationAuditLog (which tracks data changes),
@@ -12,8 +13,6 @@ class ComplianceAuditLog(db.Model):
     """
 
     __tablename__ = "compliance_audit_logs"
-
-    id = Column(BigInteger, primary_key=True)
 
     # Works for both organisations and individuals
     entity_id = Column(BigInteger, nullable=False)

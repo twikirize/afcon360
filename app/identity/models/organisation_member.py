@@ -10,7 +10,7 @@ Hierarchy within an organisation:
 
 Org roles are stored in ``org_roles`` (per-org definitions) and reference
 the global ``roles`` table via ``template_name`` for default permission sets
-defined in seed.py.
+defined in seed_roles.py.
 
 OrgUserRole.role_id  →  org_roles.id   (org-specific role instance)
 helpers.has_org_role →  walks this chain to check membership
@@ -28,13 +28,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.extensions import db
+from app.models.base import BaseModel
 
 
 # ---------------------------------------------------------------------------
 # OrganisationMember
 # ---------------------------------------------------------------------------
 
-class OrganisationMember(db.Model):
+class OrganisationMember(BaseModel):
     """
     Links a ``User`` to an ``Organisation`` (many-to-many join).
 
@@ -49,7 +50,6 @@ class OrganisationMember(db.Model):
         Index("ix_org_member_active", "organisation_id", "is_active"),
     )
 
-    id              = Column(BigInteger, primary_key=True, autoincrement=True)
     user_id         = Column(BigInteger, ForeignKey("users.id",          ondelete="CASCADE"),  nullable=False, index=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id",  ondelete="CASCADE"),  nullable=False, index=True)
 
@@ -58,14 +58,9 @@ class OrganisationMember(db.Model):
 
     # Lifecycle
     is_active  = Column(Boolean,  default=True,  nullable=False, index=True)
-    is_deleted = Column(Boolean,  default=False, nullable=False, index=True)
-    deleted_at = Column(DateTime, nullable=True)
 
     # Flexible metadata (onboarding state, notes, etc.)
     meta = Column(JSON, nullable=False, default=dict)
-
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # --- relationships -------------------------------------------------------
 
@@ -161,7 +156,7 @@ class OrganisationMember(db.Model):
 # OrgUserRole  (role assignment for a member)
 # ---------------------------------------------------------------------------
 
-class OrgUserRole(db.Model):
+class OrgUserRole(BaseModel):
     """
     Assigns an ``OrgRole`` to an ``OrganisationMember``.
 
@@ -175,7 +170,6 @@ class OrgUserRole(db.Model):
         Index("ix_org_user_role_member", "organisation_member_id"),
     )
 
-    id                     = Column(BigInteger, primary_key=True, autoincrement=True)
     organisation_member_id = Column(BigInteger, ForeignKey("organisation_members.id", ondelete="CASCADE"), nullable=False, index=True)
     role_id                = Column(BigInteger, ForeignKey("org_roles.id",            ondelete="CASCADE"), nullable=False, index=True)
     assigned_by            = Column(BigInteger, ForeignKey("users.id",                ondelete="SET NULL"), nullable=True,  index=True)
@@ -196,18 +190,18 @@ class OrgUserRole(db.Model):
 # OrgRole  (org-specific role definition)
 # ---------------------------------------------------------------------------
 
-class OrgRole(db.Model):
+class OrgRole(BaseModel):
     """
     An organisation-specific role definition.
 
     Each organisation gets its own role instances created from the global
-    templates defined in ``seed.ORG_ROLE_DEFS``.  The ``template_name``
+    templates defined in ``seed_roles.ORG_ROLE_DEFS``.  The ``template_name``
     column links back to the seed template so the permission set can be
     re-applied when needed.
 
     ``org_roles.id``  is what ``OrgUserRole.role_id`` references.
-    ``template_name`` matches names in ``seed.ORG_ROLE_DEFS`` and
-                      ``seed.ORG_ROLE_TEMPLATES``.
+    ``template_name`` matches names in ``seed_roles.ORG_ROLE_DEFS`` and
+                      ``seed_roles.ORG_ROLE_TEMPLATES``.
     """
 
     __tablename__ = "org_roles"
@@ -216,16 +210,12 @@ class OrgRole(db.Model):
         Index("ix_org_role_org", "organisation_id"),
     )
 
-    id              = Column(BigInteger, primary_key=True, autoincrement=True)
     name            = Column(String(64),  nullable=False, index=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False, index=True)
     description     = Column(Text, nullable=True)
 
     # Link to the global seed template (e.g. "finance_manager")
     template_name   = Column(String(64), nullable=True, index=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     organisation = relationship("Organisation", back_populates="custom_roles")
     permissions  = relationship("OrgRolePermission", back_populates="role", cascade="all, delete-orphan")
@@ -247,7 +237,7 @@ class OrgRole(db.Model):
 # OrgRolePermission  (links OrgRole → global Permission)
 # ---------------------------------------------------------------------------
 
-class OrgRolePermission(db.Model):
+class OrgRolePermission(BaseModel):
     """
     Many-to-many link between an ``OrgRole`` and a global ``Permission``.
 
@@ -260,10 +250,8 @@ class OrgRolePermission(db.Model):
         UniqueConstraint("org_role_id", "permission_id", name="uq_org_role_permission"),
     )
 
-    id            = Column(BigInteger, primary_key=True, autoincrement=True)
     org_role_id   = Column(BigInteger, ForeignKey("org_roles.id",    ondelete="CASCADE"), nullable=False, index=True)
     permission_id = Column(BigInteger, ForeignKey("permissions.id",  ondelete="CASCADE"), nullable=False, index=True)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     role       = relationship("OrgRole",      back_populates="permissions")
     permission = relationship("Permission")
@@ -279,7 +267,7 @@ class OrgRolePermission(db.Model):
 # OrgMemberPermission  (direct per-member permission grant or deny)
 # ---------------------------------------------------------------------------
 
-class OrgMemberPermission(db.Model):
+class OrgMemberPermission(BaseModel):
     """
     A direct permission grant or explicit deny for a single member.
 
@@ -297,7 +285,6 @@ class OrgMemberPermission(db.Model):
         UniqueConstraint("member_id", "permission_id", name="uq_member_permission"),
     )
 
-    id            = Column(BigInteger, primary_key=True, autoincrement=True)
     member_id     = Column(BigInteger, ForeignKey("organisation_members.id", ondelete="CASCADE"), nullable=False, index=True)
     permission_id = Column(BigInteger, ForeignKey("permissions.id",          ondelete="CASCADE"), nullable=False, index=True)
     granted       = Column(Boolean, default=True, nullable=False)   # True = grant, False = explicit deny

@@ -67,7 +67,7 @@ def register_api_resources(api):
     # -------------------------------------------------------------------
 
     # Drivers
-    api.add_resource(DriverListResource, "/drivers", endpoint="driver_list")
+    api.add_resource(DriverListResource, "/drivers", endpoint="api_driver_list")
     api.add_resource(DriverDetailResource, "/drivers/<int:driver_id>", endpoint="driver_detail")
     api.add_resource(DriverVerificationResource, "/drivers/<int:driver_id>/verification",
                      endpoint="driver_verification")

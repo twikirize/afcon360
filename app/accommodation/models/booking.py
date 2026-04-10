@@ -13,6 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.base import BaseModel
 import secrets
 import enum
 
@@ -66,7 +67,7 @@ class BookingContextType(enum.Enum):
 # Booking Model
 # ==========================================
 
-class AccommodationBooking(db.Model):
+class AccommodationBooking(BaseModel):
     __tablename__ = "accommodation_bookings"
     __table_args__ = (
         UniqueConstraint("booking_reference", name="uq_booking_reference"),
@@ -81,8 +82,6 @@ class AccommodationBooking(db.Model):
         CheckConstraint("num_nights >= 1", name="ck_nights_positive"),
         CheckConstraint("total_amount >= 0", name="ck_total_amount_positive"),
     )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # -------------------------------
     # Identifiers
@@ -171,12 +170,8 @@ class AccommodationBooking(db.Model):
     checked_in_at = Column(DateTime, nullable=True)
     checked_out_at = Column(DateTime, nullable=True)
 
-    # -------------------------------
-    # Timestamps
-    # -------------------------------
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     expires_at = Column(DateTime, nullable=True)
+
 
     # -------------------------------
     # Relationships (continued)
@@ -289,14 +284,13 @@ class AccommodationBooking(db.Model):
 # Booking Status History
 # ==========================================
 
-class BookingStatusHistory(db.Model):
+class BookingStatusHistory(BaseModel):
     __tablename__ = "accommodation_booking_history"
     __table_args__ = (
         Index("idx_history_booking", "booking_id"),
         Index("idx_history_timestamp", "changed_at"),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False, index=True)
     booking = relationship("AccommodationBooking", back_populates="status_history")
 
@@ -307,8 +301,8 @@ class BookingStatusHistory(db.Model):
 
     ip_address = Column(String(64), nullable=True)
     user_agent = Column(String(512), nullable=True)
-
     changed_at = Column(DateTime, default=func.now(), nullable=False)
+
     changed_by = relationship("User", foreign_keys=[changed_by_user_id])
 
     @property

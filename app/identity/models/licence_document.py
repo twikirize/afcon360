@@ -3,17 +3,17 @@ from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Date
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
 # -------------------------------
 # Organisation License
 # -------------------------------
-class OrganisationLicense(db.Model):
+class OrganisationLicense(BaseModel):
     __tablename__ = "organisation_licenses"
     __table_args__ = (
         UniqueConstraint("license_type", "license_number", "country", name="uq_org_license"),
     )
 
-    id = Column(BigInteger, primary_key=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), index=True)
 
     license_type = Column(String(64), nullable=False, index=True)
@@ -31,10 +31,9 @@ class OrganisationLicense(db.Model):
 # -------------------------------
 # Organisation Document
 # -------------------------------
-class OrganisationDocument(db.Model):
+class OrganisationDocument(BaseModel):
     __tablename__ = "organisation_documents"
 
-    id = Column(BigInteger, primary_key=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), index=True)
 
     document_type = Column(String(64), index=True)
@@ -60,10 +59,9 @@ class OrganisationDocument(db.Model):
 # -------------------------------
 # Organisation Audit Log
 # -------------------------------
-class OrganisationAuditLog(db.Model):
+class OrganisationAuditLog(BaseModel):
     __tablename__ = "organisation_audit_logs"
 
-    id = Column(BigInteger, primary_key=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), index=True)
 
     field = Column(String(64))

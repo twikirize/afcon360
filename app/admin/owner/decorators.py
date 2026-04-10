@@ -23,11 +23,17 @@ def owner_required(f):
             flash('Please log in first', 'warning')
             return redirect(url_for('auth_routes.login', next=request.url))
 
-        # CRITICAL: Rollback any aborted transaction before role check
+        # CRITICAL: Ensure clean session state before role check
+        # Rollback any aborted transaction safely
         try:
             db.session.rollback()
-        except Exception:
-            pass
+        except Exception as e:
+            # Session may not exist or be in a bad state
+            # Try to create new session
+            try:
+                db.session.remove()
+            except:
+                pass
 
         # Check if user has owner role safely
         try:

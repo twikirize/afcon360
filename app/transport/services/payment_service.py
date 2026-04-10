@@ -83,7 +83,13 @@ class PaymentService:
                 payment_status = 'pending'
                 payment_processed = False
             else:
-                # Card/online payment - simulate processing
+                # Card/online payment - check if enabled
+                if not current_app.config.get('PAYMENT_PROCESSING_ENABLED', False):
+                    raise ValidationError(
+                        message="Online payment processing is disabled",
+                        code="PAYMENT_DISABLED"
+                    )
+
                 payment_status = 'processing'
                 payment_processed = PaymentService._process_online_payment(
                     amount=final_price,
@@ -287,21 +293,18 @@ class PaymentService:
 
     @staticmethod
     def _process_online_payment(amount: Decimal, payment_data: Dict[str, Any]) -> bool:
-        """Process online payment (simplified - integrate with actual gateway)"""
-        # This is a mock implementation
-        # In production, integrate with Stripe, PayPal, etc.
+        """Process online payment with production safety checks"""
+        # Check if payment processing is enabled
+        if not current_app.config.get('PAYMENT_PROCESSING_ENABLED', False):
+            raise RuntimeError("Payment processing is disabled in production. Configure PAYMENT_PROCESSING_ENABLED and integrate with a real payment gateway.")
 
-        card_number = payment_data.get('card_number', '')
-        expiry = payment_data.get('expiry', '')
-        cvv = payment_data.get('cvv', '')
-
-        # Simple validation
-        if not all([card_number, expiry, cvv]):
-            return False
-
-        # Mock payment processing - 90% success rate
-        import random
-        return random.random() < 0.9
+        # In production, this should integrate with Stripe, PayPal, etc.
+        # For now, we'll raise an error to prevent accidental use of mock payments
+        raise NotImplementedError(
+            "Online payment processing not implemented. "
+            "Integrate with a real payment gateway for production use. "
+            "Set PAYMENT_PROCESSING_ENABLED=true only after integration."
+        )
 
     @staticmethod
     def _generate_payment_reference() -> str:

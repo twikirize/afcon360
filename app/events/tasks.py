@@ -8,10 +8,25 @@ from app.events.models import EventRegistration, Event
 
 logger = logging.getLogger(__name__)
 
-# Initialize Celery - this needs to be configured properly in a real app
-# For demonstration, we'll assume a simple Redis broker setup
-# In a full Flask app, you'd typically initialize this in app/extensions.py or similar
-celery_app = Celery('event_tasks', broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
+# Initialize Celery - configuration should come from environment variables
+import os
+
+# Get Redis URL from environment or config
+redis_url = os.getenv('REDIS_URL') or os.getenv('CELERY_BROKER_URL')
+if not redis_url:
+    flask_env = os.getenv("FLASK_ENV", "production")
+    if flask_env == "production":
+        raise RuntimeError(
+            "REDIS_URL must be set in production for Celery. "
+            "Set REDIS_URL or CELERY_BROKER_URL environment variable."
+        )
+    else:
+        # Development fallback with warning
+        redis_url = 'redis://localhost:6379/0'
+        # Use print instead of logger since logger might not be initialized yet
+        print(f"WARNING: Using development Redis URL for Celery - configure REDIS_URL environment variable for production")
+
+celery_app = Celery('event_tasks', broker=redis_url, backend=redis_url)
 
 # This is a placeholder for your Flask app creation function
 # In a real app, you'd import your create_app function

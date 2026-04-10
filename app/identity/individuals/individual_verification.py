@@ -4,15 +4,14 @@ from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, Foreign
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
-class IndividualVerification(db.Model):
+class IndividualVerification(BaseModel):
     __tablename__ = "individual_verifications"
     __table_args__ = (
         Index("ix_ind_verification_user_id", "user_id"),
         Index("ix_ind_verification_status", "status"),
     )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # Foreign keys
     user_id = Column(

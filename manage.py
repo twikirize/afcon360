@@ -10,7 +10,7 @@ migrate = Migrate(app, db)
 @app.cli.command("seed-roles")
 def seed_roles():
     """Create all default roles in the database."""
-    from app.auth.seed import seed_roles as do_seed
+    from app.auth.seed_roles import seed_roles as do_seed
 
     do_seed()
     print("✅ Roles seeded successfully")

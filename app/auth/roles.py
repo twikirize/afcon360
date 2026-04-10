@@ -53,8 +53,8 @@ ROLE_USER = "user"
 ROLE_ORG_ADMIN = "org_admin"
 ROLE_ORG_MEMBER = "org_member"
 
-# All global roles
-ALL_GLOBAL_ROLES = [
+# All global roles (for reference)
+ALL_GLOBAL_ROLES_LIST = [
     ROLE_OWNER,
     ROLE_SUPER_ADMIN,
     ROLE_ADMIN,
@@ -72,18 +72,18 @@ ALL_GLOBAL_ROLES = [
 
 # Role → permissions mapping
 ROLE_PERMISSIONS = {
-    ROLE_OWNER: ["audit:read", "audit:export", "audit:delete", "aml:review", "aml:resolve", "system:admin", "impersonate:any"],
-    ROLE_SUPER_ADMIN: ["audit:read", "audit:export", "aml:review", "system:admin"],
-    ROLE_ADMIN: ["audit:read", "audit:export", "content:manage"],
-    ROLE_AUDITOR: ["audit:read"],
-    ROLE_COMPLIANCE_OFFICER: ["audit:read", "aml:review", "aml:resolve"],
-    ROLE_MODERATOR: ["content:moderate", "audit:read"],
-    ROLE_SUPPORT: ["support:tickets", "user:view", "audit:read"],
-    ROLE_EVENT_MANAGER: ["events:manage", "events:approve", "events:analytics"],
-    ROLE_TRANSPORT_ADMIN: ["transport:manage", "transport:analytics"],
-    ROLE_WALLET_ADMIN: ["wallet:manage", "transactions:view", "wallet:approve"],
-    ROLE_ACCOMMODATION_ADMIN: ["accommodation:manage", "accommodation:approve"],
-    ROLE_TOURISM_ADMIN: ["tourism:manage", "content:manage"],
+    ROLE_OWNER: ["audit.read", "audit.export", "audit.delete", "aml.review", "aml.resolve", "system.admin", "impersonate.any"],
+    ROLE_SUPER_ADMIN: ["audit.read", "audit.export", "aml.review", "system.admin"],
+    ROLE_ADMIN: ["audit.read", "audit.export", "content.manage"],
+    ROLE_AUDITOR: ["audit.read"],
+    ROLE_COMPLIANCE_OFFICER: ["audit.read", "aml.review", "aml.resolve"],
+    ROLE_MODERATOR: ["content.moderate", "audit.read"],
+    ROLE_SUPPORT: ["support.tickets", "user.view", "audit.read"],
+    ROLE_EVENT_MANAGER: ["events.manage", "events.approve", "events.analytics"],
+    ROLE_TRANSPORT_ADMIN: ["transport.manage", "transport.analytics"],
+    ROLE_WALLET_ADMIN: ["wallet.manage", "transactions.view", "wallet.approve"],
+    ROLE_ACCOMMODATION_ADMIN: ["accommodation.manage", "accommodation.approve"],
+    ROLE_TOURISM_ADMIN: ["tourism.manage", "content.manage"],
     ROLE_USER: [],
 }
 

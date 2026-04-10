@@ -24,6 +24,14 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from app.identity.models.organisation_member import OrganisationMember
     from app.identity.models.user import User
+else:
+    # Import for runtime
+    try:
+        from app.identity.models.organisation_member import OrganisationMember
+        from app.identity.models.user import User
+    except ImportError:
+        # For TYPE_CHECKING only
+        pass
 
 
 # ---------------------------------------------------------------------------

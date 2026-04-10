@@ -24,6 +24,7 @@ from app.wallet.exceptions import (
     DuplicateTransactionError,
     ComplianceBlockError
 )
+from app.audit.comprehensive_audit import AuditService, TransactionType, AuditSeverity
 
 # Money precision
 getcontext().prec = 28
@@ -146,16 +147,46 @@ class WalletService:
                     raise
         return None
 
-    def get_balance(self, user_id: int) -> Dict[str, Any]:
+    def get_balance(self, user_id: int, requesting_user_id: Optional[int] = None) -> Dict[str, Any]:
         """
-        Get current wallet balance for a user.
+        Get current wallet balance for a user with permission check.
 
         Args:
-            user_id: Internal user ID
+            user_id: Internal user ID whose balance to retrieve
+            requesting_user_id: ID of the user making the request (for permission check)
 
         Returns:
             Dict with balance information
+
+        Raises:
+            PermissionError: If requesting user doesn't have permission to view the balance
         """
+        # Check if the requesting user has permission to view this wallet
+        # Users can only view their own wallet unless they have admin permissions
+        if requesting_user_id is not None and requesting_user_id != user_id:
+            # Check if requesting user has admin permissions
+            try:
+                from app.auth.policy import can
+
+                # Get the current user object
+                from app.identity.models.user import User
+                requesting_user = User.query.get(requesting_user_id)
+
+                if not requesting_user:
+                    from app.utils.exceptions import PermissionError
+                    raise PermissionError("Requesting user not found")
+
+                # Check if user has admin permission to view any wallet
+                if not can(requesting_user, "wallet.view_all"):
+                    from app.utils.exceptions import PermissionError
+                    raise PermissionError(
+                        f"User {requesting_user_id} does not have permission to view wallet of user {user_id}"
+                    )
+            except ImportError:
+                # Fallback if auth policy is not available
+                from app.utils.exceptions import PermissionError
+                raise PermissionError("Permission check failed - authentication system not available")
+
         wallet = self.wallet_repo.get_by_user_id(user_id)
 
         if not wallet:

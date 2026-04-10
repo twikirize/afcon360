@@ -147,6 +147,10 @@ class User(UserMixin, ProtectedModel):
     def set_password(self, password: str):
         """Hash and store the user's password."""
         self.password_hash = generate_password_hash(password)
+        self.password_changed_at = datetime.utcnow()
+
+        # Set password expiration (e.g., 90 days from now)
+        self.password_expires_at = datetime.utcnow() + timedelta(days=90)
 
     def verify_password(self, password: str) -> bool:
         """Verify a password against the stored hash."""

@@ -15,7 +15,7 @@ import secrets
 
 from sqlalchemy import (
     Index, UniqueConstraint, CheckConstraint, text, Enum as SQLEnum,
-    ForeignKeyConstraint, event, DDL
+    ForeignKeyConstraint, event, DDL, and_
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -23,7 +23,10 @@ from sqlalchemy.orm import validates, relationship, backref
 from sqlalchemy.sql import expression
 
 from app.extensions import db
-# from geoalchemy2 import Geometry  # Removed: PostGIS not installed
+from app.models.base import BaseModel
+# Note: geoalchemy2 is optional for PostGIS support
+# Uncomment and install if spatial features are needed
+# from geoalchemy2 import Geometry
 from app.utils.security import encrypt_field, decrypt_field
 
 
@@ -138,18 +141,16 @@ class TimestampMixin:
     """Automatic timestamp fields"""
     created_at = db.Column(
         db.DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        server_default=db.func.now()
+        default=datetime.utcnow,
+        nullable=False
     )
     updated_at = db.Column(
         db.DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        server_default=db.func.now()
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
     )
-    deleted_at = db.Column(db.DateTime(timezone=True), index=True)
+    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
 
 
 class AuditMixin:
@@ -176,11 +177,9 @@ class SoftDeleteMixin:
 # BASE MODELS
 # ===========================================================================
 
-class TransportBase(db.Model, TimestampMixin, SoftDeleteMixin):
+class TransportBase(BaseModel):
     """Abstract base model for all transport entities"""
     __abstract__ = True
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
 
     # Tenant isolation for multi-tenant setup
     tenant_id = db.Column(db.String(50), nullable=False, default='default')
@@ -753,17 +752,26 @@ class Vehicle(TransportBase):
     def current_booking(self):
         """Get the current active booking for this vehicle"""
         from sqlalchemy import and_
-        return Booking.query.filter(
-            and_(
-                Booking.assigned_vehicle_id == self.id,
-                Booking.status.in_([
-                    BookingStatus.CONFIRMED,
-                    BookingStatus.ASSIGNED,
-                    BookingStatus.IN_PROGRESS,
-                    BookingStatus.DRIVER_EN_ROUTE
-                ])
-            )
-        ).first()
+        # Since Booking is defined in the same file, we can use it directly
+        # But to be safe, let's check if it's available
+        # First, try to get Booking from the current module's globals
+        import sys
+        current_module = sys.modules[__name__]
+        Booking = getattr(current_module, 'Booking', None)
+
+        if Booking:
+            return Booking.query.filter(
+                and_(
+                    Booking.assigned_vehicle_id == self.id,
+                    Booking.status.in_([
+                        BookingStatus.CONFIRMED,
+                        BookingStatus.ASSIGNED,
+                        BookingStatus.IN_PROGRESS,
+                        BookingStatus.DRIVER_EN_ROUTE
+                    ])
+                )
+            ).first()
+        return None
 
 
 # ===========================================================================

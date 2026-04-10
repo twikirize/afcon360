@@ -3,7 +3,6 @@
 Unified Audit Module - Exports all audit functionality
 """
 
-from app.audit.user import AuditLog
 from app.audit.comprehensive_audit import (
     AuditService,
     FinancialAuditLog,
@@ -16,6 +15,8 @@ from app.audit.comprehensive_audit import (
     APICallStatus,
     DataAccessType
 )
+
+from app.audit.models import AuditLog
 
 __all__ = [
     # Main service

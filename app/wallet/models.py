@@ -1,9 +1,10 @@
 from datetime import datetime
 from sqlalchemy import UniqueConstraint, Index
 from app.extensions import db
+from app.models.base import BaseModel
 
 
-class Wallet(db.Model):
+class Wallet(BaseModel):
     """
     A wallet that can belong to either a User or an Organisation.
     Each owner can have exactly one wallet.
@@ -14,8 +15,6 @@ class Wallet(db.Model):
         UniqueConstraint("organisation_id", name="uq_wallet_org"),
         Index("ix_wallets_currency_pair", "home_currency", "local_currency"),
     )
-
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
 
     # Explicit ownership
     user_id = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
@@ -57,8 +56,6 @@ class Wallet(db.Model):
 
     # Optimistic lock + lifecycle
     version = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     user = db.relationship("User", back_populates="wallet", uselist=False)
@@ -74,7 +71,7 @@ class Wallet(db.Model):
         return f"<Wallet id={self.id} user_id={self.user_id} org_id={self.organisation_id}>"
 
 
-class Transaction(db.Model):
+class Transaction(BaseModel):
     """
     Immutable transaction ledger for a wallet.
     """
@@ -84,7 +81,6 @@ class Transaction(db.Model):
         Index("ix_wallet_tx_type_currency", "type", "currency"),
     )
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     wallet_id = db.Column(db.BigInteger, db.ForeignKey("wallets.id", ondelete="CASCADE"), nullable=False)
 
     # Identifiers
@@ -96,8 +92,6 @@ class Transaction(db.Model):
     amount = db.Column(db.Numeric(18, 2), nullable=False)
     currency = db.Column(db.String(10), nullable=False)
     meta = db.Column(db.JSON, nullable=True)
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationship back to wallet
     wallet = db.relationship(
@@ -114,11 +108,10 @@ class Transaction(db.Model):
 # NEW MODELS - Add at bottom of existing models.py
 # ============================================================================
 
-class AgentCommission(db.Model):
+class AgentCommission(BaseModel):
     """Agent commission tracking - replaces in-memory agent_tracker.py"""
     __tablename__ = "agent_commissions"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     commission_ref = db.Column(db.String(64), unique=True, nullable=False)
     agent_id = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     amount = db.Column(db.Numeric(18, 2), nullable=False)
@@ -130,7 +123,6 @@ class AgentCommission(db.Model):
     paid_at = db.Column(db.DateTime, nullable=True)
     paid_by = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     extra_data = db.Column(db.JSON, nullable=True, default=dict)  # renamed: 'metadata' is reserved by SQLAlchemy
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
         Index('ix_agent_commissions_agent', 'agent_id'),
@@ -142,11 +134,10 @@ class AgentCommission(db.Model):
         return f"<AgentCommission {self.commission_ref} agent={self.agent_id} amount={self.amount}>"
 
 
-class PayoutRequest(db.Model):
+class PayoutRequest(BaseModel):
     """Agent payout requests - replaces in-memory agent_payouts.py"""
     __tablename__ = "payout_requests"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     request_ref = db.Column(db.String(64), unique=True, nullable=False)
     agent_id = db.Column(db.BigInteger, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     amount = db.Column(db.Numeric(18, 2), nullable=False)
@@ -160,7 +151,6 @@ class PayoutRequest(db.Model):
     paid_at = db.Column(db.DateTime, nullable=True)
     rejection_reason = db.Column(db.Text, nullable=True)
     notes = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
         Index('ix_payout_requests_agent', 'agent_id'),
@@ -171,11 +161,10 @@ class PayoutRequest(db.Model):
         return f"<PayoutRequest {self.request_ref} agent={self.agent_id} amount={self.amount}>"
 
 
-class LedgerEntry(db.Model):
+class LedgerEntry(BaseModel):
     """Double-entry ledger for audit and reconciliation"""
     __tablename__ = "ledger_entries"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     entry_ref = db.Column(db.String(64), unique=True, nullable=False)
     transaction_id = db.Column(db.BigInteger, db.ForeignKey("wallet_transactions.id", ondelete="CASCADE"),
                                nullable=False)
@@ -188,7 +177,6 @@ class LedgerEntry(db.Model):
     counterparty_wallet_id = db.Column(db.BigInteger, db.ForeignKey("wallets.id", ondelete="SET NULL"), nullable=True)
     description = db.Column(db.Text, nullable=True)
     extra_data = db.Column(db.JSON, nullable=True, default=dict)  # renamed: 'metadata' is reserved by SQLAlchemy
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
         Index('ix_ledger_entries_wallet', 'wallet_id'),
@@ -200,17 +188,15 @@ class LedgerEntry(db.Model):
         return f"<LedgerEntry {self.entry_ref} {self.entry_type} {self.amount}>"
 
 
-class IdempotencyKey(db.Model):
+class IdempotencyKey(BaseModel):
     """Idempotency keys for duplicate request prevention"""
     __tablename__ = "idempotency_keys"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     key_value = db.Column(db.String(128), unique=True, nullable=False)
     resource_type = db.Column(db.String(50), nullable=False)  # deposit, withdraw, transfer
     resource_id = db.Column(db.String(64), nullable=True)  # transaction_id after processing
     response_cache = db.Column(db.JSON, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
         Index('ix_idempotency_keys_expiry', 'expires_at'),

@@ -3,14 +3,14 @@ from sqlalchemy import Column, BigInteger, Date, DateTime, Enum, ForeignKey,Stri
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
 # --------------------------------------
 # Organisation Controller
 # --------------------------------------
-class OrganisationController(db.Model):
+class OrganisationController(BaseModel):
     __tablename__ = "organisation_controllers"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     added_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))

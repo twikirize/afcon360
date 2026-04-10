@@ -80,7 +80,8 @@
           <div class="user-name">{{ current_user.username|default('Admin') }}</div>
           <div class="user-role">Transport Admin</div>
         </div>
-        <a href="{{ url_for('auth_routes.logout') }}" title="Sign out" class="logout-link">
+        <a href="{{ url_for('auth.logout') }}" title="Sign out" class="logout-link">
+
           <i class="fa-solid fa-arrow-right-from-bracket"></i>
         </a>
       </div>

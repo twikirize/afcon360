@@ -5,12 +5,30 @@ Data validation and sanitization for AFCON360 Transport
 """
 import re
 import json
+import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional, Tuple, Union
 from decimal import Decimal, InvalidOperation
-import phonenumbers
-from email_validator import validate_email, EmailNotValidError
 from flask import current_app
+
+# Import phonenumbers with fallback
+try:
+    import phonenumbers
+    PHONENUMBERS_AVAILABLE = True
+except ImportError:
+    phonenumbers = None
+    PHONENUMBERS_AVAILABLE = False
+    logging.warning("phonenumbers package not available - phone validation will be limited")
+
+# Import email_validator with fallback
+try:
+    from email_validator import validate_email, EmailNotValidError
+    EMAIL_VALIDATOR_AVAILABLE = True
+except ImportError:
+    validate_email = None
+    EmailNotValidError = Exception
+    EMAIL_VALIDATOR_AVAILABLE = False
+    logging.warning("email-validator package not available - email validation will be limited")
 
 from app.utils.exceptions import ValidationError
 
@@ -436,12 +454,17 @@ class TransportValidators:
             return False, "Invalid phone number format. Use international format (e.g., +1234567890)"
 
         # Try to parse with phonenumbers if available
-        try:
-            parsed = phonenumbers.parse(phone)
-            if not phonenumbers.is_valid_number(parsed):
-                return False, "Invalid phone number"
-        except:
-            # Fallback: basic validation
+        if PHONENUMBERS_AVAILABLE and phonenumbers:
+            try:
+                parsed = phonenumbers.parse(phone)
+                if not phonenumbers.is_valid_number(parsed):
+                    return False, "Invalid phone number"
+            except Exception as e:
+                # Fallback to basic validation
+                if len(phone) < 10 or len(phone) > 15:
+                    return False, "Phone number must be 10-15 digits"
+        else:
+            # Basic validation without phonenumbers
             if len(phone) < 10 or len(phone) > 15:
                 return False, "Phone number must be 10-15 digits"
 
@@ -461,14 +484,22 @@ class TransportValidators:
         if not email:
             return False, "Email is required"
 
-        try:
-            # Validate email format
-            valid = validate_email(email)
-            # Normalize email
-            normalized_email = valid.email
-            return True, ""
-        except EmailNotValidError as e:
-            return False, str(e)
+        if EMAIL_VALIDATOR_AVAILABLE and validate_email:
+            try:
+                # Validate email format
+                valid = validate_email(email)
+                # Normalize email
+                normalized_email = valid.email
+                return True, ""
+            except EmailNotValidError as e:
+                return False, str(e)
+        else:
+            # Fallback to regex validation
+            email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if re.match(email_regex, email):
+                return True, ""
+            else:
+                return False, "Invalid email format"
 
     @staticmethod
     def validate_url(url: str) -> Tuple[bool, str]:

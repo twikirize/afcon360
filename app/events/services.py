@@ -519,16 +519,22 @@ class EventService:
             if not event:
                 return None, None, "Event not found"
 
-            # Get ticket type
+            # Get ticket type WITH LOCK to prevent race conditions
             ticket_type_id = data.get("ticket_type_id")
             ticket_type = None
+
+            # Start a transaction with explicit locking
             if ticket_type_id:
-                ticket_type = TicketType.query.get(ticket_type_id)
+                ticket_type = TicketType.query.with_for_update().get(ticket_type_id)
                 if not ticket_type or ticket_type.event_id != event.id:
                     return None, None, "Invalid ticket type"
             else:
                 # If no specific ticket_type_id is provided, try to find a default/free one
-                ticket_type = TicketType.query.filter_by(event_id=event.id, price=0, is_active=True).first()
+                ticket_type = TicketType.query.with_for_update().filter_by(
+                    event_id=event.id,
+                    price=0,
+                    is_active=True
+                ).first()
                 if not ticket_type:
                     # Fallback if no free ticket is found and none was selected
                     return None, None, "No ticket type selected or available for registration."

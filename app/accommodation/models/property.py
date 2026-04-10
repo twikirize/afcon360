@@ -13,6 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.base import BaseModel
 import enum
 
 
@@ -63,7 +64,7 @@ class AccommodationVerificationStatus(enum.Enum):
 # Property Model
 # ==========================================
 
-class Property(db.Model):
+class Property(BaseModel):
     __tablename__ = "accommodation_properties"
     __table_args__ = (
         UniqueConstraint("slug", name="uq_property_slug"),
@@ -79,8 +80,6 @@ class Property(db.Model):
         CheckConstraint("base_price_per_night >= 0", name="ck_price_positive"),
         CheckConstraint("max_guests >= 1", name="ck_max_guests_min"),
     )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # -------------------------------
     # Ownership (supports both individual and organisation)
@@ -182,18 +181,6 @@ class Property(db.Model):
     meta_description = Column(String(500), nullable=True)
 
     # -------------------------------
-    # Timestamps
-    # -------------------------------
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
-    # -------------------------------
-    # Soft Delete
-    # -------------------------------
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    deleted_at = Column(DateTime, nullable=True)
-
-    # -------------------------------
     # Relationships
     # -------------------------------
     owner_user = relationship("User", foreign_keys=[owner_user_id], backref="owned_properties")
@@ -284,13 +271,12 @@ class Property(db.Model):
 # Property Photo Model
 # ==========================================
 
-class PropertyPhoto(db.Model):
+class PropertyPhoto(BaseModel):
     __tablename__ = "accommodation_photos"
     __table_args__ = (
         UniqueConstraint("property_id", "display_order", name="uq_photo_order_per_property"),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
     property = relationship("Property", back_populates="photos")
 
@@ -312,11 +298,6 @@ class PropertyPhoto(db.Model):
     file_size = Column(Integer, nullable=True)
     mime_type = Column(String(100), nullable=True)
 
-    # -------------------------------
-    # Timestamps
-    # -------------------------------
-    created_at = Column(DateTime, default=func.now())
-
     def __repr__(self):
         return f"<PropertyPhoto {self.property_id}: order {self.display_order}>"
 
@@ -325,50 +306,44 @@ class PropertyPhoto(db.Model):
 # Amenity Models
 # ==========================================
 
-class Amenity(db.Model):
+class Amenity(BaseModel):
     """Master list of amenities"""
     __tablename__ = "accommodation_amenities_master"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     code = Column(String(50), nullable=False, unique=True)
     name = Column(String(100), nullable=False)
     category = Column(String(50), nullable=True)
     icon = Column(String(50), nullable=True)
     display_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=func.now())
 
     def __repr__(self):
         return f"<Amenity {self.code}: {self.name}>"
 
 
-class PropertyAmenity(db.Model):
+class PropertyAmenity(BaseModel):
     """Junction table: Property <-> Amenity"""
     __tablename__ = "accommodation_property_amenities"
     __table_args__ = (
         UniqueConstraint("property_id", "amenity_id", name="uq_property_amenity"),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
     amenity_id = Column(BigInteger, ForeignKey("accommodation_amenities_master.id", ondelete="CASCADE"), nullable=False, index=True)
 
     property = relationship("Property", back_populates="amenities")
     amenity = relationship("Amenity")
-    created_at = Column(DateTime, default=func.now())
 
 
-class PropertyRule(db.Model):
+class PropertyRule(BaseModel):
     """Custom rules for each property"""
     __tablename__ = "accommodation_rules"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
     property = relationship("Property", back_populates="rules")
 
     rule_text = Column(Text, nullable=False)
     is_important = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=func.now())
 
     def __repr__(self):
         return f"<PropertyRule {self.property_id}: {self.rule_text[:50]}>"

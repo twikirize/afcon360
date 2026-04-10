@@ -66,7 +66,14 @@ def require_redis(url: str, purpose: str, existing_client=None):
     Raises RuntimeError if Redis connection fails.
     """
     if existing_client:
-        return existing_client
+        # Test the existing client connection
+        try:
+            existing_client.ping()
+            logging.info(f"Redis connected for {purpose} using existing client at {url}")
+            return existing_client
+        except Exception as e:
+            logging.warning(f"Existing Redis client failed ping for {purpose}: {e}. Creating new connection.")
+            # Fall through to create new connection
 
     if not REDIS_AVAILABLE:
         logging.warning(f"Redis not available for {purpose} - using fallback")
@@ -103,18 +110,52 @@ def create_app(config_object=None) -> Flask:
     # Load configuration
     app.config.from_object(config_object or Config)
 
-    # Critical Config Fallbacks
-    app.config['SECRET_KEY'] = app.config.get('SECRET_KEY') or os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
-    app.config["SQLALCHEMY_DATABASE_URI"] = app.config.get("SQLALCHEMY_DATABASE_URI") or os.getenv("DATABASE_URL")
+    # Critical Config Fallbacks with validation
+    # SECRET_KEY validation
+    secret_key = app.config.get('SECRET_KEY') or os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
+    if not secret_key:
+        flask_env = os.getenv("FLASK_ENV", "production")
+        if flask_env == "production":
+            raise RuntimeError(
+                "SECRET_KEY must be set in production. "
+                "Set SECRET_KEY environment variable."
+            )
+        else:
+            # Development fallback - generate a deterministic key for development
+            import hashlib
+            dev_secret = hashlib.sha256(b"afcon360_dev_secret_do_not_use_in_prod").hexdigest()[:32]
+            secret_key = dev_secret
+            logger.warning("Using development SECRET_KEY. Set SECRET_KEY environment variable for production.")
+    app.config['SECRET_KEY'] = secret_key
 
-    if not app.config["SQLALCHEMY_DATABASE_URI"]:
-        # Try to build from components if DATABASE_URL is missing
-        db_user = os.getenv("APP_DB_USER") or os.getenv("DB_USER")
-        db_pass = os.getenv("APP_DB_PASS") or os.getenv("DB_PASS")
-        db_host = os.getenv("DB_HOST", "localhost")
-        db_name = os.getenv("DB_NAME", "afcon360_prod")
-        if db_user and db_pass:
-            app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{db_user}:{db_pass}@{db_host}/{db_name}"
+    # DATABASE URI validation
+    db_uri = app.config.get("SQLALCHEMY_DATABASE_URI") or os.getenv("DATABASE_URL")
+
+    if not db_uri:
+        flask_env = os.getenv("FLASK_ENV", "production")
+        if flask_env == "production":
+            raise RuntimeError(
+                "DATABASE_URL must be set in production. "
+                "Set DATABASE_URL environment variable or configure SQLALCHEMY_DATABASE_URI in config."
+            )
+        else:
+            # Development fallback - use local PostgreSQL with default credentials
+            # This is for development convenience only
+            db_host = os.getenv("DB_HOST", "localhost")
+            db_port = os.getenv("DB_PORT", "5432")
+            db_name = os.getenv("DB_NAME", "afcon360_dev")
+            db_user = os.getenv("DB_USER", "postgres")
+            db_pass = os.getenv("DB_PASSWORD", "")
+
+            if db_pass:
+                db_uri = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+            else:
+                db_uri = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
+
+            logger.warning(f"Using development database: {db_uri.replace(db_pass, '***') if db_pass else db_uri}")
+            logger.warning("Set DATABASE_URL environment variable for production.")
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
 
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SESSION_SERIALIZER"] = "json"
@@ -122,8 +163,57 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     # Redis & Extensions (Shared)
     # ------------------------------------------------------------------
-    redis_url = app.config.get("REDIS_URL", "redis://localhost:6379/0")
-    redis_session_client = require_redis(redis_url, "sessions")
+    redis_url = app.config.get("REDIS_URL") or os.getenv("REDIS_URL")
+
+    if not redis_url:
+        flask_env = os.getenv("FLASK_ENV", "production")
+        if flask_env == "production":
+            raise RuntimeError(
+                "REDIS_URL must be set in production. "
+                "Set REDIS_URL environment variable."
+            )
+        else:
+            # Development fallback
+            redis_url = "redis://localhost:6379/0"
+            logger.warning("Using development Redis URL. Set REDIS_URL environment variable for production.")
+
+    # Configure extensions with validated Redis URL
+    from app.extensions import limiter, cache, redis_client
+
+    # Configure limiter
+    limiter.storage_uri = redis_url
+
+    # Configure cache
+    cache.config.update({
+        "CACHE_TYPE": "RedisCache",
+        "CACHE_REDIS_URL": redis_url,
+        "CACHE_DEFAULT_TIMEOUT": 300
+    })
+
+    # Configure Redis client
+    redis_client.configure(redis_url)
+
+    # Get Redis client for sessions
+    redis_session_client = None
+    try:
+        # First try to use the configured redis_client
+        redis_session_client = redis_client.client
+        # Test the connection
+        redis_session_client.ping()
+        logger.info(f"Redis session client connected successfully")
+    except Exception as e:
+        logger.error(f"Failed to get Redis client: {e}")
+        redis_session_client = None
+
+    # Use require_redis for session client
+    if redis_session_client:
+        try:
+            redis_session_client = require_redis(redis_url, "sessions", existing_client=redis_session_client)
+        except Exception as e:
+            logger.error(f"require_redis failed with existing client: {e}")
+            redis_session_client = require_redis(redis_url, "sessions")
+    else:
+        redis_session_client = require_redis(redis_url, "sessions")
 
     if REDIS_AVAILABLE and redis_session_client and FLASK_SESSION_AVAILABLE:
         app.config["SESSION_TYPE"] = "redis"
@@ -207,7 +297,12 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     from app.identity import models as identity_models
     from app.profile import models as profile_models
-    from app.kyc import models as kyc_models
+    try:
+        from app.kyc import models as kyc_models
+    except ImportError as e:
+        logger.warning(f"KYC models not available: {e}")
+        kyc_models = None
+
     from app.audit import models as audit_models
     from app.auth import roles as role_models
 
@@ -229,7 +324,24 @@ def create_app(config_object=None) -> Flask:
     from app.wallet.api.webhook_api import webhook_bp
 
     # Register core blueprints - owner_bp is now registered via admin_bp
-    for bp in [admin_bp, auth_bp, fan_bp, wallet_bp, events_bp, theme_bp]:
+    # Check each blueprint exists before registering
+    blueprints_to_register = []
+
+    # Check each blueprint variable exists
+    if 'admin_bp' in locals():
+        blueprints_to_register.append(admin_bp)
+    if 'auth_bp' in locals():
+        blueprints_to_register.append(auth_bp)
+    if 'fan_bp' in locals():
+        blueprints_to_register.append(fan_bp)
+    if 'wallet_bp' in locals():
+        blueprints_to_register.append(wallet_bp)
+    if 'events_bp' in locals():
+        blueprints_to_register.append(events_bp)
+    if 'theme_bp' in locals():
+        blueprints_to_register.append(theme_bp)
+
+    for bp in blueprints_to_register:
         app.register_blueprint(bp)
 
     # Register wallet API blueprints

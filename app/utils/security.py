@@ -18,14 +18,31 @@ from app.utils.exceptions import PermissionError
 
 # Use environment variable for encryption key
 def get_encryption_key():
-    """Get encryption key from environment or generate one."""
+    """Get encryption key from environment. Raises error if not set in production."""
     key_env = os.getenv("ENCRYPTION_KEY")
-    if key_env:
-        # Convert to 32-byte key for Fernet
-        return base64.urlsafe_b64encode(hashlib.sha256(key_env.encode()).digest())
-    else:
-        # Fallback for development (DO NOT USE IN PRODUCTION)
-        return Fernet.generate_key()
+
+    if not key_env:
+        # Check if we're in production
+        flask_env = os.getenv("FLASK_ENV", "production")
+        if flask_env == "production":
+            raise RuntimeError(
+                "ENCRYPTION_KEY environment variable must be set in production. "
+                "Generate a secure key with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        else:
+            # Development fallback with warning
+            import warnings
+            warnings.warn(
+                "ENCRYPTION_KEY not set. Using development-only key. "
+                "Set ENCRYPTION_KEY environment variable for production.",
+                RuntimeWarning
+            )
+            # Generate a persistent development key from a known seed
+            dev_key = hashlib.sha256(b"afcon360_development_key_do_not_use_in_production").digest()
+            return base64.urlsafe_b64encode(dev_key)
+
+    # Convert to 32-byte key for Fernet
+    return base64.urlsafe_b64encode(hashlib.sha256(key_env.encode()).digest())
 
 # Global encryption instance
 _fernet = Fernet(get_encryption_key())

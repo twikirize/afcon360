@@ -8,6 +8,7 @@ from datetime import datetime
 from functools import wraps
 from typing import Optional, Dict, Any
 import threading
+from app.utils.exceptions import ServiceUnavailableError
 
 logger = logging.getLogger(__name__)
 

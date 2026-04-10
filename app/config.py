@@ -15,7 +15,13 @@ load_dotenv()
 try:
     import config as branding
 except ImportError:
-    branding = None
+    # Create minimal branding object
+    class Branding:
+        APP_NAME = "AFCON 360"
+        TOURNAMENT_NAME = "AFCON 360"
+        YEAR = 2025
+        VERSION = "0.1.0"
+    branding = Branding()
 
 
 class Config:

@@ -14,7 +14,7 @@ Design principles:
 from datetime import datetime
 import logging
 
-from flask import render_template, jsonify, request, url_for, flash, redirect, session
+from flask import render_template, jsonify, request, url_for, flash, redirect, session, abort
 from flask_login import login_required, current_user
 
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
@@ -23,6 +23,7 @@ from app.utils.module_switch import check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
+from app.transport.models import Booking, DriverProfile, Vehicle
 from app.extensions import db
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,30 @@ logger = logging.getLogger(__name__)
 # =========================================================================
 # Helpers
 # =========================================================================
+
+def _require_ownership(resource, user_id_attr, admin_allowed=True):
+    """
+    Check if current_user owns the resource or is admin.
+    Returns the resource if check passes, otherwise aborts.
+    """
+    from flask_login import current_user
+
+    if not resource:
+        abort(404)
+
+    if not hasattr(resource, user_id_attr):
+        abort(404)
+
+    # Admin can access anything if allowed
+    if admin_allowed and hasattr(current_user, 'is_admin') and current_user.is_admin:
+        return resource
+
+    # Check ownership
+    if getattr(resource, user_id_attr) != current_user.id:
+        logger.warning(f"Ownership check failed: user_id={current_user.id} tried to access resource owned by {getattr(resource, user_id_attr)}")
+        abort(403)
+
+    return resource
 
 def _json_or_template(template, status=200, **ctx):
     """
@@ -223,7 +248,22 @@ def book_transport():
 def bookings_show(id):
     """View booking details"""
     try:
+        # Get booking model with ownership check
+        from app.transport.models import Booking
+        booking_model = Booking.query.get(id)
+
+        if not booking_model:
+            if request.is_json:
+                return jsonify({"status": "error", "message": "Booking not found"}), 404
+            flash("Booking not found", "warning")
+            return redirect(url_for("transport.bookings_index"))
+
+        # Check ownership
+        _require_ownership(booking_model, "customer_id")
+
+        # Get service representation
         booking = get_booking_service().get_booking(id)
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error loading booking {id} for user_id={_uid()}: {e}")
@@ -243,6 +283,12 @@ def bookings_show(id):
 @login_required
 def bookings_edit(id):
     """Edit a booking"""
+    # Check ownership first
+    booking_model = Booking.query.get(id)
+    if not booking_model:
+        abort(404)
+    _require_ownership(booking_model, "customer_id")
+
     logger.info(f"Booking edit {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/bookings/edit.html", id=id)
 
@@ -252,6 +298,12 @@ def bookings_edit(id):
 @login_required
 def bookings_timeline(id):
     """Booking event timeline"""
+    # Check ownership first
+    booking_model = Booking.query.get(id)
+    if not booking_model:
+        abort(404)
+    _require_ownership(booking_model, "customer_id")
+
     logger.info(f"Booking timeline {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/bookings/timeline.html", id=id)
 
@@ -261,6 +313,12 @@ def bookings_timeline(id):
 @login_required
 def bookings_payments(id):
     """Booking payment details"""
+    # Check ownership first
+    booking_model = Booking.query.get(id)
+    if not booking_model:
+        abort(404)
+    _require_ownership(booking_model, "customer_id")
+
     logger.info(f"Booking payments {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/bookings/payments.html", id=id)
 
@@ -329,7 +387,21 @@ def become_driver():
 def drivers_show(id):
     """View driver profile"""
     try:
+        # Get driver model with ownership check
+        driver_model = DriverProfile.query.get(id)
+
+        if not driver_model:
+            if request.is_json:
+                return jsonify({"status": "error", "message": "Driver not found"}), 404
+            flash("Driver not found", "warning")
+            return redirect(url_for("transport.drivers_index"))
+
+        # Check ownership (driver.user_id) or admin
+        _require_ownership(driver_model, "user_id", admin_allowed=True)
+
+        # Get service representation
         driver = get_provider_service().get_driver(id)
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error loading driver {id} for user_id={_uid()}: {e}")
@@ -459,7 +531,21 @@ def register_vehicle():
 def vehicles_show(id):
     """View vehicle details"""
     try:
+        # Get vehicle model with ownership check
+        vehicle_model = Vehicle.query.get(id)
+
+        if not vehicle_model:
+            if request.is_json:
+                return jsonify({"status": "error", "message": "Vehicle not found"}), 404
+            flash("Vehicle not found", "warning")
+            return redirect(url_for("transport.vehicles_index"))
+
+        # Check ownership (vehicle.owner_id) or admin
+        _require_ownership(vehicle_model, "owner_id", admin_allowed=True)
+
+        # Get service representation
         vehicle = get_provider_service().get_vehicle(id)
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error loading vehicle {id} for user_id={_uid()}: {e}")

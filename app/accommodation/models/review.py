@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.base import BaseModel
 import enum
 
 
@@ -31,7 +32,7 @@ class AccommodationReviewStatus(enum.Enum):
 # Review Model
 # ==========================================
 
-class Review(db.Model):
+class Review(BaseModel):
     __tablename__ = "accommodation_reviews"
     __table_args__ = (
         UniqueConstraint("booking_id", name="uq_review_per_booking"),
@@ -47,8 +48,6 @@ class Review(db.Model):
         CheckConstraint("location_rating BETWEEN 1 AND 5", name="ck_location_range"),
         CheckConstraint("value_rating BETWEEN 1 AND 5", name="ck_value_range"),
     )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # -------------------------------
     # Relationships
@@ -94,11 +93,6 @@ class Review(db.Model):
     is_published = Column(Boolean, default=False, index=True)
     published_at = Column(DateTime, nullable=True)
 
-    # -------------------------------
-    # Timestamps
-    # -------------------------------
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # -------------------------------
     # Core Methods

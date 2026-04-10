@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import validates, relationship
 from app.extensions import db
+from app.models.base import BaseModel
 
 # ---------------------------
 # Enumerations
@@ -37,7 +38,7 @@ IMMUTABLE_AFTER_VERIFICATION = {
 # ---------------------------
 # UserProfile Table
 # ---------------------------
-class UserProfile(db.Model):
+class UserProfile(BaseModel):
     """
     Authoritative store for personal and KYC information.
     - Separated from User (login/auth)
@@ -56,9 +57,6 @@ class UserProfile(db.Model):
         Index("ix_userprofile_is_deleted", "is_deleted"),
         Index("ix_userprofile_email_phone", "email", "phone_number"),
     )
-    # Primary key
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-
     # 🌍 External identity join
     user_id = Column(String(64), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, unique=True,
                      index=True)
@@ -110,9 +108,6 @@ class UserProfile(db.Model):
     suspended_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
 
-    # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # ---------------------------
     # Representation
@@ -218,18 +213,16 @@ class UserProfile(db.Model):
 # ---------------------------
 # Immutable change audit
 # ---------------------------
-class UserProfileAudit(db.Model):
+class UserProfileAudit(BaseModel):
     """
     Tracks attempts to modify immutable fields after verification.
     """
     __tablename__ = "user_profile_audit"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     user_profile_id = Column(BigInteger, ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     field_name = Column(String(64), nullable=False)
     old_value = Column(Text, nullable=True)
     attempted_value = Column(Text, nullable=True)
-    attempted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     attempted_by_user_id = Column(BigInteger, nullable=True)
 
     user_profile = relationship("UserProfile", backref="audit_logs")

@@ -2,9 +2,11 @@ import logging
 import traceback
 from contextlib import contextmanager
 from functools import wraps
+from typing import Optional
 from app.extensions import db
 
 logger = logging.getLogger(__name__)
+
 
 @contextmanager
 def db_transaction(operation_name: str, audit_context: Optional[dict] = None):
@@ -14,12 +16,16 @@ def db_transaction(operation_name: str, audit_context: Optional[dict] = None):
     - Rolls back and logs detailed error + traceback if any exception occurs.
     """
     try:
+        # Build audit data properly
+        audit_data = {
+            'operation': operation_name,
+            'status': 'started'
+        }
+        if audit_context:
+            audit_data.update(audit_context or {})
+
         logger.info(f"🔧 Starting operation: {operation_name}", extra={
-            'audit': {
-                'operation': operation_name,
-                'status': 'started',
-                **audit_context or {}
-            }
+            'audit': audit_data
         })
         yield
         db.session.commit()
@@ -32,16 +38,18 @@ def db_transaction(operation_name: str, audit_context: Optional[dict] = None):
         logger.error("Traceback:\n" + traceback.format_exc())
         raise
 
+
 def transactional(operation_name: str):
     """
     Decorator for wrapping functions in a DB transaction.
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # If we are already in a transaction context, this will nest,
-            # but usually, this is used for top-level service calls.
             with db_transaction(operation_name):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator

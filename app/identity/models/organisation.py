@@ -6,12 +6,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from app.extensions import db
+from app.models.base import BaseModel
 
 
 # -------------------------------
 # Organisation Core Identity
 # -------------------------------
-class Organisation(db.Model):
+class Organisation(BaseModel):
     """
     Global-grade organisation identity authority.
     Africa-first, regulator-ready, payment-safe.
@@ -30,7 +31,6 @@ class Organisation(db.Model):
     # -------------------
     # Core Identifiers
     # -------------------
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     org_id = Column(String(64), unique=True, nullable=False, index=True)
 
     # -------------------
@@ -128,14 +128,6 @@ class Organisation(db.Model):
     # Lifecycle Flags
     # -------------------
     is_active = Column(Boolean, default=True, nullable=False, index=True)
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    deleted_at = Column(DateTime, index=True)
-
-    # -------------------
-    # Audit
-    # -------------------
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # -------------------
     # Relationships

@@ -1,10 +1,10 @@
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
-class FanProfile(db.Model):
+class FanProfile(BaseModel):
     __tablename__ = "fan_profiles"
 
-    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
                         nullable=False, unique=True, index=True)
 
@@ -13,10 +13,6 @@ class FanProfile(db.Model):
     favorite_team = db.Column(db.String(128), nullable=True)
     avatar_url = db.Column(db.String(256), nullable=True)
     bio = db.Column(db.String(512), nullable=True)
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
-                           onupdate=datetime.utcnow, nullable=False)
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}

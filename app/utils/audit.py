@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from flask import request, has_request_context, g
 import json
+from functools import wraps
 
 logger = logging.getLogger('audit')
 
@@ -24,10 +25,11 @@ class AuditLog:
             ip_address: Optional[str] = None,
             user_agent: Optional[str] = None,
             status: str = "success",
-            error_message: Optional[str] = None
+            error_message: Optional[str] = None,
+            db_session=None  # Add database session parameter for atomicity
     ):
         """
-        Log an audit event
+        Log an audit event with optional database transaction integration
         """
         try:
             # Get request context if available
@@ -52,6 +54,30 @@ class AuditLog:
             # Log at INFO level for success, ERROR for failures
             log_level = logging.ERROR if status == "failed" else logging.INFO
             logger.log(log_level, json.dumps(audit_record, default=str))
+
+            # If db_session is provided, also write to database audit table
+            if db_session:
+                try:
+                    from app.audit.models import AuditLog as DBAuditLog
+                    db_audit = DBAuditLog(
+                        user_id=user_id,
+                        action=action,
+                        resource_type=resource_type,
+                        resource_id=resource_id,
+                        meta={
+                            "ip_address": ip_address,
+                            "user_agent": user_agent,
+                            "status": status,
+                            "details": details or {},
+                            "error_message": error_message
+                        }
+                    )
+                    db_session.add(db_audit)
+                    # Don't commit here - let the caller handle transaction
+                except ImportError:
+                    pass  # DBAuditLog model not available
+                except Exception as e:
+                    logger.error(f"Failed to write to database audit log: {e}")
 
         except Exception as e:
             logger.error(f"Failed to write audit log: {e}")

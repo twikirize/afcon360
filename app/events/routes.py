@@ -437,6 +437,7 @@ def event_attendees(event_slug):
 
 
 @events_bp.route("/api/checkin", methods=['POST'])
+@login_required
 def api_checkin():
     """JSON API for QR code check-in"""
     data = request.get_json()

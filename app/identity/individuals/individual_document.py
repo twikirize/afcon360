@@ -4,11 +4,11 @@ from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
-class IndividualKYCDocument(db.Model):
+class IndividualKYCDocument(BaseModel):
     __tablename__ = "individual_documents"
 
-    id = Column(BigInteger, primary_key=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     document_type = Column(
@@ -16,7 +16,6 @@ class IndividualKYCDocument(db.Model):
         nullable=False
     )
     file_path = Column(String(256), nullable=False)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime)
 
     user = relationship("User", back_populates="documents")

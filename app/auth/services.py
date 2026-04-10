@@ -83,10 +83,11 @@ def _emit(event_name: str, payload: dict) -> None:
             resource_id=payload.get("resource_id"),
             meta=enhanced_payload,
             ip_address=payload.get("ip"),
-            user_agent=payload.get("user_agent")
+            user_agent=payload.get("user_agent"),
+            db_session=db.session  # Pass session but don't commit
         )
     except Exception as e:
-        print(f"⚠️ Failed to queue audit log for {event_name}: {e}")
+        print(f"⚠️ Failed to create audit log entry for {event_name}: {e}")
 
 
 # ----------------------------

@@ -3,15 +3,15 @@ from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, Foreign
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.extensions import db
+from app.models.base import BaseModel
 
 
 # -------------------------------
 # Organisation Verification
 # -------------------------------
-class OrganisationVerification(db.Model):
+class OrganisationVerification(BaseModel):
     __tablename__ = "organisation_verifications"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
     reviewer_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
@@ -23,7 +23,6 @@ class OrganisationVerification(db.Model):
     provider_id = Column(String(128))
     notes = Column(Text)
 
-    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     decided_at = Column(DateTime)
     expires_at = Column(DateTime)
 
@@ -41,10 +40,9 @@ class OrganisationVerification(db.Model):
 # -------------------------------
 # Organisation KYB Check
 # -------------------------------
-class OrganisationKYBCheck(db.Model):
+class OrganisationKYBCheck(BaseModel):
     __tablename__ = "organisation_kyb_checks"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
 
     check_type = Column(Enum("identity", "tax", "license", "ubo", "sanctions", name="org_kyb_check_type"),
@@ -54,8 +52,6 @@ class OrganisationKYBCheck(db.Model):
     provider_id = Column(String(128))
     evidence = Column(JSON)
     notes = Column(Text)
-
-    performed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     organisation = relationship(
         "Organisation",
@@ -67,10 +63,9 @@ class OrganisationKYBCheck(db.Model):
 # -------------------------------
 # Organisation UBO
 # -------------------------------
-class OrganisationUBO(db.Model):
+class OrganisationUBO(BaseModel):
     __tablename__ = "organisation_ubos"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     verified_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
@@ -100,10 +95,9 @@ class OrganisationUBO(db.Model):
 # -------------------------------
 # Organisation KYB Document
 # -------------------------------
-class OrganisationKYBDocument(db.Model):
+class OrganisationKYBDocument(BaseModel):
     __tablename__ = "organisation_kyb_documents"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
 
     document_type = Column(String(64), nullable=False)
@@ -113,8 +107,6 @@ class OrganisationKYBDocument(db.Model):
         Enum("pending", "verified", "rejected", name="kyb_doc_status"),
         default="pending"
     )
-
-    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     organisation = relationship(
         "Organisation",

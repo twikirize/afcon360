@@ -5,11 +5,12 @@ from datetime import datetime
 from app.extensions import db
 from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
+from app.models.base import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
-class AuditLog(db.Model):
+class AuditLog(BaseModel):
     """
     Immutable audit log for compliance. Do NOT delete or modify entries programmatically.
     Avoid storing secrets or full PII in meta.
@@ -18,10 +19,7 @@ class AuditLog(db.Model):
     """
     __tablename__ = "audit_logs"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-
     # Named 'created_at' to match all callers (previously used user.py which had created_at)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     # FK to internal PKs
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -43,12 +41,14 @@ class AuditLog(db.Model):
 
     @staticmethod
     def log(user_id=None, action=None, resource_type=None, resource_id=None,
-            meta=None, ip_address=None, user_agent=None, org_id=None, device_id=None):
+            meta=None, ip_address=None, user_agent=None, org_id=None, device_id=None,
+            db_session=None):
         """
-        Create and persist an audit log entry.
-        Silently swallows DB errors so a logging failure never breaks the main request.
+        Create an audit log entry WITHOUT committing.
+        Caller must handle transaction commit/rollback.
         """
         try:
+            session = db_session or db.session
             entry = AuditLog(
                 user_id=user_id,
                 org_id=org_id,
@@ -60,12 +60,14 @@ class AuditLog(db.Model):
                 device_id=device_id,
                 meta=meta or {},
             )
-            db.session.add(entry)
-            db.session.commit()
-            logger.info(f"Audit log: {action} by user {user_id}")
+            session.add(entry)
+            # DO NOT commit here - let caller handle transaction
+            logger.info(f"Audit log entry created: {action} by user {user_id}")
         except Exception as e:
-            db.session.rollback()
-            logger.error(f"Failed to create audit log: {e}")
+            # Log error but don't rollback - let caller handle
+            logger.error(f"Failed to create audit log entry: {e}")
+            # Re-raise to let caller know audit logging failed
+            raise
 
     @staticmethod
     def recent_audits(limit=50):

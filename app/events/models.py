@@ -6,12 +6,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.base import BaseModel
 
 
-class Event(db.Model):
+class Event(BaseModel):
     __tablename__ = "events"
 
-    id = Column(BigInteger, primary_key=True)
     event_ref = Column(String(50), unique=True)
     slug = Column(String(120), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
@@ -33,12 +33,10 @@ class Event(db.Model):
     contact_email = Column(String(255))
     contact_phone = Column(String(50))
     event_metadata = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=func.now())
     approved_at = Column(DateTime, nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     rejected_at = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationships
     approved_by = relationship("User", foreign_keys=[approved_by_id])
@@ -67,11 +65,10 @@ class Event(db.Model):
         return self.status == "rejected"
 
 
-class TicketType(db.Model):
+class TicketType(BaseModel):
     """Different ticket tiers for an event"""
     __tablename__ = "event_ticket_types"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(100), nullable=False)  # e.g., VIP, Regular, Early Bird
     description = Column(Text)
@@ -89,7 +86,7 @@ class TicketType(db.Model):
         return f"<TicketType {self.name} for {self.event.name}>"
 
 
-class EventRegistration(db.Model):
+class EventRegistration(BaseModel):
     """Event Registration - Personal passport for each attendee"""
     __tablename__ = "event_registrations"
     __table_args__ = (
@@ -102,7 +99,6 @@ class EventRegistration(db.Model):
         Index("idx_reg_email", "email"),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     registration_ref = Column(String(60), unique=True, nullable=False, index=True)
     # format: ER-CRUSADE-2026-00001
 
@@ -152,9 +148,6 @@ class EventRegistration(db.Model):
     # self, organizer, bulk_import, admin
     notes = Column(Text, nullable=True)
 
-    # Timestamps
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     def generate_refs(self, event_slug: str, sequence: int):
         """Generate registration_ref, ticket_number, and qr_token"""
@@ -172,7 +165,7 @@ class EventRegistration(db.Model):
         return f"<EventRegistration {self.registration_ref}: {self.full_name}>"
 
 
-class EventRole(db.Model):
+class EventRole(BaseModel):
     """Event-specific roles for staff management"""
     __tablename__ = "event_roles"
     __table_args__ = (
@@ -182,7 +175,6 @@ class EventRole(db.Model):
         Index("idx_event_roles_role", "role"),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
     event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     role = Column(String(50), nullable=False)  # organizer, co_organizer, steward, volunteer, media
@@ -196,9 +188,6 @@ class EventRole(db.Model):
     # Status
     is_active = Column(Boolean, default=True)
 
-    # Timestamps
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationships
     event = relationship("Event", backref="staff_roles")

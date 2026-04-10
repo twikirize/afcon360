@@ -115,7 +115,7 @@ http://localhost:5000/admin/manage-users
 ### 2. **Create Test Users**
 Run the test user creation script:
 ```bash
-python create_test_users_final.py
+python sample_users.py
 ```
 
 ### 3. **Test Impersonation**

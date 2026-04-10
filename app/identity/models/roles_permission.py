@@ -32,6 +32,8 @@ from sqlalchemy import Index, UniqueConstraint, event
 from sqlalchemy.orm import relationship, validates
 
 from app.extensions import db
+from app.models.base import BaseModel
+from functools import cached_property
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +224,7 @@ def remove_permission_from_role(
 # Role
 # ---------------------------------------------------------------------------
 
-class Role(db.Model):
+class Role(BaseModel):
     """
     A named, scoped role definition.
 
@@ -246,19 +248,10 @@ class Role(db.Model):
         Index("ix_role_level_scope", "level", "scope"),
     )
 
-    id          = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     name        = db.Column(db.String(64),  nullable=False, index=True)
     scope       = db.Column(db.String(20),  nullable=False, index=True, default="global")
     level       = db.Column(db.BigInteger,  nullable=True,  index=True)
     description = db.Column(db.Text,        nullable=True)
-
-    created_at  = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at  = db.Column(
-        db.DateTime,
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
 
     # --- relationships -------------------------------------------------------
 
@@ -283,7 +276,7 @@ class Role(db.Model):
     def permission_names(self) -> Set[str]:
         """Return the set of permission name strings granted to this role."""
         return {rp.permission.name for rp in self.permissions if rp.permission}
-    
+
     def clear_permission_cache(self):
         """Clear cached permissions when role-permission mappings change"""
         try:
@@ -330,7 +323,7 @@ class Role(db.Model):
 # Permission
 # ---------------------------------------------------------------------------
 
-class Permission(db.Model):
+class Permission(BaseModel):
     """
     A granular, named capability.
 
@@ -345,17 +338,8 @@ class Permission(db.Model):
     __allow_unmapped__ = True
     __tablename__ = "permissions"
 
-    id          = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     name        = db.Column(db.String(128), nullable=False, unique=True, index=True)
     description = db.Column(db.Text, nullable=True)
-
-    created_at  = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at  = db.Column(
-        db.DateTime,
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
 
     roles: list["RolePermission"] = relationship(
         "RolePermission",
@@ -381,7 +365,7 @@ class Permission(db.Model):
 # RolePermission  (association table)
 # ---------------------------------------------------------------------------
 
-class RolePermission(db.Model):
+class RolePermission(BaseModel):
     """
     Many-to-many link between :class:`Role` and :class:`Permission`.
 
@@ -397,7 +381,6 @@ class RolePermission(db.Model):
         Index("ix_rp_permission_id", "permission_id"),
     )
 
-    id            = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     role_id       = db.Column(
         db.BigInteger,
         db.ForeignKey("roles.id", ondelete="CASCADE"),

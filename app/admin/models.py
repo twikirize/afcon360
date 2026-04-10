@@ -8,15 +8,15 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, Foreign
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.base import BaseModel
 
 
-class ManageableCategory(db.Model):
+class ManageableCategory(BaseModel):
     """
     Categories for manageable content (Cities, Vehicles, Hotels, etc.)
     """
     __tablename__ = "manageable_categories"
 
-    id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False, unique=True)  # Cities, Vehicles, Hotels
     slug = Column(String(100), nullable=False, unique=True)  # cities, vehicles, hotels
     description = Column(Text, nullable=True)
@@ -32,8 +32,6 @@ class ManageableCategory(db.Model):
     fields_config = Column(JSON, nullable=False, default=dict)
 
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationships
     items = relationship("ManageableItem", back_populates="category", cascade="all, delete-orphan")
@@ -42,13 +40,12 @@ class ManageableCategory(db.Model):
         return f"<ManageableCategory {self.slug}>"
 
 
-class ManageableItem(db.Model):
+class ManageableItem(BaseModel):
     """
     Individual items that can be managed (Kampala City, Toyota Hiace, etc.)
     """
     __tablename__ = "manageable_items"
 
-    id = Column(Integer, primary_key=True)
     category_id = Column(Integer, ForeignKey("manageable_categories.id"), nullable=False)
     name = Column(String(200), nullable=False)
     slug = Column(String(200), nullable=False)
@@ -70,9 +67,6 @@ class ManageableItem(db.Model):
     views = Column(Integer, default=0)
     rating = Column(Integer, default=0)  # 1-5
 
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
     # Relationships
     category = relationship("ManageableCategory", back_populates="items")
     creator = relationship("User", foreign_keys=[created_by])
@@ -88,13 +82,12 @@ class ManageableItem(db.Model):
         return f"<ManageableItem {self.slug}>"
 
 
-class ContentSubmission(db.Model):
+class ContentSubmission(BaseModel):
     """
     Tracks user submissions for content approval
     """
     __tablename__ = "content_submissions"
 
-    id = Column(Integer, primary_key=True)
     item_id = Column(Integer, ForeignKey("manageable_items.id"), nullable=True)
     category_id = Column(Integer, ForeignKey("manageable_categories.id"), nullable=False)
 
@@ -111,8 +104,6 @@ class ContentSubmission(db.Model):
     submitted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     submitted_by_org = Column(Integer, ForeignKey("organisations.id"), nullable=True)
 
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     reviewed_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -126,13 +117,12 @@ class ContentSubmission(db.Model):
         return f"<ContentSubmission {self.name}>"
 
 
-class UserDashboardConfig(db.Model):
+class UserDashboardConfig(BaseModel):
     """
     User-specific dashboard configurations
     """
     __tablename__ = "user_dashboard_configs"
 
-    id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
 
     # Dashboard preferences
@@ -144,9 +134,6 @@ class UserDashboardConfig(db.Model):
     notify_new_content = Column(Boolean, default=True)
     notify_approvals = Column(Boolean, default=True)
     notify_rejections = Column(Boolean, default=True)
-
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationship
     user = relationship("User", backref="dashboard_config")

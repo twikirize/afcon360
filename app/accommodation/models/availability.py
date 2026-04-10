@@ -4,7 +4,7 @@ Availability models - Property availability management
 Includes blocked dates and recurring availability rules
 """
 
-from datetime import date, timedelta  # FIX 1: added timedelta (was missing, caused NameError in all helper functions)
+from datetime import date, timedelta
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Date,
     ForeignKey, Integer, Text,
@@ -13,6 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.base import BaseModel
 import enum
 
 
@@ -34,7 +35,7 @@ class AccommodationBlockedReason(enum.Enum):
 # Blocked Date Model (Individual blocked dates)
 # ==========================================
 
-class BlockedDate(db.Model):
+class BlockedDate(BaseModel):
     """
     Individual blocked dates for a property.
     One row per blocked date - simple and queryable.
@@ -48,8 +49,6 @@ class BlockedDate(db.Model):
         # DB level breaks `db upgrade` whenever historical blocked dates exist in the table.
         # Validate future-only dates in the service/API layer instead.
     )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # -------------------------------
     # Relationships
@@ -71,7 +70,6 @@ class BlockedDate(db.Model):
     # -------------------------------
     # Timestamps
     # -------------------------------
-    created_at = Column(DateTime, default=func.now())
     created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     def __repr__(self):
@@ -86,7 +84,7 @@ class BlockedDate(db.Model):
 # Availability Rule Model (Recurring rules)
 # ==========================================
 
-class AvailabilityRule(db.Model):
+class AvailabilityRule(BaseModel):
     """
     Recurring availability rules (e.g., closed on Sundays, seasonal closures)
     """
@@ -97,8 +95,6 @@ class AvailabilityRule(db.Model):
         CheckConstraint("end_date >= start_date", name="ck_rule_dates_valid"),
         CheckConstraint("day_of_week BETWEEN 0 AND 6", name="ck_day_of_week_valid"),
     )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # -------------------------------
     # Relationships
@@ -117,11 +113,6 @@ class AvailabilityRule(db.Model):
 
     is_available = Column(Boolean, default=True)  # False = blocked
     reason = Column(Text, nullable=True)
-
-    # -------------------------------
-    # Timestamps
-    # -------------------------------
-    created_at = Column(DateTime, default=func.now())
 
     def __repr__(self):
         if self.day_of_week is not None:

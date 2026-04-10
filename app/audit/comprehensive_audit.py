@@ -26,6 +26,7 @@ from enum import Enum
 from sqlalchemy import Column, BigInteger, String,Integer, DateTime, JSON, Numeric, Enum as SQLEnum, Index, Boolean, Text
 from sqlalchemy.orm import Session
 from app.extensions import db
+from app.models.base import BaseModel
 import logging
 from typing import Any
 import json
@@ -79,7 +80,7 @@ class DataAccessType(str, Enum):
 # 1. FINANCIAL AUDIT LOG (Critical for Banking Integration)
 # ============================================================================
 
-class FinancialAuditLog(db.Model):
+class FinancialAuditLog(BaseModel):
     """
     Immutable audit log for ALL financial transactions.
 
@@ -94,7 +95,6 @@ class FinancialAuditLog(db.Model):
     """
     __tablename__ = "financial_audit_logs"
 
-    id = Column(BigInteger, primary_key=True)
 
     # Transaction identification
     transaction_id = Column(String(128), nullable=False, unique=True, index=True)
@@ -150,8 +150,6 @@ class FinancialAuditLog(db.Model):
     # Full transaction context (renamed from 'metadata' to avoid SQLAlchemy reserved word)
     extra_data = Column(JSON)  # Additional context
 
-    # Timestamps (immutable)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     completed_at = Column(DateTime)
 
     # Indexes for common queries
@@ -210,7 +208,7 @@ class FinancialAuditLog(db.Model):
 # 2. API AUDIT LOG (Third-Party Integration Tracking)
 # ============================================================================
 
-class APIAuditLog(db.Model):
+class APIAuditLog(BaseModel):
     """
     Track all third-party API calls for debugging and compliance.
 
@@ -224,7 +222,6 @@ class APIAuditLog(db.Model):
     """
     __tablename__ = "api_audit_logs"
 
-    id = Column(BigInteger, primary_key=True)
 
     # API identification
     service_name = Column(String(64), nullable=False, index=True)  # "flutterwave", "mtn_momo"
@@ -255,7 +252,6 @@ class APIAuditLog(db.Model):
 
     # Audit
     initiated_by = Column(BigInteger)  # User or system
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     __table_args__ = (
         Index('idx_api_service_date', 'service_name', 'created_at'),
@@ -300,7 +296,7 @@ class APIAuditLog(db.Model):
 # 3. DATA ACCESS LOG (GDPR/Privacy Compliance)
 # ============================================================================
 
-class DataAccessLog(db.Model):
+class DataAccessLog(BaseModel):
     """
     Track access to sensitive personal data for GDPR compliance.
 
@@ -314,7 +310,6 @@ class DataAccessLog(db.Model):
     """
     __tablename__ = "data_access_logs"
 
-    id = Column(BigInteger, primary_key=True)
 
     # Access details
     accessed_by = Column(BigInteger, nullable=False, index=True)  # Who accessed
@@ -335,7 +330,6 @@ class DataAccessLog(db.Model):
     # Audit
     ip_address = Column(String(64))
     user_agent = Column(String(512))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     __table_args__ = (
         Index('idx_data_subject_date', 'subject_user_id', 'created_at'),
@@ -374,7 +368,7 @@ class DataAccessLog(db.Model):
 # 4. SECURITY EVENT LOG (Critical Security Monitoring)
 # ============================================================================
 
-class SecurityEventLog(db.Model):
+class SecurityEventLog(BaseModel):
     """
     Track security-relevant events for incident response.
 
@@ -387,7 +381,6 @@ class SecurityEventLog(db.Model):
     """
     __tablename__ = "security_event_logs"
 
-    id = Column(BigInteger, primary_key=True)
 
     event_type = Column(String(64), nullable=False, index=True)
     severity = Column(SQLEnum(AuditSeverity), nullable=False, index=True)
@@ -405,7 +398,6 @@ class SecurityEventLog(db.Model):
     handled_by = Column(BigInteger)
     handled_at = Column(DateTime)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     @staticmethod
     def log_event(
@@ -441,7 +433,7 @@ class SecurityEventLog(db.Model):
 # 5. DATA CHANGE LOG (For audit of data modifications)
 # ============================================================================
 
-class DataChangeLog(db.Model):
+class DataChangeLog(BaseModel):
     """
     Track changes to data entities (wallet creation, freezing, payouts, etc.)
 
@@ -449,7 +441,6 @@ class DataChangeLog(db.Model):
     """
     __tablename__ = "data_change_logs"
 
-    id = Column(BigInteger, primary_key=True)
 
     entity_type = Column(String(64), nullable=False, index=True)
     entity_id = Column(String(128), nullable=False, index=True)
@@ -463,7 +454,6 @@ class DataChangeLog(db.Model):
     user_agent = Column(String(512))
 
     extra_data = Column(JSON)  # Renamed from 'metadata'
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     __table_args__ = (
         Index('idx_dc_entity', 'entity_type', 'entity_id'),
