@@ -12,7 +12,7 @@
 <p>There are <strong>{{ unverified_count }}</strong> unverified users.</p>
 
 <form method="post">
-  {{ csrf_token() }}
+  {{ csrf_token }}
   <button type="submit">Verify All Now</button>
   <a href="{{ url_for('admin.dashboard') }}">Cancel</a>
 </form>

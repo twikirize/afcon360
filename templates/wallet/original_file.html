@@ -41,7 +41,7 @@
     <div class="card-body">
       <h5>Deposit</h5>
       <form method="POST" action="{{ url_for('wallet_routes.deposit_form') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="row g-3">
           <div class="col-md-4">
             <label class="form-label">Amount</label>
@@ -70,7 +70,7 @@
     <div class="card-body">
       <h5>Send Funds to Another Fan</h5>
       <form method="POST" action="{{ url_for('wallet_routes.send_funds') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="row g-3">
           <div class="col-md-4">
             <label class="form-label">Receiver ID</label>
@@ -110,7 +110,7 @@
     <div class="card-body">
       <h5>Withdraw Funds</h5>
       <form method="POST" action="{{ url_for('wallet_routes.withdraw_funds') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="row g-3">
           <div class="col-md-3">
             <label class="form-label">Amount</label>

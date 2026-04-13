@@ -1,5 +1,7 @@
 # app/events/tasks.py
+import json
 import logging
+from datetime import datetime
 from celery import Celery
 from flask import Flask, current_app
 from app.extensions import db # Assuming db is initialized in app.extensions
@@ -31,43 +33,231 @@ celery_app = Celery('event_tasks', broker=redis_url, backend=redis_url)
 # This is a placeholder for your Flask app creation function
 # In a real app, you'd import your create_app function
 def create_flask_app():
-    from app import create_app # Assuming your create_app function is in app/__init__.py
-    return create_app()
+    try:
+        from app import create_app # Assuming your create_app function is in app/__init__.py
+        return create_app()
+    except ImportError as e:
+        logger.error(f"Failed to import create_app: {e}")
+        # Create a minimal Flask app for testing
+        from flask import Flask
+        app = Flask(__name__)
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+        app.config['TESTING'] = True
+        return app
 
-@celery_app.task
-def process_event_registration(registration_id: int, event_slug: str):
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=330,
+    acks_late=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True
+)
+def process_event_registration(self, registration_id: int, event_slug: str, task_idempotency_key: str = None):
     """
     Background task to generate QR code, upload it, and send confirmation email.
     """
+    # Check idempotency
+    # Note: redis_client needs to be imported from app.extensions
+    try:
+        from app.extensions import redis_client
+        if task_idempotency_key and redis_client and hasattr(redis_client, 'get'):
+            cache_key = f"task_idempotency:{task_idempotency_key}"
+            if redis_client.get(cache_key):
+                logger.info(f"Task already processed: {task_idempotency_key}")
+                return {"status": "skipped", "reason": "already_processed"}
+            redis_client.setex(cache_key, 3600, "1")  # 1 hour TTL
+    except ImportError:
+        logger.warning("redis_client not available, skipping idempotency check")
+    except Exception as e:
+        logger.warning(f"Error checking idempotency: {e}")
+
     app = create_flask_app()
     with app.app_context():
-        registration = EventRegistration.query.get(registration_id)
-        event = Event.query.filter_by(slug=event_slug).first()
-
-        if not registration or not event:
-            logger.error(f"Task failed: Registration {registration_id} or Event {event_slug} not found.")
-            return
-
         try:
-            # 1. Generate QR Code
-            qr_code_base64 = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
+            # Use with_for_update to lock the registration
+            registration = EventRegistration.query.with_for_update(
+                of=EventRegistration, nowait=True
+            ).get(registration_id)
 
-            # TODO: Implement actual QR code storage (e.g., S3, local file system)
-            # For now, we'll just log it or store it in metadata if needed
-            # registration.qr_code_url = "url_to_stored_qr_code"
-            # db.session.add(registration)
-            # db.session.commit()
+            event = Event.query.filter_by(slug=event_slug).first()
 
-            # 2. Send Confirmation Email (Placeholder for SendGrid/other service)
-            # This would involve rendering an email template and sending it
-            logger.info(f"Sending confirmation email for registration {registration.registration_ref} to {registration.email}")
-            logger.info(f"QR Code for {registration.registration_ref}: {qr_code_base64[:50]}...") # Log first 50 chars
+            if not registration or not event:
+                logger.error(f"Task failed: Registration {registration_id} or Event {event_slug} not found.")
+                return {"status": "failed", "reason": "not_found"}
 
-            # Example: send_email_with_qr(registration.email, event.name, qr_code_base64)
+            # Check if already processed
+            if registration.status in ["confirmed", "processing"] and registration.payment_status in ["paid", "free"]:
+                logger.info(f"Registration {registration_id} already processed")
+                return {"status": "skipped", "reason": "already_processed"}
 
-            logger.info(f"Successfully processed background task for registration {registration.registration_ref}")
+            # Update status to processing
+            registration.status = "processing"
+            db.session.add(registration)
+            db.session.commit()
+
+            try:
+                # 1. Generate QR Code
+                qr_code_base64 = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
+
+                # Store QR code reference (in production, upload to S3)
+                # For now, we'll store in metadata
+                if not registration.notes:
+                    registration.notes = ""
+                registration.notes += f"\nQR generated at: {datetime.utcnow().isoformat()}"
+
+                # 2. Send Confirmation Email (placeholder)
+                logger.info(f"Sending confirmation email for registration {registration.registration_ref} to {registration.email}")
+                # In production: send_email_with_qr(registration.email, event.name, qr_code_base64)
+
+                # Update status to completed
+                registration.status = "confirmed"
+                if registration.payment_status == "pending":
+                    registration.payment_status = "paid"
+
+                db.session.add(registration)
+                db.session.commit()
+
+                logger.info(f"Successfully processed background task for registration {registration.registration_ref}")
+
+            except Exception as e:
+                logger.error(f"Error in background task for registration {registration.registration_ref}: {e}")
+                registration.status = "failed_processing"
+                db.session.add(registration)
+                db.session.commit()
+                # Retry the task
+                raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
 
         except Exception as e:
-            logger.error(f"Error in background task for registration {registration.registration_ref}: {e}")
-            # Optionally, update registration status to 'failed_email_send' or similar
-            db.session.rollback()
+            logger.error(f"Task setup error: {e}")
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+            else:
+                logger.critical(f"Max retries exceeded for registration {registration_id}")
+
+@celery_app.task(
+    name='events.expire_pending_registrations',
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=330,
+    acks_late=True
+)
+def expire_pending_registrations(self):
+    """
+    REAPER TASK: Expires pending registrations after 2 hours
+    Runs every 5 minutes via Celery beat
+    """
+    from app.extensions import db
+    from app.events.models import EventRegistration, TicketType
+    from sqlalchemy import and_
+    from datetime import datetime, timedelta
+
+    cutoff_time = datetime.utcnow() - timedelta(hours=2)
+
+    # Find expired pending registrations with FOR UPDATE lock to prevent race conditions
+    # Use constants from the model
+    expired_registrations = db.session.query(EventRegistration).filter(
+        and_(
+            EventRegistration.payment_status == EventRegistration.PAYMENT_STATUS_PENDING,
+            EventRegistration.created_at <= cutoff_time,
+            EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT
+        )
+    ).with_for_update(of=EventRegistration).all()
+
+    expired_count = 0
+    capacity_released = {}
+
+    for registration in expired_registrations:
+        try:
+            # Record ticket type before expiry
+            ticket_type_id = registration.ticket_type_id
+            event_id = registration.event_id
+
+            # Mark as expired using model constants
+            registration.payment_status = EventRegistration.PAYMENT_STATUS_EXPIRED
+            registration.status = EventRegistration.STATUS_EXPIRED
+            registration.notes = f"Auto-expired by Reaper at {datetime.utcnow().isoformat()}"
+
+            db.session.add(registration)
+
+            # Track capacity to release
+            key = f"{event_id}:{ticket_type_id}"
+            capacity_released[key] = capacity_released.get(key, 0) + 1
+
+            expired_count += 1
+
+        except Exception as e:
+            logger.error(f"Failed to expire registration {registration.id}: {e}")
+            # Continue with other registrations
+
+    # Commit all changes
+    if expired_count > 0:
+        db.session.commit()
+
+        # Send capacity release signals for each event/ticket type
+        try:
+            from app.events.signal_handlers import event_capacity_released
+            from flask import current_app
+            for key, count in capacity_released.items():
+                event_id, ticket_type_id = key.split(':')
+                event_capacity_released.send(
+                    current_app._get_current_object(),
+                    event_id=int(event_id),
+                    ticket_type_id=int(ticket_type_id),
+                    seats_released=count
+                )
+        except Exception as sig_error:
+            logger.warning(f"Failed to send capacity released signals: {sig_error}")
+
+        logger.info(f"Reaper expired {expired_count} pending registrations, released {len(capacity_released)} capacity buckets")
+
+    return {
+        'expired_count': expired_count,
+        'capacity_released': capacity_released,
+        'timestamp': datetime.utcnow().isoformat()
+    }
+
+
+@celery_app.task(
+    name='events.release_expired_capacity',
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=330,
+    acks_late=True
+)
+def release_expired_capacity(self, event_id, ticket_type_id, seats_to_release=1):
+    """
+    Explicitly release capacity for expired registrations
+    Uses with_for_update() to prevent race conditions
+    """
+    from app.extensions import db
+    from app.events.models import TicketType
+
+    try:
+        with db.session.begin_nested():
+            # Lock the ticket type row
+            ticket_type = TicketType.query.with_for_update().filter_by(
+                id=ticket_type_id,
+                event_id=event_id
+            ).first()
+
+            if ticket_type:
+                # Release capacity (for waitlist processing)
+                logger.info(f"Released {seats_to_release} seat(s) for ticket type {ticket_type.name}")
+
+        db.session.commit()
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to release capacity: {e}")
+        db.session.rollback()
+        return False

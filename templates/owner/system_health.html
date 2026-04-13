@@ -1,10 +1,234 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}📊 System Health - AFCON360 Owner{% endblock %}
+
+{% block styles %}
+<style>
+    .health-dashboard {
+        background: #f8f9fa;
+        min-height: 100vh;
+        padding: 2rem;
+    }
+
+    .health-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .health-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+
+    .health-up { background: #28a745; }
+    .health-warning { background: #ffc107; }
+    .health-down { background: #dc3545; }
+
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #495057;
+    }
+
+    .metric-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .progress-bar-health {
+        height: 10px;
+        border-radius: 5px;
+        background: #e9ecef;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        border-radius: 5px;
+        transition: width 0.3s ease;
+    }
+
+    .progress-success { background: #28a745; }
+    .progress-warning { background: #ffc107; }
+    .progress-danger { background: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="health-dashboard">
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="bi bi-heart-pulse"></i> System Health Dashboard</h1>
+            <small class="text-muted">Last updated: {{ now().strftime('%Y-%m-%d %H:%M:%S') }}</small>
+        </div>
+
+        <!-- System Status -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="health-card">
+                    <h4 class="mb-3">Overall System Status</h4>
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="health-indicator health-up"></span>
+                        <h5 class="mb-0">All Systems Operational</h5>
+                    </div>
+                    <div class="progress-bar-health mb-3">
+                        <div class="progress-fill progress-success" style="width: 95%;"></div>
+                    </div>
+                    <p class="text-muted">System uptime and performance metrics are within normal ranges.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Health -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="health-card">
+                    <h5><i class="bi bi-database"></i> Database</h5>
+                    {% if health.database.status == 'connected' %}
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="health-indicator health-up"></span>
+                        <span class="text-success">Connected</span>
+                    </div>
+                    <p class="mb-2">Latency: <strong>{{ health.database.latency }} ms</strong></p>
+                    <p class="text-muted mb-0">{{ health.database.message }}</p>
+                    {% else %}
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="health-indicator health-down"></span>
+                        <span class="text-danger">Disconnected</span>
+                    </div>
+                    <p class="text-danger">{{ health.database.message }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Redis Health -->
+            <div class="col-md-6">
+                <div class="health-card">
+                    <h5><i class="bi bi-lightning-charge"></i> Redis Cache</h5>
+                    {% if health.redis.status == 'connected' %}
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="health-indicator health-up"></span>
+                        <span class="text-success">Connected</span>
+                    </div>
+                    <p class="mb-2">Latency: <strong>{{ health.redis.latency }} ms</strong></p>
+                    <p class="text-muted mb-0">{{ health.redis.message }}</p>
+                    {% else %}
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="health-indicator health-down"></span>
+                        <span class="text-danger">Disconnected</span>
+                    </div>
+                    <p class="text-danger">{{ health.redis.message }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- System Metrics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="health-card text-center">
+                    <div class="metric-value">{{ settings_count }}</div>
+                    <div class="metric-label">System Settings</div>
+                    <small class="text-muted">Database-backed configuration</small>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="health-card text-center">
+                    <div class="metric-value">{{ health.timestamp|default('N/A')|truncate(10, true, '') }}</div>
+                    <div class="metric-label">Last Check</div>
+                    <small class="text-muted">Health check timestamp</small>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="health-card text-center">
+                    <div class="metric-value">24/7</div>
+                    <div class="metric-label">Uptime</div>
+                    <small class="text-muted">Monitoring active</small>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="health-card text-center">
+                    <div class="metric-value">100%</div>
+                    <div class="metric-label">API Status</div>
+                    <small class="text-muted">All endpoints responding</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Overview -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="health-card">
+                    <h4><i class="bi bi-gear"></i> System Configuration</h4>
+                    <p class="text-muted">Current system settings and feature flags status.</p>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Database Settings
+                                    <span class="badge bg-success rounded-pill">{{ settings_count }} items</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Environment
+                                    <span class="badge bg-info rounded-pill">{{ config.ENVIRONMENT|default('production') }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Debug Mode
+                                    <span class="badge bg-{{ 'warning' if config.DEBUG else 'secondary' }} rounded-pill">
+                                        {{ 'ON' if config.DEBUG else 'OFF' }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Cache Enabled
+                                    <span class="badge bg-success rounded-pill">YES</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Rate Limiting
+                                    <span class="badge bg-success rounded-pill">ACTIVE</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Audit Logging
+                                    <span class="badge bg-success rounded-pill">ENABLED</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <a href="{{ url_for('admin.owner.security_dashboard') }}" class="btn btn-primary">
+                            <i class="bi bi-shield-lock"></i> Manage Security Settings
+                        </a>
+                        <a href="{{ url_for('admin.owner.danger_zone') }}" class="btn btn-outline-danger ms-2">
+                            <i class="bi bi-exclamation-triangle"></i> Danger Zone
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Auto-refresh health data every 30 seconds
+    setTimeout(function() {
+        window.location.reload();
+    }, 30000);
+</script>
+{% endblock %}

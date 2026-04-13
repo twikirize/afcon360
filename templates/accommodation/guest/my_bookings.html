@@ -73,7 +73,7 @@
                         <div class="modal-dialog">
                             <div class="modal-content">
                                 <form method="POST" action="{{ url_for('accommodation.guest.cancel_booking', reference=booking.booking_reference) }}">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <div class="modal-header">
                                         <h5 class="modal-title">Cancel Booking</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

@@ -55,7 +55,7 @@
                       <!-- UPDATED: Enhanced toggle with kill switch for wallet -->
                       <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}"
                             id="toggle-form-{{ name }}" style="display:inline">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="reason" id="reason-{{ name }}" value="">
                         <input type="hidden" name="confirm" id="confirm-{{ name }}" value="">
                         <label class="sad-toggle" title="Toggle {{ name }}">
@@ -105,7 +105,7 @@
                   {% if is_enabled %}<span class="sad-badge on">On</span>
                   {% else %}<span class="sad-badge off">Off</span>{% endif %}
                   <form method="POST" action="{{ url_for('admin.toggle_wallet_feature', feature=name) }}" style="display:inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <label class="sad-toggle">
                       <input type="checkbox" {{ 'checked' if is_enabled else '' }} onchange="this.form.submit()">
                       <span class="sad-toggle-slider"></span>
@@ -128,7 +128,7 @@
             </div>
             <div class="sad-card-body">
               <form method="POST" action="{{ url_for('admin.update_withdraw_settings') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="sad-settings-grid">
                   <div class="sad-form-group">
                     <label for="daily_limit">Daily Limit (USD)</label>

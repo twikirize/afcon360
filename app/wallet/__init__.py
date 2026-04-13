@@ -39,9 +39,22 @@ def get_wallet(user_id: int):
     return repo.get_by_user_id(user_id)
 
 def get_or_create_wallet(user_id: int):
+    """Get or create wallet with KYC tier check."""
     from app.wallet.repositories.wallet_repository import WalletRepository
+    from app.auth.kyc_compliance import get_user_kyc_tier, TIER_3_ENHANCED
+
+    # Check KYC tier before creating wallet
+    tier = get_user_kyc_tier(user_id)
+    if tier < TIER_3_ENHANCED:
+        raise Exception(f"KYC tier {TIER_3_ENHANCED} (Enhanced) required for wallet activation. Current tier: {tier}")
+
     repo = WalletRepository()
     return repo.get_or_create_by_user_id(user_id)
+
+def check_wallet_transaction_allowed(user_id: int, amount: float) -> tuple:
+    """Check if wallet transaction is allowed based on KYC tier."""
+    from app.auth.kyc_compliance import check_transaction_allowed
+    return check_transaction_allowed(user_id, amount)
 
 def get_agent_commission_total(agent_id: int) -> float:
     from app.wallet.services.commission_service import CommissionService

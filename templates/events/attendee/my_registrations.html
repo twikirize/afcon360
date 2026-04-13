@@ -58,7 +58,12 @@
             <h4 class="text-white"><i class="fas fa-calendar-alt me-2"></i>Upcoming Events</h4>
         </div>
         <div class="dashboard-content-body">
-            {% set upcoming_registrations = registrations | selectattr('event.start_date', '>', now()) | list %}
+            {% set upcoming_registrations = [] %}
+            {% for reg in registrations %}
+                {% if reg.event.start_date and reg.event.start_date > current_date %}
+                    {% set _ = upcoming_registrations.append(reg) %}
+                {% endif %}
+            {% endfor %}
             {% if upcoming_registrations %}
                 <div class="row row-cols-1 row-cols-md-2 g-4">
                     {% for reg in upcoming_registrations %}
@@ -106,7 +111,12 @@
             <h4 class="text-muted"><i class="fas fa-history me-2"></i>Past Registrations</h4>
         </div>
         <div class="dashboard-content-body p-0">
-            {% set past_registrations = registrations | selectattr('event.start_date', '<=', now()) | list %}
+            {% set past_registrations = [] %}
+            {% for reg in registrations %}
+                {% if reg.event.start_date and reg.event.start_date <= current_date %}
+                    {% set _ = past_registrations.append(reg) %}
+                {% endif %}
+            {% endfor %}
             {% if past_registrations %}
                 <div class="list-group list-group-flush">
                     {% for reg in past_registrations %}
@@ -130,9 +140,16 @@
     </div>
 </div>
 
-{# Filter helper #}
-{%- macro now() -%}
-{{ moment.utcnow().strftime('%Y-%m-%d') }}
-{%- endmacro -%}
+{# We'll use JavaScript for date filtering instead #}
+<script>
+// JavaScript function to get current date in YYYY-MM-DD format
+function getCurrentDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+</script>
 
 {% endblock %}

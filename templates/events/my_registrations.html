@@ -74,7 +74,16 @@
     {# Upcoming Events #}
     <h2 class="mt-4 mb-3">Upcoming Events</h2>
     <div class="row">
-        {% set upcoming_registrations = registrations | selectattr('event.start_date', '>', now().isoformat()[:10]) | list %}
+        {% set upcoming_registrations = [] %}
+        {% for reg in registrations %}
+            {% if reg.event.start_date %}
+                {# Simple string comparison #}
+                {% set event_date_str = reg.event.start_date[:10] if reg.event.start_date|length > 10 else reg.event.start_date %}
+                {% if event_date_str > current_date %}
+                    {% set _ = upcoming_registrations.append(reg) %}
+                {% endif %}
+            {% endif %}
+        {% endfor %}
         {% if upcoming_registrations %}
             {% for reg in upcoming_registrations %}
             <div class="col-md-6 col-lg-4 mb-4">
@@ -137,7 +146,16 @@
     {# Past Events #}
     <h2 class="mt-4 mb-3">Past Events</h2>
     <div class="row">
-        {% set past_registrations = registrations | selectattr('event.start_date', '<', now().isoformat()[:10]) | list %}
+        {% set past_registrations = [] %}
+        {% for reg in registrations %}
+            {% if reg.event.start_date %}
+                {# Simple string comparison #}
+                {% set event_date_str = reg.event.start_date[:10] if reg.event.start_date|length > 10 else reg.event.start_date %}
+                {% if event_date_str <= current_date %}
+                    {% set _ = past_registrations.append(reg) %}
+                {% endif %}
+            {% endif %}
+        {% endfor %}
         {% if past_registrations %}
             {% for reg in past_registrations %}
             <div class="col-md-6 col-lg-4 mb-4">
@@ -198,9 +216,15 @@
     </div>
 </div>
 
-{# Add a filter to Jinja2 environment to get current datetime #}
-{%- macro now() -%}
-{{ moment.utcnow().strftime('%Y-%m-%d') }}
-{%- endmacro -%}
+<script>
+// JavaScript function to get current date in YYYY-MM-DD format
+function getCurrentDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+</script>
 
 {% endblock %}

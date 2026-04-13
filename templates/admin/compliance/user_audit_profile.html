@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}User Audit Profile - {{ user.username }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .risk-indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 10px;
+    }
+    .risk-low { background-color: #28a745; }
+    .risk-medium { background-color: #ffc107; }
+    .risk-high { background-color: #dc3545; }
+    .timeline-container {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    .user-header {
+        background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="container-fluid mt-4">
+    <!-- User Header -->
+    <div class="user-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1><i class="bi bi-person-badge me-2"></i>User Audit Profile</h1>
+                <h2 class="mb-0">{{ user.username }}</h2>
+                <p class="mb-0">{{ user.email }} | User ID: {{ user.id }}</p>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="card bg-dark bg-opacity-50 text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Risk Assessment</h5>
+                        <div class="d-flex align-items-center">
+                            <div class="risk-indicator {% if risk_score > 70 %}risk-high{% elif risk_score > 30 %}risk-medium{% else %}risk-low{% endif %}"></div>
+                            <h2 class="mb-0">{{ risk_score }}/100</h2>
+                        </div>
+                        <p class="small mb-0 mt-2">
+                            {% if risk_score > 70 %}
+                                High Risk - Requires immediate attention
+                            {% elif risk_score > 30 %}
+                                Medium Risk - Monitor closely
+                            {% else %}
+                                Low Risk - Normal activity
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h6 class="card-subtitle mb-2 text-muted">Total Audit Events</h6>
+                    <h2 class="card-title">{{ timeline_events|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h6 class="card-subtitle mb-2 text-muted">Pending Actions</h6>
+                    <h2 class="card-title">{{ timeline_events|selectattr('status', 'equalto', 'pending')|list|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h6 class="card-subtitle mb-2 text-muted">Blocked Actions</h6>
+                    <h2 class="card-title">{{ timeline_events|selectattr('status', 'equalto', 'blocked')|list|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h6 class="card-subtitle mb-2 text-muted">High Risk Events</h6>
+                    <h2 class="card-title">{{ timeline_events|selectattr('risk_score', 'greaterthan', 70)|list|length }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Audit Timeline -->
+        <div class="col-lg-8 mb-4">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Audit Timeline (Last 30 Days)</h5>
+                </div>
+                <div class="card-body timeline-container">
+                    {% if timeline_events %}
+                        {% for event in timeline_events %}
+                        <div class="timeline-event mb-3 p-3 border rounded
+                            {% if event.status == 'pending' %}border-warning
+                            {% elif event.status == 'approved' %}border-success
+                            {% elif event.status == 'blocked' %}border-danger
+                            {% elif event.status == 'failed' %}border-secondary
+                            {% else %}border-info{% endif %}">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="mb-1">{{ event.action|title if event.action else 'Unknown Action' }}</h6>
+                                    <p class="small mb-2 text-muted">
+                                        <i class="bi bi-box"></i> {{ event.entity_type|title }} #{{ event.entity_id }}
+                                        <br>
+                                        <i class="bi bi-clock"></i> {{ event.attempted_at|default('N/A') }}
+                                    </p>
+                                </div>
+                                <div class="text-end">
+                                    {% if event.risk_score is defined %}
+                                        {% set event_risk = event.risk_score|default(0) %}
+                                        <span class="badge bg-{% if event_risk > 70 %}danger
+                                            {% elif event_risk > 30 %}warning
+                                            {% else %}success{% endif %}">
+                                            Risk: {{ event_risk }}/100
+                                        </span>
+                                    {% endif %}
+                                    <br>
+                                    <span class="badge bg-secondary mt-1">{{ event.status|default('unknown')|upper }}</span>
+                                </div>
+                            </div>
+                            {% if event.description %}
+                                <p class="small mb-2">{{ event.description }}</p>
+                            {% endif %}
+                            {% if event.ip_address or event.user_agent %}
+                                <div class="small text-muted">
+                                    {% if event.ip_address %}
+                                        <span class="badge bg-info">IP: {{ event.ip_address }}</span>
+                                    {% endif %}
+                                    {% if event.user_agent %}
+                                        <span class="badge bg-dark ms-1">Agent: {{ event.user_agent[:30] }}...</span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+                            <p class="mt-2">No audit events found for this user in the last 30 days.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- User Info & Actions -->
+        <div class="col-lg-4 mb-4">
+            <!-- User Information -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person-circle me-2"></i>User Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <th>Username:</th>
+                            <td>{{ user.username }}</td>
+                        </tr>
+                        <tr>
+                            <th>Email:</th>
+                            <td>{{ user.email }}</td>
+                        </tr>
+                        <tr>
+                            <th>User ID:</th>
+                            <td>{{ user.id }}</td>
+                        </tr>
+                        <tr>
+                            <th>Created:</th>
+                            <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'N/A' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Verified:</th>
+                            <td>
+                                {% if user.is_verified %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-warning">No</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Active:</th>
+                            <td>
+                                {% if user.is_active %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-danger">No</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Security Events -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-shield-exclamation me-2"></i>Recent Security Events</h5>
+                </div>
+                <div class="card-body">
+                    {% if security_events %}
+                        {% for event in security_events[:5] %}
+                        <div class="alert alert-{% if event.severity == 'critical' %}danger{% elif event.severity == 'high' %}warning{% else %}info{% endif %} mb-2">
+                            <strong>{{ event.event_type|replace('_', ' ')|title }}</strong>
+                            <p class="small mb-1">{{ event.description[:50] }}...</p>
+                            <small class="text-muted">{{ event.created_at.strftime('%H:%M') }}</small>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted text-center small">No security events</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning-charge me-2"></i>Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('admin.owner.audit_timeline') }}?entity_type=user&entity_id={{ user.id }}"
+                           class="btn btn-outline-primary">
+                            <i class="bi bi-search me-2"></i>Detailed Audit Search
+                        </a>
+                        <a href="{{ url_for('admin.owner.kyc_tier_management') }}"
+                           class="btn btn-outline-warning">
+                            <i class="bi bi-person-badge me-2"></i>KYC Management
+                        </a>
+                        <a href="{{ url_for('admin.owner.compliance_dashboard') }}"
+                           class="btn btn-outline-info">
+                            <i class="bi bi-shield-check me-2"></i>Compliance Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

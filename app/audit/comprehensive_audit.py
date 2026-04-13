@@ -409,6 +409,19 @@ class SecurityEventLog(BaseModel):
             **kwargs
     ) -> 'SecurityEventLog':
         """Log security event"""
+        # Ensure severity is an AuditSeverity enum value
+        if isinstance(severity, str):
+            # Try to convert string to enum
+            try:
+                severity = AuditSeverity(severity.lower())
+            except ValueError:
+                # Default to INFO if invalid
+                logger.warning(f"Invalid severity value '{severity}', defaulting to 'info'")
+                severity = AuditSeverity.INFO
+        elif not isinstance(severity, AuditSeverity):
+            # If it's neither string nor enum, default to INFO
+            logger.warning(f"Invalid severity type '{type(severity)}', defaulting to 'info'")
+            severity = AuditSeverity.INFO
 
         log_entry = SecurityEventLog(
             event_type=event_type,

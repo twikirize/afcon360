@@ -25,6 +25,7 @@ from app.wallet.exceptions import (
     ComplianceBlockError
 )
 from app.audit.comprehensive_audit import AuditService, TransactionType, AuditSeverity
+from app.profile.models import get_profile_by_user
 
 # Money precision
 getcontext().prec = 28

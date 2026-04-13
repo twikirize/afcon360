@@ -13,12 +13,29 @@ class ThemeManager {
     }
 
     async init() {
-        try {
-            // Load user preferences from server
-            await this.loadPreferences();
+        // Check if theme manager should be disabled on this page
+        if (document.documentElement.hasAttribute('data-theme-disabled')) {
+            console.log('Theme Manager disabled on this page');
+            return;
+        }
 
-            // Apply preferences to DOM
+        try {
+            // First, apply default preferences immediately to prevent FOUC
+            this.preferences = this.getDefaultPreferences();
             this.applyPreferences();
+
+            // Check if user is authenticated via meta tag
+            const isAuthenticated = this.isUserAuthenticated();
+
+            // Only load preferences if authenticated
+            if (isAuthenticated) {
+                await this.loadPreferences();
+                // Re-apply preferences with potentially updated values
+                this.applyPreferences();
+            } else {
+                // For guests, just use defaults
+                console.log('Guest user: using default theme preferences');
+            }
 
             // Setup event listeners for preference controls
             this.setupEventListeners();
@@ -39,17 +56,51 @@ class ThemeManager {
                 headers: {
                     'Cache-Control': 'no-cache',
                     'Pragma': 'no-cache'
-                }
+                },
+                credentials: 'same-origin',
+                redirect: 'error' // Prevent following redirects
             });
+
+            // Check if response is a redirect (3xx status)
+            if (response.redirected) {
+                console.warn('Theme API attempted redirect, using defaults');
+                this.preferences = this.getDefaultPreferences();
+                return;
+            }
+
             if (response.ok) {
-                this.preferences = await response.json();
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    this.preferences = await response.json();
+                } else {
+                    console.warn('Theme API returned non-JSON response, using defaults');
+                    this.preferences = this.getDefaultPreferences();
+                }
+            } else if (response.status === 401 || response.status === 403) {
+                // User is not authenticated or lacks permission - use defaults
+                console.log('User not authenticated for theme preferences, using defaults');
+                this.preferences = this.getDefaultPreferences();
             } else {
+                console.warn(`Theme API returned status ${response.status}, using defaults`);
                 this.preferences = this.getDefaultPreferences();
             }
         } catch (e) {
-            console.warn('Could not load preferences, using defaults');
+            console.warn('Could not load preferences, using defaults:', e);
             this.preferences = this.getDefaultPreferences();
         }
+    }
+
+    isUserAuthenticated() {
+        // Check meta tag for authentication status
+        const meta = document.querySelector('meta[name="user-authenticated"]');
+        if (meta) {
+            return meta.getAttribute('content') === 'true';
+        }
+        // Fallback: check for user data in window object
+        if (window.currentUser && window.currentUser.isAuthenticated) {
+            return true;
+        }
+        return false;
     }
 
     getDefaultPreferences() {
@@ -179,7 +230,18 @@ class ThemeManager {
         this.preferences[key] = value;
         this.applyPreferences();
 
+        // Only save to server if user is authenticated
+        if (!this.isUserAuthenticated()) {
+            console.log('Guest user: preferences not saved to server');
+            this.showToast('Preferences applied locally (guest mode)', 'info');
+            return;
+        }
+
         // Save to server
+        await this.savePreferences();
+    }
+
+    async savePreferences() {
         try {
             const response = await fetch('/theme/preferences/save', {
                 method: 'POST',
@@ -187,18 +249,43 @@ class ThemeManager {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': this.getCsrfToken()
                 },
-                body: JSON.stringify(this.preferences)
+                body: JSON.stringify(this.preferences),
+                credentials: 'same-origin',
+                redirect: 'error' // Prevent following redirects
             });
 
+            // Check for redirect
+            if (response.redirected) {
+                console.error('Save endpoint attempted redirect');
+                this.showToast('Failed to save preferences (redirect)', 'error');
+                return { success: false };
+            }
+
             if (response.ok) {
-                console.log(`Preference ${key} saved:`, value);
+                console.log('Preferences saved:', this.preferences);
                 this.showToast('Preferences saved', 'success');
+
+                // Reload the user CSS to apply changes
+                const userCssLink = document.getElementById('user-theme-css');
+                if (userCssLink) {
+                    const newHref = userCssLink.href.split('?')[0] + '?t=' + Date.now();
+                    userCssLink.href = newHref;
+                }
+
+                return { success: true };
+            } else if (response.status === 401 || response.status === 403) {
+                console.error('User not authenticated to save preferences');
+                this.showToast('Not authenticated to save preferences', 'error');
+                return { success: false };
             } else {
-                console.error('Failed to save preference');
+                console.error('Failed to save preference:', response.status);
                 this.showToast('Failed to save preferences', 'error');
+                return { success: false };
             }
         } catch (error) {
             console.error('Error saving preference:', error);
+            this.showToast('Network error saving preferences', 'error');
+            return { success: false };
         }
     }
 
@@ -206,21 +293,44 @@ class ThemeManager {
         this.preferences = this.getDefaultPreferences();
         this.applyPreferences();
 
+        // Only reset on server if authenticated
+        if (!this.isUserAuthenticated()) {
+            this.showToast('Preferences reset locally (guest mode)', 'info');
+            this.updatePreviewControls();
+            return;
+        }
+
         try {
             const response = await fetch('/theme/reset', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': this.getCsrfToken()
-                }
+                },
+                credentials: 'same-origin',
+                redirect: 'error' // Prevent following redirects
             });
+
+            // Check for redirect
+            if (response.redirected) {
+                console.error('Reset endpoint attempted redirect');
+                this.showToast('Failed to reset preferences (redirect)', 'error');
+                return;
+            }
 
             if (response.ok) {
                 this.showToast('Preferences reset to defaults', 'success');
                 this.updatePreviewControls();
+            } else if (response.status === 401 || response.status === 403) {
+                console.error('User not authenticated to reset preferences');
+                this.showToast('Not authenticated to reset preferences', 'error');
+            } else {
+                console.error('Error resetting preferences:', response.status);
+                this.showToast('Failed to reset preferences', 'error');
             }
         } catch (error) {
             console.error('Error resetting preferences:', error);
+            this.showToast('Network error resetting preferences', 'error');
         }
     }
 
@@ -370,7 +480,22 @@ class ThemeManager {
     }
 
     hexToRgb(hex) {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        if (!hex) return { r: 45, g: 90, b: 45 };
+
+        // Remove the # if present
+        hex = hex.replace(/^#/, '');
+
+        // Handle 3-digit hex
+        if (hex.length === 3) {
+            hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+        }
+
+        // Validate hex length
+        if (hex.length !== 6) {
+            return { r: 45, g: 90, b: 45 };
+        }
+
+        const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? {
             r: parseInt(result[1], 16),
             g: parseInt(result[2], 16),
@@ -379,40 +504,78 @@ class ThemeManager {
     }
 
     showToast(message, type = 'info') {
-        // Create toast element if it doesn't exist
-        let toastContainer = document.getElementById('toast-container');
-        if (!toastContainer) {
-            toastContainer = document.createElement('div');
-            toastContainer.id = 'toast-container';
-            toastContainer.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                z-index: 9999;
+        // Check if there's already a toast system in place
+        // If Bootstrap toasts are available, use them instead
+        if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+            // Create a Bootstrap toast
+            const toastEl = document.createElement('div');
+            toastEl.className = `toast align-items-center text-bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0`;
+            toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
+
+            toastEl.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
             `;
-            document.body.appendChild(toastContainer);
+
+            const container = document.getElementById('toast-container') || (() => {
+                const div = document.createElement('div');
+                div.id = 'toast-container';
+                div.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+                div.style.zIndex = '9999';
+                document.body.appendChild(div);
+                return div;
+            })();
+
+            container.appendChild(toastEl);
+            const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+            toast.show();
+
+            // Remove element after hide
+            toastEl.addEventListener('hidden.bs.toast', () => {
+                toastEl.remove();
+            });
+        } else {
+            // Fallback to custom toast
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.style.cssText = `
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    z-index: 9999;
+                `;
+                document.body.appendChild(toastContainer);
+            }
+
+            const toast = document.createElement('div');
+            toast.className = `toast-notification ${type}`;
+            toast.style.cssText = `
+                background: ${type === 'success' ? '#2d5a2d' : type === 'error' ? '#dc3545' : '#17a2b8'};
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                margin-top: 10px;
+                font-size: 14px;
+                animation: slideIn 0.3s ease;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            toast.textContent = message;
+
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
-
-        const toast = document.createElement('div');
-        toast.className = `toast-notification ${type}`;
-        toast.style.cssText = `
-            background: ${type === 'success' ? '#2d5a2d' : type === 'error' ? '#dc3545' : '#17a2b8'};
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin-top: 10px;
-            font-size: 14px;
-            animation: slideIn 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        `;
-        toast.textContent = message;
-
-        toastContainer.appendChild(toast);
-
-        setTimeout(() => {
-            toast.style.animation = 'slideOut 0.3s ease';
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
     }
 }
 

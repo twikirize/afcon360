@@ -8,6 +8,10 @@ from .roles_permission import Role, Permission, RolePermission
 from .compliance_settings import ComplianceSettings
 from .compliance_audit_log import ComplianceAuditLog
 from .kyb import OrganisationVerification, OrganisationKYBCheck, OrganisationUBO, OrganisationKYBDocument
+# Import UserProfile to resolve SQLAlchemy Mapper error
+from app.profile.models import UserProfile
+# Import IndividualVerification to resolve SQLAlchemy Mapper error
+from app.identity.individuals.individual_verification import IndividualVerification
 
 __all__ = [
     "User", "UserRole", "MFASecret", "Session", "APIKey",
@@ -16,4 +20,5 @@ __all__ = [
     "Role", "Permission", "RolePermission",
     "ComplianceSettings", "ComplianceAuditLog",
     "OrganisationVerification", "OrganisationKYBCheck", "OrganisationUBO", "OrganisationKYBDocument",
+    "UserProfile", "IndividualVerification",
 ]

@@ -1012,6 +1012,95 @@ class WalletAudit:
         )
 
     # ========================================================================
+    # TRANSACTION DISPUTE AUDITS
+    # ========================================================================
+
+    @staticmethod
+    def log_dispute_created(
+        transaction_id: str,
+        user_id: int,
+        dispute_reason: str,
+        amount: Decimal,
+        currency: str,
+        dispute_details: Dict = None
+    ):
+        """
+        Audit transaction dispute creation.
+        Called when a user disputes a transaction.
+        """
+        context = WalletAudit._get_request_context()
+        audit_id = WalletAudit._generate_audit_id()
+
+        AuditService.data_change(
+            entity_type="transaction_dispute",
+            entity_id=transaction_id,
+            operation="create",
+            old_value={"status": "completed"},
+            new_value={"status": "disputed"},
+            changed_by=user_id,
+            ip_address=context.get("ip_address"),
+            user_agent=context.get("user_agent"),
+            extra_data={
+                "audit_id": audit_id,
+                "dispute_reason": dispute_reason,
+                "amount": float(amount),
+                "currency": currency,
+                "dispute_details": dispute_details or {},
+                "event": "dispute_created"
+            }
+        )
+
+        # Also log as security event for review
+        AuditService.security(
+            event_type="transaction_dispute",
+            severity=AuditSeverity.WARNING,
+            description=f"Transaction {transaction_id} disputed by user {user_id}",
+            user_id=user_id,
+            ip_address=context.get("ip_address"),
+            extra_data={
+                "transaction_id": transaction_id,
+                "amount": float(amount),
+                "currency": currency,
+                "dispute_reason": dispute_reason,
+                "audit_id": audit_id
+            }
+        )
+
+    @staticmethod
+    def log_dispute_resolved(
+        transaction_id: str,
+        resolved_by: int,
+        resolution: str,  # "refunded", "rejected", "partially_refunded"
+        resolution_amount: Decimal = None,
+        resolution_notes: str = None
+    ):
+        """
+        Audit transaction dispute resolution.
+        Called when admin resolves a dispute.
+        """
+        context = WalletAudit._get_request_context()
+        audit_id = WalletAudit._generate_audit_id()
+
+        AuditService.data_change(
+            entity_type="transaction_dispute",
+            entity_id=transaction_id,
+            operation="resolve",
+            old_value={"status": "disputed"},
+            new_value={"status": "resolved", "resolution": resolution},
+            changed_by=resolved_by,
+            ip_address=context.get("ip_address"),
+            user_agent=context.get("user_agent"),
+            extra_data={
+                "audit_id": audit_id,
+                "resolution": resolution,
+                "resolution_amount": float(resolution_amount) if resolution_amount else None,
+                "resolution_notes": resolution_notes,
+                "resolved_by": resolved_by,
+                "event": "dispute_resolved"
+            }
+        )
+
+    # ========================================================================
     # AUDIT QUERY HELPERS
     # ========================================================================
 

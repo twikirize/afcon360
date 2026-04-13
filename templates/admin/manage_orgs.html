@@ -83,19 +83,19 @@
             <td class="actions">
               <!-- Ownership transfer -->
               <form method="post" action="{{ url_for('admin.transfer_org_owner', org_id=org.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-primary">Transfer Ownership</button>
               </form>
 
               <!-- Activate/Deactivate -->
               {% if org.is_active %}
               <form method="post" action="{{ url_for('admin.deactivate_org', org_id=org.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-warning">Deactivate</button>
               </form>
               {% else %}
               <form method="post" action="{{ url_for('admin.activate_org', org_id=org.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-success">Activate</button>
               </form>
               {% endif %}

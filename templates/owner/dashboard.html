@@ -86,8 +86,18 @@
             <div class="stat-value">{{ verified_users or 0 }}</div>
             <div class="stat-label">Verified Users</div>
             <div class="stat-trend">
-              {% if total_users and total_users > 0 %}
-                {{ ((verified_users / total_users) * 100)|round|int }}% of total
+              {% set total = total_users|default(0)|int %}
+              {% set verified = verified_users|default(0)|int %}
+              {% if total > 0 %}
+                {% set verified_adj = verified if verified <= total else total %}
+                {% set percentage = ((verified_adj / total) * 100)|round(precision=0)|int %}
+                {% if percentage < 0 %}
+                  0% of total
+                {% elif percentage > 100 %}
+                  100% of total
+                {% else %}
+                  {{ percentage }}% of total
+                {% endif %}
               {% else %}
                 0% of total
               {% endif %}
@@ -119,11 +129,35 @@
             <div class="stat-value">{{ active_users or 0 }}</div>
             <div class="stat-label">Active Users</div>
             <div class="stat-trend">
-              {% if total_users and total_users > 0 %}
-                {{ ((active_users / total_users) * 100)|round|int }}% active
+              {% set total = total_users|default(0)|int %}
+              {% set active = active_users|default(0)|int %}
+              {% if total > 0 %}
+                {% set active_adj = active if active <= total else total %}
+                {% set percentage = ((active_adj / total) * 100)|round(precision=0)|int %}
+                {% if percentage < 0 %}
+                  0% active
+                {% elif percentage > 100 %}
+                  100% active
+                {% else %}
+                  {{ percentage }}% active
+                {% endif %}
               {% else %}
                 0% active
               {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {# ── Compliance Overview Card ── #}
+        <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+          <div class="stat-icon"><i class="bi bi-shield-check"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">{{ pending_reviews_count or 0 }}</div>
+            <div class="stat-label">Pending Reviews</div>
+            <div class="stat-trend">
+              <a href="{{ url_for('admin.owner.compliance_dashboard') }}" style="color: white; text-decoration: underline;">
+                View Compliance →
+              </a>
             </div>
           </div>
         </div>
@@ -182,6 +216,11 @@
             <h4>Settings</h4>
             <p>Configure security preferences</p>
           </a>
+          <a href="{{ url_for('theme.preferences_page') }}" class="action-card">
+            <div class="action-icon">🎨</div>
+            <h4>Theme Settings</h4>
+            <p>Customize appearance and accessibility</p>
+          </a>
           <a href="{{ url_for('admin.owner.system_health') }}" class="action-card">
             <div class="action-icon">📊</div>
             <h4>System Health</h4>
@@ -191,6 +230,11 @@
             <div class="action-icon">🔐</div>
             <h4>Manage Roles</h4>
             <p>Configure role permissions</p>
+          </a>
+          <a href="{{ url_for('admin.owner.compliance_dashboard') }}" class="action-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <div class="action-icon">🛡️</div>
+            <h4>Compliance Dashboard</h4>
+            <p>Forensic audit &amp; compliance monitoring</p>
           </a>
           <a href="{{ url_for('admin.owner.danger_zone') }}" class="action-card danger">
             <div class="action-icon">⚠️</div>
@@ -237,7 +281,7 @@
                 </div>
                 <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.user_id) }}"
                       onsubmit="return confirm('Remove super admin privileges from {{ admin.username }}?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <button type="submit" class="btn-remove">
                     <i class="bi bi-dash-circle"></i> Remove
                   </button>
@@ -253,7 +297,7 @@
             {# Add new super admin #}
             <h6 class="owner-section-label">Add New Super Admin</h6>
             <form method="POST" action="{{ url_for('admin.owner.add_super_admin') }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <div class="owner-form-row">
                 <select name="user_id" class="owner-select" required>
                   <option value="">Select user...</option>
@@ -341,7 +385,7 @@
               </div>
               {% else %}
               <p class="owner-empty" style="padding:14px 8px">No recent signups</p>
-                       bn             {% endfor %}
+              {% endfor %}
             </div>
           </div>
 

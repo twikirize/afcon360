@@ -1,0 +1,18 @@
+{# status_badge.html - Maps status to Bootstrap colors #}
+{% macro status_badge(status) %}
+{% set color_map = {
+    'pending': 'warning',
+    'verified': 'success',
+    'completed': 'success',
+    'active': 'success',
+    'blocked': 'danger',
+    'rejected': 'danger',
+    'failed': 'danger',
+    'cancelled': 'secondary',
+    'expired': 'secondary',
+    'draft': 'info'
+} %}
+<span class="badge bg-{{ color_map.get(status|lower, 'secondary') }}">
+    {{ status|title }}
+</span>
+{% endmacro %}

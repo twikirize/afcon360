@@ -17,6 +17,7 @@ from app.wallet.repositories.wallet_repository import WalletRepository
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.exceptions import WalletNotFoundError, WalletFrozenError, WalletError
 from app.audit.comprehensive_audit import AuditService, AuditSeverity, DataAccessType
+from app.profile.models import get_profile_by_user
 
 
 class WalletAdminService:

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Security Dashboard - Owner{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h1><i class="bi bi-shield-lock"></i> Security Dashboard</h1>
+
+    <!-- Emergency Controls -->
+    <div class="card mb-4">
+        <div class="card-header bg-danger text-white">Emergency Controls</div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.owner.emergency_lockdown') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-danger">Activate Emergency Lockdown</button>
+            </form>
+            <form method="POST" action="{{ url_for('admin.owner.disable_lockdown') }}" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-success">Disable Lockdown</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Settings by Category -->
+    {% for category, settings in settings_by_category.items() %}
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">{{ category|upper }}</div>
+        <div class="card-body">
+            {% for setting in settings %}
+            <div class="mb-3 pb-2 border-bottom">
+                <form method="POST" action="{{ url_for('admin.owner.update_setting') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="key" value="{{ setting.key }}">
+                    <input type="hidden" name="value_type" value="{{ setting.value_type }}">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>{{ setting.key }}</strong>
+                            <p class="text-muted small">{{ setting.description }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="value" class="form-control" value="{{ setting.value }}">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{# templates/kyc/upgrade.html #}
+{% extends "base.html" %}
+{% block title %}KYC Upgrade — Available Upgrades{% endblock %}
+
+{% block content %}
+<div class="kyc-upgrade-wrapper">
+
+  <div class="kyc-header">
+    <div class="kyc-badge">KYC Compliance</div>
+    <h1>Available Upgrades</h1>
+    <p class="kyc-subtitle">
+      Current level: <strong>{{ current_tier_name }} (Tier {{ current_tier }})</strong>
+    </p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert alert--{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if available_upgrades %}
+    <div class="upgrade-grid">
+      {% for upgrade in available_upgrades %}
+      <div class="upgrade-card">
+        <div class="upgrade-card__header">
+          <span class="tier-label">{{ upgrade.name }} (Tier {{ upgrade.tier }})</span>
+        </div>
+        <div class="upgrade-card__limits">
+          <div class="limit-row">
+            <span>Daily limit</span>
+            <strong>UGX {{ "{:,.0f}".format(upgrade.limits) if upgrade.limits else 'Custom' }}</strong>
+          </div>
+        </div>
+        <p class="upgrade-card__desc">{{ upgrade.description }}</p>
+        <ul class="req-list">
+          {% for doc in upgrade.required_documents %}
+            <li>✓ {{ doc.replace('_', ' ').title() }}</li>
+          {% endfor %}
+        </ul>
+        {% if upgrade.can_upgrade %}
+          <form method="POST" action="{{ url_for('auth_kyc.submit_upgrade', target_tier=upgrade.tier) }}">
+            <button type="submit" class="btn btn--primary">Upgrade to Tier {{ upgrade.tier }} →</button>
+          </form>
+        {% else %}
+          <div class="alert alert--error">
+            <strong>Missing requirements:</strong>
+            <ul>
+              {% for missing in upgrade.missing_requirements %}
+              <li>{{ missing.replace('_', ' ').title() }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="kyc-status-card kyc-status--verified">
+      <div class="kyc-status-icon">✓</div>
+      <div>
+        <strong>You are fully verified</strong>
+        <p>No further upgrades are available at this time.</p>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+  .kyc-upgrade-wrapper { max-width: 680px; margin: 2.5rem auto; padding: 0 1rem; font-family: 'Georgia', serif; }
+  .kyc-badge { display: inline-block; background: #1a3a2a; color: #7fffb0; font-size: 0.7rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.25rem 0.75rem; border-radius: 2px; margin-bottom: 0.75rem; }
+  .kyc-header h1 { font-size: 1.75rem; font-weight: 700; color: #0f1f14; margin: 0 0 0.4rem; }
+  .kyc-subtitle { color: #556b5e; font-size: 0.95rem; margin: 0 0 1.75rem; }
+  .upgrade-grid { display: flex; flex-direction: column; gap: 1.25rem; }
+  .upgrade-card { border: 1.5px solid #c8d9cf; border-radius: 8px; padding: 1.5rem; background: #fff; }
+  .upgrade-card__header { margin-bottom: 1rem; }
+  .tier-label { font-weight: 700; font-size: 1rem; color: #1a3a2a; }
+  .upgrade-card__limits { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; background: #f4f7f5; padding: 0.75rem 1rem; border-radius: 5px; }
+  .limit-row { display: flex; flex-direction: column; font-size: 0.82rem; color: #556b5e; }
+  .limit-row strong { color: #0f1f14; font-size: 1rem; }
+  .upgrade-card__desc { font-size: 0.88rem; color: #4a6b58; margin: 0 0 0.75rem; }
+  .req-list { list-style: none; padding: 0; margin: 0 0 1.25rem; font-size: 0.85rem; color: #2d7a4f; }
+  .req-list li { padding: 0.2rem 0; }
+  .btn--primary { display: inline-block; background: #1a3a2a; color: #fff; text-decoration: none; padding: 0.7rem 1.25rem; font-size: 0.9rem; font-weight: 600; border-radius: 5px; border: none; cursor: pointer; transition: background 0.15s; }
+  .btn--primary:hover { background: #2d7a4f; }
+  .kyc-status-card { display: flex; gap: 1rem; align-items: flex-start; padding: 1.25rem 1.5rem; border-radius: 6px; border: 1px solid transparent; }
+  .kyc-status--verified { background: #f0fff4; border-color: #68d391; color: #1a4731; }
+  .kyc-status-icon { font-size: 1.5rem; flex-shrink: 0; }
+  .kyc-status-card strong { display: block; margin-bottom: 0.25rem; }
+  .kyc-status-card p { margin: 0; font-size: 0.9rem; }
+  .alert { padding: 0.75rem 1rem; border-radius: 5px; font-size: 0.88rem; margin-bottom: 1rem; }
+  .alert--error   { background: #fff5f5; border: 1px solid #fc8181; color: #742a2a; }
+  .alert--success { background: #f0fff4; border: 1px solid #68d391; color: #1a4731; }
+  .alert--warning { background: #fffaf0; border: 1px solid #ed8936; color: #744210; }
+</style>
+{% endblock %}

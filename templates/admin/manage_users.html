@@ -233,7 +233,7 @@
 
             {% if users and users|length > 0 %}
             <form method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <table class="users-table">
                     <thead>
                         <tr>
@@ -270,31 +270,31 @@
 
                                 {% if not user.is_verified %}
                                 <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Verify</button>
                                 </form>
                                 {% endif %}
 
                                 {% if not user.is_active %}
                                 <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Activate</button>
                                 </form>
                                 {% else %}
                                 <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#ffc107; color:#333;">Deactivate</button>
                                 </form>
                                 {% endif %}
 
                                 {% if user.user_id != current_user.user_id %}
                                 <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#6f42c1; color:white;" title="Impersonate User">Impersonate</button>
                                 </form>
 
                                 <form method="post" action="{{ url_for('admin.delete_user', user_id=user.user_id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently?')">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#dc3545; color:white;">Delete</button>
                                 </form>
                                 {% endif %}
@@ -341,7 +341,7 @@
 
             {% if users and users|length > 0 %}
             <form method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <table class="users-table">
                     <thead>
                         <tr>
@@ -378,26 +378,26 @@
                             <td class="actions">
                                 {% if not user.is_verified %}
                                 <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Verify</button>
                                 </form>
                                 {% endif %}
 
                                 {% if not user.is_active %}
                                 <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Activate</button>
                                 </form>
                                 {% else %}
                                 <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#ffc107; color:#333;">Deactivate</button>
                                 </form>
                                 {% endif %}
 
                                 {% if user.user_id != current_user.user_id %}
                                 <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn-sm" style="background:#6f42c1; color:white;">Impersonate</button>
                                 </form>
                                 {% endif %}
@@ -460,7 +460,7 @@
                 <input type="text" id="searchBox" class="search-box" placeholder="Search users...">
 
                 <form method="post" id="bulkForm">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div style="margin-bottom: 10px;">
                         <button type="button" onclick="selectAll()" class="btn-sm">Select All</button>
                         <button type="button" onclick="deselectAll()" class="btn-sm">Deselect All</button>
@@ -510,42 +510,42 @@
 
                                     {% if not user.is_verified %}
                                     <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Verify</button>
                                     </form>
                                     {% endif %}
 
                                     {% if not user.is_active %}
                                     <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#28a745; color:white;">Activate</button>
                                     </form>
                                     {% else %}
                                     <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#ffc107; color:#333;">Deactivate</button>
                                     </form>
                                     {% endif %}
 
                                     {% if user.user_id != current_user.user_id %}
                                     <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.user_id) }}" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#6f42c1; color:white;" title="Sign in as this user">Impersonate</button>
                                     </form>
 
                                     <form method="post" action="{{ url_for('admin.delete_user', user_id=user.user_id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently?')">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#dc3545; color:white;">Delete</button>
                                     </form>
                                     {% endif %}
 
                                     <form method="post" action="{{ url_for('admin.promote_user', user_id=user.user_id) }}" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#6c757d; color:white;">Promote</button>
                                     </form>
 
                                     <form method="post" action="{{ url_for('admin.demote_user', user_id=user.user_id) }}" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="btn-sm" style="background:#6c757d; color:white;">Demote</button>
                                     </form>
                                 </td>

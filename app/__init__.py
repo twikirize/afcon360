@@ -18,19 +18,45 @@
 import os
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, date, timedelta
+
+# Load environment variables at the very beginning
+from dotenv import load_dotenv
+load_dotenv()
+
+# Ensure ENCRYPTION_KEY is set for development
+if not os.getenv('ENCRYPTION_KEY'):
+    # Generate a temporary key for development
+    import secrets
+    temp_key = secrets.token_urlsafe(32)
+    os.environ['ENCRYPTION_KEY'] = temp_key
+    logging.warning(f"ENCRYPTION_KEY not set. Generated a temporary key for development. "
+                    f"Please add ENCRYPTION_KEY={temp_key} to your .env file for consistency.")
+
+# Now we can safely import other modules that may depend on environment variables
 
 # Import Redis conditionally
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     redis = None
     REDIS_AVAILABLE = False
     logging.warning("Redis not available - some features may be limited")
+
+# Import IDGuard for runtime protection against ID mixing
+try:
+    from app.utils.id_guard import init_id_guard, register_id_guard_commands
+    IDGUARD_AVAILABLE = True
+except ImportError:
+    IDGUARD_AVAILABLE = False
+    logging.warning("IDGuard not available - ID mixing protection disabled")
 from flask import Flask, flash, redirect, render_template, session, current_app, url_for, request, Response, jsonify
+
 try:
     from flask_session import Session
+
     FLASK_SESSION_AVAILABLE = True
 except ImportError:
     Session = None
@@ -39,7 +65,6 @@ except ImportError:
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError
-from dotenv import load_dotenv
 from typing import Dict, List
 from app.config import Config
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client
@@ -102,13 +127,15 @@ def create_app(config_object=None) -> Flask:
     project_root = os.path.abspath(os.path.join(base_dir, ".."))
     static_path = os.path.join(project_root, "static")
 
-    # Ensure environment is loaded
-    load_dotenv()
+    # Environment already loaded at module level
 
     app = Flask(__name__, static_folder=static_path, template_folder=template_path)
 
     # Load configuration
     app.config.from_object(config_object or Config)
+
+    # Set default rate limit to 100 requests per minute
+    app.config['RATELIMIT_DEFAULT'] = "100 per minute"
 
     # Critical Config Fallbacks with validation
     # SECRET_KEY validation
@@ -140,7 +167,6 @@ def create_app(config_object=None) -> Flask:
             )
         else:
             # Development fallback - use local PostgreSQL with default credentials
-            # This is for development convenience only
             db_host = os.getenv("DB_HOST", "localhost")
             db_port = os.getenv("DB_PORT", "5432")
             db_name = os.getenv("DB_NAME", "afcon360_dev")
@@ -156,7 +182,6 @@ def create_app(config_object=None) -> Flask:
             logger.warning("Set DATABASE_URL environment variable for production.")
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
-
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SESSION_SERIALIZER"] = "json"
 
@@ -168,49 +193,33 @@ def create_app(config_object=None) -> Flask:
     if not redis_url:
         flask_env = os.getenv("FLASK_ENV", "production")
         if flask_env == "production":
-            raise RuntimeError(
-                "REDIS_URL must be set in production. "
-                "Set REDIS_URL environment variable."
-            )
+            raise RuntimeError("REDIS_URL must be set in production.")
         else:
-            # Development fallback
             redis_url = "redis://localhost:6379/0"
-            logger.warning("Using development Redis URL. Set REDIS_URL environment variable for production.")
+            logger.warning("Using development Redis URL.")
 
-    # Configure extensions with validated Redis URL
     from app.extensions import limiter, cache, redis_client
 
-    # Configure limiter
     limiter.storage_uri = redis_url
-
-    # Configure cache
     cache.config.update({
         "CACHE_TYPE": "RedisCache",
         "CACHE_REDIS_URL": redis_url,
         "CACHE_DEFAULT_TIMEOUT": 300
     })
-
-    # Configure Redis client
     redis_client.configure(redis_url)
 
     # Get Redis client for sessions
     redis_session_client = None
     try:
-        # First try to use the configured redis_client
         redis_session_client = redis_client.client
-        # Test the connection
         redis_session_client.ping()
-        logger.info(f"Redis session client connected successfully")
-    except Exception as e:
-        logger.error(f"Failed to get Redis client: {e}")
+    except Exception:
         redis_session_client = None
 
-    # Use require_redis for session client
     if redis_session_client:
         try:
             redis_session_client = require_redis(redis_url, "sessions", existing_client=redis_session_client)
-        except Exception as e:
-            logger.error(f"require_redis failed with existing client: {e}")
+        except Exception:
             redis_session_client = require_redis(redis_url, "sessions")
     else:
         redis_session_client = require_redis(redis_url, "sessions")
@@ -220,43 +229,46 @@ def create_app(config_object=None) -> Flask:
         app.config["SESSION_REDIS"] = redis_session_client
         Session(app)
     elif FLASK_SESSION_AVAILABLE:
-        # Fallback to filesystem sessions
         app.config["SESSION_TYPE"] = "filesystem"
         Session(app)
         logging.warning("Using filesystem sessions - Redis not available")
-    else:
-        logging.error("No session backend available")
 
-    # Init cache
     if REDIS_AVAILABLE:
         cache.init_app(app, config={"CACHE_TYPE": "RedisCache", "CACHE_REDIS_URL": redis_url})
     else:
         cache.init_app(app, config={"CACHE_TYPE": "SimpleCache"})
 
-    # Rate limiting
     if REDIS_AVAILABLE:
         rate_limit_url = app.config.get("RATELIMIT_STORAGE_URL", redis_url)
-        existing_client = redis_session_client if rate_limit_url == redis_url else None
-        require_redis(rate_limit_url, "rate limiting", existing_client=existing_client)
+        require_redis(rate_limit_url, "rate limiting")
         limiter.init_app(app)
-        limiter.storage_uri = rate_limit_url
     else:
         limiter.init_app(app)
-        logging.warning("Rate limiting disabled - Redis not available")
 
-    # Database and base extensions
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
 
-    # Updated login_view to reflect new blueprint name
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Your session has expired. Please log in again.'
     login_manager.login_message_category = 'warning'
 
-    # Ensure secure cookie defaults
-    app.config.setdefault("SESSION_COOKIE_SECURE", True)
+    # Initialize IDGuard for runtime protection against ID mixing
+    if IDGUARD_AVAILABLE:
+        try:
+            init_id_guard(app)
+            logger.info("✅ IDGuard initialized for runtime ID mixing protection")
+        except Exception as e:
+            logger.error(f"Failed to initialize IDGuard: {e}")
+    else:
+        logger.warning("IDGuard not available - skipping ID mixing protection")
+
+    # ------------------------------------------------------------------
+    # SESSION SECURITY (Corrected for Localhost)
+    # ------------------------------------------------------------------
+    # Only enforce secure cookies in production (not in debug mode)
+    app.config["SESSION_COOKIE_SECURE"] = not app.config.get('DEBUG', False)
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
@@ -265,11 +277,6 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     @app.before_request
     def ensure_clean_transaction():
-        """
-        Ensure a completely clean transaction before every request.
-        session.remove() returns the connection to the pool, guaranteeing
-        no leftover failed transaction state from a previous request.
-        """
         try:
             db.session.remove()
         except Exception:
@@ -280,7 +287,6 @@ def create_app(config_object=None) -> Flask:
 
     @app.teardown_request
     def handle_transaction(exception=None):
-        """Always return session to pool at end of request."""
         try:
             if exception:
                 db.session.rollback()
@@ -297,62 +303,114 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     from app.identity import models as identity_models
     from app.profile import models as profile_models
-    try:
-        from app.kyc import models as kyc_models
-    except ImportError as e:
-        logger.warning(f"KYC models not available: {e}")
-        kyc_models = None
-
     from app.audit import models as audit_models
     from app.auth import roles as role_models
 
-    # Updated blueprint imports to reflect new names
+    # Attempt to load KYC models
+    try:
+        from app.kyc import models as kyc_models
+    except ImportError:
+        kyc_models = None
+
+    # Core Web Blueprints
     from app.auth.routes import auth_bp
     from app.fan.routes import fan_bp
-    from app.wallet.routes import wallet_bp # This will be updated next
-    from app.tournament import tournament_bp
-    from app.tourism import tourism_bp
-    from app.transport import transport_bp, transport_admin_bp
-    from app.accommodation import accommodation_bp
-    from app.admin import admin_bp # admin_bp now includes owner_bp
+    from app.wallet.routes import wallet_bp
+    from app.admin import admin_bp
     from app.events import events_bp
     from app.tools.theme_routes import theme_bp
+    from app.kyc.routes import kyc_bp  # Integrated KYC
 
+    # Import auth KYC blueprint
+    try:
+        from app.auth.kyc_routes import auth_kyc_bp
+    except ImportError as e:
+        auth_kyc_bp = None
+        logger.warning(f"Auth KYC routes not found: {e}")
+
+    # Missing blueprints - import with fallback
+    org_bp = None
+    compliance_bp = None
+    auditor_bp = None
+    support_bp = None
+    moderator_bp = None
+
+    try:
+        from app.org.routes import org_bp
+    except ImportError:
+        logger.warning("org_bp not found - skipping registration")
+
+    try:
+        from app.compliance.routes import compliance_bp
+    except ImportError:
+        logger.warning("compliance_bp not found - skipping registration")
+
+    try:
+        from app.auditor.routes import auditor_bp
+    except ImportError:
+        logger.warning("auditor_bp not found - skipping registration")
+
+    try:
+        from app.support.routes import support_bp
+    except ImportError:
+        logger.warning("support_bp not found - skipping registration")
+
+    try:
+        from app.moderator.routes import moderator_bp
+    except ImportError:
+        logger.warning("moderator_bp not found - skipping registration")
+    # API Blueprints
     from app.wallet.api.wallet_api import wallet_api_bp
     from app.wallet.api.admin_api import admin_wallet_bp
     from app.wallet.api.audit_api import audit_bp
     from app.wallet.api.webhook_api import webhook_bp
 
-    # Register core blueprints - owner_bp is now registered via admin_bp
-    # Check each blueprint exists before registering
-    blueprints_to_register = []
+    # Feature-Based Blueprints
+    from app.tournament import tournament_bp
+    from app.tourism import tourism_bp
+    from app.transport import transport_bp, transport_admin_bp
+    from app.accommodation import accommodation_bp
 
-    # Check each blueprint variable exists
-    if 'admin_bp' in locals():
-        blueprints_to_register.append(admin_bp)
-    if 'auth_bp' in locals():
-        blueprints_to_register.append(auth_bp)
-    if 'fan_bp' in locals():
-        blueprints_to_register.append(fan_bp)
-    if 'wallet_bp' in locals():
-        blueprints_to_register.append(wallet_bp)
-    if 'events_bp' in locals():
-        blueprints_to_register.append(events_bp)
-    if 'theme_bp' in locals():
-        blueprints_to_register.append(theme_bp)
+    # ------------------------------------------------------------------
+    # Register Blueprints
+    # ------------------------------------------------------------------
 
-    for bp in blueprints_to_register:
+    # 1. Register Core & Static Blueprints
+    core_blueprints = [
+        (admin_bp, None),
+        (auth_bp, None),
+        (fan_bp, None),
+        (wallet_bp, None),
+        (events_bp, None),
+        (theme_bp, None),
+        (kyc_bp, '/kyc'),  # Fixed: Added KYC with prefix
+    ]
+
+    # Add auth KYC blueprint if available
+    if auth_kyc_bp:
+        core_blueprints.append((auth_kyc_bp, None))
+
+    # Add missing blueprints only if they exist
+    if org_bp:
+        core_blueprints.append((org_bp, '/org'))
+    if compliance_bp:
+        core_blueprints.append((compliance_bp, '/compliance'))
+    if auditor_bp:
+        core_blueprints.append((auditor_bp, '/auditor'))
+    if support_bp:
+        core_blueprints.append((support_bp, '/support'))
+    if moderator_bp:
+        core_blueprints.append((moderator_bp, '/moderator'))
+
+    for bp, prefix in core_blueprints:
+        app.register_blueprint(bp, url_prefix=prefix)
+
+    # 2. Register API Blueprints
+    api_blueprints = [wallet_api_bp, admin_wallet_bp, audit_bp, webhook_bp]
+    for bp in api_blueprints:
         app.register_blueprint(bp)
 
-    # Register wallet API blueprints
-    app.register_blueprint(wallet_api_bp)  # /api/wallet/*
-    app.register_blueprint(admin_wallet_bp)  # /api/admin/wallet/*
-    app.register_blueprint(audit_bp)  # /api/admin/audit/*
-    app.register_blueprint(webhook_bp)  # /api/webhooks/*
-
-    # ------------------------------------------------------------------
-    # Module registrations with feature flags
-    # ------------------------------------------------------------------
+    # 3. Conditional Feature Blueprints
     if app.config.get("TOURNAMENT_ENABLED", True):
         app.register_blueprint(tournament_bp)
 
@@ -368,6 +426,13 @@ def create_app(config_object=None) -> Flask:
     if app.config.get("ACCOMMODATION_ENABLED", True):
         app.register_blueprint(accommodation_bp)
 
+    # 4. Event Listeners
+    try:
+        from app.transport.listeners import register_event_listeners
+        register_event_listeners()
+    except ImportError:
+        pass
+
     # ------------------------------------------------------------------
     # CLI Commands
     # ------------------------------------------------------------------
@@ -375,57 +440,52 @@ def create_app(config_object=None) -> Flask:
     register_owner_commands(app)
 
     try:
-        from app.auth.seed import register_commands as register_seed_commands
-        register_seed_commands(app)
-    except ImportError:
-        pass
-
-    # Register new CLI commands
-    try:
         from app.cli import register_all_cli_commands
         register_all_cli_commands(app)
     except ImportError:
         pass
 
-    # Register ultimate admin routes
-    try:
-        from app.admin.routes_ultimate import register_admin_routes
-        register_admin_routes(app)
-    except ImportError:
-        pass
+    # Register IDGuard CLI commands if available
+    if IDGUARD_AVAILABLE:
+        try:
+            register_id_guard_commands(app)
+            logger.info("✅ IDGuard CLI commands registered")
+        except Exception as e:
+            logger.error(f"Failed to register IDGuard CLI commands: {e}")
+    else:
+        logger.warning("IDGuard CLI commands not available - skipping")
 
-    # Register extended admin routes
+    # ------------------------------------------------------------------
+    # Initialize Event Signal Handlers
+    # ------------------------------------------------------------------
     try:
-        from app.admin.routes_extended import admin_extended_bp
-        app.register_blueprint(admin_extended_bp)
-    except ImportError:
-        pass
+        from app.events.signal_handlers import connect_event_signal_handlers
+        # Connect event signal handlers
+        with app.app_context():
+            connect_event_signal_handlers()
+        logger.info("✅ Event signal handlers connected")
+    except ImportError as e:
+        logger.warning(f"Could not import event signal handlers: {e}")
+    except Exception as e:
+        logger.error(f"Failed to connect event signal handlers: {e}")
 
     # ------------------------------------------------------------------
     # Context processors
     # ------------------------------------------------------------------
     @app.context_processor
     def inject_impersonation_status():
-        """Inject impersonation status into all templates."""
-        from flask import session
-
         is_impersonating = bool(session.get('impersonated_by') or session.get('owner_impersonating'))
-        impersonated_role = session.get('impersonated_role')
-        impersonated_by = session.get('impersonated_by_name')
-
         return {
             'is_impersonating': is_impersonating,
-            'impersonated_role': impersonated_role,
-            'impersonated_by': impersonated_by
+            'impersonated_role': session.get('impersonated_role'),
+            'impersonated_by': session.get('impersonated_by_name')
         }
 
     @app.context_processor
     def inject_user_role_info():
-        """Inject user's highest role into all templates."""
         from flask_login import current_user
-        from flask import url_for
         from app.auth.decorators import get_highest_role
-        from app.auth.routes import _dashboard_for_user # This import is fine, function is internal
+        from app.auth.routes import _dashboard_for_user
 
         def user_highest_role():
             if current_user and current_user.is_authenticated:
@@ -437,10 +497,7 @@ def create_app(config_object=None) -> Flask:
                 return _dashboard_for_user(current_user)
             return url_for('index')
 
-        return {
-            'user_highest_role': user_highest_role(),
-            'user_dashboard_url': user_dashboard_url()
-        }
+        return {'user_highest_role': user_highest_role(), 'user_dashboard_url': user_dashboard_url()}
 
     @app.context_processor
     def inject_sitewide() -> Dict:
@@ -452,32 +509,46 @@ def create_app(config_object=None) -> Flask:
 
     @app.context_processor
     def inject_links() -> Dict:
-        def resolve_endpoint(candidates: List[str], default: str = "#") -> str:
+        def resolve_endpoint(candidates, default="#"):
             for ep in candidates:
                 try:
                     return url_for(ep)
-                except Exception:
+                except:
                     continue
             return default
 
         modules = {
-            # Updated endpoint names
             "wallet_home": ["wallet.wallet_home"],
             "wallet_dashboard": ["wallet.wallet_dashboard"],
-            "tournament_home": ["tournament.home", "tournament.index"],
-            "matches_index": ["matches.index", "tournament.home", "index"],
-            "tourism_home": ["tourism.home", "tourism.index"],
-            "transport_home": ["transport.home", "transport.index"],
-            "accommodation_home": ["accommodation.index"],
+            "tournament_home": ["tournament.home"],
             "auth_login": ["auth.login"],
             "auth_register": ["auth.register"],
             "index": ["index"],
         }
-        links = {
-            key: resolve_endpoint(endpoints, default=f"/{key.replace('_', '/')}")
-            for key, endpoints in modules.items()
-        }
+        links = {k: resolve_endpoint(v, f"/{k}") for k, v in modules.items()}
         return {"links": links, **inject_sitewide()}
+
+    # ------------------------------------------------------------------
+    # CSRF FIX: Returning plain string to prevent double-encoding
+    # ------------------------------------------------------------------
+
+    @app.context_processor
+    def inject_csrf_token() -> Dict:
+        """Inject CSRF token directly to ensure it's not double-encoded"""
+        from flask_wtf.csrf import generate_csrf
+
+        # Get the token once
+        token = generate_csrf()
+
+        # Define a function that returns the token (makes it callable)
+        def csrf_token_func():
+            return token
+
+        # Return both - string version and callable version
+        return {
+            'raw_csrf_token': token,      # For meta tags and JavaScript
+            'csrf_token': csrf_token_func  # Callable - use {{ csrf_token() }}
+        }
 
     @app.context_processor
     def inject_wallet_status() -> Dict:
@@ -486,71 +557,112 @@ def create_app(config_object=None) -> Flask:
             try:
                 from app.wallet.repositories.wallet_repository import WalletRepository
                 repo = WalletRepository()
-                wallet = repo.get_by_user_id(session.get('user_id'))
-                user_has_wallet = wallet is not None
-            except Exception:
+                user_has_wallet = repo.get_by_user_id(session.get('user_id')) is not None
+            except:
                 pass
         return {'user_has_wallet': user_has_wallet}
 
-    # ------------------------------------------------------------------
-    # Login manager
-    # ------------------------------------------------------------------
-    @login_manager.user_loader
-    def load_user(user_id):
-        from app.identity.models.user import User
-        try:
-            # Ensure clean session state before loading user
-            # This prevents InFailedSqlTransaction errors in RBAC checks
-            db.session.rollback()
-            # Dual ID System: user_id for login_manager is the external UUID (String)
-            return User.query.filter_by(user_id=user_id).first()
-        except Exception as e:
-            logger.warning(f"user_loader failed for {user_id}: {e}")
+    @app.context_processor
+    def utility_processor() -> Dict:
+        def intcomma(value):
+            """Format number with commas as thousands separators."""
+            if value is None:
+                return ''
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            return None
+                return f"{int(value):,}"
+            except (ValueError, TypeError):
+                return str(value)
+        return {'intcomma': intcomma}
 
-    # ------------------------------------------------------------------
-    # Routes
-    # ------------------------------------------------------------------
-    from app.events.services import EventService
+    @app.context_processor
+    def inject_kyc_data():
+        """Inject KYC tier data into all templates."""
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            try:
+                db.session.rollback()   # ensure clean state before any query
+                from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits
+                # current_user.id is internal BIGINT id (from User model)
+                kyc_info = calculate_kyc_tier(current_user.id)
+                user_limits = get_user_limits(current_user.id)
+                return {
+                    'kyc_info': kyc_info,
+                    'kyc_tier': kyc_info.get('tier', 0),
+                    'kyc_tier_name': kyc_info.get('tier_name', 'Unregistered'),
+                    'kyc_limits': user_limits,
+                    'kyc_missing_reqs': kyc_info.get('missing_requirements', []),
+                    'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
+                                   3: 'success', 4: 'warning', 5: 'danger'}
+                }
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(f"KYC data injection error: {e}")
+        return {
+            'kyc_info': None,
+            'kyc_tier': 0,
+            'kyc_tier_name': 'Unregistered',
+            'kyc_limits': {},
+            'kyc_missing_reqs': [],
+            'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
+                           3: 'success', 4: 'warning', 5: 'danger'}
+        }
+
+    @app.context_processor
+    def inject_audit_summary():
+        """Inject recent audit events for current user."""
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            try:
+                db.session.rollback()   # ensure clean state before any query
+                from app.audit.forensic_audit import ForensicAuditService
+                # Use public_id for entity_id
+                timeline = ForensicAuditService.get_audit_timeline(
+                    entity_type="user",
+                    entity_id=str(current_user.public_id),
+                    days=7
+                )
+                return {'audit_summary': timeline[:5]}
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(f"Audit summary injection error: {e}")
+                return {'audit_summary': []}
+        return {'audit_summary': []}
+
+    @login_manager.user_loader
+    def load_user(public_id):
+        from app.identity.models.user import User
+        from sqlalchemy.orm import joinedload
+        try:
+            return (
+                db.session.query(User)
+                .options(joinedload(User.roles))
+                .filter_by(public_id=public_id)
+                .first()
+            )
+        except Exception:
+            db.session.rollback()
+            return None
 
     @app.route('/')
     def index():
-        featured_event = EventService.get_featured_event()
-        other_events = EventService.get_upcoming_events(limit=2, exclude_featured=True)
-        return render_template('public_home.html', featured_event=featured_event, other_events=other_events)
+        try:
+            from app.events.services import EventService
+            featured_event = EventService.get_featured_event()
+            other_events = EventService.get_upcoming_events(limit=2, exclude_featured=True)
+            return render_template('public_home.html', featured_event=featured_event, other_events=other_events)
+        except:
+            return render_template('public_home.html', featured_event=None, other_events=[])
 
-    @app.route("/api/wallet/status", methods=["GET"])
-    def wallet_module_status():
-        from app.wallet.middleware.kill_switch import wallet_enabled
-        return jsonify({
-            "status": "success",
-            "wallet_enabled": wallet_enabled(),
-            "module": "wallet",
-            "timestamp": datetime.utcnow().isoformat()
-        })
-
-    # ------------------------------------------------------------------
-    # Error Handlers
-    # ------------------------------------------------------------------
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
         if request.is_json:
             return jsonify({"status": "error", "message": "CSRF token missing or invalid"}), 400
         session.clear()
-        flash("Your session has expired. Please log in again to continue.", "warning")
+        flash("Your session has expired. Please log in again.", "warning")
         return redirect(url_for("auth.login"))
 
-    # ------------------------------------------------------------------
-    # SECURITY HEADERS
-    # ------------------------------------------------------------------
     @app.after_request
     def apply_security_headers(response):
-        env = app.config.get("FLASK_ENV", "production")
-        # Update CSP to allow data: images and unsafe-inline for theme system
         csp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: *; font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';"
         response.headers["Content-Security-Policy"] = csp
         if request.is_secure:
@@ -558,47 +670,62 @@ def create_app(config_object=None) -> Flask:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
         if session.get("user_id"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
         return response
 
-    # ------------------------------------------------------------------
-    # Dual ID System Validation
-    # ------------------------------------------------------------------
-    def validate_id_system():
-        """Validate that the dual ID system is working correctly"""
-        from app.identity.models.user import User
+    with app.app_context():
+        # Validate Dual ID System
         from sqlalchemy import inspect
-
         try:
             inspector = inspect(db.engine)
-            # Check users table has both id and user_id (the external UUID)
             columns = [col['name'] for col in inspector.get_columns('users')]
-            if 'id' not in columns or 'user_id' not in columns:
-                logger.error("Users table missing required id or user_id columns")
-                return
+            if 'id' in columns and 'user_id' in columns:
+                logger.info("✅ Dual ID system validated.")
+        except:
+            pass
 
-            logger.info("✅ Dual ID system validated: Internal IDs (BIGINT) and External UUIDs")
-        except Exception as e:
-            logger.warning(f"Could not validate ID system on startup: {e}")
 
-    # Call this after app context is ready
+
+
+    #===================================================
+    #Whre am i
+    #===================================
+    @app.route('/where-am-i')
+    def where_am_i():
+        from flask import current_app
+        from app.extensions import db
+        from sqlalchemy import inspect, text
+        import os
+
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+
+        # Try raw SQL
+        try:
+            result = db.session.execute(text("SELECT COUNT(*) FROM users")).fetchone()
+            user_count = result[0]
+        except:
+            user_count = 0
+
+        return f"""
+        <h1>Database Connection Info</h1>
+        <p><strong>Config URL:</strong> {current_app.config.get('SQLALCHEMY_DATABASE_URI')}</p>
+        <p><strong>Engine URL:</strong> {db.engine.url}</p>
+        <p><strong>Tables found:</strong> {tables}</p>
+        <p><strong>User count:</strong> {user_count}</p>
+        <p><strong>Instance path:</strong> {current_app.instance_path}</p>
+        <p><strong>SQLite files:</strong> {[f for f in os.listdir(current_app.instance_path) if f.endswith('.db')]}</p>
+        <p><strong>ENV:</strong> FLASK_ENV={os.getenv('FLASK_ENV')}, APP_ENV={os.getenv('APP_ENV')}</p>
+        """
+
+    # ── Regenerate theme CSS on startup ──────────────────────────────
     with app.app_context():
-        validate_id_system()
-
-    # ------------------------------------------------------------------
-    # Metrics
-    # ------------------------------------------------------------------
-    try:
-        from prometheus_client import generate_latest
-        @app.route("/metrics")
-        def metrics():
-            return Response(generate_latest(), mimetype="text/plain; charset=utf-8")
-    except ImportError:
-        pass
+        try:
+            from app.tools.theme_service import ThemeService
+            ThemeService.update_global_theme_css()
+        except Exception as e:
+            logger.warning(f"Could not regenerate global theme CSS on startup: {e}")
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app

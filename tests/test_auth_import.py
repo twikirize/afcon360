@@ -1,61 +1,29 @@
 from tests.db_connector import get_connection
 
-try:
-    # Connect using our standardized connection helper
-    conn = get_connection()
-    cur = conn.cursor()
+def test_database_connection():
+    """Test that we can connect to the database."""
+    try:
+        # Connect using our standardized connection helper
+        conn = get_connection()
+        cur = conn.cursor()
 
-    # Test query
-    cur.execute("SELECT current_user, current_database();")
-    user, db = cur.fetchone()
-    print("✅ Connection successful!")
-    print(f"Connected as user: {user}, Database: {db}")
+        # Test query
+        cur.execute("SELECT current_user, current_database();")
+        user, db = cur.fetchone()
 
-    # Close cursor and connection
-    cur.close()
-    conn.close()
+        # Close cursor and connection
+        cur.close()
+        conn.close()
 
-except Exception as e:
-    print("❌ Error connecting to the database:", e)
+        # Assert that we got results
+        assert user is not None
+        assert db is not None
 
-"""
-------------------------------------
-import os
+        # If we reach here, the test passes
+        print("[OK] Connection successful!")
+        print(f"Connected as user: {user}, Database: {db}")
 
-# Show DATABASE_URL and all environment sources
-print("DATABASE_URL:", os.getenv("DATABASE_URL"))
-
-# Optional: print all environment variables containing 'DATABASE'
-
-for key, value in os.environ.items():
-    if "DATABASE" in key:
-        print(f"{key} = {value}")
-
-
---------------------------------------------------
- from sqlalchemy import create_engine, text
-
-import os
-
-
-import os
-print(os.getenv("DATABASE_URL"))
-
-
-""/"
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from app import auth
-
-    print("✅ SUCCESS: auth.validators is visible and imported")
-except ModuleNotFoundError as e:
-    print("❌ ERROR:", e)
-"""
-"""
-from app.extensions import db
-from app.auth.models import User
-print(User.__table__)
-"""
+    except Exception as e:
+        # If any exception occurs, fail the test
+        print("[ERROR] Error connecting to the database:", e)
+        raise

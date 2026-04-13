@@ -7,7 +7,7 @@
 #   [FIX] Export revoke_session from sessions.py
 # ============================================================================
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 import hashlib
 import uuid
@@ -17,6 +17,7 @@ from app.extensions import db
 from app.identity.models.user import User, UserRole
 from app.identity.models.roles_permission import Role
 from app.audit.user import AuditLog  # FIXED: Use correct audit model
+from app.audit.forensic_audit import ForensicAuditService
 from app.profile.models import UserProfile
 from app.auth.tokens import (
     generate_email_token,
@@ -61,7 +62,7 @@ def _emit(event_name: str, payload: dict) -> None:
     enhanced_payload = {
         **payload,
         "event": event_name,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
     # Execute registered hooks
@@ -182,7 +183,7 @@ def _is_account_locked(user: User) -> bool:
             return user.is_locked()
         except Exception:
             pass
-    return bool(locked_until and datetime.utcnow() < locked_until)
+    return bool(locked_until and datetime.now(timezone.utc) < locked_until)
 
 
 def _record_failed_login_attempt(user: User) -> None:
@@ -196,7 +197,7 @@ def _record_failed_login_attempt(user: User) -> None:
 
     user.failed_logins = (getattr(user, "failed_logins", 0) or 0) + 1
     if user.failed_logins >= 5:
-        user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
 
 
 def _reset_failed_login_counter(user: User) -> None:
@@ -215,7 +216,7 @@ def _reset_failed_login_counter(user: User) -> None:
 def _user_payload(user: User) -> dict:
     """Extract safe user data for audit logs."""
     return {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "id": user.id,
         "username": user.username,
         "email": user.email,
@@ -237,20 +238,53 @@ def register_user(
         username: str,
         password: str,
         email: Optional[str] = None,
-        full_name: Optional[str] = None
+        full_name: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
 ) -> User:
     """
     Register a new user with email verification.
 
     Emits: user.created
     """
+    # Log attempt
+    audit_id = ForensicAuditService.log_attempt(
+        entity_type="user",
+        entity_id="new",
+        action="register",
+        user_id=None,  # No user yet
+        details={"username": username, "email": email},
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
     if User.query.filter_by(username=username).first():
+        ForensicAuditService.log_blocked(
+            entity_type="user",
+            entity_id="new",
+            action="register",
+            user_id=None,
+            reason="Username already exists",
+            attempted_value=username,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
         raise ValueError(f"Username '{username}' already exists")
     if email and User.query.filter_by(email=email).first():
+        ForensicAuditService.log_blocked(
+            entity_type="user",
+            entity_id="new",
+            action="register",
+            user_id=None,
+            reason="Email already exists",
+            attempted_value=email,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
         raise ValueError(f"Email '{email}' already exists")
 
     public_id = str(uuid.uuid4())
-    user = User(user_id=public_id, username=username, email=email)
+    user = User(public_id=public_id, username=username, email=email)
     user.set_password(password)
 
     try:
@@ -271,19 +305,31 @@ def register_user(
             nonce = str(uuid.uuid4())
             user.email_verify_nonce = nonce
 
-        token = generate_email_token(user.user_id, nonce=nonce) if email else None
+        token = generate_email_token(user.public_id, nonce=nonce) if email else None
 
         _emit("user.created", {
             **_user_payload(user),
             "verify_token": token,
             "email_provided": bool(email),
             "resource_type": "user",
-            "resource_id": user.user_id
+            "resource_id": user.public_id
         })
 
         db.session.commit()
-    except Exception:
+
+        # Log completion
+        ForensicAuditService.log_completion(
+            audit_id=audit_id,
+            status="completed",
+            result_details={"user_id": user.public_id, "username": username}
+        )
+    except Exception as e:
         db.session.rollback()
+        ForensicAuditService.log_completion(
+            audit_id=audit_id,
+            status="failed",
+            result_details={"error": str(e)}
+        )
         raise
 
     return user
@@ -316,22 +362,22 @@ def authenticate_user(
         return AuthResult.INACTIVE, None
 
     if _is_account_locked(user):
-        return AuthResult.LOCKED, {"user": user, "user_id": user.user_id}
+        return AuthResult.LOCKED, {"user": user, "user_id": user.public_id}
 
     if not user.verify_password(password):
         _record_failed_login_attempt(user)
         db.session.commit()
-        return AuthResult.INVALID_CREDENTIALS, {"user": user, "user_id": user.user_id}
+        return AuthResult.INVALID_CREDENTIALS, {"user": user, "user_id": user.public_id}
 
     _reset_failed_login_counter(user)
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
 
     requires_mfa = getattr(user, "requires_mfa", lambda: False)()
     if requires_mfa:
         db.session.commit()
-        return AuthResult.MFA_REQUIRED, {"user": user, "user_id": user.user_id}
+        return AuthResult.MFA_REQUIRED, {"user": user, "user_id": user.public_id}
 
-    session_id = start_server_session(user.user_id, ip, user_agent)
+    session_id = start_server_session(user.public_id, ip, user_agent)
     db.session.commit()
 
     return AuthResult.SUCCESS, {"user": user, "session_id": session_id}
@@ -350,7 +396,7 @@ def verify_email(token: str) -> bool:
     if not data:
         return False
 
-    user = User.query.filter_by(user_id=data["uid"]).first()
+    user = User.query.filter_by(public_id=data["uid"]).first()
     if not user:
         return False
 
@@ -366,16 +412,16 @@ def verify_email(token: str) -> bool:
 
     user.is_verified = True
     if hasattr(user, "email_verified_at"):
-        user.email_verified_at = datetime.utcnow()
+        user.email_verified_at = datetime.now(timezone.utc)
     if hasattr(user, "email_verify_nonce"):
         user.email_verify_nonce = None
 
     _emit("user.verified", {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "verified": True,
         "email_verified_at": _format_datetime(user.email_verified_at),
         "resource_type": "user",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()
@@ -392,16 +438,16 @@ def request_password_reset(user: User) -> str:
     SECURITY: Token is NOT stored in audit log (only hash hint).
     Emits: password.reset.requested
     """
-    token = generate_reset_token(user.user_id)
+    token = generate_reset_token(user.public_id)
 
     # SECURITY: Log only hash hint, never the raw token
     token_hint = hashlib.sha256(token.encode()).hexdigest()[:12]
 
     _emit("password.reset.requested", {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "token_hint": token_hint,  # Safe: 12 hex chars of SHA-256
         "resource_type": "user",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()
@@ -418,7 +464,7 @@ def confirm_password_reset(token: str, new_password: str) -> bool:
     if not data:
         return False
 
-    user = User.query.filter_by(user_id=data["uid"]).first()
+    user = User.query.filter_by(public_id=data["uid"]).first()
     if not user:
         return False
 
@@ -431,15 +477,15 @@ def confirm_password_reset(token: str, new_password: str) -> bool:
 
     user.set_password(new_password)
     if hasattr(user, "password_reset_at"):
-        user.password_reset_at = datetime.utcnow()
+        user.password_reset_at = datetime.now(timezone.utc)
 
     # Revoke all sessions on password change
-    revoke_all_sessions_for_user(user.user_id)
+    revoke_all_sessions_for_user(user.public_id)
 
     _emit("password.reset.completed", {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "resource_type": "user",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()
@@ -460,7 +506,7 @@ def assign_role(
 
     Emits: role.assigned
     """
-    user = User.query.filter_by(user_id=user_id).first()
+    user = User.query.filter_by(public_id=user_id).first()
     role = Role.query.filter_by(name=role_name, scope=scope).first()
 
     if not user or not role:
@@ -470,19 +516,26 @@ def assign_role(
     if existing:
         return True
 
-    db.session.add(UserRole(user_id=user.id, role_id=role.id, assigned_by=assigned_by_id))
+    # Convert assigned_by_id from public UUID to internal ID if provided
+    assigned_by_internal_id = None
+    if assigned_by_id:
+        assigned_by_user = User.query.filter_by(public_id=assigned_by_id).first()
+        if assigned_by_user:
+            assigned_by_internal_id = assigned_by_user.id
+
+    db.session.add(UserRole(user_id=user.id, role_id=role.id, assigned_by=assigned_by_internal_id))
 
     # Revoke sessions to force re-authorization with new role
-    revoke_all_sessions_for_user(user.user_id)
+    revoke_all_sessions_for_user(user.public_id)
 
     _emit("role.assigned", {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "role": role.name,
         "scope": role.scope,
         "role_id": role.id,
         "assigned_by": assigned_by_id,
         "resource_type": "user_role",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()
@@ -500,7 +553,7 @@ def remove_role(
 
     Emits: role.removed
     """
-    user = User.query.filter_by(user_id=user_id).first()
+    user = User.query.filter_by(public_id=user_id).first()
     role = Role.query.filter_by(name=role_name, scope=scope).first()
 
     if not user or not role:
@@ -513,16 +566,16 @@ def remove_role(
     db.session.delete(existing)
 
     # Revoke sessions to force re-authorization
-    revoke_all_sessions_for_user(user.user_id)
+    revoke_all_sessions_for_user(user.public_id)
 
     _emit("role.removed", {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "role": role.name,
         "scope": role.scope,
         "role_id": role.id,
         "revoked_by": revoked_by_id,
         "resource_type": "user_role",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()
@@ -538,7 +591,7 @@ def activate_user(user_id: str, active: bool = True, actor_id: Optional[str] = N
 
     Emits: user.activated or user.deactivated
     """
-    user = User.query.filter_by(user_id=user_id).first()
+    user = User.query.filter_by(public_id=user_id).first()
     if not user:
         return False
 
@@ -546,11 +599,11 @@ def activate_user(user_id: str, active: bool = True, actor_id: Optional[str] = N
 
     event_name = "user.activated" if active else "user.deactivated"
     _emit(event_name, {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "active": active,
         "actor_id": actor_id,
         "resource_type": "user",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()
@@ -563,20 +616,20 @@ def verify_user(user_id: str, verified: bool = True, actor_id: Optional[str] = N
 
     Emits: user.verified
     """
-    user = User.query.filter_by(user_id=user_id).first()
+    user = User.query.filter_by(public_id=user_id).first()
     if not user:
         return False
 
     user.is_verified = verified
     if verified and hasattr(user, "email_verified_at") and not user.email_verified_at:
-        user.email_verified_at = datetime.utcnow()
+        user.email_verified_at = datetime.now(timezone.utc)
 
     _emit("user.verified", {
-        "user_id": user.user_id,
+        "user_id": user.public_id,
         "verified": verified,
         "actor_id": actor_id,
         "resource_type": "user",
-        "resource_id": user.user_id
+        "resource_id": user.public_id
     })
 
     db.session.commit()

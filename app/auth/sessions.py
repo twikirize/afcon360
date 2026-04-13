@@ -1,4 +1,6 @@
 # app/auth/sessions.py
+# Note: This file doesn't contain "KYC data injection error" or "Audit summary injection error"
+# This file doesn't contain "KYC data injection error" or "Audit summary injection error"
 from datetime import datetime, timedelta
 import uuid
 from app.extensions import db
@@ -25,15 +27,69 @@ def start_server_session(public_user_id: str, ip: str | None, ua: str | None, tt
     try:
         db.session.add(ss)
         db.session.commit()
+
+        # Audit session creation
+        from app.audit.comprehensive_audit import AuditService
+        try:
+            # Need to get internal user ID from public ID
+            from app.identity.models.user import User
+            user = User.query.filter_by(public_id=public_user_id).first()
+            if user:
+                AuditService.security(
+                    event_type="session_created",
+                    severity="INFO",
+                    description=f"New session created for user {public_user_id}",
+                    user_id=user.id,
+                    ip_address=ip,
+                    user_agent=ua,
+                    extra_data={
+                        "session_id": sid,
+                        "ttl_hours": ttl_hours,
+                        "expires_at": ss.expires_at.isoformat()
+                    }
+                )
+        except Exception as audit_error:
+            # Don't fail session creation if audit fails
+            import logging
+            logging.error(f"Failed to audit session creation: {audit_error}")
+
     except Exception:
         db.session.rollback()
         # If storage fails, return an id anyway for client correlation (non-fatal)
     return sid
 
-def revoke_session(session_id: str):
+def revoke_session(session_id: str, revoked_by_user_id: int = None):
     s = ServerSession.query.filter_by(session_id=session_id, is_revoked=False).first()
     if not s:
         return False
+
+    # Audit before revocation
+    from app.audit.comprehensive_audit import AuditService
+    from flask import request
+
+    try:
+        # Need to get internal user ID from public ID
+        from app.identity.models.user import User
+        user = User.query.filter_by(public_id=s.user_id).first()
+        if user:
+            AuditService.security(
+                event_type="session_revoked",
+                severity="INFO",
+                description=f"Session revoked for user {s.user_id}",
+                user_id=user.id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "session_id": session_id,
+                    "revoked_by": revoked_by_user_id,
+                    "was_active": not s.is_revoked,
+                    "expires_at": s.expires_at.isoformat() if s.expires_at else None
+                }
+            )
+    except Exception as audit_error:
+        import logging
+        logging.error(f"Failed to audit session revocation: {audit_error}")
+
     s.is_revoked = True
     try:
         db.session.commit()

@@ -43,25 +43,25 @@
             <td class="actions">
               <!-- Promote/Demote -->
               <form method="post" action="{{ url_for('admin.promote_member', org_id=org.id, user_id=member.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-success">Promote</button>
               </form>
               <form method="post" action="{{ url_for('admin.demote_member', org_id=org.id, user_id=member.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-warning">Demote</button>
               </form>
 
               <!-- Verify -->
               {% if not member.is_verified %}
               <form method="post" action="{{ url_for('admin.verify_member', org_id=org.id, user_id=member.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-primary">Verify</button>
               </form>
               {% endif %}
 
               <!-- Remove -->
               <form method="post" action="{{ url_for('admin.remove_member', org_id=org.id, user_id=member.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
               </form>
             </td>

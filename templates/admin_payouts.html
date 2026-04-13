@@ -16,7 +16,7 @@
         <td>{{ r.requested_at }}</td>
         <td>
           <form method="POST" action="{{ url_for('admin_wallet_api.admin_process_payout', req_id=r.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="input-group input-group-sm">
               <button name="action" value="approve" class="btn btn-success" {% if r.status != 'pending' %}disabled{% endif %}>Approve</button>
               <button name="action" value="reject" class="btn btn-danger" {% if r.status != 'pending' %}disabled{% endif %}>Reject</button>

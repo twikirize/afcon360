@@ -97,7 +97,7 @@
                                                class="btn btn-outline-primary">View</a>
                                             <form method="POST" action="{{ url_for('events.admin_approve', event_slug=event.slug) }}"
                                                   style="display:inline;">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                                 <button type="submit" class="btn btn-success">Approve</button>
                                             </form>
                                             <button class="btn btn-danger" onclick="rejectEvent('{{ event.slug }}')">Reject</button>

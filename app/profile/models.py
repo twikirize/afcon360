@@ -1,5 +1,4 @@
-#app/profile/models
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import re
 from sqlalchemy import (
     Enum as SAEnum,
@@ -16,6 +15,7 @@ from sqlalchemy import (
     event,
     ForeignKey,
     Text,
+    JSON,
 )
 from sqlalchemy.orm import validates, relationship
 from app.extensions import db
@@ -49,7 +49,8 @@ class UserProfile(BaseModel):
     """
     __tablename__ = "user_profiles"
     __table_args__ = (
-        UniqueConstraint("user_id", name="uq_userprofile_user_id"),
+        # Updated constraint name to match new ID system logic
+        UniqueConstraint("user_id", name="uq_userprofile_public_id"),
         UniqueConstraint("email", name="uq_userprofile_email"),  # global email uniqueness
         UniqueConstraint("phone_number", name="uq_userprofile_phone"),  # global phone uniqueness
         CheckConstraint("length(full_name) > 0", name="ck_full_name_not_empty"),
@@ -57,8 +58,10 @@ class UserProfile(BaseModel):
         Index("ix_userprofile_is_deleted", "is_deleted"),
         Index("ix_userprofile_email_phone", "email", "phone_number"),
     )
+
     # 🌍 External identity join
-    user_id = Column(String(64), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, unique=True,
+    # CRITICAL FIX: ForeignKey now points to users.public_id (the UUID string)
+    user_id = Column(String(64), ForeignKey("users.public_id", ondelete="CASCADE"), nullable=False, unique=True,
                      index=True)
     user = relationship("User", back_populates="profile", uselist=False)
 
@@ -108,10 +111,6 @@ class UserProfile(BaseModel):
     suspended_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
 
-
-    # ---------------------------
-    # Representation
-    # ---------------------------
     def __repr__(self):
         return f"<UserProfile id={self.id} user_id={self.user_id} full_name={self.full_name}>"
 
@@ -157,7 +156,7 @@ class UserProfile(BaseModel):
         self.verification_status = "verified"
         self.rejected_reason = None
         self.verified_by = reviewer
-        self.last_reviewed_at = datetime.utcnow()
+        self.last_reviewed_at = datetime.now(timezone.utc)
 
     def mark_rejected(self, reviewer: str, reason: str):
         if not reason:
@@ -165,11 +164,11 @@ class UserProfile(BaseModel):
         self.verification_status = "rejected"
         self.rejected_reason = reason
         self.verified_by = reviewer
-        self.last_reviewed_at = datetime.utcnow()
+        self.last_reviewed_at = datetime.now(timezone.utc)
 
     def suspend_account(self):
         self.verification_status = "suspended"
-        self.suspended_at = datetime.utcnow()
+        self.suspended_at = datetime.now(timezone.utc)
 
     def reactivate_account(self):
         self.verification_status = "pending"
@@ -227,6 +226,7 @@ class UserProfileAudit(BaseModel):
 
     user_profile = relationship("UserProfile", backref="audit_logs")
 
+
 # ---------------------------
 # Event-based immutability enforcement + audit
 # ---------------------------
@@ -244,8 +244,52 @@ def enforce_immutable_after_verification(mapper, connection, target):
                         field_name=field,
                         old_value=str(hist.deleted[0]) if hist.deleted else None,
                         attempted_value=str(hist.added[0]) if hist.added else None,
-                        attempted_at=datetime.utcnow(),
+                        attempted_at=datetime.now(timezone.utc),
                         attempted_by_user_id=getattr(target, "_current_user_id", None),
                     )
                 )
+
+                # Log blocked attempt using Forensic Audit
+                from app.audit.forensic_audit import ForensicAuditService
+                ForensicAuditService.log_blocked(
+                    entity_type="user_profile",
+                    entity_id=str(target.id),
+                    action=f"update_{field}",
+                    user_id=getattr(target, "_current_user_id", None),
+                    reason=f"{field} cannot be changed after verification",
+                    attempted_value=str(hist.added[0]) if hist.added else None,
+                    old_value=str(hist.deleted[0]) if hist.deleted else None
+                )
+
                 raise ValueError(f"{field} cannot be changed after verification.")
+
+
+# ---------------------------
+# Helper Functions
+# ---------------------------
+def get_profile_by_user(user_or_public_id):
+    """
+    Safe UserProfile lookup. Always use this instead of
+    UserProfile.query.filter_by(user_id=...) directly.
+    Accepts a User object or a public_id UUID string.
+    Never accepts a raw integer.
+    """
+    if isinstance(user_or_public_id, int):
+        raise ValueError(
+            f"get_profile_by_user() received integer {user_or_public_id}. "
+            f"Pass user.public_id (UUID string) or a User object, never user.id."
+        )
+    public_id = (
+        user_or_public_id.public_id
+        if hasattr(user_or_public_id, 'public_id')
+        else user_or_public_id
+    )
+    return UserProfile.query.filter_by(user_id=public_id).first()
+
+if __name__ == '__main__':
+    # Test that integer input is rejected
+    try:
+        get_profile_by_user(1)
+        print("❌ FAILED — integer should have been rejected")
+    except ValueError as e:
+        print(f"✅ PASSED — integer correctly rejected: {e}")

@@ -13,6 +13,8 @@ from app.extensions import db
 from app.models.base import ProtectedModel
 from flask_login import UserMixin
 from flask import current_app
+# KycRecord is imported via string reference in the relationship
+# No direct import to avoid circular imports
 
 
 # --------------------------------------
@@ -21,8 +23,9 @@ from flask import current_app
 class User(UserMixin, ProtectedModel):
     """
     Enterprise user with Dual ID System:
-    - id: BIGINT (internal, for database relations/FKs)
-    - user_id: String(64) (external, for public exposure/APIs/URLs)
+    - id:        BIGINT (internal, for database relations/Foreign Keys and joins only — never expose)
+    - public_id: String(64) UUID (external, for APIs/URLs/Flask-Login sessions)
+    # Rule: if a human sees it → public_id. If only DB sees it → id
     """
     __tablename__ = "users"
     __table_args__ = (
@@ -31,12 +34,14 @@ class User(UserMixin, ProtectedModel):
         Index("ix_user_email", "email"),
         Index("ix_user_phone", "phone"),
         Index("ix_user_is_deleted", "is_deleted"),
+        Index("ix_user_public_id", "public_id"),
     )
 
-    # INTERNAL ID (BIGINT) - PK Inherited from ProtectedModel
-
-    # EXTERNAL ID (UUID) - Use for ALL public exposure
-    user_id = Column(String(64), unique=True, nullable=False, index=True, default=lambda: str(uuid_lib.uuid4()))
+    # EXTERNAL ID (UUID) — Use for ALL public exposure, URLs, Flask-Login sessions
+    public_id = Column(
+        String(64), unique=True, nullable=False, index=True,
+        default=lambda: str(uuid_lib.uuid4())
+    )
 
     username = Column(String(80), nullable=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
@@ -58,7 +63,7 @@ class User(UserMixin, ProtectedModel):
     kyc_level = Column(BigInteger, default=0, nullable=False)
     failed_logins = Column(BigInteger, default=0, nullable=False)
 
-    # Default organisation
+    # Default organisation — use_alter=True prevents circular dependency on table creation
     default_org_id = Column(
         BigInteger,
         ForeignKey(
@@ -71,113 +76,158 @@ class User(UserMixin, ProtectedModel):
         index=True
     )
 
-    # Timestamps Inherited from ProtectedModel
-
     # ---------------------------
     # Relationships
     # ---------------------------
-    profile = relationship("UserProfile", back_populates="user", uselist=False)
+    profile = relationship(
+        "UserProfile",
+        primaryjoin="foreign(UserProfile.user_id) == User.public_id",
+        back_populates="user",
+        uselist=False
+    )
     default_org = relationship(
         "Organisation",
         foreign_keys=[default_org_id],
         back_populates="default_users",
         lazy="joined"
     )
-    organisations = relationship("OrganisationMember", back_populates="user", cascade="all, delete-orphan")
-    roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan", foreign_keys="UserRole.user_id")
+    organisations = relationship(
+        "OrganisationMember", back_populates="user", cascade="all, delete-orphan"
+    )
+    roles = relationship(
+        "UserRole", back_populates="user",
+        cascade="all, delete-orphan", foreign_keys="UserRole.user_id",
+        lazy="joined"  # ← add this
+    )
+
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     mfa_secrets = relationship("MFASecret", back_populates="user", cascade="all, delete-orphan")
-    kyc_records = relationship("KycRecord", back_populates="user", cascade="all, delete-orphan")
+    kyc_records = relationship(
+        "KycRecord",                        # String reference to avoid circular imports
+        foreign_keys="[KycRecord.user_id]",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
     verifications = relationship(
-        "IndividualVerification",
+        "IndividualVerification",           # Short name — safer than full module path
         back_populates="user",
         cascade="all, delete-orphan",
-        foreign_keys="[IndividualVerification.user_id]"
+        foreign_keys="IndividualVerification.user_id"
     )
-    documents = relationship("IndividualKYCDocument", back_populates="user", cascade="all, delete-orphan")
+    documents = relationship(
+        "IndividualKYCDocument", back_populates="user", cascade="all, delete-orphan"
+    )
     wallet = relationship("Wallet", back_populates="user", uselist=False)
     controllers = relationship(
         "OrganisationController",
         back_populates="user",
         cascade="all, delete-orphan",
-        foreign_keys="OrganisationController.user_id"
+        foreign_keys="[OrganisationController.user_id]"
     )
 
     # ---------------------------
     # Dual ID Helpers
     # ---------------------------
     @property
-    def public_id(self):
-        """Use this for URLs, APIs, any public exposure"""
-        return self.user_id
+    def external_id(self):
+        """Use for URLs, APIs, any public exposure."""
+        return self.public_id
 
     @property
     def private_id(self):
-        """Use this for internal database relations"""
+        """Use for internal database relations only."""
         return self.id
 
     def get_id_for_fk(self):
-        """Explicit method for foreign key usage"""
+        """Explicit helper — foreign key usage (internal BIGINT)."""
         return self.id
 
     def get_id_for_url(self):
-        """Explicit method for URL/public usage"""
-        return self.user_id
+        """Explicit helper — URL/public usage (UUID string)."""
+        return self.public_id
 
     @classmethod
-    def get_by_public_id(cls, public_uuid):
-        """Find user by public UUID (for API endpoints)"""
-        return cls.query.filter_by(user_id=public_uuid).first()
+    def get_by_public_id(cls, public_uuid: str):
+        """Find user by public UUID — use this in all API endpoints."""
+        return cls.query.filter_by(public_id=public_uuid).first()
 
     @classmethod
-    def get_by_private_id(cls, internal_id):
-        """Find user by internal ID (for database operations)"""
+    def get_by_private_id(cls, internal_id: int):
+        """Find user by internal BIGINT — use this for DB-only operations."""
         return cls.query.get(internal_id)
 
     # ---------------------------
     # Flask-Login integration
     # ---------------------------
     def get_id(self):
-        """Return the UUID-style user_id for session tracking (external reference)."""
-        return str(self.user_id)
+        """
+        Returns public_id (UUID string) for Flask-Login session tracking.
+        Flask-Login will store and reload using this value, so it must
+        match what user_loader queries on — query by public_id, NOT by id.
+
+        Ensure your user_loader looks like:
+            @login_manager.user_loader
+            def load_user(public_id):
+                return User.get_by_public_id(public_id)
+        """
+        return str(self.public_id)
 
     # ---------------------------
     # Password helpers
     # ---------------------------
-    def set_password(self, password: str):
-        """Hash and store the user's password."""
+    def set_password(self, password: str, changed_by_user_id: int = None):
+        # Audit password change
+        from app.audit.comprehensive_audit import AuditService, DataChangeLog
+        from flask import request
+
+        old_hash = self.password_hash
+
         self.password_hash = generate_password_hash(password)
         self.password_changed_at = datetime.utcnow()
-
-        # Set password expiration (e.g., 90 days from now)
         self.password_expires_at = datetime.utcnow() + timedelta(days=90)
 
+        # Log the password change
+        try:
+            AuditService.data_change(
+                entity_type="user",
+                entity_id=self.id,
+                operation="password_change",
+                old_value={"password_changed_at": str(self.password_changed_at)},
+                new_value={"password_changed_at": str(datetime.utcnow())},
+                changed_by=changed_by_user_id or self.id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "password_changed": True,
+                    "changed_by_self": changed_by_user_id is None or changed_by_user_id == self.id
+                }
+            )
+        except Exception as e:
+            # Don't fail password change if audit fails
+            import logging
+            logging.error(f"Failed to audit password change: {e}")
+
     def verify_password(self, password: str) -> bool:
-        """Verify a password against the stored hash."""
         return check_password_hash(self.password_hash, password)
 
     # ---------------------------
     # Login helpers
     # ---------------------------
     def record_failed_login(self, session):
-        """Increment failed login counter and apply lockout if threshold reached."""
         self.failed_logins += 1
         if self.failed_logins >= 5:
             self.locked_until = datetime.utcnow() + timedelta(minutes=15)
         session.add(self)
 
     def reset_failed_login(self, session):
-        """Reset failed login counter and clear lockout."""
         self.failed_logins = 0
         self.locked_until = None
         session.add(self)
 
     def is_locked(self):
-        """Return True if account is currently locked."""
         return self.locked_until and datetime.utcnow() < self.locked_until
 
     def requires_mfa(self):
-        """Return True if MFA is globally enabled and user has MFA enabled."""
         return current_app.config.get("ENABLE_MFA", False) and self.mfa_enabled
 
     # ---------------------------
@@ -195,19 +245,15 @@ class User(UserMixin, ProtectedModel):
 
     @property
     def role_names(self) -> list[str]:
-        """Return a list of all role names assigned to this user."""
         return [ur.role.name for ur in self.roles if ur.role]
 
     def is_app_owner(self) -> bool:
-        """Return True if the user has the global 'owner' role."""
         return "owner" in self.role_names
 
     def is_super_admin(self) -> bool:
-        """Return True if the user is owner or super_admin."""
         return self.is_app_owner() or "super_admin" in self.role_names
 
     def has_global_role(self, *role_names: str) -> bool:
-        """Return True if the user has any of the given global roles."""
         try:
             if self.is_app_owner():
                 return True
@@ -232,15 +278,12 @@ class User(UserMixin, ProtectedModel):
         return self.has_org_role(org_id, "org_owner")
 
     def has_org_permission(self, org_id: int, permission: str) -> bool:
-        """Placeholder for IAM-style policies later. For now: role-based."""
         if self.is_org_owner(org_id):
             return True
-
         ROLE_PERMISSION_MAP = {
             "org_admin": {"manage_members", "manage_resources"},
             "org_moderator": {"manage_members"},
         }
-
         for membership in self.organisations:
             if membership.organisation_id != org_id:
                 continue
@@ -250,8 +293,231 @@ class User(UserMixin, ProtectedModel):
                     return True
         return False
 
+    # ---------------------------
+    # Organization Audit helpers
+    # ---------------------------
+    @staticmethod
+    def audit_org_member_added(org_id: int, user_id: int, added_by: int, role_names: list):
+        """Audit organization member addition"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        try:
+            AuditService.data_change(
+                entity_type="organisation_member",
+                entity_id=f"{org_id}-{user_id}",
+                operation="add",
+                old_value=None,
+                new_value={
+                    "organisation_id": org_id,
+                    "user_id": user_id,
+                    "roles": role_names
+                },
+                changed_by=added_by,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "added_by": added_by,
+                    "role_names": role_names
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit organization member addition: {e}")
+
+    @staticmethod
+    def audit_org_member_removed(org_id: int, user_id: int, removed_by: int, reason: str = None):
+        """Audit organization member removal"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        try:
+            AuditService.data_change(
+                entity_type="organisation_member",
+                entity_id=f"{org_id}-{user_id}",
+                operation="remove",
+                old_value={"organisation_id": org_id, "user_id": user_id},
+                new_value=None,
+                changed_by=removed_by,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "removed_by": removed_by,
+                    "reason": reason
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit organization member removal: {e}")
+
+    @staticmethod
+    def audit_org_role_assigned(org_id: int, user_id: int, role_name: str, assigned_by: int):
+        """Audit organization role assignment"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        try:
+            AuditService.data_change(
+                entity_type="organisation_role",
+                entity_id=f"{org_id}-{user_id}-{role_name}",
+                operation="assign",
+                old_value=None,
+                new_value={
+                    "organisation_id": org_id,
+                    "user_id": user_id,
+                    "role_name": role_name
+                },
+                changed_by=assigned_by,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "assigned_by": assigned_by
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit organization role assignment: {e}")
+
+    @staticmethod
+    def audit_org_role_revoked(org_id: int, user_id: int, role_name: str, revoked_by: int, reason: str = None):
+        """Audit organization role revocation"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        try:
+            AuditService.data_change(
+                entity_type="organisation_role",
+                entity_id=f"{org_id}-{user_id}-{role_name}",
+                operation="revoke",
+                old_value={"organisation_id": org_id, "user_id": user_id, "role_name": role_name},
+                new_value=None,
+                changed_by=revoked_by,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "revoked_by": revoked_by,
+                    "reason": reason
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit organization role revocation: {e}")
+
     def __repr__(self):
-        return f"<User id={self.id} user_id={self.user_id} username={self.username} email={self.email}>"
+        return (
+            f"<User id={self.id} public_id={self.public_id} "
+            f"username={self.username} email={self.email}>"
+        )
+
+    # ---------------------------
+    # Admin Impersonation Audit
+    # ---------------------------
+    @staticmethod
+    def audit_admin_impersonation_start(admin_id: int, target_user_id: int, reason: str = None):
+        """Audit when admin starts impersonating another user"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        try:
+            AuditService.security(
+                event_type="admin_impersonation_start",
+                severity="WARNING",
+                description=f"Admin {admin_id} started impersonating user {target_user_id}",
+                user_id=admin_id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "target_user_id": target_user_id,
+                    "reason": reason,
+                    "impersonation_started_at": datetime.utcnow().isoformat()
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit admin impersonation start: {e}")
+
+    @staticmethod
+    def audit_admin_impersonation_end(admin_id: int, target_user_id: int, duration_seconds: float):
+        """Audit when admin stops impersonating another user"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        try:
+            AuditService.security(
+                event_type="admin_impersonation_end",
+                severity="INFO",
+                description=f"Admin {admin_id} stopped impersonating user {target_user_id}",
+                user_id=admin_id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "target_user_id": target_user_id,
+                    "duration_seconds": duration_seconds,
+                    "impersonation_ended_at": datetime.utcnow().isoformat()
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit admin impersonation end: {e}")
+
+    # ---------------------------
+    # MFA Audit helpers
+    # ---------------------------
+    def enable_mfa(self, mfa_type: str, enabled_by_user_id: int = None):
+        """Enable MFA with audit logging"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        old_mfa_enabled = self.mfa_enabled
+        self.mfa_enabled = True
+
+        # Log MFA enablement
+        try:
+            AuditService.data_change(
+                entity_type="user",
+                entity_id=self.id,
+                operation="mfa_enabled",
+                old_value={"mfa_enabled": old_mfa_enabled},
+                new_value={"mfa_enabled": True, "mfa_type": mfa_type},
+                changed_by=enabled_by_user_id or self.id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "mfa_type": mfa_type,
+                    "enabled_by_self": enabled_by_user_id is None or enabled_by_user_id == self.id
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit MFA enablement: {e}")
+
+    def disable_mfa(self, disabled_by_user_id: int = None, reason: str = None):
+        """Disable MFA with audit logging"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        old_mfa_enabled = self.mfa_enabled
+        self.mfa_enabled = False
+
+        # Log MFA disablement
+        try:
+            AuditService.data_change(
+                entity_type="user",
+                entity_id=self.id,
+                operation="mfa_disabled",
+                old_value={"mfa_enabled": old_mfa_enabled},
+                new_value={"mfa_enabled": False},
+                changed_by=disabled_by_user_id or self.id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "reason": reason,
+                    "disabled_by_self": disabled_by_user_id is None or disabled_by_user_id == self.id
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit MFA disablement: {e}")
 
     # ---------------------------
     # Validators
@@ -260,52 +526,101 @@ class User(UserMixin, ProtectedModel):
     def validate_email(self, key, email):
         if email and not isinstance(email, str):
             raise ValueError("Email must be a string")
-        return email.strip().lower() if email else email
+
+        new_email = email.strip().lower() if email else email
+
+        # Audit email change if it's different
+        if hasattr(self, 'email') and self.email and new_email != self.email:
+            from app.audit.comprehensive_audit import AuditService
+            from flask import request
+
+            try:
+                AuditService.data_change(
+                    entity_type="user",
+                    entity_id=self.id,
+                    operation="email_change",
+                    old_value={"email": self.email},
+                    new_value={"email": new_email},
+                    changed_by=self.id,
+                    ip_address=request.remote_addr if request else None,
+                    user_agent=request.user_agent.string if request and request.user_agent else None,
+                    extra_data={"email_changed": True}
+                )
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to audit email change: {e}")
+
+        return new_email
 
     @validates("phone")
     def validate_phone(self, key, phone):
         if phone and not isinstance(phone, str):
             raise ValueError("Phone must be a string")
-        return phone.strip().replace(" ", "") if phone else phone
+
+        new_phone = phone.strip().replace(" ", "") if phone else phone
+
+        # Audit phone change if it's different
+        if hasattr(self, 'phone') and self.phone and new_phone != self.phone:
+            from app.audit.comprehensive_audit import AuditService
+            from flask import request
+
+            try:
+                AuditService.data_change(
+                    entity_type="user",
+                    entity_id=self.id,
+                    operation="phone_change",
+                    old_value={"phone": self.phone},
+                    new_value={"phone": new_phone},
+                    changed_by=self.id,
+                    ip_address=request.remote_addr if request else None,
+                    user_agent=request.user_agent.string if request and request.user_agent else None,
+                    extra_data={"phone_changed": True}
+                )
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to audit phone change: {e}")
+
+        return new_phone
 
 
 # ---------------------------
-# Pre-KYC Duplicate Check
+# Duplicate Check (pre-DB)
 # ---------------------------
 def check_user_duplicates(connection, target, is_update=False):
-    """Ensure email/phone/username uniqueness pre-KYC."""
+    """
+    Pre-flight uniqueness check before insert/update.
+
+    The DB UniqueConstraints are the final safety net (and handle race conditions).
+    This function catches duplicates early to give friendlier error messages.
+
+    For updates: excludes the current record's own id so a user can save
+    without changing their email/phone and not trigger a false positive.
+    """
     users_table = User.__table__
 
-    # Check email
-    if target.email:
-        duplicate_email = connection.execute(
-            select(users_table.c.id).where(users_table.c.email == target.email)
-        ).first()
-        if duplicate_email and not is_update:
-            raise ValueError("Duplicate user email found")
+    def verify(column, value, label):
+        if not value:
+            return
+        query = select(users_table.c.id).where(column == value)
+        if is_update and target.id:
+            # Exclude the current record — don't flag a user's own existing values
+            query = query.where(users_table.c.id != target.id)
+        result = connection.execute(query).first()
+        if result:
+            raise ValueError(f"Duplicate {label} found: {value}")
 
-    # Check username
-    if target.username:
-        duplicate_username = connection.execute(
-            select(users_table.c.id).where(users_table.c.username == target.username)
-        ).first()
-        if duplicate_username and not is_update:
-            raise ValueError("Duplicate username found")
-
-    # Check phone
-    if target.phone:
-        duplicate_phone = connection.execute(
-            select(users_table.c.id).where(users_table.c.phone == target.phone)
-        ).first()
-        if duplicate_phone and not is_update:
-            raise ValueError("Duplicate phone number found")
+    verify(users_table.c.email,     target.email,     "email")
+    verify(users_table.c.username,  target.username,  "username")
+    verify(users_table.c.phone,     target.phone,     "phone")
+    verify(users_table.c.public_id, target.public_id, "public_id")
 
 
 @event.listens_for(User, "before_insert")
 def user_before_insert(mapper, connection, target):
-    if not target.user_id:
-        target.user_id = str(uuid_lib.uuid4())
+    if not target.public_id:
+        target.public_id = str(uuid_lib.uuid4())
     check_user_duplicates(connection, target, is_update=False)
+
 
 @event.listens_for(User, "before_update")
 def user_before_update(mapper, connection, target):
@@ -313,19 +628,28 @@ def user_before_update(mapper, connection, target):
 
 
 # --------------------------------------
-# UserRole (global role)
+# UserRole
 # --------------------------------------
 class UserRole(ProtectedModel):
     __tablename__ = "user_roles"
 
-    # id inherited from ProtectedModel
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    role_id = Column(BigInteger, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False, index=True)
-    assigned_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    role_id = Column(
+        BigInteger, ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    assigned_by = Column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True, index=True
+    )
     assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    # Relationships
-    user = relationship("User", foreign_keys=[user_id], back_populates="roles", lazy="joined")
+    user = relationship(
+        "User", foreign_keys=[user_id], back_populates="roles", lazy="joined"
+    )
     assigned_by_user = relationship("User", foreign_keys=[assigned_by], lazy="joined")
     role = relationship("Role", foreign_keys=[role_id], back_populates="user_roles", lazy="joined")
 
@@ -343,13 +667,13 @@ class UserRole(ProtectedModel):
 class MFASecret(ProtectedModel):
     __tablename__ = "mfa_secrets"
 
-    # id inherited from ProtectedModel
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    mfa_type = Column(String(32), nullable=False, index=True)  # totp, sms, webauthn
-    secret = Column(String(1024), nullable=False)  # encrypted
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    mfa_type = Column(String(32), nullable=False, index=True)
+    secret = Column(String(1024), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
-
-    # Timestamps inherited from ProtectedModel
 
     user = relationship("User", back_populates="mfa_secrets", lazy="joined")
 
@@ -374,14 +698,14 @@ class MFASecret(ProtectedModel):
 class Session(ProtectedModel):
     __tablename__ = "sessions"
 
-    # id inherited from ProtectedModel
     session_id = Column(String(128), unique=True, nullable=False, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
     device_id = Column(String(128), index=True)
     ip = Column(String(64), index=True)
     user_agent = Column(String(512))
-
-    # Timestamps inherited from ProtectedModel
     expires_at = Column(DateTime, nullable=False, index=True)
     revoked_at = Column(DateTime, nullable=True, index=True)
     revoked_reason = Column(String(255))
@@ -398,14 +722,11 @@ class Session(ProtectedModel):
 class APIKey(ProtectedModel):
     __tablename__ = "api_keys"
 
-    # id inherited from ProtectedModel
     key_id = Column(String(64), nullable=False, index=True)
     key_hash = Column(String(512), nullable=False)
-    owner_type = Column(String(32), nullable=False, index=True)  # user or organisation
+    owner_type = Column(String(32), nullable=False, index=True)
     owner_id = Column(BigInteger, nullable=False, index=True)
     scopes = Column(JSON, nullable=False, default=dict)
-
-    # Timestamps inherited from ProtectedModel
     revoked_at = Column(DateTime, nullable=True, index=True)
 
     __table_args__ = (
@@ -415,3 +736,74 @@ class APIKey(ProtectedModel):
 
     def __repr__(self):
         return f"<APIKey key_id={self.key_id} owner_type={self.owner_type}>"
+
+    @classmethod
+    def create_with_audit(cls, key_id: str, key_hash: str, owner_type: str, owner_id: int,
+                         scopes: dict, created_by: int = None):
+        """Create API key with audit logging"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        api_key = cls(
+            key_id=key_id,
+            key_hash=key_hash,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            scopes=scopes
+        )
+
+        # Log API key creation
+        try:
+            AuditService.data_change(
+                entity_type="api_key",
+                entity_id=key_id,
+                operation="create",
+                old_value=None,
+                new_value={
+                    "owner_type": owner_type,
+                    "owner_id": owner_id,
+                    "scopes": scopes
+                },
+                changed_by=created_by or owner_id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "key_id": key_id,
+                    "created_by_self": created_by is None or created_by == owner_id
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit API key creation: {e}")
+
+        return api_key
+
+    def revoke_with_audit(self, revoked_by: int = None, reason: str = None):
+        """Revoke API key with audit logging"""
+        from app.audit.comprehensive_audit import AuditService
+        from flask import request
+
+        old_revoked_at = self.revoked_at
+        self.revoked_at = datetime.utcnow()
+
+        # Log API key revocation
+        try:
+            AuditService.data_change(
+                entity_type="api_key",
+                entity_id=self.key_id,
+                operation="revoke",
+                old_value={"revoked_at": old_revoked_at},
+                new_value={"revoked_at": self.revoked_at.isoformat()},
+                changed_by=revoked_by or self.owner_id,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.user_agent.string if request and request.user_agent else None,
+                extra_data={
+                    "reason": reason,
+                    "owner_type": self.owner_type,
+                    "owner_id": self.owner_id,
+                    "revoked_by_self": revoked_by is None or revoked_by == self.owner_id
+                }
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to audit API key revocation: {e}")

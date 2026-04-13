@@ -1,0 +1,10 @@
+:root {
+  --user-font-scale: 1;
+  --user-high-contrast: off;
+  --user-dyslexic-font: false;
+  --user-color-blind-mode: none;
+  --user-dark-mode: system;
+  --user-reduced-motion: true;
+  --user-reading-width: narrow;
+  --user-compact-mode: false;
+}

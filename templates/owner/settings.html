@@ -30,7 +30,7 @@
       <div class="settings-section">
         <h3>Security Settings</h3>
         <form method="POST" action="{{ url_for('owner.update_settings') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
           <div class="form-group">
             <label for="session_timeout">Session Timeout (minutes)</label>

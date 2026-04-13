@@ -12,5 +12,5 @@ def view_profile():
         flash("Please log in first.", "warning")
         return redirect(url_for("auth_routes.login"))
 
-    user = User.query.filter_by(user_id=user_id).first_or_404()
+    user = User.query.filter_by(public_id=user_id).first_or_404()
     return render_template("view.html", user=user)

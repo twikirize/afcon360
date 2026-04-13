@@ -1,0 +1,31 @@
+{# audit_timeline.html - Forensic audit timeline component #}
+<div class="audit-timeline card">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h6>
+    </div>
+    <div class="card-body p-0">
+        {% if audit_summary %}
+        <div class="list-group list-group-flush">
+            {% for event in audit_summary %}
+            <div class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <small class="text-muted">{{ event.created_at|default('Just now') }}</small>
+                    <span class="badge bg-{{ 'success' if event.status == 'completed' else 'warning' if event.status == 'pending' else 'secondary' }}">
+                        {{ event.status|default('unknown')|title }}
+                    </span>
+                </div>
+                <p class="mb-1 small">{{ event.description|default(event.operation|default('No description')) }}</p>
+                {% if event.action %}
+                <small class="text-muted">Action: {{ event.action }}</small>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-clipboard-list fa-2x text-muted mb-2"></i>
+            <p class="text-muted small mb-0">No recent audit events</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

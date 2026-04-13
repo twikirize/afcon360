@@ -18,6 +18,14 @@ from app.audit.comprehensive_audit import (
 
 from app.audit.models import AuditLog
 
+# Import ForensicAuditService if available
+try:
+    from app.audit.forensic_audit import ForensicAuditService
+    _has_forensic_audit = True
+except ImportError:
+    _has_forensic_audit = False
+    ForensicAuditService = None
+
 __all__ = [
     # Main service
     'AuditService',
@@ -34,3 +42,7 @@ __all__ = [
     'APICallStatus',
     'DataAccessType',
 ]
+
+# Conditionally add ForensicAuditService to __all__
+if _has_forensic_audit:
+    __all__.append('ForensicAuditService')

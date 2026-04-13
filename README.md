@@ -298,10 +298,131 @@ app.register_blueprint(owner_bp)
 
 ---
 
+## COMPREHENSIVE FORENSIC AUDIT TRAIL SYSTEM
+
+### **Overview**
+Implemented to meet compliance requirements from Bank of Uganda and FIA Uganda, this system provides complete forensic audit trails across the entire application. It tracks both attempts and completions of actions, creating a comprehensive timeline for forensic investigations.
+
+### **Key Features**
+1. **Attempt vs Completion Tracking**: Records when actions are initiated and when they are completed
+2. **Blocked Action Logging**: Tracks when actions are blocked due to policy violations
+3. **Risk Scoring**: Calculates risk scores for audit events
+4. **Suspicious Pattern Detection**: Identifies potentially malicious activity patterns
+5. **Compliance Reporting**: Generates reports for regulatory bodies
+
+### **Database Schema Updates**
+All audit tables have been enhanced with forensic audit columns:
+- `attempted_at`: When the action was initiated
+- `status`: Current status (pending/completed/blocked/rejected)
+- `reviewed_by_user_id`: Who reviewed the action
+- `reviewed_at`: When the review occurred
+- `review_notes`: Notes from the reviewer
+- `ip_address`: IP address of the user
+- `user_agent`: User agent string
+- `session_id`: Session identifier
+- `correlation_id`: For linking related events
+- `risk_score`: Calculated risk score
+
+### **Core Service: ForensicAuditService**
+Located at `app/audit/forensic_audit.py`, this service provides:
+- `log_attempt()`: Log when an action is initiated
+- `log_completion()`: Log when an action is completed
+- `log_blocked()`: Log when an action is blocked
+- `get_audit_timeline()`: Retrieve complete timeline for an entity
+- `get_pending_reviews()`: Get items awaiting compliance review
+- `get_suspicious_patterns()`: Detect suspicious activity patterns
+
+### **Integration Points**
+The system has been integrated with:
+
+#### **1. User Authentication (`app/auth/services.py`)**
+- User registration: Tracks attempt and completion
+- Login attempts: Logs successful and failed attempts
+- Password reset: Tracks initiation and completion
+- Email verification: Logs verification attempts
+
+#### **2. Profile Management (`app/profile/models.py`)**
+- Immutable field enforcement: Logs blocked modification attempts
+- KYC verification: Tracks verification status changes
+
+#### **3. KYC Services (`app/kyc/services.py`)**
+- KYC submission: Tracks submission attempts and approvals
+- Document verification: Logs review processes
+
+#### **4. Wallet Services (`app/wallet/services.py`)**
+- Transaction processing: Tracks initiation and completion
+- Withdrawal requests: Logs approval workflows
+
+### **Frontend Components**
+Several frontend components have been added:
+
+#### **Audit Timeline Component**
+Displays chronological audit events with attempt and completion timestamps
+
+#### **Pending Reviews Widget**
+Shows items awaiting compliance officer review
+
+#### **Suspicious Activity Widget**
+Highlights potentially malicious patterns
+
+### **Dashboard Integration**
+The audit components have been integrated into:
+- Owner Dashboard: For system-wide oversight
+- Compliance Officer Dashboard: For regulatory compliance monitoring
+- User/Fan Dashboard: For personal audit trail visibility
+- Organization Admin Dashboard: For member activity tracking
+
+### **API Endpoints**
+New API endpoints have been created:
+- `/api/audit/timeline/<entity_type>/<entity_id>`: Get forensic timeline
+- `/api/audit/pending-reviews`: Get pending review items
+- `/api/audit/review/<audit_id>`: Process review approvals/rejections
+- `/api/audit/suspicious-patterns`: Get suspicious activity patterns
+- `/api/audit/compliance-report`: Generate compliance reports
+
+### **Compliance Reports**
+The system generates reports in formats required by:
+- **FIA Uganda**: Lists all transactions > UGX 20M with timestamps
+- **Bank of Uganda**: KYC approval timelines and statistics
+
+### **Background Jobs**
+Scheduled tasks run to:
+- Detect suspicious patterns hourly
+- Escalate stale reviews (>24 hours) every 4 hours
+- Generate daily compliance reports
+
+### **Verification Queries**
+After implementation, run these SQL queries to verify the system:
+
+```sql
+-- Check time gaps between attempt and completion
+SELECT
+    entity_type,
+    AVG(EXTRACT(EPOCH FROM (created_at - attempted_at))/3600) as avg_hours,
+    MAX(EXTRACT(EPOCH FROM (created_at - attempted_at))/3600) as max_hours,
+    COUNT(*) as total
+FROM user_profile_audit
+WHERE status = 'approved'
+GROUP BY entity_type;
+
+-- Find suspicious patterns (multiple attempts in short time)
+SELECT
+    attempted_by_user_id,
+    COUNT(*) as attempt_count,
+    MIN(attempted_at) as first_attempt,
+    MAX(attempted_at) as last_attempt
+FROM user_profile_audit
+WHERE attempted_at > NOW() - INTERVAL '1 hour'
+GROUP BY attempted_by_user_id
+HAVING COUNT(*) > 5;
+```
+
+---
+
 ## Future Development Roadmap
 
 ### **Phase 1: Core Enhancements**
-1. **Audit Logging**: Re-enable with proper database schema
+1. **Audit Logging**: Enhanced with forensic audit capabilities ✓
 2. **Email Notifications**: User verification and system alerts
 3. **File Upload**: Document and media management
 4. **API Documentation**: OpenAPI specification

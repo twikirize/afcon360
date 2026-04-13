@@ -115,8 +115,16 @@
     function startScanner() {
         html5QrCode.start({ facingMode: "environment" }, qrConfig, onScanSuccess)
             .catch(err => {
-                resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> Camera Error`;
-                resultContainer.className = 'scanner-result result-error';
+                if (err.name === 'NotAllowedError') {
+                    resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> Camera access denied. Please allow camera access to scan tickets.`;
+                    resultContainer.className = 'scanner-result result-error';
+                } else if (err.name === 'NotFoundError') {
+                    resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> No camera found on this device.`;
+                    resultContainer.className = 'scanner-result result-error';
+                } else {
+                    resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> Camera Error: ${err.message}`;
+                    resultContainer.className = 'scanner-result result-error';
+                }
             });
     }
 

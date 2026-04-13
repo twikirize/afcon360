@@ -94,7 +94,7 @@ def wallet_status():
 def get_user_balance(user_id):
     """Get balance for any user by UUID."""
     try:
-        user = User.query.filter_by(user_id=user_id).first_or_404()
+        user = User.query.filter_by(public_id=user_id).first_or_404()
         service = WalletService()
         balance = service.get_balance(user.id) # Internal logic uses BigInt id
 
@@ -116,7 +116,7 @@ def get_user_balance(user_id):
 def get_user_transactions(user_id):
     """Get transaction history for any user by UUID."""
     try:
-        user = User.query.filter_by(user_id=user_id).first_or_404()
+        user = User.query.filter_by(public_id=user_id).first_or_404()
         limit = min(request.args.get('limit', 50, type=int), 100)
         offset = request.args.get('offset', 0, type=int)
         transaction_type = request.args.get('type')
@@ -176,7 +176,7 @@ def list_wallets():
 def get_wallet_details(user_id):
     """Get detailed wallet information by User UUID."""
     try:
-        user = User.query.filter_by(user_id=user_id).first_or_404()
+        user = User.query.filter_by(public_id=user_id).first_or_404()
         admin_service = WalletAdminService()
         result = admin_service.get_wallet_details(user.id) # Internal BigInt
 
@@ -194,7 +194,7 @@ def get_wallet_details(user_id):
 def freeze_wallet(user_id):
     """Freeze a wallet using User UUID."""
     try:
-        user = User.query.filter_by(user_id=user_id).first_or_404()
+        user = User.query.filter_by(public_id=user_id).first_or_404()
         data = request.get_json() or {}
         reason = data.get('reason', '').strip()
         if not reason:
@@ -226,7 +226,7 @@ def freeze_wallet(user_id):
 def unfreeze_wallet(user_id):
     """Unfreeze a wallet using User UUID."""
     try:
-        user = User.query.filter_by(user_id=user_id).first_or_404()
+        user = User.query.filter_by(public_id=user_id).first_or_404()
         data = request.get_json() or {}
         admin_service = WalletAdminService()
         admin_service.unfreeze_wallet(
@@ -248,7 +248,7 @@ def unfreeze_wallet(user_id):
 def adjust_balance(user_id):
     """Manually adjust wallet balance using User UUID."""
     try:
-        user = User.query.filter_by(user_id=user_id).first_or_404()
+        user = User.query.filter_by(public_id=user_id).first_or_404()
         data = request.get_json() or {}
         amount = Decimal(str(data.get('amount', '0')))
         currency = data.get('currency', 'USD').upper()

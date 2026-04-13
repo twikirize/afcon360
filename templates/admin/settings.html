@@ -1235,7 +1235,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': '{{ csrf_token() }}'
+                        'X-CSRF-Token': '{{ csrf_token }}'
                     },
                     body: JSON.stringify(settings)
                 });
@@ -1294,7 +1294,7 @@
                 const response = await fetch('{{ url_for("transport.api_apply_settings") }}', {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-Token': '{{ csrf_token() }}'
+                        'X-CSRF-Token': '{{ csrf_token }}'
                     }
                 });
 
@@ -1329,7 +1329,7 @@
                 const response = await fetch('{{ url_for("transport.api_reset_settings") }}', {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-Token': '{{ csrf_token() }}'
+                        'X-CSRF-Token': '{{ csrf_token }}'
                     }
                 });
 
@@ -1363,7 +1363,7 @@
                         const response = await fetch('{{ url_for("transport.api_toggle_module") }}', {
                             method: 'POST',
                             headers: {
-                                'X-CSRF-Token': '{{ csrf_token() }}'
+                                'X-CSRF-Token': '{{ csrf_token }}'
                             },
                             body: JSON.stringify({ enabled: !currentlyEnabled })
                         });
@@ -1400,7 +1400,7 @@
                         const response = await fetch('{{ url_for("transport.api_toggle_maintenance") }}', {
                             method: 'POST',
                             headers: {
-                                'X-CSRF-Token': '{{ csrf_token() }}'
+                                'X-CSRF-Token': '{{ csrf_token }}'
                             },
                             body: JSON.stringify({ enabled: !currentlyEnabled })
                         });
@@ -1524,7 +1524,7 @@
                         const response = await fetch('{{ url_for("transport.api_initialize_settings") }}', {
                             method: 'POST',
                             headers: {
-                                'X-CSRF-Token': '{{ csrf_token() }}'
+                                'X-CSRF-Token': '{{ csrf_token }}'
                             }
                         });
 
@@ -1601,7 +1601,7 @@
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'X-CSRF-Token': '{{ csrf_token() }}'
+                                'X-CSRF-Token': '{{ csrf_token }}'
                             },
                             body: JSON.stringify({
                                 settings: settings,

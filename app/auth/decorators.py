@@ -44,6 +44,7 @@ from typing import Callable, Optional
 
 from flask import abort, current_app, g, flash, redirect, url_for, request
 from flask_login import current_user
+from app.extensions import db
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +61,13 @@ def get_highest_role(user) -> str:
     """
     if not user or not user.is_authenticated:
         return None
+
+    # Ensure user is attached to the session before accessing relationships
+    if user not in db.session:
+        try:
+            user = db.session.merge(user, load=False)
+        except Exception as e:
+            log.debug(f"Could not merge user in get_highest_role: {e}")
 
     role_hierarchy = [
         "owner",
@@ -95,10 +103,27 @@ def _get_current_user():
     Return the active user from Flask-Login or ``g.current_user``.
     Flask-Login is preferred (session-based web views).
     ``g.current_user`` is used by API routes that authenticate via token.
+    Ensures the user is attached to the current session to prevent
+    "Parent instance not bound to a Session" warnings.
     """
+    user = None
     if current_user and current_user.is_authenticated:
-        return current_user
-    return getattr(g, "current_user", None)
+        user = current_user
+    else:
+        user = getattr(g, "current_user", None)
+
+    if user and hasattr(user, 'id'):
+        # Merge the user into the current session to ensure it's attached
+        # This prevents "Parent instance not bound to a Session" warnings
+        # when accessing relationships like user.roles
+        try:
+            # Always merge with load=False to attach to session without reloading
+            # This is safe even if the object is already in the session
+            db.session.merge(user, load=False)
+        except Exception as e:
+            log.debug(f"Could not merge user into session: {e}")
+            # Continue without merging - this is non-critical
+    return user
 
 
 def _log_denied(reason: str, user, endpoint: str, **extra) -> None:
@@ -150,6 +175,13 @@ def require_role(*roles: str) -> Callable:
                 flash("Please log in to access this page.", "warning")
                 return redirect(url_for("auth_routes.login", next=request.url))
 
+            # Ensure user is attached to the session before checking roles
+            if user not in db.session:
+                try:
+                    user = db.session.merge(user, load=False)
+                except Exception as e:
+                    log.debug(f"Could not merge user in require_role: {e}")
+
             from app.auth.helpers import has_global_role
             if not has_global_role(user, *roles):
                 _log_denied(
@@ -198,6 +230,13 @@ def require_org_role(*roles: str) -> Callable:
                     fn.__qualname__,
                 )
                 abort(500)
+
+            # Ensure user is attached to the session before checking roles
+            if user not in db.session:
+                try:
+                    user = db.session.merge(user, load=False)
+                except Exception as e:
+                    log.debug(f"Could not merge user in require_org_role: {e}")
 
             from app.auth.helpers import has_org_role
             if not has_org_role(user, org_id, *roles):
@@ -281,6 +320,13 @@ def admin_required(fn: Callable) -> Callable:
             _log_denied("unauthenticated", None, fn.__qualname__)
             flash("Please log in to access this page.", "warning")
             return redirect(url_for("auth_routes.login", next=request.url))
+
+        # Ensure user is attached to the session before checking roles
+        if user not in db.session:
+            try:
+                user = db.session.merge(user, load=False)
+            except Exception as e:
+                log.debug(f"Could not merge user in admin_required: {e}")
 
         from app.auth.helpers import has_global_role
         if not has_global_role(user, "admin", "super_admin", "owner"):
@@ -434,6 +480,72 @@ def rate_limit(limit: str, key_func: Optional[Callable] = None) -> Callable:
         return wrapper
     return decorator
 
+
+# ---------------------------------------------------------------------------
+# @require_verified
+# ---------------------------------------------------------------------------
+
+def require_verified(fn: Callable) -> Callable:
+    """
+    Abort with 403 if user is not verified.
+    This is useful for features that require verified accounts.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = _get_current_user()
+
+        if not user:
+            _log_denied("unauthenticated", None, fn.__qualname__)
+            flash("Please log in to access this page.", "warning")
+            return redirect(url_for("auth.login", next=request.url))
+
+        # Check if user is verified
+        if not getattr(user, "is_verified", False):
+            # Also check profile verification status
+            if hasattr(user, 'profile') and user.profile:
+                if user.profile.verification_status != "verified":
+                    _log_denied("unverified", user, fn.__qualname__)
+                    flash("Your account needs to be verified to access this feature.", "warning")
+                    return redirect(url_for("index"))
+            else:
+                _log_denied("unverified", user, fn.__qualname__)
+                flash("Your account needs to be verified to access this feature.", "warning")
+                return redirect(url_for("index"))
+
+        return fn(*args, **kwargs)
+    return wrapper
+
+# ---------------------------------------------------------------------------
+# @require_profile_complete
+# ---------------------------------------------------------------------------
+
+def require_profile_complete(fn: Callable) -> Callable:
+    """
+    Abort with 403 if user's profile is not complete.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = _get_current_user()
+
+        if not user:
+            _log_denied("unauthenticated", None, fn.__qualname__)
+            flash("Please log in to access this page.", "warning")
+            return redirect(url_for("auth.login", next=request.url))
+
+        # Check if profile is complete
+        if hasattr(user, 'profile') and user.profile:
+            if not user.profile.profile_completed:
+                _log_denied("incomplete_profile", user, fn.__qualname__)
+                flash("Please complete your profile to access this feature.", "info")
+                return redirect(url_for("auth.complete_profile"))
+        else:
+            # User has no profile, which is also incomplete
+            _log_denied("no_profile", user, fn.__qualname__)
+            flash("Please complete your profile to access this feature.", "info")
+            return redirect(url_for("auth.complete_profile"))
+
+        return fn(*args, **kwargs)
+    return wrapper
 
 # ---------------------------------------------------------------------------
 # Convenience aliases

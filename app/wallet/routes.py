@@ -371,7 +371,7 @@ def send_funds():
             flash("Invalid input.", "danger")
             return redirect(url_for("wallet.send_page"))
 
-        receiver_user = User.query.filter_by(user_id=receiver_id).first() or \
+        receiver_user = User.query.filter_by(public_id=receiver_id).first() or \
                         User.query.filter_by(username=receiver_id).first()
         if not receiver_user:
             flash(f"User not found: {receiver_id}", "danger")

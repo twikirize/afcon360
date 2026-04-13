@@ -25,7 +25,7 @@
                             <p><strong>Local Currency:</strong> {{ wallet.local_currency }}</p>
                         </div>
                         <form method="POST">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="alert alert-warning">
                                 <i class="bi bi-exclamation-triangle"></i>
                                 By activating your wallet, you agree to our
@@ -41,7 +41,7 @@
                         </p>
 
                         <form method="POST">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
                             <div class="mb-3">
                                 <label class="form-label">Home Currency</label>

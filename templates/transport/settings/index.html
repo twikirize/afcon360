@@ -218,7 +218,7 @@ function saveSetting(key, value) {
   saveTimeout = setTimeout(() => {
     fetch(`/api/transport/settings/key/${key}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
       body: JSON.stringify({ value })
     }).then(r => r.json()).then(d => {
       if (d.success) {

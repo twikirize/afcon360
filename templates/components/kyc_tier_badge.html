@@ -1,0 +1,25 @@
+<!-- KYC Tier Badge Component -->
+{% macro kyc_tier_badge(tier, show_label=true) %}
+<span class="kyc-tier-badge tier-{{ tier }}"
+      data-bs-toggle="tooltip"
+      data-bs-placement="top"
+      title="KYC Tier {{ tier }}">
+    {% if show_label %}
+    Tier {{ tier }}
+    {% else %}
+    T{{ tier }}
+    {% endif %}
+</span>
+{% endmacro %}
+
+{% macro kyc_status_badge(status) %}
+{% if status == 'verified' %}
+<span class="badge bg-success">Verified</span>
+{% elif status == 'pending' %}
+<span class="badge bg-warning">Pending</span>
+{% elif status == 'rejected' %}
+<span class="badge bg-danger">Rejected</span>
+{% else %}
+<span class="badge bg-secondary">Not Started</span>
+{% endif %}
+{% endmacro %}

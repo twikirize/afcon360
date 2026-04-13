@@ -246,6 +246,9 @@
 async function loadThemeSettings() {
     try {
         const response = await fetch('/theme/api/global');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const settings = await response.json();
 
         if (Object.keys(settings).length > 0) {
@@ -275,6 +278,8 @@ async function loadThemeSettings() {
         updatePreview();
     } catch (error) {
         console.error('Failed to load theme settings:', error);
+        // Use defaults
+        updatePreview();
     }
 }
 

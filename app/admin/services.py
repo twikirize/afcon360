@@ -8,6 +8,7 @@ from app.admin.owner.models import OwnerAuditLog
 from app.admin.owner.utils import get_system_health
 from app.identity.services import load_user_roles
 from app.utils.transactions import transactional
+from app.profile.models import get_profile_by_user
 
 def user_to_dict(user):
     """Convert User model to dictionary to prevent lazy loading issues"""

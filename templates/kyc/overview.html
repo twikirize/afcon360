@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KYC Overview - AFCON 360</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+</head>
+<body>
+    <div class="container mt-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item active">KYC Overview</li>
+            </ol>
+        </nav>
+
+        <h1>KYC Verification Status</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Current Tier: <strong>{{ kyc_info.tier_name }} (Tier {{ kyc_info.tier }})</strong></h4>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">Account Limits</h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-header">Daily Limit</div>
+                            <div class="card-body">
+                                <h3>UGX {{ "{:,}".format(limits.daily) if limits.daily else 'Unlimited' }}</h3>
+                                {% if limits.daily_used is not none %}
+                                <div class="progress mt-2">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: {{ (limits.daily_used / limits.daily * 100) if limits.daily else 0 }}%">
+                                        {{ "%.1f"|format((limits.daily_used / limits.daily * 100) if limits.daily else 0) }}%
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    Used: UGX {{ "{:,}".format(limits.daily_used) }}<br>
+                                    Remaining: UGX {{ "{:,}".format(limits.daily_remaining) }}
+                                </small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-header">Monthly Limit</div>
+                            <div class="card-body">
+                                <h3>UGX {{ "{:,}".format(limits.monthly) if limits.monthly else 'Unlimited' }}</h3>
+                                {% if limits.monthly_used is not none %}
+                                <div class="progress mt-2">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: {{ (limits.monthly_used / limits.monthly * 100) if limits.monthly else 0 }}%">
+                                        {{ "%.1f"|format((limits.monthly_used / limits.monthly * 100) if limits.monthly else 0) }}%
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    Used: UGX {{ "{:,}".format(limits.monthly_used) }}<br>
+                                    Remaining: UGX {{ "{:,}".format(limits.monthly_remaining) }}
+                                </small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-header">Per Transaction Limit</div>
+                            <div class="card-body">
+                                <h3>UGX {{ "{:,}".format(limits.transaction) if limits.transaction else 'Unlimited' }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if kyc_info.missing_requirements %}
+                <div class="alert alert-warning mt-3">
+                    <h5>Requirements for Next Tier:</h5>
+                    <ul class="mb-0">
+                        {% for req in kyc_info.missing_requirements %}
+                        <li>{{ req.replace('_', ' ').title() }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="mt-4">
+                    <a href="{{ url_for('auth_kyc.upgrade') }}" class="btn btn-primary btn-lg">Upgrade KYC Tier</a>
+                    <a href="{{ url_for('auth_kyc.limits') }}" class="btn btn-outline-secondary btn-lg">View Detailed Limits</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-link">Back to Home</a>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

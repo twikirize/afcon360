@@ -6,6 +6,27 @@ from datetime import datetime
 from app.extensions import db
 from app.models.base import BaseModel
 
+# ─────────────────────────────────────────────────────────────────
+# ARCHITECTURAL BOUNDARY — identity module
+# ─────────────────────────────────────────────────────────────────
+# This module is part of the IDENTITY domain.
+# It must NEVER import from or define relationships back to:
+#   - app.fan.*
+#   - app.tickets.*
+#   - app.transport.*
+#   - or any other feature module
+#
+# Dependency direction is one-way:
+#   feature modules (fan, tickets, etc.) → identity module
+#
+# If you need to navigate from IndividualVerification → FanProfile,
+# do it with an explicit query in the calling service:
+#
+#   fan = FanProfile.query.filter_by(verification_id=verification.id).first()
+#
+# Do NOT add a relationship here. This boundary is intentional and permanent.
+# ─────────────────────────────────────────────────────────────────
+
 class IndividualVerification(BaseModel):
     __tablename__ = "individual_verifications"
     __table_args__ = (

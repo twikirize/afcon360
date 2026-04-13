@@ -1,0 +1,64 @@
+/* dashboard.css - Custom styles for AFCON 360 dashboard */
+
+/* KYC Badge */
+.kyc-badge-nav .badge {
+    font-size: 0.75em;
+    padding: 0.25em 0.6em;
+    border-radius: 10px;
+}
+
+/* Audit Timeline */
+.audit-timeline {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.audit-timeline .list-group-item {
+    border-left: none;
+    border-right: none;
+    padding: 0.75rem 1rem;
+    transition: background-color 0.2s;
+}
+
+.audit-timeline .list-group-item:first-child {
+    border-top: none;
+}
+
+.audit-timeline .list-group-item:last-child {
+    border-bottom: none;
+}
+
+.audit-timeline .list-group-item:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Role-specific menu items */
+.menu-item.auth {
+    position: relative;
+}
+
+/* Tooltip adjustments */
+.tooltip {
+    font-size: 0.875rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .kyc-badge-nav {
+        margin-left: 0 !important;
+        margin-top: 5px;
+    }
+
+    .audit-timeline .card-body {
+        padding: 0.5rem !important;
+    }
+}
+
+/* Print styles */
+@media print {
+    .kyc-badge-nav,
+    .audit-timeline {
+        display: none !important;
+    }
+}

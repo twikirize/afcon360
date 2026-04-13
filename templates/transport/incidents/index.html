@@ -212,7 +212,7 @@ function submitResolve(e) {
   if (!resolution) return;
   fetch(`/api/transport/incidents/{{ incident.id }}/followup`, {
     method:'POST',
-    headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'},
+    headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token }}'},
     body: JSON.stringify({ action:'resolve', resolution, resolution_details: details })
   }).then(r=>r.json()).then(d=>{ if(d.success) location.reload(); else alert('Error: '+d.error); });
 }

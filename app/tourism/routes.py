@@ -1,89 +1,46 @@
 # app/tourism/routes.py
 
-from flask import render_template
+from flask import render_template, request
+from flask_login import login_required, current_user
 from app.tourism import tourism_bp
+from app.auth.decorators import require_role
+from app.audit.forensic_audit import ForensicAuditService
+from app.auth.kyc_compliance import calculate_kyc_tier
 
 # Attach routes to the tourism blueprint
 @tourism_bp.route("/", endpoint="home")
+@login_required
+@require_role('fan', 'admin', 'owner')
 def home():
+    # Log access
+    ForensicAuditService.log_attempt(
+        entity_type="tourism",
+        entity_id="home",
+        action="view_home",
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
     return render_template("tourism_home.html")
 
-@tourism_bp.route("/detail/<slug>", endpoint="detail")
+@tourism_bp.route("/detail/<string:slug>", endpoint="detail")
+@login_required
+@require_role('fan', 'admin', 'owner')
 def detail(slug):
-    return render_template("tourism_detail.html", slug=slug)
+    # Log access with forensic audit
+    ForensicAuditService.log_attempt(
+        entity_type="tourism",
+        entity_id=slug,
+        action="view_detail",
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
 
+    # Check KYC tier if needed (for paid features)
+    kyc_info = calculate_kyc_tier(current_user.id)
 
-#version 3
-"""
-# app/tourism/routes.py
-from flask import render_template, abort
-
-def _get_service():
-    try:
-        from app.tourism import services as svc
-    except Exception:
-        svc = None
-    return svc
-
-def register_routes(bp):
-    "s""Attach routes to the provided blueprint object (avoids circular imports).""s"
-
-    @bp.route("/", endpoint="home")
-    def home():
-        svc = _get_service()
-        packages = svc.list_packages() if svc and hasattr(svc, "list_packages") else []
-        return render_template("tourism_home.html", packages=packages)
-
-    @bp.route("/<package_id>", endpoint="detail")
-    def detail(package_id):
-        svc = _get_service()
-        pkg = svc.get_package(package_id) if svc and hasattr(svc, "get_package") else None
-        if pkg is None:
-            abort(404)
-        return render_template("tourism_detail.html", package=pkg)
-
-
-#version 2
-
-#app/tourism/routes.py
-#This is a temporal  code for static tourim that calls itself instead of importing the tourism activities
-from flask import Blueprint, render_template, current_app
-
-tourism = Blueprint("tourism", __name__, url_prefix="/tourism")
-
-# Local placeholder data until you wire the real service
-def _sample_packages():
-    return [
-        {"package_id": "pkg1", "title": "Kampala City Tour", "price": 150, "image_url": "/static/img/kampala.jpg", "description": "A short city tour"},
-        {"package_id": "pkg2", "title": "Mountain Safari", "price": 350, "image_url": "/static/img/safari.jpg", "description": "3 day safari package"},
-    ]
-
-@tourism.route("/", endpoint="index")
-def index():
-    packages = _sample_packages()
-    return render_template("tourism_home.html", packages=packages)
-
-@tourism.route("/<package_id>", endpoint="detail")
-def detail(package_id):
-    pkg = next((p for p in _sample_packages() if p["package_id"] == package_id), None)
-    return render_template("tourism_detail.html", package=pkg)
-
-
-
-#  this will later be revisted to create tourism module dynamic
-
-from flask import Blueprint, render_template
-from app.public.services import get_all_tourism, get_tourism_by_id
-
-tourism = Blueprint("tourism", __name__, url_prefix="/tourism")
-
-@tourism.route("/", endpoint="index")
-def index():
-    packages = get_all_tourism()
-    return render_template("tourism_home.html", packages=packages)
-
-@tourism.route("/<package_id>", endpoint="detail")
-def detail(package_id):
-    pkg = get_tourism_by_id(package_id)
-    return render_template("tourism_detail.html", package=pkg)
-"""
+    return render_template('tourism_detail.html',
+                         slug=slug,
+                         kyc_info=kyc_info,
+                         user_public_id=current_user.public_id)

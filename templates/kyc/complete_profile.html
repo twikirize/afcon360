@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head><title>Complete Profile</title></head>
+<body>
+    <h1>Complete Your Profile</h1>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">  ← add this
+        <input type="text" name="full_name" placeholder="Full Name">
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>

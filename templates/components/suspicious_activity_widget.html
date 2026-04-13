@@ -1,0 +1,217 @@
+<div class="card border-danger">
+    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Suspicious Activity
+            <span class="badge bg-light text-danger ms-2" id="suspicious-count">{{ alerts|length }}</span>
+        </h5>
+        <div>
+            <button class="btn btn-sm btn-outline-light" onclick="refreshAlerts()" title="Refresh">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if alerts %}
+        <div class="alert-list">
+            {% for alert in alerts %}
+            <div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
+                <div class="d-flex">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="alert-heading">{{ alert.pattern_type|title }} Pattern Detected</h6>
+                        <p class="mb-1 small">{{ alert.description }}</p>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="bi bi-person"></i> User: {{ alert.username or alert.user_id }}
+                                <span class="mx-2">•</span>
+                                <i class="bi bi-clock"></i> {{ alert.time_window }}
+                                <span class="mx-2">•</span>
+                                <i class="bi bi-activity"></i> {{ alert.attempt_count }} attempts
+                            </small>
+                        </div>
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-danger" onclick="investigateAlert('{{ alert.user_id }}', '{{ alert.pattern_type }}')">
+                                <i class="bi bi-search me-1"></i> Investigate
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="dismissAlert('{{ alert.alert_id }}')">
+                                <i class="bi bi-eye-slash me-1"></i> Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" onclick="dismissAlert('{{ alert.alert_id }}')"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="bi bi-shield-check display-4 text-success"></i>
+            <h5 class="mt-3">All Clear!</h5>
+            <p class="text-muted">No suspicious activity detected.</p>
+        </div>
+        {% endif %}
+    </div>
+    {% if alerts %}
+    <div class="card-footer bg-transparent">
+        <div class="row">
+            <div class="col">
+                <button class="btn btn-outline-danger w-100" onclick="viewAllAlerts()">
+                    <i class="bi bi-list me-2"></i>
+                    View All Alerts
+                </button>
+            </div>
+            <div class="col">
+                <button class="btn btn-outline-secondary w-100" onclick="runPatternDetection()">
+                    <i class="bi bi-robot me-2"></i>
+                    Run Detection
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.alert-list .alert {
+    border-left: 4px solid #dc3545;
+}
+.alert-list .alert .btn-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+</style>
+
+<script>
+function investigateAlert(userId, patternType) {
+    // Open investigation page with pre-filled filters
+    const url = `/admin/compliance/search?user_id=${userId}&pattern=${encodeURIComponent(patternType)}`;
+    window.open(url, '_blank');
+}
+
+function dismissAlert(alertId) {
+    fetch(`/api/audit/alerts/${alertId}/dismiss`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove the alert from the UI
+            const alertElement = document.querySelector(`[data-alert-id="${alertId}"]`);
+            if (alertElement) {
+                alertElement.remove();
+            }
+            updateAlertCount();
+            showToast('success', 'Alert dismissed');
+        }
+    })
+    .catch(error => {
+        showToast('error', 'Failed to dismiss alert');
+    });
+}
+
+function viewAllAlerts() {
+    window.location.href = '/admin/compliance/alerts';
+}
+
+function refreshAlerts() {
+    const widget = document.querySelector('.suspicious-activity-widget');
+    widget.querySelector('.card-body').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-danger" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2 text-muted">Checking for suspicious activity...</p>
+        </div>
+    `;
+
+    // Simulate API call
+    setTimeout(() => {
+        window.location.reload();
+    }, 1500);
+}
+
+function runPatternDetection() {
+    showToast('info', 'Running pattern detection algorithm...');
+
+    fetch('/api/audit/run-pattern-detection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('success', `Pattern detection completed. Found ${data.new_alerts} new alerts.`);
+            setTimeout(() => {
+                refreshAlerts();
+            }, 2000);
+        } else {
+            showToast('error', data.error || 'Pattern detection failed');
+        }
+    })
+    .catch(error => {
+        showToast('error', 'Error running pattern detection');
+    });
+}
+
+function updateAlertCount() {
+    const alerts = document.querySelectorAll('.alert-list .alert');
+    const badge = document.getElementById('suspicious-count');
+    if (badge) {
+        badge.textContent = alerts.length;
+        if (alerts.length === 0) {
+            // Show "all clear" message
+            document.querySelector('.card-body').innerHTML = `
+                <div class="text-center py-4">
+                    <i class="bi bi-shield-check display-4 text-success"></i>
+                    <h5 class="mt-3">All Clear!</h5>
+                    <p class="text-muted">No suspicious activity detected.</p>
+                </div>
+            `;
+        }
+    }
+}
+
+function showToast(type, message) {
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-bg-${type} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+
+    // Add to toast container
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+    container.appendChild(toast);
+
+    // Initialize and show toast
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+
+    // Remove after hidden
+    toast.addEventListener('hidden.bs.toast', function () {
+        toast.remove();
+    });
+}
+</script>

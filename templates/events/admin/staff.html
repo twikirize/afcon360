@@ -184,7 +184,7 @@ document.querySelectorAll('.remove-staff').forEach(btn => {
         this.disabled = true;
 
         try {
-            const response = await fetch(`/events/staff/${staffId}/remove`, {
+            const response = await fetch(`{{ url_for('events.remove_staff', staff_id='') }}${staffId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

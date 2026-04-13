@@ -211,7 +211,7 @@
 
                 <div class="d-grid gap-2">
                     <form action="{{ url_for('admin.owner.impersonate_user', user_id=user.id) }}" method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="impersonate-btn">
                             🔑 Enter as {{ user.username }}
                         </button>
@@ -220,7 +220,7 @@
                     <!-- Quick role-based impersonation -->
                     {% for role in user_data.roles %}
                     <form action="{{ url_for('admin.owner.impersonate_role', role_name=role) }}" method="POST" class="mt-1">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="btn-sm btn-secondary w-100">
                             🎭 As {{ role|replace('_', ' ')|title }}
                         </button>

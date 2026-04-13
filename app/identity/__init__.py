@@ -1,3 +1,4 @@
+# app/identity/__init__.py
 from .models import (
     User, UserRole, MFASecret, Session, APIKey,
     Organisation, OrganisationMember, OrgRole, OrgUserRole, OrganisationController,
@@ -6,7 +7,7 @@ from .models import (
     ComplianceSettings, ComplianceAuditLog,
     OrganisationVerification, OrganisationKYBCheck, OrganisationUBO, OrganisationKYBDocument,
 )
-from .individuals import IndividualKYCDocument, IndividualVerification
+from .individuals import IndividualKYCDocument, IndividualVerification  # ← this already registers the class
 from .utils.compliance_checker import ComplianceChecker
 from .utils import compliance_utils
 

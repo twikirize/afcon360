@@ -2,18 +2,92 @@
 """
 Event routes - Unified entry points for all user roles
 """
-from flask import render_template, request, jsonify, redirect, url_for, flash, session
+from flask import render_template, request, jsonify, redirect, url_for, flash, session, make_response
 from flask_login import login_required, current_user
 from app.events import events_bp
-from app.events.services import EventService, SoldOutException
-from app.events.models import Event, EventRegistration, TicketType
-from app.accommodation.services.search_service import search_properties
-from app.accommodation.models.booking import BookingContextType
+from app.events.services import EventService
+# SoldOutException is inside EventService class
+from app.events.models import Event, EventRegistration, TicketType, Waitlist
+# Remove tight coupling - define fallback functions
+def search_properties(city=None, limit=10):
+    """Fallback function when accommodation module is not available"""
+    # Return empty list to avoid breaking the UI
+    return []
+
+# Define a fallback BookingContextType
+try:
+    from app.accommodation.models.booking import BookingContextType
+except ImportError:
+    from enum import Enum
+    class BookingContextType(Enum):
+        EVENT = "event"
+        TOURISM = "tourism"
+        TRANSPORT = "transport"
+        GENERAL = "general"
 from app.extensions import db
 from app.events.tasks import process_event_registration
 from sqlalchemy import func
 from datetime import datetime, timedelta
 import logging
+import html
+
+# Input sanitization
+def sanitize_html(text, max_length=5000):
+    """Sanitize HTML input to prevent XSS."""
+    if not text:
+        return text
+
+    # Truncate to max length
+    if len(text) > max_length:
+        text = text[:max_length]
+
+    # Escape HTML special characters
+    text = html.escape(text)
+
+    # Allow safe line breaks
+    text = text.replace('\n', '<br>')
+
+    return text
+import secrets
+
+# CSRF protection
+def generate_csrf_token():
+    """Generate a CSRF token."""
+    if '_csrf_token' not in session:
+        session['_csrf_token'] = secrets.token_urlsafe(32)
+    return session['_csrf_token']
+
+def validate_csrf_token():
+    """Validate CSRF token for POST/PUT/DELETE requests."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return True
+
+    token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
+    if not token or token != session.get('_csrf_token'):
+        return False
+    return True
+
+# Rate limiting
+import time
+from collections import defaultdict
+
+# Simple in-memory rate limiter (replace with Redis in production)
+_rate_limit_data = defaultdict(list)
+
+def rate_limit(key, limit=10, window=60):
+    """Simple rate limiter."""
+    now = time.time()
+    window_start = now - window
+
+    # Clean old entries
+    requests = _rate_limit_data[key]
+    requests[:] = [req_time for req_time in requests if req_time > window_start]
+
+    if len(requests) >= limit:
+        return False
+
+    requests.append(now)
+    return True
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +100,14 @@ def is_system_admin(user):
     """Check if user is a system admin (super admin)"""
     if not user or not user.is_authenticated:
         return False
-    return user.is_super_admin() if hasattr(user, 'is_super_admin') else False
+
+    # Use proper permission checking
+    from app.auth.policy import can
+    try:
+        return can(user, "admin.system")
+    except:
+        # Fallback to legacy method
+        return user.is_super_admin() if hasattr(user, 'is_super_admin') else False
 
 
 # ============================================================
@@ -129,9 +210,14 @@ def my_registrations():
     except Exception:
         pass
 
+    # Get current date for filtering
+    from datetime import date
+    current_date = date.today().isoformat()
+
     return render_template('events/attendee/my_registrations.html',
                            registrations=data['upcoming_registrations'] + data['past_registrations'],
-                           wallet_balance=wallet_balance)
+                           wallet_balance=wallet_balance,
+                           current_date=current_date)
 
 
 @events_bp.route("/organizer/dashboard/<event_slug>")
@@ -192,11 +278,58 @@ def my_events():
 @login_required
 def create_event():
     """Create event page"""
+    # Rate limiting
+    if not rate_limit(f"create_event:{current_user.id}", limit=5, window=300):
+        return jsonify({'success': False, 'error': 'Too many requests. Please try again later.'}), 429
+
     if request.method == 'GET':
-        return render_template('events/create.html')
+        # Generate CSRF token
+        csrf_token_str = generate_csrf_token()
+        return render_template('events/create.html',
+                               csrf_token=csrf_token_str,
+                               raw_csrf_token=csrf_token_str)
+
+    # CSRF validation
+    if not validate_csrf_token():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 403
+
+    # Handle both JSON and form data
+
+    # Get data based on content type
+    if request.is_json:
+        data = request.get_json()
+    else:
+        # Handle form data
+        data = request.form.to_dict()
+        # Handle registration_required checkbox
+        data['registration_required'] = 'registration_required' in request.form
+        # Handle ticket tiers for form data
+        tier_names = request.form.getlist('tier_name[]')
+        tier_prices = request.form.getlist('tier_price[]')
+        tier_capacities = request.form.getlist('tier_capacity[]')
+
+        if tier_names and tier_names[0]:  # At least one tier is provided
+            data['ticket_tiers'] = []
+            for i in range(len(tier_names)):
+                if tier_names[i]:  # Only add if name is not empty
+                    data['ticket_tiers'].append({
+                        'name': tier_names[i],
+                        'price': float(tier_prices[i]) if i < len(tier_prices) and tier_prices[i] else 0.0,
+                        'capacity': int(tier_capacities[i]) if i < len(tier_capacities) and tier_capacities[i] else None
+                    })
+
+    print(f"🔥 Received data: {data}")
+
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    # Validate required fields
+    required_fields = ['name', 'city', 'start_date']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
 
     try:
-        data = request.get_json()
         event, error = EventService.create_event(data, current_user.id)
         if error:
             return jsonify({'success': False, 'error': error}), 400
@@ -207,7 +340,9 @@ def create_event():
             'message': 'Event created successfully!'
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Error creating event: {e}")
+        print(f"🔥 Exception in create_event: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
 @events_bp.route("/<event_slug>/edit", methods=['GET', 'POST'])
@@ -255,7 +390,36 @@ def scanner(event_slug):
     if not event:
         return render_template('events/public/not_found.html', event_slug=event_slug), 404
 
-    from app.events.permissions import can_check_in_attendees
+    # Define can_check_in_attendees locally since app.events.permissions doesn't exist
+    def can_check_in_attendees(user, event_data):
+        """Check if user can check in attendees for an event"""
+        if not user or not user.is_authenticated:
+            return False
+
+        # Event organizers can always check in
+        if event_data.get('organizer_id') == user.id:
+            return True
+
+        # System admins can check in
+        if is_system_admin(user):
+            return True
+
+        # Check if user has event staff role with check-in permission
+        from app.events.models import EventRole
+        staff_role = EventRole.query.filter_by(
+            event_id=event_data.get('event_id'),
+            user_id=user.id,
+            is_active=True
+        ).first()
+
+        if staff_role:
+            # Check if role has check-in permission
+            permissions = staff_role.permissions or []
+            if 'check_in_attendees' in permissions:
+                return True
+
+        return False
+
     if not can_check_in_attendees(current_user, event):
         flash('Unauthorized', 'danger')
         return redirect(url_for('events.landing', event_slug=event_slug))
@@ -378,9 +542,10 @@ def register(event_slug):
             'message': 'Registration received and is being processed!'
         }), 202
 
-    except SoldOutException as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
+        # Check if it's a SoldOutException
+        if "sold out" in str(e).lower():
+            return jsonify({'success': False, 'error': str(e)}), 400
         logger.error(f"Registration route error: {e}")
         return jsonify({'success': False, 'error': "An unexpected error occurred."}), 500
 
@@ -557,6 +722,34 @@ def api_pending_events():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@events_bp.route("/<event_slug>/add-ticket-type", methods=['POST'])
+@login_required
+def add_ticket_type(event_slug):
+    """Add a new ticket type to an event"""
+    event = EventService.get_event(event_slug)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    if event.get('organizer_id') != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        # Call service to add ticket type
+        from app.events.services import EventService
+        ticket_type, error = EventService.add_ticket_type(event_slug, data, current_user.id)
+
+        if error:
+            return jsonify({'success': False, 'error': error}), 400
+
+        return jsonify({'success': True, 'ticket_type': ticket_type})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @events_bp.route("/<event_slug>/staff")
 @login_required
 def event_staff(event_slug):
@@ -574,3 +767,28 @@ def event_staff(event_slug):
     staff = EventRole.query.filter_by(event_id=event.get('event_id'), is_active=True).all()
 
     return render_template('events/admin/staff.html', event=event, staff=staff)
+
+
+@events_bp.route("/staff/<int:staff_id>/remove", methods=['POST'])
+@login_required
+def remove_staff(staff_id):
+    """Remove staff member from event"""
+    from app.events.models import EventRole
+
+    staff = EventRole.query.get_or_404(staff_id)
+    event = EventService.get_event_model_by_id(staff.event_id)
+
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    # Check permission - use the is_system_admin function defined at the top of the file
+    if event.organizer_id != current_user.id and not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        staff.is_active = False
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Staff member removed successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500

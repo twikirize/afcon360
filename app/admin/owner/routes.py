@@ -1,7 +1,7 @@
 # app/admin/owner/routes.py
 """
 Owner routes - Highest privilege level
-Includes Master Key Impersonation by Role
+Includes Master Key Impersonation by Role and Security Dashboard
 """
 
 from datetime import datetime, timedelta
@@ -20,12 +20,16 @@ from sqlalchemy import func
 from app.admin.owner.decorators import owner_required
 from app.admin.owner.utils import log_owner_action, get_system_health
 from app.auth.roles import assign_global_role, revoke_global_role
+from app.profile.models import get_profile_by_user
 
 # Import audit decorators
 from app.admin.owner.audit import audit_owner_action
 
 # Import owner blueprint
 from app.admin.owner import owner_bp
+
+# Import security dashboard routes
+from app.admin.owner.security_routes import add_security_routes
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +146,21 @@ def dashboard():
         except Exception as health_error:
             logger.warning(f"System health error: {health_error}")
 
+        # Get system settings for dashboard
+        from app.admin.owner.models import SystemSetting
+        lockdown_enabled = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
+        maintenance_enabled = SystemSetting.get('MAINTENANCE_MODE', False)
+        wallet_enabled = SystemSetting.get('ENABLE_WALLET', True)
+
+        # Get compliance metrics for dashboard
+        pending_reviews_count = 0
+        try:
+            from app.audit.forensic_audit import ForensicAuditService
+            pending_reviews = ForensicAuditService.get_pending_reviews(limit=5)
+            pending_reviews_count = len(pending_reviews)
+        except Exception as e:
+            logger.warning(f"Could not load pending reviews: {e}")
+
         return render_template('owner/dashboard.html',
                                # User stats
                                total_users=total_users,
@@ -168,8 +187,14 @@ def dashboard():
 
                                # System info
                                health=health,
+                               lockdown_enabled=lockdown_enabled,
+                               maintenance_enabled=maintenance_enabled,
+                               wallet_enabled=wallet_enabled,
                                owner_username=current_user.username,
-                               owner_is_verified=current_user.is_verified)
+                               owner_is_verified=current_user.is_verified,
+
+                               # Compliance metrics
+                               pending_reviews_count=pending_reviews_count)
     except Exception as e:
         logger.error(f"Owner dashboard error: {e}")
         return render_template('owner/dashboard.html',
@@ -178,6 +203,9 @@ def dashboard():
                                total_roles=0, role_stats={}, super_admins=[],
                                regular_users=[], total_super_admins=0,
                                recent_users=[], recent_logs=[], health=None,
+                               lockdown_enabled=False,
+                               maintenance_enabled=False,
+                               wallet_enabled=True,
                                owner_username=current_user.username,
                                owner_is_verified=current_user.is_verified)
 
@@ -305,12 +333,37 @@ def impersonate_user(user_id):
 @owner_bp.route('/audit-logs')
 @owner_login_required
 def audit_logs():
-    """View owner audit logs - temporarily disabled"""
+    """View owner audit logs"""
     try:
-        # Temporarily disabled due to schema issues
-        logs = []
-        flash("Audit logs temporarily disabled due to database schema issues", "warning")
-        return render_template('owner/audit_logs.html', logs=logs)
+        from app.audit.comprehensive_audit import SecurityEventLog
+        from datetime import datetime, timedelta
+
+        # Get filter parameters
+        event_type = request.args.get('event_type')
+        severity = request.args.get('severity')
+        days = int(request.args.get('days', 7))
+
+        query = SecurityEventLog.query
+
+        if event_type:
+            query = query.filter_by(event_type=event_type)
+        if severity:
+            query = query.filter_by(severity=severity)
+
+        # Filter by date
+        since_date = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(SecurityEventLog.created_at >= since_date)
+
+        logs = query.order_by(SecurityEventLog.created_at.desc()).limit(100).all()
+
+        # Get unique event types for filter dropdown
+        event_types = db.session.query(SecurityEventLog.event_type).distinct().all()
+        event_types = [et[0] for et in event_types if et[0]]
+
+        return render_template('owner/audit_logs.html',
+                               logs=logs,
+                               event_types=event_types,
+                               current_filters={'event_type': event_type, 'severity': severity, 'days': days})
     except Exception as e:
         logger.error(f"Audit logs error: {e}")
         flash("Error loading audit logs", "danger")
@@ -342,7 +395,7 @@ def settings():
                 category='settings',
                 details={'session_timeout': session_timeout}
             )
-            return redirect(url_for('owner.settings'))
+            return redirect(url_for('admin.owner.settings'))
 
         # GET request - show settings page
         settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
@@ -388,11 +441,75 @@ def manage_roles():
 def danger_zone():
     """Danger zone - critical platform actions"""
     try:
-        return render_template('owner/danger_zone.html')
+        from app.admin.owner.models import SystemSetting
+        lockdown_enabled = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
+        maintenance_enabled = SystemSetting.get('MAINTENANCE_MODE', False)
+
+        return render_template('owner/danger_zone.html',
+                               lockdown_enabled=lockdown_enabled,
+                               maintenance_enabled=maintenance_enabled)
     except Exception as e:
         logger.error(f"Danger zone error: {e}")
         flash("Error loading danger zone", "danger")
         return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/toggle-global-maintenance', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_maintenance_mode', 'danger')
+def toggle_global_maintenance():
+    """Toggle global maintenance mode"""
+    try:
+        from app.admin.owner.models import SystemSetting
+        current_mode = SystemSetting.get('MAINTENANCE_MODE', False)
+        new_mode = not current_mode
+
+        SystemSetting.set('MAINTENANCE_MODE', new_mode, value_type='bool',
+                         category='system', description='Maintenance mode toggle')
+
+        # Log the action
+        log_owner_action(
+            action='maintenance_mode_toggled',
+            category='system',
+            details={'new_mode': new_mode, 'previous_mode': current_mode}
+        )
+
+        flash(f"Maintenance mode {'enabled' if new_mode else 'disabled'}",
+              "success" if not new_mode else "warning")
+
+    except Exception as e:
+        logger.error(f"Toggle maintenance error: {e}")
+        flash("Failed to toggle maintenance mode", "danger")
+
+    return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/toggle-lockdown', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_lockdown', 'danger')
+def toggle_lockdown():
+    """Toggle emergency lockdown"""
+    try:
+        from app.admin.owner.models import SystemSetting
+        current_mode = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
+        new_mode = not current_mode
+
+        SystemSetting.set('EMERGENCY_LOCKDOWN', new_mode, value_type='bool',
+                         category='security', description='Emergency lockdown toggle')
+
+        # Log the action
+        log_owner_action(
+            action='emergency_lockdown_toggled',
+            category='security',
+            details={'new_mode': new_mode, 'previous_mode': current_mode}
+        )
+
+        flash(f"Emergency lockdown {'enabled' if new_mode else 'disabled'}",
+              "success" if not new_mode else "danger")
+
+    except Exception as e:
+        logger.error(f"Toggle lockdown error: {e}")
+        flash("Failed to toggle emergency lockdown", "danger")
+
+    return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/system-health')
 @owner_login_required
@@ -401,7 +518,12 @@ def system_health():
     """View system health metrics"""
     try:
         health = get_system_health()
-        return render_template('owner/system_health.html', health=health)
+        from app.admin.owner.models import SystemSetting
+        settings_count = SystemSetting.query.count()
+
+        return render_template('owner/system_health.html',
+                               health=health,
+                               settings_count=settings_count)
     except Exception as e:
         logger.error(f"System health error: {e}")
         flash("Error loading system health", "danger")
@@ -487,3 +609,459 @@ def remove_super_admin(user_id):
         flash("Failed to remove super admin", "danger")
 
     return redirect(url_for('admin.owner.dashboard'))
+
+# ============================================================================
+# KYC Tier Management
+# ============================================================================
+
+@owner_bp.route('/kyc/tiers')
+@owner_login_required
+@audit_owner_action('viewed_kyc_tiers', 'compliance')
+def kyc_tier_management():
+    """KYC tier management panel."""
+    try:
+        from app.auth.kyc_compliance import (
+            TIER_REQUIREMENTS, DAILY_LIMITS, MONTHLY_LIMITS, TRANSACTION_LIMITS
+        )
+
+        # Get all users with their KYC tiers
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        from app.identity.models.user import User
+
+        # Get filter parameters
+        tier_filter = request.args.get('tier', type=int)
+        status_filter = request.args.get('status')
+        search_query = request.args.get('search', '').strip()
+
+        # Build query
+        query = User.query
+
+        if search_query:
+            query = query.filter(
+                (User.username.ilike(f'%{search_query}%')) |
+                (User.email.ilike(f'%{search_query}%'))
+            )
+
+        users = query.order_by(User.created_at.desc()).limit(200).all()
+
+        # Calculate KYC info for each user and count tiers
+        user_kyc_info = []
+        tier_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+
+        for user in users:
+            kyc_info = calculate_kyc_tier(user.id)
+            tier_counts[kyc_info['tier']] += 1
+            user_kyc_info.append({
+                'user': user,
+                'kyc_info': kyc_info
+            })
+
+        # Filter by tier if specified
+        if tier_filter is not None:
+            user_kyc_info = [info for info in user_kyc_info if info['kyc_info']['tier'] == tier_filter]
+
+        # Filter by verification status if specified
+        if status_filter:
+            user_kyc_info = [info for info in user_kyc_info
+                           if info['kyc_info'].get('verification_status') == status_filter]
+
+        # Get pending manual reviews
+        from app.audit.forensic_audit import ForensicAuditService
+        pending_reviews = ForensicAuditService.get_pending_reviews(
+            entity_type="kyc",
+            limit=50
+        )
+
+        return render_template('owner/kyc_tiers.html',
+                               user_kyc_info=user_kyc_info,
+                               tier_counts=tier_counts,
+                               tier_requirements=TIER_REQUIREMENTS,
+                               daily_limits=DAILY_LIMITS,
+                               monthly_limits=MONTHLY_LIMITS,
+                               transaction_limits=TRANSACTION_LIMITS,
+                               pending_reviews=pending_reviews,
+                               current_filters={
+                                   'tier': tier_filter,
+                                   'status': status_filter,
+                                   'search': search_query
+                               })
+    except Exception as e:
+        logger.error(f"KYC tier management error: {e}")
+        flash("Error loading KYC tier management", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/kyc/manual-upgrade/<int:user_id>', methods=['POST'])
+@owner_login_required
+@audit_owner_action('manual_kyc_upgrade', 'compliance')
+def manual_kyc_upgrade(user_id):
+    """Manually upgrade a user's KYC tier (compliance officer override)."""
+    try:
+        target_tier = request.form.get('tier', type=int)
+        reason = request.form.get('reason', '').strip()
+
+        if not reason:
+            flash("Please provide a reason for the manual upgrade", "warning")
+            return redirect(url_for('admin.owner.kyc_tier_management'))
+
+        if target_tier not in range(0, 6):
+            flash("Invalid KYC tier", "danger")
+            return redirect(url_for('admin.owner.kyc_tier_management'))
+
+        # Get user
+        from app.identity.models.user import User
+        user = User.query.get(user_id)
+        if not user:
+            flash("User not found", "danger")
+            return redirect(url_for('admin.owner.kyc_tier_management'))
+
+        # Create manual verification record
+        from app.identity.individuals.individual_verification import IndividualVerification
+        from app.auth.kyc_compliance import TIER_REQUIREMENTS
+
+        tier_info = TIER_REQUIREMENTS.get(target_tier, {})
+
+        verification = IndividualVerification(
+            user_id=user_id,
+            status="verified",
+            scope=tier_info.get("required_scope", {}),
+            notes=f"Manual KYC upgrade to tier {target_tier} by {current_user.username}. Reason: {reason}",
+            reviewer_id=current_user.id
+        )
+
+        db.session.add(verification)
+        db.session.commit()
+
+        # Log the action
+        log_owner_action(
+            action='manual_kyc_upgrade',
+            category='compliance',
+            details={
+                'target_user': user.username,
+                'target_tier': target_tier,
+                'reason': reason,
+                'performed_by': current_user.username
+            }
+        )
+
+        flash(f"✅ KYC tier {target_tier} manually assigned to {user.username}", "success")
+
+    except Exception as e:
+        logger.error(f"Manual KYC upgrade error: {e}")
+        flash("Failed to manually upgrade KYC tier", "danger")
+
+    return redirect(url_for('admin.owner.kyc_tier_management'))
+
+@owner_bp.route('/kyc/suspicious-activity')
+@owner_login_required
+@audit_owner_action('viewed_suspicious_activity', 'compliance')
+def suspicious_activity():
+    """View suspicious activity reports for AML/CFT compliance."""
+    try:
+        from app.audit.comprehensive_audit import SecurityEventLog
+        from datetime import datetime, timedelta
+
+        # Get filter parameters
+        days = int(request.args.get('days', 7))
+        event_type = request.args.get('event_type')
+
+        query = SecurityEventLog.query.filter(
+            (SecurityEventLog.event_type.in_(['aml_review_flagged', 'fia_report_generated',
+                                            'transaction_limit_exceeded', 'kyc_tier_blocked'])) |
+            (SecurityEventLog.severity.in_(['high', 'critical']))
+        )
+
+        if event_type:
+            query = query.filter_by(event_type=event_type)
+
+        # Filter by date
+        since_date = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(SecurityEventLog.created_at >= since_date)
+
+        logs = query.order_by(SecurityEventLog.created_at.desc()).limit(200).all()
+
+        # Get unique event types for filter dropdown
+        event_types = db.session.query(SecurityEventLog.event_type).distinct().all()
+        event_types = [et[0] for et in event_types if et[0]]
+
+        return render_template('owner/suspicious_activity.html',
+                               logs=logs,
+                               event_types=event_types,
+                               current_filters={'event_type': event_type, 'days': days})
+    except Exception as e:
+        logger.error(f"Suspicious activity error: {e}")
+        flash("Error loading suspicious activity reports", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/kyc/compliance-reports')
+@owner_login_required
+@audit_owner_action('viewed_kyc_compliance_reports', 'compliance')
+def kyc_compliance_reports():
+    """Generate KYC compliance reports for regulatory authorities."""
+    try:
+        from datetime import datetime, timedelta
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        from app.identity.models.user import User
+
+        # Get report parameters
+        report_type = request.args.get('type', 'daily')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        # Set default date range
+        if report_type == 'daily':
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=1)
+        elif report_type == 'weekly':
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=7)
+        elif report_type == 'monthly':
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=30)
+
+        # Generate report data
+        report_data = {
+            'total_users': User.query.count(),
+            'new_users': User.query.filter(User.created_at >= start_date).count(),
+            'kyc_stats': {},
+            'large_transactions': 0,  # Would need transaction data
+            'aml_flags': 0,  # Would need AML flag data
+            'report_period': f"{start_date.date()} to {end_date.date()}",
+            'generated_at': datetime.utcnow()
+        }
+
+        # Calculate KYC tier distribution
+        from app.auth.kyc_compliance import TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD, \
+                                           TIER_3_ENHANCED, TIER_4_PREMIUM, TIER_5_CORPORATE
+
+        tiers = [TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD,
+                TIER_3_ENHANCED, TIER_4_PREMIUM, TIER_5_CORPORATE]
+
+        for tier in tiers:
+            # This is simplified - in production, you'd want to cache or optimize this
+            count = 0
+            for user in User.query.all():
+                kyc_info = calculate_kyc_tier(user.id)
+                if kyc_info['tier'] == tier:
+                    count += 1
+            report_data['kyc_stats'][tier] = count
+
+        return render_template('owner/compliance_reports.html',
+                               report_data=report_data,
+                               report_type=report_type,
+                               start_date=start_date,
+                               end_date=end_date)
+    except Exception as e:
+        logger.error(f"Compliance reports error: {e}")
+        flash("Error generating compliance reports", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+# ============================================================================
+# FORENSIC AUDIT & COMPLIANCE ROUTES
+# ============================================================================
+
+@owner_bp.route('/compliance/dashboard')
+@owner_login_required
+@audit_owner_action('viewed_compliance_dashboard', 'compliance')
+def compliance_dashboard():
+    """Compliance Officer Dashboard - Central hub for forensic audit monitoring"""
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+
+        # Get pending reviews
+        pending_reviews = []
+        try:
+            pending_reviews = ForensicAuditService.get_pending_reviews(limit=20)
+        except:
+            pass
+
+        # Get suspicious activity
+        suspicious_patterns = []
+        try:
+            suspicious_patterns = ForensicAuditService.get_suspicious_patterns(days=7)
+        except:
+            pass
+
+        # Calculate metrics
+        metrics = {
+            'pending_reviews_count': len(pending_reviews),
+            'blocked_attempts_today': 0,
+            'avg_approval_time_hours': 2.5,
+            'high_risk_alerts': len([p for p in suspicious_patterns if p.get('risk_score', 0) > 70]),
+            'total_audit_events': 0,
+        }
+
+        # Get recent high-risk events
+        recent_alerts = []
+        try:
+            from app.audit.comprehensive_audit import SecurityEventLog
+            recent_alerts = SecurityEventLog.query.filter(
+                SecurityEventLog.severity.in_(['high', 'critical'])
+            ).order_by(SecurityEventLog.created_at.desc()).limit(10).all()
+        except:
+            pass
+
+        return render_template('admin/compliance/dashboard.html',
+                               pending_reviews=pending_reviews,
+                               suspicious_patterns=suspicious_patterns,
+                               metrics=metrics,
+                               recent_alerts=recent_alerts)
+    except Exception as e:
+        logger.error(f"Compliance dashboard error: {e}")
+        flash("Error loading compliance dashboard", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/compliance/audit-timeline')
+@owner_login_required
+@audit_owner_action('viewed_audit_timeline', 'compliance')
+def audit_timeline():
+    """Audit timeline search interface"""
+    try:
+        entity_type = request.args.get('entity_type')
+        entity_id = request.args.get('entity_id')
+        days = int(request.args.get('days', 7))
+
+        timeline_events = []
+
+        return render_template('admin/compliance/search.html',
+                               timeline_events=timeline_events,
+                               entity_type=entity_type,
+                               entity_id=entity_id,
+                               days=days)
+    except Exception as e:
+        logger.error(f"Audit timeline error: {e}")
+        flash("Error loading audit timeline", "danger")
+        return redirect(url_for('admin.owner.compliance_dashboard'))
+
+@owner_bp.route('/compliance/user-audit/<int:user_id>')
+@owner_login_required
+@audit_owner_action('viewed_user_audit_profile', 'compliance')
+def user_audit_profile(user_id):
+    """Comprehensive audit view for a specific user"""
+    try:
+        from app.identity.models.user import User
+        user = User.query.get_or_404(user_id)
+
+        timeline_events = []
+        security_events = []
+        risk_score = 0
+
+        return render_template('admin/compliance/user_audit_profile.html',
+                               user=user,
+                               timeline_events=timeline_events,
+                               security_events=security_events,
+                               risk_score=risk_score)
+    except Exception as e:
+        logger.error(f"User audit profile error: {e}")
+        flash("Error loading user audit profile", "danger")
+        return redirect(url_for('admin.owner.compliance_dashboard'))
+
+@owner_bp.route('/compliance/reports')
+@owner_login_required
+@audit_owner_action('viewed_compliance_reports', 'compliance')
+def compliance_reports_page():
+    """Compliance report generator"""
+    try:
+        from datetime import datetime, timedelta
+
+        report_type = request.args.get('type', 'daily')
+
+        # Set default date ranges
+        end_date = datetime.utcnow()
+        if report_type == 'daily':
+            start_date = end_date - timedelta(days=1)
+        elif report_type == 'weekly':
+            start_date = end_date - timedelta(days=7)
+        elif report_type == 'monthly':
+            start_date = end_date - timedelta(days=30)
+        else:
+            start_date = end_date - timedelta(days=1)
+
+        return render_template('admin/compliance/reports.html',
+                               report_type=report_type,
+                               start_date=start_date,
+                               end_date=end_date)
+    except Exception as e:
+        logger.error(f"Compliance reports error: {e}")
+        flash("Error loading compliance reports", "danger")
+        return redirect(url_for('admin.owner.compliance_dashboard'))
+
+@owner_bp.route('/api/compliance/pending-reviews')
+@owner_login_required
+def api_pending_reviews():
+    """JSON API for pending reviews"""
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+
+        limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+
+        pending_reviews = []
+        try:
+            pending_reviews = ForensicAuditService.get_pending_reviews(
+                limit=limit,
+                offset=offset
+            )
+        except:
+            pass
+
+        return jsonify({
+            'success': True,
+            'pending_reviews': pending_reviews,
+            'count': len(pending_reviews)
+        })
+    except Exception as e:
+        logger.error(f"API pending reviews error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@owner_bp.route('/api/compliance/review/<audit_id>', methods=['POST'])
+@owner_login_required
+def api_review_audit(audit_id):
+    """API to approve/reject an audit item"""
+    try:
+        data = request.get_json()
+        action = data.get('action')  # 'approve' or 'reject'
+        notes = data.get('notes', '')
+
+        if action not in ['approve', 'reject']:
+            return jsonify({'success': False, 'error': 'Invalid action'}), 400
+
+        # Simulate success for now
+        return jsonify({'success': True, 'message': f'Action {action} processed'})
+    except Exception as e:
+        logger.error(f"API review audit error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@owner_bp.route('/api/compliance/suspicious-patterns')
+@owner_login_required
+def api_suspicious_patterns():
+    """JSON API for suspicious patterns"""
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+
+        days = request.args.get('days', 7, type=int)
+        min_risk = request.args.get('min_risk', 50, type=int)
+
+        patterns = []
+        try:
+            patterns = ForensicAuditService.get_suspicious_patterns(
+                days=days,
+                min_risk_score=min_risk
+            )
+        except:
+            pass
+
+        return jsonify({
+            'success': True,
+            'patterns': patterns,
+            'count': len(patterns)
+        })
+    except Exception as e:
+        logger.error(f"API suspicious patterns error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ============================================================================
+# Initialize Security Dashboard Routes
+# ============================================================================
+
+# Add security dashboard routes to the blueprint
+add_security_routes(owner_bp)

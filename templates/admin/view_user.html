@@ -34,15 +34,15 @@
 
 <div style="margin-top:10px;">
     <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">Verify</button>
     </form>
     <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">Activate</button>
     </form>
     <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">Deactivate</button>
     </form>
 </div>

@@ -188,7 +188,7 @@ function toggleSuspend() {
   if (!confirm(`${action} this driver?`)) return;
   fetch(`/api/transport/drivers/{{ driver.id }}/compliance`, {
     method:'POST',
-    headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'},
+    headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token }}'},
     body: JSON.stringify({ action })
   }).then(r=>r.json()).then(d=>{ if(d.success) location.reload(); });
 }

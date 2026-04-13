@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="csrf-token" content="{{ raw_csrf_token|safe }}">
+  <meta name="user-authenticated" content="{{ 'true' if current_user.is_authenticated else 'false' }}">
   <title>{{ app_name or "AFCON 360" }}</title>
 
   <!-- Bootstrap CSS -->
@@ -25,6 +26,8 @@
   <!-- Global Custom CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/home.css') }}"> {# For homepage specific styles #}
+  <!-- Dashboard CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 
   <!-- Module-specific CSS (e.g., wallet, transport, events) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/deposit.css') }}">
@@ -133,6 +136,17 @@
                   {% else %}📱 My Dashboard{% endif %}
               </a>
           </li>
+          <!-- KYC Badge -->
+          <li class="menu-item auth">
+              <div class="kyc-badge-nav" style="display: inline-block; margin-left: 10px;"
+                   data-bs-toggle="tooltip"
+                   title="KYC Tier {{ kyc_tier }}: {{ kyc_tier_name }}">
+                  <span class="badge bg-{{ tier_colors.get(kyc_tier, 'secondary') }}"
+                        style="font-size: 0.8em; padding: 3px 8px;">
+                      T{{ kyc_tier }}
+                  </span>
+              </div>
+          </li>
         {% endif %}
 
       </ul>
@@ -211,6 +225,15 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/global/main.js') }}"></script> {# Global main script #}
+  <script>
+    // Initialize tooltips
+    document.addEventListener('DOMContentLoaded', function() {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+  </script>
 
   <!-- Theme Manager -->
   <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>

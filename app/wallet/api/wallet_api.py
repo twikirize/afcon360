@@ -3,9 +3,10 @@ app/wallet/api/wallet_api.py
 REST API endpoints for wallet operations.
 """
 
+from datetime import datetime
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from decimal import Decimal
 
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.currency_service import CurrencyService
@@ -898,7 +899,3 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, X-Idempotency-Key'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     return response
-
-
-# Import datetime for health check
-from datetime import datetime

@@ -21,6 +21,7 @@ from app.auth.decorators import (
     require_permission,
     require_role
 )
+from app.profile.models import get_profile_by_user
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ def assign_role(user_uuid, role_name):
     """Helper function to assign a role to a user using their UUID."""
     from app.identity.models import Role, UserRole, User
     try:
-        user = User.query.filter_by(user_id=user_uuid).first()
+        user = User.query.filter_by(public_id=user_uuid).first()
         if not user:
             return False
 
@@ -57,7 +58,7 @@ def remove_role(user_uuid, role_name):
     """Helper function to remove a role using user UUID."""
     from app.identity.models import Role, UserRole, User
     try:
-        user = User.query.filter_by(user_id=user_uuid).first()
+        user = User.query.filter_by(public_id=user_uuid).first()
         if not user:
             return False
 
@@ -143,12 +144,11 @@ def manage_users():
 @admin_required
 def verify_user(user_id):
     from app.identity.models.user import User
-    from app.profile.models import UserProfile
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if user:
             user.is_verified = True
-            profile = UserProfile.query.filter_by(user_id=user.user_id).first()
+            profile = get_profile_by_user(user)
             if profile:
                 profile.mark_verified(reviewer="admin")
             db.session.commit()
@@ -166,7 +166,7 @@ def verify_user(user_id):
 def activate_user(user_id):
     from app.identity.models.user import User
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if user:
             user.is_active = True
             db.session.commit()
@@ -184,7 +184,7 @@ def activate_user(user_id):
 def deactivate_user(user_id):
     from app.identity.models.user import User
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if user:
             user.is_active = False
             db.session.commit()
@@ -207,7 +207,7 @@ def suspend_user(user_id):
     """Suspend a user account (temporary deactivation with reason)."""
     from app.identity.models.user import User
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if user:
             if user.user_id == current_user.user_id:
                 flash("You cannot suspend your own account.", "danger")
@@ -232,7 +232,7 @@ def delete_user(user_id):
     """Permanently delete a user account."""
     from app.identity.models.user import User
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if user:
             if user.user_id == current_user.user_id:
                 flash("You cannot delete your own account.", "danger")
@@ -257,7 +257,7 @@ def resend_activation(user_id):
     """Resend activation email to user."""
     from app.identity.models.user import User
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if user:
             if user.is_verified:
                 flash(f"User {user.username} is already verified.", "warning")
@@ -286,7 +286,7 @@ def promote_user(user_id):
     from app.identity.models import Role, UserRole
 
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if not user:
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
@@ -326,7 +326,7 @@ def demote_user(user_id):
     from app.identity.models import Role, UserRole
 
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if not user:
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
@@ -373,7 +373,7 @@ def sign_in_as(user_id):
     from flask import session
 
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if not user:
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
@@ -423,7 +423,7 @@ def bulk_verify_users():
 
         verified_count = 0
         for user_id in user_ids:
-            user = User.query.filter_by(user_id=user_id).first()
+            user = User.query.filter_by(public_id=user_id).first()
             if user and not user.is_verified:
                 user.is_verified = True
                 verified_count += 1
@@ -453,7 +453,7 @@ def bulk_deactivate_users():
 
         deactivated_count = 0
         for user_id in user_ids:
-            user = User.query.filter_by(user_id=user_id).first()
+            user = User.query.filter_by(public_id=user_id).first()
             if user and user.is_active and user.user_id != current_user.user_id:
                 user.is_active = False
                 deactivated_count += 1
@@ -475,7 +475,7 @@ def bulk_deactivate_users():
 def view_user(user_id):
     """View detailed user information."""
     from app.identity.models.user import User
-    user = User.query.filter_by(user_id=user_id).first_or_404()
+    user = User.query.filter_by(public_id=user_id).first_or_404()
     return render_template("admin/view_user.html", user=user)
 
 
@@ -488,7 +488,7 @@ def add_user_role(user_id, role_name):
     from app.identity.models import Role, UserRole
 
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if not user:
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
@@ -525,7 +525,7 @@ def remove_user_role(user_id, role_name):
     from app.identity.models import Role, UserRole
 
     try:
-        user = User.query.filter_by(user_id=user_id).first()
+        user = User.query.filter_by(public_id=user_id).first()
         if not user:
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
@@ -797,7 +797,7 @@ def wallet_list():
 @admin_required
 def wallet_detail(user_id):
     from app.identity.models.user import User
-    user = User.query.filter_by(user_id=user_id).first_or_404()
+    user = User.query.filter_by(public_id=user_id).first_or_404()
     return render_template('admin/wallet_detail.html', user=user)
 
 
@@ -823,7 +823,7 @@ def update_user(user_id):
     from app.identity.models.user import User
     from flask import render_template_string
 
-    user = User.query.filter_by(user_id=user_id).first_or_404()
+    user = User.query.filter_by(public_id=user_id).first_or_404()
 
     if request.method == "POST":
         try:
@@ -879,6 +879,260 @@ def update_user(user_id):
     '''
     from flask import render_template_string
     return render_template_string(form_html, user=user, csrf_token=request.form.get('csrf_token', ''))
+
+# -----------------------------
+# Compliance & Auditor Routes
+# -----------------------------
+@admin_bp.route("/compliance/dashboard", endpoint="compliance_dashboard")
+@login_required
+@require_role('compliance_officer')
+def compliance_dashboard():
+    """Compliance officer dashboard for KYC reviews and AML alerts."""
+    from app.audit.comprehensive_audit import FinancialAuditLog
+    from app.identity.individuals.individual_verification import IndividualVerification
+    from app.identity.models.user import User
+    from app.audit.forensic_audit import ForensicAuditService
+
+    # Get pending KYC verifications
+    pending_verifications = IndividualVerification.query.filter_by(
+        status='pending'
+    ).order_by(IndividualVerification.requested_at.desc()).limit(50).all()
+
+    # Get user public_ids for display
+    user_ids = [v.user_id for v in pending_verifications]
+    users = User.query.filter(User.id.in_(user_ids)).all() if user_ids else []
+    user_map = {user.id: user.public_id for user in users}
+
+    # Get high-risk transactions (AML alerts)
+    # Assuming FinancialAuditLog has a 'risk_level' field or we can filter by amount
+    high_risk_transactions = FinancialAuditLog.query.filter(
+        FinancialAuditLog.amount >= 5000000  # UGX 5M threshold
+    ).order_by(FinancialAuditLog.created_at.desc()).limit(50).all()
+
+    # Get public_ids for transaction users
+    transaction_user_ids = [t.user_id for t in high_risk_transactions if t.user_id]
+    transaction_users = User.query.filter(User.id.in_(transaction_user_ids)).all() if transaction_user_ids else []
+    transaction_user_map = {user.id: user.public_id for user in transaction_users}
+
+    return render_template(
+        "admin/compliance/dashboard.html",
+        pending_verifications=pending_verifications,
+        high_risk_transactions=high_risk_transactions,
+        user_map=user_map,
+        transaction_user_map=transaction_user_map
+    )
+
+@admin_bp.route("/compliance/action/<string:verification_id>", methods=["POST"], endpoint="compliance_action")
+@login_required
+@require_role('compliance_officer')
+def compliance_action(verification_id):
+    """Handle compliance actions (Approve, Reject, Request More Info)."""
+    from app.identity.individuals.individual_verification import IndividualVerification
+    from app.audit.forensic_audit import ForensicAuditService
+
+    action = request.form.get('action')
+    notes = request.form.get('notes', '')
+
+    verification = IndividualVerification.query.filter_by(id=verification_id).first_or_404()
+
+    # Log the completion to ForensicAuditService
+    audit_id = f"kyc_review_{verification_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+    if action == 'approve':
+        verification.status = 'verified'
+        status = 'approved'
+        flash(f"KYC verification {verification_id} approved.", "success")
+    elif action == 'reject':
+        verification.status = 'rejected'
+        status = 'rejected'
+        flash(f"KYC verification {verification_id} rejected.", "warning")
+    elif action == 'request_info':
+        verification.status = 'pending'
+        status = 'info_requested'
+        flash(f"More information requested for verification {verification_id}.", "info")
+    else:
+        flash("Invalid action.", "danger")
+        return redirect(url_for('admin.compliance_dashboard'))
+
+    # Update verification
+    db.session.commit()
+
+    # Log to forensic audit
+    ForensicAuditService.log_completion(
+        audit_id=audit_id,
+        status=status,
+        reviewed_by=current_user.id,
+        review_notes=notes,
+        result_details={
+            'verification_id': verification_id,
+            'user_id': verification.user_id,
+            'action': action,
+            'notes': notes
+        }
+    )
+
+    return redirect(url_for('admin.compliance_dashboard'))
+
+@admin_bp.route("/auditor/dashboard", endpoint="auditor_dashboard")
+@login_required
+@require_role('auditor')
+def auditor_dashboard():
+    """Auditor dashboard for read-only access to all logs."""
+    from app.audit.comprehensive_audit import FinancialAuditLog, SecurityEventLog, DataAccessLog
+    from app.identity.models.user import User
+
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    user_id = request.args.get('user_id')
+    action_type = request.args.get('action_type')
+
+    # Build queries with filters
+    financial_query = FinancialAuditLog.query
+    security_query = SecurityEventLog.query
+    data_access_query = DataAccessLog.query
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            financial_query = financial_query.filter(FinancialAuditLog.created_at >= start_dt)
+            security_query = security_query.filter(SecurityEventLog.created_at >= start_dt)
+            data_access_query = data_access_query.filter(DataAccessLog.created_at >= start_dt)
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            financial_query = financial_query.filter(FinancialAuditLog.created_at <= end_dt)
+            security_query = security_query.filter(SecurityEventLog.created_at <= end_dt)
+            data_access_query = data_access_query.filter(DataAccessLog.created_at <= end_dt)
+        except ValueError:
+            pass
+
+    if user_id:
+        financial_query = financial_query.filter(FinancialAuditLog.user_id == user_id)
+        security_query = security_query.filter(SecurityEventLog.user_id == user_id)
+        data_access_query = data_access_query.filter(DataAccessLog.user_id == user_id)
+
+    # Apply limits for performance
+    financial_logs = financial_query.order_by(FinancialAuditLog.created_at.desc()).limit(100).all()
+    security_logs = security_query.order_by(SecurityEventLog.created_at.desc()).limit(100).all()
+    data_access_logs = data_access_query.order_by(DataAccessLog.created_at.desc()).limit(100).all()
+
+    # Get user public_ids for display
+    all_user_ids = set()
+    for log in financial_logs:
+        if log.user_id:
+            all_user_ids.add(log.user_id)
+    for log in security_logs:
+        if log.user_id:
+            all_user_ids.add(log.user_id)
+    for log in data_access_logs:
+        if log.user_id:
+            all_user_ids.add(log.user_id)
+
+    users = User.query.filter(User.id.in_(list(all_user_ids))).all() if all_user_ids else []
+    user_map = {user.id: user.public_id for user in users}
+
+    return render_template(
+        "auditor/dashboard.html",
+        financial_logs=financial_logs,
+        security_logs=security_logs,
+        data_access_logs=data_access_logs,
+        user_map=user_map,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=user_id,
+        action_type=action_type
+    )
+
+@admin_bp.route("/auditor/export/<log_type>", endpoint="auditor_export")
+@login_required
+@require_role('auditor')
+def auditor_export(log_type):
+    """Export logs in CSV format."""
+    from app.audit.comprehensive_audit import FinancialAuditLog, SecurityEventLog, DataAccessLog
+    import csv
+    from io import StringIO
+
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    user_id = request.args.get('user_id')
+
+    # Determine which log type to export
+    if log_type == 'financial':
+        query = FinancialAuditLog.query
+        model = FinancialAuditLog
+        filename = 'financial_audit_logs.csv'
+    elif log_type == 'security':
+        query = SecurityEventLog.query
+        model = SecurityEventLog
+        filename = 'security_event_logs.csv'
+    elif log_type == 'data_access':
+        query = DataAccessLog.query
+        model = DataAccessLog
+        filename = 'data_access_logs.csv'
+    else:
+        flash("Invalid log type.", "danger")
+        return redirect(url_for('admin.auditor_dashboard'))
+
+    # Apply filters
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(model.created_at >= start_dt)
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            query = query.filter(model.created_at <= end_dt)
+        except ValueError:
+            pass
+
+    if user_id:
+        query = query.filter(model.user_id == user_id)
+
+    logs = query.order_by(model.created_at.desc()).limit(1000).all()
+
+    # Create CSV
+    output = StringIO()
+    writer = csv.writer(output)
+
+    # Write header based on model columns
+    if log_type == 'financial':
+        writer.writerow(['ID', 'Transaction ID', 'User ID', 'Amount', 'Currency', 'Type', 'Status', 'Created At'])
+        for log in logs:
+            writer.writerow([
+                log.id, log.transaction_id, log.user_id, log.amount,
+                log.currency, log.transaction_type, log.status, log.created_at
+            ])
+    elif log_type == 'security':
+        writer.writerow(['ID', 'Event Type', 'Severity', 'Description', 'User ID', 'IP Address', 'Created At'])
+        for log in logs:
+            writer.writerow([
+                log.id, log.event_type, log.severity, log.description,
+                log.user_id, log.ip_address, log.created_at
+            ])
+    elif log_type == 'data_access':
+        writer.writerow(['ID', 'Entity Type', 'Entity ID', 'Operation', 'User ID', 'IP Address', 'Created At'])
+        for log in logs:
+            writer.writerow([
+                log.id, log.entity_type, log.entity_id, log.operation,
+                log.user_id, log.ip_address, log.created_at
+            ])
+
+    # Prepare response
+    from flask import Response
+    output.seek(0)
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename={filename}"}
+    )
 
 # -----------------------------
 # Error Handlers

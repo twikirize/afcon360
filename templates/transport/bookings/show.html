@@ -294,7 +294,7 @@ function updateStatus(newStatus) {
   if (!confirm(`Transition to "${newStatus.replace(/_/g,' ')}"?`)) return;
   fetch(`/api/transport/bookings/{{ booking.id }}/status`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
     body: JSON.stringify({ new_status: newStatus })
   }).then(r => r.json()).then(d => {
     if (d.success) location.reload();

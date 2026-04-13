@@ -5,19 +5,22 @@ from sqlalchemy.sql import func
 from app.extensions import db
 from app.utils.id_guard import IDGuard
 
+
 class TimestampMixin:
     """Mixin for models that require created_at and updated_at timestamps"""
     created_at = Column(
         DateTime,
         nullable=False,
-        server_default=func.now(),
+        default=datetime.utcnow,  # ← Python-side: populates before INSERT
+        server_default=func.now(),  # ← DB-side: fallback for raw SQL inserts
         index=True
     )
     updated_at = Column(
         DateTime,
         nullable=False,
+        default=datetime.utcnow,  # ← Python-side: populates before INSERT
         server_default=func.now(),
-        onupdate=func.now(),
+        onupdate=datetime.utcnow,  # ← Python-side onupdate too, for consistency
         index=True
     )
 
@@ -52,21 +55,45 @@ class BaseModel(TimestampMixin, db.Model):
         db.session.commit()
 
     def __setattr__(self, name, value):
-        """Intercept attribute assignment to catch ID type mistakes in development"""
-        # session_id and user_id in ServerSession are intentional UUID strings.
-        # We skip the IDGuard BIGINT check for these specific cases.
-        is_excluded = name == 'session_id' or \
-                     (self.__class__.__name__ == 'ServerSession' and name == 'user_id')
+        # String/UUID identifier columns that end in _id but are NOT foreign keys.
+        # Add any new non-FK _id columns here rather than hardcoding inline.
+        NON_FK_STRING_IDS = {
+            'session_id',  # Session.session_id — UUID string
+            'public_id',  # User.public_id — UUID for public exposure/Flask-Login
+            'key_id',  # APIKey.key_id — string key identifier
+            'device_id',  # Session.device_id — string device identifier
+            'resource_id',  # AuditLog.resource_id — UUID string
+        }
 
-        if name.endswith('_id') and name != 'id' and not is_excluded and value is not None:
-            # Enable guard only in non-production
-            IDGuard.enable()
-            IDGuard.check_fk_assignment(
-                self.__class__.__name__,
-                name,
-                value,
-                f"Assignment in {self.__class__.__name__}.__setattr__"
-            )
+        # Check if this is an _id field that needs validation
+        if name.endswith('_id') and name != 'id' and value is not None:
+            # First, check if it's in the NON_FK_STRING_IDS list
+            if name in NON_FK_STRING_IDS:
+                # Skip validation - these are internal string identifiers, not public IDs or FKs
+                pass
+            else:
+                # Import SQLAlchemy types here to avoid circular imports
+                from sqlalchemy import String, Text, BigInteger
+                # Get column if table exists
+                column = None
+                if hasattr(self.__class__, '__table__') and self.__class__.__table__ is not None:
+                    column = self.__class__.__table__.columns.get(name)
+
+                IDGuard.enable()
+                if column is not None and isinstance(column.type, (String, Text)):
+                    # String/Text type: treat as public ID
+                    IDGuard.check_public_id(
+                        value,
+                        f"Assignment in {self.__class__.__name__}.__setattr__"
+                    )
+                else:
+                    # BigInteger type, column not found, or no table: treat as internal FK
+                    IDGuard.check_fk_assignment(
+                        self.__class__.__name__,
+                        name,
+                        value,
+                        f"Assignment in {self.__class__.__name__}.__setattr__"
+                    )
         super().__setattr__(name, value)
 
     def save(self):

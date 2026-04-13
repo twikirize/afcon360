@@ -1,0 +1,10 @@
+{# kyc_badge.html - Macro to display KYC Tier badge #}
+{% macro kyc_badge(tier, tier_name, limits=None) %}
+<div class="kyc-badge position-relative d-inline-block" data-bs-toggle="tooltip"
+     title="Tier {{ tier }}: {{ tier_name }}{% if limits %} | Daily: UGX {{ limits.daily|intcomma if limits.daily else 'Unlimited' }}{% endif %}">
+    <span class="badge bg-{{ tier_colors.get(tier, 'secondary') }} rounded-pill">
+        <i class="fas fa-id-card me-1"></i>T{{ tier }}
+    </span>
+    <small class="text-muted ms-1">{{ tier_name }}</small>
+</div>
+{% endmacro %}

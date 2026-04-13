@@ -1,6 +1,4 @@
-from urllib import request
-
-from flask import Blueprint, render_template, session
+from flask import Blueprint, render_template, session, request
 
 auth = Blueprint('auth', __name__)
 

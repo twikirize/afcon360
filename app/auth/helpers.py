@@ -155,6 +155,30 @@ def has_global_permission(user: "User", permission_name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Context helpers
+# ---------------------------------------------------------------------------
+
+def get_current_context():
+    """
+    Get the current context (individual or organization) from session.
+    Returns a tuple of (context_type, org_id_or_none)
+    """
+    from flask import session
+    context = session.get("current_context", "individual")
+    org_id = session.get("current_org_id")
+    return context, org_id
+
+def is_acting_as_organization():
+    """Check if user is currently acting as an organization."""
+    context, org_id = get_current_context()
+    return context == "organization" and org_id is not None
+
+def get_current_org_id():
+    """Get the current organization ID if in organization context."""
+    context, org_id = get_current_context()
+    return org_id if context == "organization" else None
+
+# ---------------------------------------------------------------------------
 # Organisation role helpers
 # ---------------------------------------------------------------------------
 
