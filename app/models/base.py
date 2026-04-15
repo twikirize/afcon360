@@ -106,6 +106,27 @@ class ProtectedModel(BaseModel):
     """Alias for legacy compatibility"""
     __abstract__ = True
 
+# SQLite BIGINT auto-increment fix
+@event.listens_for(BaseModel, 'before_insert', propagate=True)
+def fix_sqlite_autoincrement(mapper, connection, target):
+    """Manually set ID for SQLite since it doesn't support BIGINT auto-increment"""
+    if connection.engine.name != 'sqlite':
+        return
+
+    # Get primary key column
+    pk_col = mapper.primary_key[0]
+    pk_name = pk_col.name
+
+    # Check if ID is None (needs generation)
+    if getattr(target, pk_name) is None:
+        table_name = mapper.local_table.name
+        # Get current max ID
+        result = connection.execute(
+            f"SELECT COALESCE(MAX({pk_name}), 0) FROM {table_name}"
+        ).scalar()
+        # Set new ID
+        setattr(target, pk_name, result + 1)
+
 # Global Event Listener to force updated_at update
 @event.listens_for(BaseModel, 'before_update', propagate=True)
 def _set_updated_at(mapper, connection, target):

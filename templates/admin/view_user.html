@@ -1,49 +1,428 @@
 {% extends "base.html" %}
 
-{% block content %}
-<h2>User Details</h2>
-<table>
-    <tr><th>ID</th><td>{{ user.id }}</td></tr>
-    <tr><th>UUID</th><td>{{ user.user_id }}</td></tr>
-    <tr><th>Username</th><td>{{ user.username }}</td></tr>
-    <tr><th>Email</th><td>{{ user.email or "-" }}</td></tr>
-    <tr><th>Verified</th><td>{{ "✔" if user.is_verified else "✖" }}</td></tr>
-    <tr><th>Active</th><td>{{ "✔" if user.is_active else "✖" }}</td></tr>
-    <tr>
-        <th>Platform Status</th>
-        <td>
-            {% if user.roles | selectattr('name', 'equalto', 'owner') | list %}
-                <span class="badge" style="background-color: #ffd700; color: #000;">👑 SYSTEM OWNER</span>
-            {% else %}
-                <span class="badge">Standard User</span>
-            {% endif %}
-        </td>
-    </tr>
-    <tr><th>Roles</th>
-        <td>
-            {% if user.roles %}
-                {% for role in user.roles %}
-                    <span class="badge">{{ role.name }}</span>
-                {% endfor %}
-            {% else %}
-                <span class="badge">none</span>
-            {% endif %}
-        </td>
-    </tr>
-</table>
+{% block title %}User Details - Admin{% endblock %}
 
-<div style="margin-top:10px;">
-    <form method="post" action="{{ url_for('admin.verify_user', user_id=user.user_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit">Verify</button>
-    </form>
-    <form method="post" action="{{ url_for('admin.activate_user', user_id=user.user_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit">Activate</button>
-    </form>
-    <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.user_id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit">Deactivate</button>
-    </form>
+{% block styles %}
+{{ super() }}
+<style>
+    .user-detail-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    .user-header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 30px;
+        padding: 25px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        color: white;
+    }
+    .user-avatar {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+    }
+    .user-info h1 {
+        margin: 0 0 10px 0;
+        font-size: 28px;
+    }
+    .user-info p {
+        margin: 5px 0;
+        opacity: 0.9;
+    }
+    .stats-bar {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        flex: 1;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .stat-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #333;
+    }
+    .stat-label {
+        font-size: 14px;
+        color: #666;
+        margin-top: 5px;
+    }
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .detail-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .detail-card h3 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 10px;
+        margin-bottom: 15px;
+    }
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #f5f5f5;
+    }
+    .detail-label {
+        font-weight: 600;
+        color: #555;
+    }
+    .detail-value {
+        color: #333;
+    }
+    .badge {
+        padding: 4px 8px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-block;
+        margin: 2px;
+    }
+    .badge-owner { background: #6f42c1; color: white; }
+    .badge-super_admin { background: #fd7e14; color: white; }
+    .badge-admin { background: #dc3545; color: white; }
+    .badge-auditor { background: #20c997; color: white; }
+    .badge-compliance_officer { background: #17a2b8; color: white; }
+    .badge-moderator { background: #28a745; color: white; }
+    .badge-support { background: #5bc0de; color: white; }
+    .badge-event_manager { background: #ffc107; color: #333; }
+    .badge-transport_admin { background: #6c757d; color: white; }
+    .badge-wallet_admin { background: #007bff; color: white; }
+    .badge-fan { background: #6c757d; color: white; }
+    .badge-default { background: #6c757d; color: white; }
+
+    .status-active { color: #28a745; }
+    .status-inactive { color: #dc3545; }
+    .status-verified { color: #28a745; }
+    .status-unverified { color: #ffc107; }
+
+    .actions-section {
+        background: white;
+        border-radius: 8px;
+        padding: 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    .actions-section h3 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+    .action-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+    .btn:hover {
+        transform: translateY(-2px);
+        opacity: 0.9;
+    }
+    .btn-verify { background: #28a745; color: white; }
+    .btn-activate { background: #28a745; color: white; }
+    .btn-deactivate { background: #ffc107; color: #333; }
+    .btn-delete { background: #dc3545; color: white; }
+    .btn-impersonate { background: #6f42c1; color: white; }
+    .btn-promote { background: #17a2b8; color: white; }
+    .btn-demote { background: #fd7e14; color: white; }
+    .btn-view { background: #007bff; color: white; }
+    .btn-suspend { background: #6c757d; color: white; }
+    .btn-edit { background: #20c997; color: white; }
+    .btn-back { background: #6c757d; color: white; }
+
+    .role-management {
+        background: white;
+        border-radius: 8px;
+        padding: 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .role-management h3 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+    .role-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .flash-messages { margin-bottom: 20px; }
+    .alert { padding: 12px 20px; border-radius: 8px; margin-bottom: 10px; }
+    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    .alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="user-detail-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- User Header -->
+    <div class="user-header">
+        <div class="user-avatar">
+            <i class="bi bi-person-circle"></i>
+        </div>
+        <div class="user-info">
+            <h1>{{ user.username }}</h1>
+            <p><i class="bi bi-envelope"></i> {{ user.email or "No email" }}</p>
+            <p><i class="bi bi-person-badge"></i> ID: {{ user.id }} | UUID: {{ user.public_id }}</p>
+        </div>
+
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+        <div class="stat-card">
+            <div class="stat-number">{{ "Verified" if user.is_verified else "Unverified" }}</div>
+            <div class="stat-label">Verification Status</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ "Active" if user.is_active else "Inactive" }}</div>
+            <div class="stat-label">Account Status</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ user_roles|length if user_roles is defined and user_roles else 0 }}</div>
+            <div class="stat-label">Roles Assigned</div>
+        </div>
+    </div>
+
+    <!-- Details Grid -->
+    <div class="detail-grid">
+        <div class="detail-card">
+            <h3><i class="bi bi-info-circle"></i> Basic Information</h3>
+            <div class="detail-row">
+                <span class="detail-label">Username:</span>
+                <span class="detail-value">{{ user.username }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Email:</span>
+                <span class="detail-value">{{ user.email or "-" }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Phone:</span>
+                <span class="detail-value">{{ user.phone or "-" }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Created:</span>
+                <span class="detail-value">{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else "-" }}</span>
+            </div>
+        </div>
+
+        <div class="detail-card">
+            <h3><i class="bi bi-shield-check"></i> Account Status</h3>
+            <div class="detail-row">
+                <span class="detail-label">Verified:</span>
+                <span class="detail-value status-{{ 'verified' if user.is_verified else 'unverified' }}">
+                    {{ "✔ Verified" if user.is_verified else "✖ Unverified" }}
+                </span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Active:</span>
+                <span class="detail-value status-{{ 'active' if user.is_active else 'inactive' }}">
+                    {{ "✔ Active" if user.is_active else "✖ Inactive" }}
+                </span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Last Login:</span>
+                <span class="detail-value">{{ user.last_login_at.strftime('%Y-%m-%d %H:%M') if user.last_login_at else "Never" }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Platform Status:</span>
+                <span class="detail-value">
+                    {% if user_roles is defined and 'owner' in user_roles %}
+                        <span class="badge badge-owner">👑 SYSTEM OWNER</span>
+                    {% else %}
+                        <span class="badge badge-default">Standard User</span>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+        <div class="detail-card">
+            <h3><i class="bi bi-person-badge"></i> Roles & Permissions</h3>
+            <div class="role-list">
+                {% if user_roles is defined and user_roles %}
+                    {% for role_name in user_roles %}
+                        <span class="badge badge-{{ role_name|replace('_', '-') }}">{{ role_name|replace('_', ' ')|title }}</span>
+                    {% endfor %}
+                {% else %}
+                    <span class="badge badge-default">No roles assigned</span>
+                {% endif %}
+            </div>
+            <div style="margin-top: 15px;">
+                <p><strong>Role Management:</strong></p>
+                <form method="post" action="{{ url_for('admin.add_user_role', user_id=user.public_id, role_name='admin') }}" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-promote" style="padding: 5px 10px; font-size: 12px;">Add Admin Role</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.remove_user_role', user_id=user.public_id, role_name='admin') }}" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-demote" style="padding: 5px 10px; font-size: 12px;">Remove Admin Role</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions Section -->
+    <div class="actions-section">
+        <h3><i class="bi bi-gear"></i> User Actions</h3>
+        <div class="action-buttons">
+            {% if not user.is_verified %}
+            <form method="post" action="{{ url_for('admin.verify_user', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-verify"><i class="bi bi-check2-circle"></i> Verify User</button>
+            </form>
+            {% endif %}
+
+            {% if not user.is_active %}
+            <form method="post" action="{{ url_for('admin.activate_user', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-activate"><i class="bi bi-play-circle"></i> Activate</button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-deactivate" onclick="return confirm('Deactivate {{ user.username }}?')"><i class="bi bi-pause-circle"></i> Deactivate</button>
+            </form>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('admin.promote_user', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-promote"><i class="bi bi-arrow-up-circle"></i> Promote</button>
+            </form>
+
+            <form method="post" action="{{ url_for('admin.demote_user', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-demote" onclick="return confirm('Demote {{ user.username }}?')"><i class="bi bi-arrow-down-circle"></i> Demote</button>
+            </form>
+
+            {% if user.public_id != current_user.public_id %}
+            <form method="post" action="{{ url_for('admin.sign_in_as', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-impersonate" onclick="return confirm('Impersonate {{ user.username }}?')"><i class="bi bi-person-badge"></i> Impersonate</button>
+            </form>
+            {% endif %}
+
+            <button type="button" class="btn btn-suspend" onclick="showSuspendModal('{{ user.public_id }}', '{{ user.username }}')"><i class="bi bi-shield-exclamation"></i> Suspend</button>
+
+            {% if user.public_id != current_user.public_id %}
+            <form method="post" action="{{ url_for('admin.delete_user', user_id=user.public_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-delete" onclick="return confirm('⚠️ PERMANENT: Delete {{ user.username }}?')"><i class="bi bi-trash"></i> Delete</button>
+            </form>
+            {% endif %}
+
+            <a href="{{ url_for('admin.update_user_by_username', username=user.username) }}" class="btn btn-edit"><i class="bi bi-pencil-square"></i> Edit Profile</a>
+            <a href="{{ url_for('admin.update_profile_by_username', username=user.username) }}" class="btn btn-info">
+            <i class="bi bi-person-badge"></i> Edit Profile</a>
+
+            <a href="{{ url_for('admin.manage_users') }}" class="btn btn-back"><i class="bi bi-arrow-left"></i> Back to Users</a>
+        </div>
+    </div>
+
+    <!-- Role Management -->
+    <div class="role-management">
+        <h3><i class="bi bi-tags"></i> Quick Role Management</h3>
+        <div class="action-buttons">
+            {% set common_roles = ['admin', 'moderator', 'support', 'auditor', 'compliance_officer', 'transport_admin', 'wallet_admin'] %}
+            {% for role in common_roles %}
+            <div style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
+                <form method="post" action="{{ url_for('admin.add_user_role', user_id=user.public_id, role_name=role) }}" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn" style="background: #20c997; color: white; padding: 5px 10px; font-size: 12px;">Add {{ role|title }}</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.remove_user_role', user_id=user.public_id, role_name=role) }}" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn" style="background: #fd7e14; color: white; padding: 5px 10px; font-size: 12px;">Remove {{ role|title }}</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 </div>
+
+<!-- Suspend Modal -->
+<div id="suspendModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div class="modal-content" style="background: white; padding: 25px; border-radius: 12px; max-width: 500px; width: 90%;">
+        <h3><i class="bi bi-shield-exclamation"></i> Suspend User</h3>
+        <p>Suspend <strong id="suspendUsername"></strong></p>
+        <form id="suspendForm" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <textarea id="suspendReason" name="reason" rows="3" placeholder="Reason for suspension..." style="width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px;"></textarea>
+            <div style="text-align:right">
+                <button type="button" onclick="closeSuspendModal()" class="btn" style="background:#6c757d;color:white">Cancel</button>
+                <button type="submit" class="btn" style="background:#dc3545;color:white">Suspend User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function showSuspendModal(userId, username) {
+        document.getElementById('suspendUsername').textContent = username;
+        document.getElementById('suspendForm').action = "{{ url_for('admin.suspend_user', user_id='') }}" + userId;
+        document.getElementById('suspendModal').style.display = 'flex';
+    }
+
+    function closeSuspendModal() {
+        document.getElementById('suspendModal').style.display = 'none';
+        document.getElementById('suspendReason').value = '';
+    }
+
+    window.onclick = function(e) {
+        if (e.target == document.getElementById('suspendModal')) {
+            closeSuspendModal();
+        }
+    };
+</script>
 {% endblock %}

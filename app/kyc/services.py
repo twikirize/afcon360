@@ -4,7 +4,19 @@ from typing import List, Dict, Optional, Tuple
 from flask import current_app, request
 from app.extensions import db
 from app.kyc.models import KycRecord
-from app.compliance.logger import ComplianceLogger
+# Try to import ComplianceLogger, but make it optional
+try:
+    from app.compliance.logger import ComplianceLogger
+    COMPLIANCE_LOGGER_AVAILABLE = True
+except ImportError:
+    COMPLIANCE_LOGGER_AVAILABLE = False
+    # Create a mock ComplianceLogger for fallback
+    class ComplianceLogger:
+        @staticmethod
+        def log_decision(*args, **kwargs):
+            pass
+
+# Import ForensicAuditService - this should be available
 from app.audit.forensic_audit import ForensicAuditService
 # User import is moved inside methods to avoid circular imports
 from app.profile.models import UserProfile, get_profile_by_user

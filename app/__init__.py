@@ -137,6 +137,16 @@ def create_app(config_object=None) -> Flask:
     # Set default rate limit to 100 requests per minute
     app.config['RATELIMIT_DEFAULT'] = "100 per minute"
 
+    # CSRF Configuration
+    app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'true').lower() == 'true'
+    app.config['WTF_CSRF_SECRET_KEY'] = os.getenv('WTF_CSRF_SECRET_KEY') or app.config.get('SECRET_KEY')
+    app.config['WTF_CSRF_TIME_LIMIT'] = int(os.getenv('WTF_CSRF_TIME_LIMIT', '3600'))
+    app.config['WTF_CSRF_SSL_STRICT'] = os.getenv('WTF_CSRF_SSL_STRICT', 'false').lower() == 'true'
+    app.config['WTF_CSRF_HEADERS'] = ['X-CSRFToken', 'X-CSRF-Token']
+    app.config['WTF_CSRF_FIELD_NAME'] = 'csrf_token'
+    app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+    app.config['WTF_CSRF_METHODS'] = ['POST', 'PUT', 'PATCH', 'DELETE']
+
     # Critical Config Fallbacks with validation
     # SECRET_KEY validation
     secret_key = app.config.get('SECRET_KEY') or os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
@@ -200,13 +210,19 @@ def create_app(config_object=None) -> Flask:
 
     from app.extensions import limiter, cache, redis_client
 
-    limiter.storage_uri = redis_url
+    # Configure Redis for caching
     cache.config.update({
         "CACHE_TYPE": "RedisCache",
         "CACHE_REDIS_URL": redis_url,
         "CACHE_DEFAULT_TIMEOUT": 300
     })
     redis_client.configure(redis_url)
+
+    # Configure Flask-Limiter to use Redis
+    # Set storage URI in app config
+    app.config["RATELIMIT_STORAGE_URI"] = redis_url
+    # Also update the limiter instance
+    limiter.storage_uri = redis_url
 
     # Get Redis client for sessions
     redis_session_client = None
@@ -238,12 +254,16 @@ def create_app(config_object=None) -> Flask:
     else:
         cache.init_app(app, config={"CACHE_TYPE": "SimpleCache"})
 
-    if REDIS_AVAILABLE:
-        rate_limit_url = app.config.get("RATELIMIT_STORAGE_URL", redis_url)
-        require_redis(rate_limit_url, "rate limiting")
-        limiter.init_app(app)
-    else:
-        limiter.init_app(app)
+    # Initialize limiter with app
+    # The storage URI should already be set in app.config["RATELIMIT_STORAGE_URI"]
+    limiter.init_app(app)
+
+    # Verify Redis is available for rate limiting if configured
+    if REDIS_AVAILABLE and app.config.get("RATELIMIT_STORAGE_URI", "").startswith("redis://"):
+        try:
+            require_redis(app.config["RATELIMIT_STORAGE_URI"], "rate limiting")
+        except Exception as e:
+            logger.warning(f"Rate limiting Redis connection failed: {e}")
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -317,7 +337,13 @@ def create_app(config_object=None) -> Flask:
     from app.fan.routes import fan_bp
     from app.wallet.routes import wallet_bp
     from app.admin import admin_bp
-    from app.events import events_bp
+    try:
+        from app.events import events_bp
+    except ImportError as e:
+        logger.warning(f"Events blueprint not found: {e}")
+        # Create a dummy blueprint to prevent crashes
+        from flask import Blueprint
+        events_bp = Blueprint('events', __name__)
     from app.tools.theme_routes import theme_bp
     from app.kyc.routes import kyc_bp  # Integrated KYC
 
@@ -341,22 +367,22 @@ def create_app(config_object=None) -> Flask:
         logger.warning("org_bp not found - skipping registration")
 
     try:
-        from app.compliance.routes import compliance_bp
+        from app.admin.compliance.routes import compliance_bp
     except ImportError:
         logger.warning("compliance_bp not found - skipping registration")
 
     try:
-        from app.auditor.routes import auditor_bp
+        from app.admin.auditor.routes import auditor_bp
     except ImportError:
         logger.warning("auditor_bp not found - skipping registration")
 
     try:
-        from app.support.routes import support_bp
+        from app.admin.support.routes import support_bp
     except ImportError:
         logger.warning("support_bp not found - skipping registration")
 
     try:
-        from app.moderator.routes import moderator_bp
+        from app.admin.moderator.routes import moderator_bp
     except ImportError:
         logger.warning("moderator_bp not found - skipping registration")
     # API Blueprints
@@ -390,17 +416,8 @@ def create_app(config_object=None) -> Flask:
     if auth_kyc_bp:
         core_blueprints.append((auth_kyc_bp, None))
 
-    # Add missing blueprints only if they exist
-    if org_bp:
-        core_blueprints.append((org_bp, '/org'))
-    if compliance_bp:
-        core_blueprints.append((compliance_bp, '/compliance'))
-    if auditor_bp:
-        core_blueprints.append((auditor_bp, '/auditor'))
-    if support_bp:
-        core_blueprints.append((support_bp, '/support'))
-    if moderator_bp:
-        core_blueprints.append((moderator_bp, '/moderator'))
+    # Removed registration of non-existent blueprints
+    # Their functionality is handled within admin_bp
 
     for bp, prefix in core_blueprints:
         app.register_blueprint(bp, url_prefix=prefix)
@@ -475,10 +492,27 @@ def create_app(config_object=None) -> Flask:
     @app.context_processor
     def inject_impersonation_status():
         is_impersonating = bool(session.get('impersonated_by') or session.get('owner_impersonating'))
+        # Get values from session, ensuring they are strings and not None
+        impersonated_role = session.get('impersonated_role')
+        impersonated_by = session.get('impersonated_by_name')
+
+        # Convert to empty string if None
+        if impersonated_role is None:
+            impersonated_role = ''
+        else:
+            # Ensure it's a string
+            impersonated_role = str(impersonated_role)
+
+        if impersonated_by is None:
+            impersonated_by = ''
+        else:
+            # Ensure it's a string
+            impersonated_by = str(impersonated_by)
+
         return {
             'is_impersonating': is_impersonating,
-            'impersonated_role': session.get('impersonated_role'),
-            'impersonated_by': session.get('impersonated_by_name')
+            'impersonated_role': impersonated_role,
+            'impersonated_by': impersonated_by
         }
 
     @app.context_processor

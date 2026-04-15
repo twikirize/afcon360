@@ -11,13 +11,17 @@ import unittest
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
 from flask import Flask
+from sqlalchemy import event
 from app.extensions import db
+from app.kyc.models import KycRecord
+from app.identity.models.user import User
 from app.events.models import Event, TicketType, EventRegistration
 from app.events.services import EventService
-from app.identity.models.user import User
-import app.kyc.models                                          # KycRecord
 import app.identity.individuals.individual_verification        # IndividualVerification
 import app.fan.models
+
+# Note: SQLite BIGINT auto-increment is now handled by app/models/base.py
+# No need for custom event listeners
 
 class TestPaymentFlow(unittest.TestCase):
     """Test payment integration with wallet"""
@@ -35,13 +39,19 @@ class TestPaymentFlow(unittest.TestCase):
             db.create_all()
 
             # Create test user
-            self.test_user = User(
-                user_id='payment_user',
-                email='payment@example.com',
-                username='paymentuser'
-            )
+            self.test_user = User(email='payment@example.com', username='paymentuser', password_hash='pbkdf2:sha256:test')
             db.session.add(self.test_user)
-            db.session.commit()
+            # Flush to generate ID without committing
+            db.session.flush()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                # Workaround for SQLite ID generation
+                self.test_user.id = 1
+                db.session.add(self.test_user)
+                db.session.flush()
+                db.session.commit()
 
     def tearDown(self):
         """Clean up after tests"""

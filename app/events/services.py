@@ -172,6 +172,7 @@ class EventService:
                 contact_email=data.get("contact_email"),
                 contact_phone=data.get("contact_phone"),
                 event_metadata=data.get("metadata", {}),
+                status='pending',
             )
 
             event.generate_ref()

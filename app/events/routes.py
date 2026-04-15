@@ -51,21 +51,11 @@ def sanitize_html(text, max_length=5000):
 import secrets
 
 # CSRF protection
-def generate_csrf_token():
-    """Generate a CSRF token."""
-    if '_csrf_token' not in session:
-        session['_csrf_token'] = secrets.token_urlsafe(32)
-    return session['_csrf_token']
 
-def validate_csrf_token():
-    """Validate CSRF token for POST/PUT/DELETE requests."""
-    if request.method in ('GET', 'HEAD', 'OPTIONS'):
-        return True
 
-    token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
-    if not token or token != session.get('_csrf_token'):
-        return False
-    return True
+
+
+
 
 # Rate limiting
 import time
@@ -283,15 +273,7 @@ def create_event():
         return jsonify({'success': False, 'error': 'Too many requests. Please try again later.'}), 429
 
     if request.method == 'GET':
-        # Generate CSRF token
-        csrf_token_str = generate_csrf_token()
-        return render_template('events/create.html',
-                               csrf_token=csrf_token_str,
-                               raw_csrf_token=csrf_token_str)
-
-    # CSRF validation
-    if not validate_csrf_token():
-        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 403
+        return render_template('events/create.html')
 
     # Handle both JSON and form data
 
@@ -350,7 +332,7 @@ def create_event():
 def edit_event(event_slug):
     """Edit event page"""
     event = EventService.get_event(event_slug)
-    if not event or event.get('organizer_id') != current_user.id:
+    if not event or (event.get('organizer_id') != current_user.id and not is_system_admin(current_user)):
         flash('Unauthorized', 'danger')
         return redirect(url_for('events.my_events'))
 
@@ -372,6 +354,17 @@ def edit_event(event_slug):
 @login_required
 def delete_event(event_slug):
     """Delete event"""
+    # First, get the event to check permissions
+    event = EventService.get_event(event_slug)
+    if not event:
+        flash('Event not found', 'danger')
+        return redirect(url_for('events.my_events'))
+
+    # Check if current user is organizer or system admin
+    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('events.my_events'))
+
     success, error = EventService.delete_event(event_slug, current_user.id)
 
     if success:

@@ -133,7 +133,7 @@
                                 </div>
                                 <form method="POST" action="{{ url_for('owner.remove_super_admin', user_id=admin.id) }}"
                                       onsubmit="return confirm('⚠️ WARNING: Remove super admin privileges from {{ admin.username }}?\n\nThey will lose access to all admin panels including Events Admin.')">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-danger"
                                             title="Remove super admin privileges">
                                         <i class="bi bi-dash-circle"></i> Remove
@@ -167,7 +167,7 @@
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ url_for('owner.add_super_admin') }}">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <div class="mb-3">
                             <label class="form-label fw-bold">

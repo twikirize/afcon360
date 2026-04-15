@@ -42,20 +42,11 @@ def utility_processor():
     def now():
         return datetime.utcnow()
 
-    def is_impersonating():
-        return session.get('is_impersonating', False)
-
-    def impersonated_by():
-        return session.get('impersonated_by_name', None)
-
-    def impersonated_role():
-        return session.get('impersonated_role', None)
-
     return {
         'now': now,
-        'is_impersonating': is_impersonating,
-        'impersonated_by': impersonated_by,
-        'impersonated_role': impersonated_role
+        'is_impersonating': session.get('is_impersonating', False),
+        'impersonated_by': session.get('impersonated_by_name', ''),
+        'impersonated_role': session.get('impersonated_role', '')
     }
 
 # ============================================================================
@@ -581,10 +572,40 @@ def add_super_admin():
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
 
-        assign_global_role(user, 'super_admin')
-        flash(f"✅ {user.username} is now a Super Admin", "success")
+        # First, find or create the super_admin role
+        super_admin_role = Role.query.filter_by(name='super_admin').first()
+        if not super_admin_role:
+            # Create the role if it doesn't exist
+            super_admin_role = Role(
+                name='super_admin',
+                description='System super administrator with full access',
+                scope='global',
+                level=100  # High level for super admin
+            )
+            db.session.add(super_admin_role)
+            db.session.flush()
+
+        # Check if user already has this role
+        existing_role = UserRole.query.filter_by(
+            user_id=user.id,
+            role_id=super_admin_role.id
+        ).first()
+
+        if not existing_role:
+            # Assign the role to the user
+            user_role = UserRole(
+                user_id=user.id,
+                role_id=super_admin_role.id,
+                assigned_by_id=current_user.id
+            )
+            db.session.add(user_role)
+            db.session.commit()
+            flash(f"✅ {user.username} is now a Super Admin", "success")
+        else:
+            flash(f"⚠️ {user.username} is already a Super Admin", "info")
 
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Add super admin error: {e}")
         flash("Failed to add super admin", "danger")
 

@@ -97,7 +97,7 @@
                                                class="btn btn-outline-primary">View</a>
                                             <form method="POST" action="{{ url_for('events.admin_approve', event_slug=event.slug) }}"
                                                   style="display:inline;">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <button type="submit" class="btn btn-success">Approve</button>
                                             </form>
                                             <button class="btn btn-danger" onclick="rejectEvent('{{ event.slug }}')">Reject</button>
@@ -203,7 +203,7 @@ function rejectEvent(eventSlug) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             },
             body: JSON.stringify({reason: reason})
         }).then(res => res.json()).then(data => {

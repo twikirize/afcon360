@@ -18,6 +18,7 @@
                         </div>
                     </noscript>
                     <form id="event-form" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {# Basic Info #}
                         <div class="row">
                             <div class="col-md-12 mb-3">
@@ -201,28 +202,6 @@
         e.preventDefault();
         console.log('🔥 Form submit intercepted');
 
-        const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
-        let csrfToken = csrfTokenMeta ? csrfTokenMeta.content : '';
-
-        // Remove any surrounding quotes or whitespace
-        csrfToken = csrfToken.trim().replace(/^["']|["']$/g, '');
-
-        console.log('🔥 CSRF Token found:', csrfToken ? 'YES' : 'NO');
-        console.log('🔥 CSRF Token value:', csrfToken);
-
-        if (!csrfToken) {
-            console.error('🔥 NO CSRF TOKEN! Add meta tag to base.html');
-            alert('Security token missing. Please refresh the page.');
-            return;
-        }
-
-        // Ensure token is not just whitespace
-        if (csrfToken.trim().length === 0) {
-            console.error('🔥 CSRF TOKEN is empty after trimming!');
-            alert('Invalid security token. Please refresh the page.');
-            return;
-        }
-
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
 
@@ -254,8 +233,6 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken,
-                    'Referer': window.location.origin + "{{ url_for('events.create_event') }}"
                 },
                 body: JSON.stringify(data)
             });

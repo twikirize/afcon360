@@ -25,11 +25,11 @@ csrf = CSRFProtect()
 # Use a placeholder that will be replaced when app is initialized
 _redis_url = None
 
-# Rate limiting with Redis storage - will be configured in create_app
+# Rate limiting - storage_uri will be configured in create_app
+# Don't set storage_uri here to avoid defaulting to memory://
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["2000 per day", "500 per hour"],
-    storage_uri=None,  # Will be set in create_app
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",
 )

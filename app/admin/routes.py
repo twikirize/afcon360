@@ -76,6 +76,19 @@ def remove_role(user_uuid, role_name):
         return False
 
 
+def get_user_roles_map(users):
+    """Helper to get role names for a list of users."""
+    roles_map = {}
+    for user in users:
+        role_names = []
+        if hasattr(user, 'roles'):
+            for user_role in user.roles:
+                if user_role.role and hasattr(user_role.role, 'name'):
+                    role_names.append(user_role.role.name)
+        roles_map[user.id] = role_names
+    return roles_map
+
+
 # -----------------------------
 # Super Admin Dashboard
 # -----------------------------
@@ -132,7 +145,8 @@ def manage_users():
     from app.identity.models.user import User
     try:
         users = User.query.order_by(User.created_at.desc()).all()
-        return render_template("admin/manage_users.html", users=users)
+        user_roles_map = get_user_roles_map(users)
+        return render_template("admin/manage_users.html", users=users, user_roles_map=user_roles_map)
     except Exception as e:
         logger.error(f"Error loading users: {e}")
         flash("Error loading users.", "danger")
@@ -281,9 +295,16 @@ def resend_activation(user_id):
 @login_required
 @admin_required
 def promote_user(user_id):
-    """Promote a user to a higher role."""
+    """Promote a user to the next higher role in hierarchy."""
     from app.identity.models.user import User
     from app.identity.models import Role, UserRole
+
+    # Full role hierarchy from seed_roles.py
+    ROLE_HIERARCHY = [
+        "owner", "super_admin", "admin", "auditor", "compliance_officer",
+        "moderator", "support", "event_manager", "transport_admin",
+        "wallet_admin", "accommodation_admin", "tourism_admin", "fan"
+    ]
 
     try:
         user = User.query.filter_by(public_id=user_id).first()
@@ -291,29 +312,50 @@ def promote_user(user_id):
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
 
-        user_roles = [role.name for role in user.roles]
+        current_role_names = []
+        for user_role in user.roles:
+            if user_role.role and hasattr(user_role.role, 'name'):
+                current_role_names.append(user_role.role.name)
 
-        if 'user' in user_roles and 'org_admin' not in user_roles:
-            role = Role.query.filter_by(name='org_admin').first()
+        current_index = -1
+        current_role = None
+        for i, role_name in enumerate(ROLE_HIERARCHY):
+            if role_name in current_role_names:
+                current_index = i
+                current_role = role_name
+                break
+
+        if current_index == -1:
+            current_index = len(ROLE_HIERARCHY) - 1
+            current_role = ROLE_HIERARCHY[-1]
+
+        if current_index > 0:
+            next_role_name = ROLE_HIERARCHY[current_index - 1]
+
+            if next_role_name == "owner":
+                flash("Cannot promote to Owner. Only the platform owner can assign owner role.", "warning")
+                return redirect(url_for("admin.manage_users"))
+
+            role = Role.query.filter_by(name=next_role_name).first()
             if role:
-                user_role = UserRole(user_id=user.id, role_id=role.id)
-                db.session.add(user_role)
-                db.session.commit()
-                flash(f"User {user.username} promoted to Org Admin.", "success")
-        elif 'org_admin' in user_roles and 'admin' not in user_roles:
-            role = Role.query.filter_by(name='admin').first()
-            if role:
-                user_role = UserRole(user_id=user.id, role_id=role.id)
-                db.session.add(user_role)
-                db.session.commit()
-                flash(f"User {user.username} promoted to Admin.", "success")
+                existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
+                if not existing:
+                    user_role = UserRole(user_id=user.id, role_id=role.id)
+                    db.session.add(user_role)
+                    db.session.commit()
+                    flash(f"User {user.username} promoted to {next_role_name.replace('_', ' ').title()}.", "success")
+                else:
+                    flash(f"User {user.username} already has role {next_role_name}.", "info")
+            else:
+                flash(f"Role '{next_role_name}' not found.", "danger")
         else:
-            flash(f"User {user.username} cannot be promoted further or already has highest role.", "warning")
+            flash(f"User {user.username} already has the highest role ({current_role}).", "warning")
 
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error promoting user: {e}")
         flash(f"Error promoting user: {str(e)}", "danger")
+
     return redirect(url_for("admin.manage_users"))
 
 
@@ -321,9 +363,15 @@ def promote_user(user_id):
 @login_required
 @admin_required
 def demote_user(user_id):
-    """Demote a user from their current role."""
+    """Demote a user to the next lower role in hierarchy."""
     from app.identity.models.user import User
     from app.identity.models import Role, UserRole
+
+    ROLE_HIERARCHY = [
+        "owner", "super_admin", "admin", "auditor", "compliance_officer",
+        "moderator", "support", "event_manager", "transport_admin",
+        "wallet_admin", "accommodation_admin", "tourism_admin", "fan"
+    ]
 
     try:
         user = User.query.filter_by(public_id=user_id).first()
@@ -335,31 +383,53 @@ def demote_user(user_id):
             flash("You cannot demote yourself.", "danger")
             return redirect(url_for("admin.manage_users"))
 
-        user_roles = [role.name for role in user.roles]
+        current_role_names = []
+        for user_role in user.roles:
+            if user_role.role and hasattr(user_role.role, 'name'):
+                current_role_names.append(user_role.role.name)
 
-        if 'admin' in user_roles:
-            role = Role.query.filter_by(name='admin').first()
+        current_index = -1
+        current_role = None
+        for i, role_name in enumerate(ROLE_HIERARCHY):
+            if role_name in current_role_names and role_name != "owner":
+                current_index = i
+                current_role = role_name
+                break
+
+        if current_index == -1:
+            flash(f"User {user.username} has no demotable roles.", "warning")
+            return redirect(url_for("admin.manage_users"))
+
+        if current_index < len(ROLE_HIERARCHY) - 1:
+            next_role_name = ROLE_HIERARCHY[current_index + 1]
+
+            role = Role.query.filter_by(name=next_role_name).first()
             if role:
-                user_role = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
-                if user_role:
-                    db.session.delete(user_role)
-                    db.session.commit()
-                    flash(f"User {user.username} demoted from Admin.", "warning")
-        elif 'org_admin' in user_roles:
-            role = Role.query.filter_by(name='org_admin').first()
-            if role:
-                user_role = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
-                if user_role:
-                    db.session.delete(user_role)
-                    db.session.commit()
-                    flash(f"User {user.username} demoted from Org Admin.", "warning")
+                current_role_obj = Role.query.filter_by(name=current_role).first()
+                if current_role_obj:
+                    user_role = UserRole.query.filter_by(
+                        user_id=user.id, role_id=current_role_obj.id
+                    ).first()
+                    if user_role:
+                        db.session.delete(user_role)
+
+                existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
+                if not existing:
+                    new_role = UserRole(user_id=user.id, role_id=role.id)
+                    db.session.add(new_role)
+
+                db.session.commit()
+                flash(f"User {user.username} demoted to {next_role_name.replace('_', ' ').title()}.", "warning")
+            else:
+                flash(f"Role '{next_role_name}' not found.", "danger")
         else:
-            flash(f"User {user.username} has no roles to demote from.", "warning")
+            flash(f"User {user.username} is already at the lowest role level.", "info")
 
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error demoting user: {e}")
         flash(f"Error demoting user: {str(e)}", "danger")
+
     return redirect(url_for("admin.manage_users"))
 
 
@@ -439,6 +509,36 @@ def bulk_verify_users():
     return redirect(url_for("admin.manage_users"))
 
 
+@admin_bp.route("/users/bulk-activate", methods=["POST"], endpoint="bulk_activate_users")
+@login_required
+@admin_required
+def bulk_activate_users():
+    """Bulk activate multiple users."""
+    from app.identity.models.user import User
+    try:
+        user_ids = request.form.getlist('user_ids')
+        if not user_ids:
+            flash("No users selected for bulk activation.", "warning")
+            return redirect(url_for("admin.manage_users"))
+
+        activated_count = 0
+        for user_id in user_ids:
+            user = User.query.filter_by(public_id=user_id).first()
+            if user and not user.is_active:
+                user.is_active = True
+                activated_count += 1
+
+        db.session.commit()
+        flash(f"Successfully activated {activated_count} users.", "success")
+        logger.info(f"Bulk activated {activated_count} users by {current_user.username}")
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error in bulk activation: {e}")
+        flash(f"Error in bulk activation: {str(e)}", "danger")
+    return redirect(url_for("admin.manage_users"))
+
+
 @admin_bp.route("/users/bulk-deactivate", methods=["POST"], endpoint="bulk_deactivate_users")
 @login_required
 @admin_required
@@ -475,8 +575,86 @@ def bulk_deactivate_users():
 def view_user(user_id):
     """View detailed user information."""
     from app.identity.models.user import User
-    user = User.query.filter_by(public_id=user_id).first_or_404()
-    return render_template("admin/view_user.html", user=user)
+    from flask import abort
+
+    print("=" * 60)
+    print(f"DEBUG view_user: user_id parameter = '{user_id}'")
+    print(f"DEBUG view_user: user_id length = {len(user_id) if user_id else 0}")
+    print("=" * 60)
+
+    # Check if user_id is empty
+    if not user_id or user_id.strip() == "":
+        print("ERROR: Empty user_id provided")
+        abort(404)
+
+    # Try to find user by public_id
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        print(f"ERROR: No user found with public_id='{user_id}'")
+        # Try to find by id as fallback
+        try:
+            user_id_int = int(user_id)
+            user = User.query.get(user_id_int)
+            if user:
+                print(f"DEBUG: Found user by integer id {user_id_int}")
+        except ValueError:
+            pass
+
+    if not user:
+        abort(404)
+
+    print(f"DEBUG view_user: Found user - id={user.id}, public_id={user.public_id}, username={user.username}")
+
+    # Debug: check if user has roles attribute
+    print(f"DEBUG view_user: hasattr(user, 'roles') = {hasattr(user, 'roles')}")
+    if hasattr(user, 'roles'):
+        try:
+            print(f"DEBUG view_user: user.roles = {user.roles}")
+            print(f"DEBUG view_user: type(user.roles) = {type(user.roles)}")
+            print(f"DEBUG view_user: len(list(user.roles)) = {len(list(user.roles)) if user.roles else 0}")
+        except Exception as e:
+            print(f"DEBUG view_user: Error accessing user.roles: {e}")
+
+    # Get user roles using the helper function
+    user_roles_map = get_user_roles_map([user])
+    print(f"DEBUG view_user: user_roles_map = {user_roles_map}")
+    user_roles = user_roles_map.get(user.id, [])
+    print(f"DEBUG view_user: user_roles = {user_roles}")
+
+    # Ensure user_roles is always a list
+    if user_roles is None:
+        user_roles = []
+
+    return render_template("admin/view_user.html",
+                          user=user,
+                          user_roles=user_roles)
+
+@admin_bp.route("/users/username/<string:username>/view", endpoint="view_user_by_username")
+@login_required
+@admin_required
+def view_user_by_username(username):
+    """View user by username instead of UUID."""
+    from app.identity.models.user import User
+    user = User.query.filter_by(username=username).first_or_404()
+    return render_template("admin/view_user.html", user=user, user_roles=get_user_roles_map([user]).get(user.id, []))
+
+@admin_bp.route("/users/username/<string:username>/update", methods=["GET", "POST"], endpoint="update_user_by_username")
+@login_required
+@admin_required
+def update_user_by_username(username):
+    """Update user by username instead of UUID."""
+    from app.identity.models.user import User
+    user = User.query.filter_by(username=username).first_or_404()
+    return redirect(url_for('admin.update_user', user_id=user.public_id))
+
+@admin_bp.route("/users/username/<string:username>/profile", methods=["GET", "POST"], endpoint="update_profile_by_username")
+@login_required
+@admin_required
+def update_profile_by_username(username):
+    """Update user profile by username instead of UUID."""
+    from app.identity.models.user import User
+    user = User.query.filter_by(username=username).first_or_404()
+    return redirect(url_for('admin.update_profile', user_id=user.public_id))
 
 
 @admin_bp.route("/users/<string:user_id>/roles/add/<string:role_name>", methods=["POST"], endpoint="add_user_role")
@@ -496,7 +674,7 @@ def add_user_role(user_id, role_name):
         role = Role.query.filter_by(name=role_name).first()
         if not role:
             flash(f"Role '{role_name}' not found.", "danger")
-            return redirect(url_for("admin.view_user", user_id=user.user_id))
+            return redirect(url_for("admin.view_user", user_id=user.public_id))
 
         existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
         if existing:
@@ -512,7 +690,7 @@ def add_user_role(user_id, role_name):
         logger.error(f"Error adding role: {e}")
         flash(f"Error adding role: {str(e)}", "danger")
 
-    return redirect(url_for("admin.view_user", user_id=user.user_id))
+    return redirect(url_for("admin.view_user", user_id=user.public_id))
 
 
 @admin_bp.route("/users/<string:user_id>/roles/remove/<string:role_name>", methods=["POST"],
@@ -532,7 +710,7 @@ def remove_user_role(user_id, role_name):
 
         if role_name == 'admin' and user.user_id == current_user.user_id:
             flash("You cannot remove the admin role from yourself.", "danger")
-            return redirect(url_for("admin.view_user", user_id=user.user_id))
+            return redirect(url_for("admin.view_user", user_id=user.public_id))
 
         role = Role.query.filter_by(name=role_name).first()
         if role:
@@ -549,7 +727,7 @@ def remove_user_role(user_id, role_name):
         logger.error(f"Error removing role: {e}")
         flash(f"Error removing role: {str(e)}", "danger")
 
-    return redirect(url_for("admin.view_user", user_id=user.user_id))
+    return redirect(url_for("admin.view_user", user_id=user.public_id))
 
 
 # -----------------------------
@@ -719,6 +897,38 @@ def toggle_transport_feature(feature):
 
 
 # -----------------------------
+# Placeholder routes for template compatibility
+# -----------------------------
+@admin_bp.route("/events/dashboard", endpoint="events__admin_dashboard")
+@login_required
+@admin_required
+def events_placeholder_dashboard():
+    """Placeholder to prevent template errors."""
+    flash("Events module is not yet implemented. This is a placeholder.", "info")
+    return redirect(url_for("admin.super_dashboard"))
+
+@admin_bp.route("/api/events/admin_stats", endpoint="events__api_admin_stats")
+@login_required
+@admin_required
+def events_api_stats():
+    """Placeholder API endpoint for event statistics."""
+    return jsonify({
+        "success": True,
+        "total_events": 0,
+        "active_events": 0,
+        "pending_events": 0,
+        "total_registrations": 0
+    })
+
+@admin_bp.route("/events/admin", endpoint="events__admin_events")
+@login_required
+@admin_required
+def events_admin():
+    """Placeholder for events admin page."""
+    flash("Events admin page is not yet implemented. This is a placeholder.", "info")
+    return redirect(url_for("admin.super_dashboard"))
+
+# -----------------------------
 # Organisations
 # -----------------------------
 @admin_bp.route("/orgs", endpoint="manage_orgs")
@@ -819,66 +1029,158 @@ def wallet_control():
 @login_required
 @admin_required
 def update_user(user_id):
-    """Update user information."""
+    """Update user account information (username, email, phone only)."""
     from app.identity.models.user import User
-    from flask import render_template_string
+    from app.audit.comprehensive_audit import AuditService
 
     user = User.query.filter_by(public_id=user_id).first_or_404()
+    is_compliance_officer = current_user.has_global_role('compliance_officer')
+    compliance_override = request.form.get('compliance_override') == 'on' if is_compliance_officer else False
 
     if request.method == "POST":
-        try:
-            user.username = request.form.get('username', user.username)
-            user.email = request.form.get('email', user.email)
-            user.phone = request.form.get('phone', user.phone)
-            db.session.commit()
-            flash(f"User {user.username} updated successfully.", "success")
-            return redirect(url_for("admin.view_user", user_id=user.user_id))
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error updating user: {e}")
-            flash(f"Error updating user: {str(e)}", "danger")
+        change_reason = request.form.get('change_reason', '').strip()
 
-    # Simple inline form for update
-    form_html = '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Update User - {{ user.username }}</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
-            .form-group { margin-bottom: 15px; }
-            label { display: inline-block; width: 100px; font-weight: bold; }
-            input[type="text"], input[type="email"] { width: 250px; padding: 5px; }
-            button { padding: 8px 15px; background: #007bff; color: white; border: none; cursor: pointer; }
-            .cancel { background: #6c757d; margin-left: 10px; }
-        </style>
-    </head>
-    <body>
-        <h1>Update User: {{ user.username }}</h1>
-        <form method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-group">
-                <label>Username:</label>
-                <input type="text" name="username" value="{{ user.username }}" required>
-            </div>
-            <div class="form-group">
-                <label>Email:</label>
-                <input type="email" name="email" value="{{ user.email or '' }}">
-            </div>
-            <div class="form-group">
-                <label>Phone:</label>
-                <input type="text" name="phone" value="{{ user.phone or '' }}">
-            </div>
-            <div class="form-group">
-                <button type="submit">Update User</button>
-                <a href="{{ url_for('admin.view_user', user_id=user.user_id) }}" class="cancel" style="background:#6c757d; padding:8px 15px; color:white; text-decoration:none; margin-left:10px;">Cancel</a>
-            </div>
-        </form>
-    </body>
-    </html>
-    '''
-    from flask import render_template_string
-    return render_template_string(form_html, user=user, csrf_token=request.form.get('csrf_token', ''))
+        if not change_reason:
+            flash("Reason for change is required for audit trail.", "danger")
+            return render_template("admin/update_user.html", user=user, is_compliance_officer=is_compliance_officer)
+
+        changes_made = {}
+
+        # Username change
+        new_username = request.form.get('username', user.username)
+        if new_username != user.username:
+            if user.is_verified and not compliance_override and not is_compliance_officer:
+                flash("Cannot change username for verified accounts. Contact compliance officer.", "danger")
+                return render_template("admin/update_user.html", user=user, is_compliance_officer=is_compliance_officer)
+
+            existing = User.query.filter_by(username=new_username).first()
+            if existing and existing.id != user.id:
+                flash("Username already taken.", "danger")
+                return render_template("admin/update_user.html", user=user, is_compliance_officer=is_compliance_officer)
+
+            changes_made['username'] = {'old': user.username, 'new': new_username}
+            user.username = new_username
+
+        # Email change
+        new_email = request.form.get('email', user.email)
+        if new_email != user.email:
+            if user.is_verified and not compliance_override and not is_compliance_officer:
+                flash("Cannot change email for verified accounts. Contact compliance officer.", "danger")
+                return render_template("admin/update_user.html", user=user, is_compliance_officer=is_compliance_officer)
+
+            if new_email:
+                existing = User.query.filter_by(email=new_email).first()
+                if existing and existing.id != user.id:
+                    flash("Email already in use.", "danger")
+                    return render_template("admin/update_user.html", user=user, is_compliance_officer=is_compliance_officer)
+
+            changes_made['email'] = {'old': user.email, 'new': new_email}
+            user.email = new_email
+            if user.is_verified:
+                user.is_verified = False
+                changes_made['verification_reset'] = True
+
+        # Phone change
+        new_phone = request.form.get('phone', user.phone)
+        if new_phone != user.phone:
+            changes_made['phone'] = {'old': user.phone, 'new': new_phone}
+            user.phone = new_phone
+
+        if changes_made:
+            db.session.commit()
+
+            AuditService.data_change(
+                entity_type="user",
+                entity_id=user.public_id,
+                operation="update",
+                old_value=changes_made,
+                new_value={k: v['new'] if isinstance(v, dict) else v for k, v in changes_made.items()},
+                changed_by=current_user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string if request.user_agent else None,
+                extra_data={"reason": change_reason, "compliance_override": compliance_override}
+            )
+
+            flash(f"User {user.username} updated successfully. Changes logged for audit.", "success")
+        else:
+            flash("No changes were made.", "info")
+
+        return redirect(url_for("admin.view_user", user_id=user.public_id))
+
+    return render_template("admin/update_user.html", user=user, is_compliance_officer=is_compliance_officer)
+
+@admin_bp.route("/users/<string:user_id>/profile", methods=["GET", "POST"], endpoint="update_profile")
+@login_required
+@admin_required
+def update_profile(user_id):
+    """Update user profile (KYC/personal information)."""
+    from app.identity.models.user import User
+    from app.profile.models import get_profile_by_user, UserProfile
+    from app.auth.kyc_compliance import calculate_kyc_tier
+    from app.audit.comprehensive_audit import AuditService
+
+    user = User.query.filter_by(public_id=user_id).first_or_404()
+    profile = get_profile_by_user(user)
+    if not profile:
+        profile = UserProfile(user_id=user.id)
+        db.session.add(profile)
+        db.session.commit()
+
+    kyc_info = calculate_kyc_tier(user.id)
+    is_compliance_officer = current_user.has_global_role('compliance_officer')
+
+    if request.method == "POST":
+        change_reason = request.form.get('change_reason', '').strip()
+
+        if not change_reason:
+            flash("Reason for change is required for audit trail.", "danger")
+            return render_template("admin/update_profile.html", user=user, profile=profile, kyc_info=kyc_info, is_compliance_officer=is_compliance_officer)
+
+        changes_made = {}
+
+        # Update address field (which we know exists)
+        new_address = request.form.get('address', '')
+        if new_address != (profile.address or ''):
+            changes_made['address'] = {'old': profile.address, 'new': new_address}
+            profile.address = new_address
+
+        # Check if city field exists before trying to update it
+        # Use hasattr to safely check for the attribute
+        if hasattr(profile, 'city'):
+            new_city = request.form.get('city', '')
+            if new_city != (profile.city or ''):
+                changes_made['city'] = {'old': profile.city, 'new': new_city}
+                profile.city = new_city
+
+        # Check if country field exists before trying to update it
+        if hasattr(profile, 'country'):
+            new_country = request.form.get('country', '')
+            if new_country != (profile.country or ''):
+                changes_made['country'] = {'old': profile.country, 'new': new_country}
+                profile.country = new_country
+
+        if changes_made:
+            db.session.commit()
+
+            AuditService.data_change(
+                entity_type="user_profile",
+                entity_id=user.public_id,
+                operation="update",
+                old_value=changes_made,
+                new_value={k: v['new'] if isinstance(v, dict) else v for k, v in changes_made.items()},
+                changed_by=current_user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string if request.user_agent else None,
+                extra_data={"reason": change_reason}
+            )
+
+            flash(f"Profile updated successfully. Changes logged for audit.", "success")
+        else:
+            flash("No changes were made.", "info")
+
+        return redirect(url_for("admin.view_user", user_id=user.public_id))
+
+    return render_template("admin/update_profile.html", user=user, profile=profile, kyc_info=kyc_info, is_compliance_officer=is_compliance_officer)
 
 # -----------------------------
 # Compliance & Auditor Routes
@@ -887,91 +1189,15 @@ def update_user(user_id):
 @login_required
 @require_role('compliance_officer')
 def compliance_dashboard():
-    """Compliance officer dashboard for KYC reviews and AML alerts."""
-    from app.audit.comprehensive_audit import FinancialAuditLog
-    from app.identity.individuals.individual_verification import IndividualVerification
-    from app.identity.models.user import User
-    from app.audit.forensic_audit import ForensicAuditService
-
-    # Get pending KYC verifications
-    pending_verifications = IndividualVerification.query.filter_by(
-        status='pending'
-    ).order_by(IndividualVerification.requested_at.desc()).limit(50).all()
-
-    # Get user public_ids for display
-    user_ids = [v.user_id for v in pending_verifications]
-    users = User.query.filter(User.id.in_(user_ids)).all() if user_ids else []
-    user_map = {user.id: user.public_id for user in users}
-
-    # Get high-risk transactions (AML alerts)
-    # Assuming FinancialAuditLog has a 'risk_level' field or we can filter by amount
-    high_risk_transactions = FinancialAuditLog.query.filter(
-        FinancialAuditLog.amount >= 5000000  # UGX 5M threshold
-    ).order_by(FinancialAuditLog.created_at.desc()).limit(50).all()
-
-    # Get public_ids for transaction users
-    transaction_user_ids = [t.user_id for t in high_risk_transactions if t.user_id]
-    transaction_users = User.query.filter(User.id.in_(transaction_user_ids)).all() if transaction_user_ids else []
-    transaction_user_map = {user.id: user.public_id for user in transaction_users}
-
-    return render_template(
-        "admin/compliance/dashboard.html",
-        pending_verifications=pending_verifications,
-        high_risk_transactions=high_risk_transactions,
-        user_map=user_map,
-        transaction_user_map=transaction_user_map
-    )
+    """Redirect to the new compliance dashboard."""
+    return redirect(url_for('compliance.dashboard'))
 
 @admin_bp.route("/compliance/action/<string:verification_id>", methods=["POST"], endpoint="compliance_action")
 @login_required
 @require_role('compliance_officer')
 def compliance_action(verification_id):
-    """Handle compliance actions (Approve, Reject, Request More Info)."""
-    from app.identity.individuals.individual_verification import IndividualVerification
-    from app.audit.forensic_audit import ForensicAuditService
-
-    action = request.form.get('action')
-    notes = request.form.get('notes', '')
-
-    verification = IndividualVerification.query.filter_by(id=verification_id).first_or_404()
-
-    # Log the completion to ForensicAuditService
-    audit_id = f"kyc_review_{verification_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-
-    if action == 'approve':
-        verification.status = 'verified'
-        status = 'approved'
-        flash(f"KYC verification {verification_id} approved.", "success")
-    elif action == 'reject':
-        verification.status = 'rejected'
-        status = 'rejected'
-        flash(f"KYC verification {verification_id} rejected.", "warning")
-    elif action == 'request_info':
-        verification.status = 'pending'
-        status = 'info_requested'
-        flash(f"More information requested for verification {verification_id}.", "info")
-    else:
-        flash("Invalid action.", "danger")
-        return redirect(url_for('admin.compliance_dashboard'))
-
-    # Update verification
-    db.session.commit()
-
-    # Log to forensic audit
-    ForensicAuditService.log_completion(
-        audit_id=audit_id,
-        status=status,
-        reviewed_by=current_user.id,
-        review_notes=notes,
-        result_details={
-            'verification_id': verification_id,
-            'user_id': verification.user_id,
-            'action': action,
-            'notes': notes
-        }
-    )
-
-    return redirect(url_for('admin.compliance_dashboard'))
+    """Redirect compliance actions to the new compliance routes."""
+    return redirect(url_for('compliance.compliance_action', verification_id=verification_id))
 
 @admin_bp.route("/auditor/dashboard", endpoint="auditor_dashboard")
 @login_required
@@ -981,13 +1207,11 @@ def auditor_dashboard():
     from app.audit.comprehensive_audit import FinancialAuditLog, SecurityEventLog, DataAccessLog
     from app.identity.models.user import User
 
-    # Get filter parameters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     user_id = request.args.get('user_id')
     action_type = request.args.get('action_type')
 
-    # Build queries with filters
     financial_query = FinancialAuditLog.query
     security_query = SecurityEventLog.query
     data_access_query = DataAccessLog.query
@@ -1015,12 +1239,10 @@ def auditor_dashboard():
         security_query = security_query.filter(SecurityEventLog.user_id == user_id)
         data_access_query = data_access_query.filter(DataAccessLog.user_id == user_id)
 
-    # Apply limits for performance
     financial_logs = financial_query.order_by(FinancialAuditLog.created_at.desc()).limit(100).all()
     security_logs = security_query.order_by(SecurityEventLog.created_at.desc()).limit(100).all()
     data_access_logs = data_access_query.order_by(DataAccessLog.created_at.desc()).limit(100).all()
 
-    # Get user public_ids for display
     all_user_ids = set()
     for log in financial_logs:
         if log.user_id:
@@ -1056,12 +1278,10 @@ def auditor_export(log_type):
     import csv
     from io import StringIO
 
-    # Get filter parameters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     user_id = request.args.get('user_id')
 
-    # Determine which log type to export
     if log_type == 'financial':
         query = FinancialAuditLog.query
         model = FinancialAuditLog
@@ -1078,7 +1298,6 @@ def auditor_export(log_type):
         flash("Invalid log type.", "danger")
         return redirect(url_for('admin.auditor_dashboard'))
 
-    # Apply filters
     if start_date:
         try:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d')
@@ -1098,11 +1317,9 @@ def auditor_export(log_type):
 
     logs = query.order_by(model.created_at.desc()).limit(1000).all()
 
-    # Create CSV
     output = StringIO()
     writer = csv.writer(output)
 
-    # Write header based on model columns
     if log_type == 'financial':
         writer.writerow(['ID', 'Transaction ID', 'User ID', 'Amount', 'Currency', 'Type', 'Status', 'Created At'])
         for log in logs:
@@ -1125,7 +1342,6 @@ def auditor_export(log_type):
                 log.user_id, log.ip_address, log.created_at
             ])
 
-    # Prepare response
     from flask import Response
     output.seek(0)
     return Response(
@@ -1133,6 +1349,39 @@ def auditor_export(log_type):
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename={filename}"}
     )
+
+
+# -----------------------------
+# Events Module Placeholder Routes
+# -----------------------------
+@admin_bp.route("/events/dashboard", endpoint="events_admin_dashboard")
+@login_required
+@admin_required
+def events_admin_dashboard():
+    """Placeholder for events admin dashboard."""
+    flash("Events module is not yet implemented.", "info")
+    return redirect(url_for("admin.super_dashboard"))
+
+@admin_bp.route("/api/events/admin_stats", endpoint="events_api_admin_stats")
+@login_required
+@admin_required
+def events_api_admin_stats():
+    """Placeholder API for events statistics."""
+    return jsonify({
+        "success": True,
+        "total_events": 0,
+        "active_events": 0,
+        "pending_events": 0,
+        "total_registrations": 0
+    })
+
+@admin_bp.route("/events/admin", endpoint="events_admin_events")
+@login_required
+@admin_required
+def events_admin_events():
+    """Placeholder for events management page."""
+    flash("Events management is not yet implemented.", "info")
+    return redirect(url_for("admin.super_dashboard"))
 
 # -----------------------------
 # Error Handlers

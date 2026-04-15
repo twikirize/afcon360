@@ -110,6 +110,33 @@ class Config:
     WALLET_MAX_TRANSFER = Decimal(os.getenv("WALLET_MAX_TRANSFER", "2000"))
 
     # ============================================================================
+    # EMAIL CONFIGURATION
+    # ============================================================================
+    MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+    MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
+    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
+    MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "false").lower() == "true"
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "noreply@example.com")
+    MAIL_DEBUG = os.getenv("MAIL_DEBUG", "false").lower() == "true"
+
+    # ============================================================================
+    # SECURITY CONFIGURATION
+    # ============================================================================
+    SECURITY_PASSWORD_SALT = os.getenv("SECURITY_PASSWORD_SALT", SECURITY_SALT) if SECURITY_SALT else os.getenv("SECURITY_PASSWORD_SALT")
+    SECURITY_REGISTERABLE = os.getenv("SECURITY_REGISTERABLE", "true").lower() == "true"
+    SECURITY_SEND_REGISTER_EMAIL = os.getenv("SECURITY_SEND_REGISTER_EMAIL", "false").lower() == "true"
+    SECURITY_RECOVERABLE = os.getenv("SECURITY_RECOVERABLE", "true").lower() == "true"
+    SECURITY_CHANGEABLE = os.getenv("SECURITY_CHANGEABLE", "true").lower() == "true"
+    SECURITY_CONFIRMABLE = os.getenv("SECURITY_CONFIRMABLE", "false").lower() == "true"
+    SECURITY_TRACKABLE = os.getenv("SECURITY_TRACKABLE", "true").lower() == "true"
+    SECURITY_URL_PREFIX = os.getenv("SECURITY_URL_PREFIX", "/security")
+    SECURITY_POST_LOGIN_VIEW = os.getenv("SECURITY_POST_LOGIN_VIEW", "/dashboard")
+    SECURITY_POST_LOGOUT_VIEW = os.getenv("SECURITY_POST_LOGOUT_VIEW", "/")
+    SECURITY_POST_REGISTER_VIEW = os.getenv("SECURITY_POST_REGISTER_VIEW", "/dashboard")
+
+    # ============================================================================
     # IDEMPOTENCY & AUDIT
     # ============================================================================
     IDEMPOTENCY = {

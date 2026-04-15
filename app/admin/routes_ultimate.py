@@ -396,6 +396,40 @@ def sign_in_as(user_id):
 
     return redirect(url_for('admin_ultimate.manage_users'))
 
+
+@admin_bp.route('/suspend-user/<int:user_id>', methods=['POST'])
+@login_required
+@admin_required
+def suspend_user(user_id):
+    """Suspend a user with reason"""
+    try:
+        user = User.query.get_or_404(user_id)
+
+        # Prevent self-suspension
+        if user.id == current_user.id:
+            flash("You cannot suspend your own account", "danger")
+            return redirect(url_for('admin_ultimate.manage_users'))
+
+        reason = request.form.get('reason', 'No reason provided')
+
+        # Deactivate the user
+        user.is_active = False
+
+        # Store suspension reason (you may want to add a suspension_reason column)
+        # For now, log it
+        logger.warning(f"User {user.username} suspended by {current_user.username}. Reason: {reason}")
+
+        db.session.commit()
+
+        flash(f"User {user.username} has been suspended. Reason: {reason}", "warning")
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error suspending user {user_id}: {e}")
+        flash("Error suspending user", "danger")
+
+    return redirect(url_for('admin_ultimate.manage_users'))
+
 def register_admin_routes(app):
     """Register the ultimate admin routes"""
     app.register_blueprint(admin_bp)

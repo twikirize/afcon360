@@ -12,13 +12,17 @@ from datetime import datetime, timedelta
 import unittest
 from unittest.mock import patch, MagicMock
 from flask import Flask
+from sqlalchemy import event
 from app.extensions import db
+from app.kyc.models import KycRecord
+from app.identity.models.user import User
 from app.events.models import Event, TicketType, EventRegistration, Waitlist
 from app.events.services import EventService, IdempotencyChecker
-from app.identity.models.user import User
-import app.kyc.models                                          # KycRecord
 import app.identity.individuals.individual_verification        # IndividualVerification
 import app.fan.models
+
+# Note: SQLite BIGINT auto-increment is now handled by app/models/base.py
+# No need for custom event listeners
 
 class TestRegistrationFlow(unittest.TestCase):
     """Test registration flow with concurrency and idempotency"""
@@ -36,18 +40,21 @@ class TestRegistrationFlow(unittest.TestCase):
             db.create_all()
 
             # Create test users
-            self.user1 = User(
-                user_id='user1_123',
-                email='user1@example.com',
-                username='user1'
-            )
-            self.user2 = User(
-                user_id='user2_456',
-                email='user2@example.com',
-                username='user2'
-            )
+            self.user1 = User(email='user1@example.com', username='user1', password_hash='pbkdf2:sha256:test')
+            self.user2 = User(email='user2@example.com', username='user2', password_hash='pbkdf2:sha256:test')
             db.session.add_all([self.user1, self.user2])
-            db.session.commit()
+            # Flush to generate IDs without committing
+            db.session.flush()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                # Workaround for SQLite ID generation
+                self.user1.id = 1
+                self.user2.id = 2
+                db.session.add_all([self.user1, self.user2])
+                db.session.flush()
+                db.session.commit()
 
     def tearDown(self):
         """Clean up after tests"""
@@ -170,9 +177,9 @@ class TestRegistrationFlow(unittest.TestCase):
             users = []
             for i in range(10):
                 user = User(
-                    user_id=f'concurrent_user_{i}',
                     email=f'concurrent{i}@example.com',
-                    username=f'concurrent{i}'
+                    username=f'concurrent{i}',
+                    password_hash='pbkdf2:sha256:test'
                 )
                 db.session.add(user)
                 users.append(user)
@@ -225,9 +232,9 @@ class TestRegistrationFlow(unittest.TestCase):
             # Fill the event
             for i in range(2):
                 user = User(
-                    user_id=f'fill_user_{i}',
                     email=f'fill{i}@example.com',
-                    username=f'fill{i}'
+                    username=f'fill{i}',
+                    password_hash='pbkdf2:sha256:test'
                 )
                 db.session.add(user)
                 db.session.flush()
@@ -247,9 +254,9 @@ class TestRegistrationFlow(unittest.TestCase):
 
             # Now try to register another user - should go to waitlist
             waitlist_user = User(
-                user_id='waitlist_user',
                 email='waitlist@example.com',
-                username='waitlister'
+                username='waitlister',
+                password_hash='pbkdf2:sha256:test'
             )
             db.session.add(waitlist_user)
             db.session.commit()

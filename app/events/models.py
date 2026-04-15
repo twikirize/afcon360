@@ -16,6 +16,9 @@ class Event(BaseModel):
         Index("idx_event_status_featured", "status", "featured"),
         Index("idx_event_is_deleted", "is_deleted"),
         Index("idx_event_slug_unique", "slug", "is_deleted", unique=True),
+        UniqueConstraint("slug", name="uq_event_slug"),
+        Index("idx_event_category", "category"),
+        Index("idx_event_organizer_status", "organizer_id", "status"),
         # Check constraint for date validation
         CheckConstraint("end_date >= start_date", name="ck_event_end_after_start"),
         CheckConstraint("max_capacity >= 0", name="ck_event_max_capacity_non_negative"),
@@ -25,7 +28,7 @@ class Event(BaseModel):
     slug = Column(String(120), nullable=False)  # Made non-unique, combined with is_deleted for uniqueness
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    category = Column(String(50), nullable=False)
+    category = Column(String(50), nullable=False, default="general")
     city = Column(String(100), nullable=False)
     country = Column(String(100), default="Uganda")
     venue = Column(String(255))

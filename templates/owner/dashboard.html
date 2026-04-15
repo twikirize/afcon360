@@ -90,7 +90,7 @@
               {% set verified = verified_users|default(0)|int %}
               {% if total > 0 %}
                 {% set verified_adj = verified if verified <= total else total %}
-                {% set percentage = ((verified_adj / total) * 100)|round(precision=0)|int %}
+                {% set percentage = ((verified_adj / total) * 100)|round(0)|int %}
                 {% if percentage < 0 %}
                   0% of total
                 {% elif percentage > 100 %}
@@ -133,7 +133,7 @@
               {% set active = active_users|default(0)|int %}
               {% if total > 0 %}
                 {% set active_adj = active if active <= total else total %}
-                {% set percentage = ((active_adj / total) * 100)|round(precision=0)|int %}
+                {% set percentage = ((active_adj / total) * 100)|round(0)|int %}
                 {% if percentage < 0 %}
                   0% active
                 {% elif percentage > 100 %}
@@ -281,7 +281,7 @@
                 </div>
                 <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.user_id) }}"
                       onsubmit="return confirm('Remove super admin privileges from {{ admin.username }}?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn-remove">
                     <i class="bi bi-dash-circle"></i> Remove
                   </button>
@@ -297,7 +297,7 @@
             {# Add new super admin #}
             <h6 class="owner-section-label">Add New Super Admin</h6>
             <form method="POST" action="{{ url_for('admin.owner.add_super_admin') }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <div class="owner-form-row">
                 <select name="user_id" class="owner-select" required>
                   <option value="">Select user...</option>

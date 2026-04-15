@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Profile - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Edit Profile: {{ user.username }}</h3>
+                    <p class="text-muted mb-0">KYC and personal information</p>
+                    {% if profile.verification_status == 'verified' %}
+                    <div class="alert alert-danger mt-2">
+                        <i class="bi bi-lock-fill"></i>
+                        <strong>VERIFIED ACCOUNT - LIMITED EDITING</strong><br>
+                        Name, Date of Birth, and National ID cannot be changed after verification.
+                        Address changes require re-verification.
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="update_type" value="profile">
+
+                        <!-- LOCKED FIELDS (Immutable after verification) -->
+                        <div class="card mb-3 bg-light">
+                            <div class="card-header">
+                                <strong>Identity Information (Locked)</strong>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Full Name</label>
+                                    <input type="text" class="form-control"
+                                           value="{{ profile.full_name or 'Not provided' }}"
+                                           {% if profile.verification_status == 'verified' %}disabled{% endif %}>
+                                    {% if profile.verification_status == 'verified' %}
+                                    <small class="text-danger">Cannot be changed after KYC verification.</small>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Date of Birth</label>
+                                    <input type="date" class="form-control"
+                                           value="{{ profile.date_of_birth.strftime('%Y-%m-%d') if profile.date_of_birth else '' }}"
+                                           {% if profile.verification_status == 'verified' %}disabled{% endif %}>
+                                    {% if profile.verification_status == 'verified' %}
+                                    <small class="text-danger">Cannot be changed after KYC verification.</small>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">National ID Number</label>
+                                    <input type="text" class="form-control"
+                                           value="{{ profile.national_id_number or 'Not provided' }}"
+                                           {% if profile.national_id_number %}disabled{% endif %}>
+                                    {% if profile.national_id_number %}
+                                    <small class="text-danger">Cannot be changed. Submit new verification for updates.</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- EDITABLE FIELDS (With compliance checks) -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <strong>Address Information</strong>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="address" class="form-label">Street Address</label>
+                                    <textarea class="form-control" id="address" name="address" rows="2">{{ profile.address or '' }}</textarea>
+                                    {% if profile.verification_status == 'verified' %}
+                                    <small class="text-warning">Address changes will require re-verification for Tier 3+</small>
+                                    {% endif %}
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label for="city" class="form-label">City</label>
+                                        <input type="text" class="form-control" id="city" name="city" value="{{ profile.city or '' }}">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="country" class="form-label">Country</label>
+                                        <select class="form-control" id="country" name="country">
+                                            <option value="">Select Country</option>
+                                            <option value="Uganda" {% if profile.country == 'Uganda' %}selected{% endif %}>Uganda</option>
+                                            <option value="Other" {% if profile.country == 'Other' %}selected{% endif %}>Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Profile Picture -->
+                        <div class="mb-3">
+                            <label for="profile_picture" class="form-label">Profile Picture</label>
+                            <input type="file" class="form-control" id="profile_picture" name="profile_picture" accept="image/*">
+                            <small class="text-muted">Optional. Max 5MB.</small>
+                        </div>
+
+                        <!-- Change Reason (Required for compliance) -->
+                        <div class="mb-3">
+                            <label for="change_reason" class="form-label">Reason for Change <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="change_reason" name="change_reason" rows="2" required></textarea>
+                            <small class="text-muted">All profile changes are audited with the provided reason.</small>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Compliance Notice:</strong> Changes to verified information may trigger re-verification and affect your KYC tier.
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <button type="submit" class="btn btn-primary">Save Profile Changes</button>
+                            <a href="{{ url_for('admin.view_user', user_id=user.public_id) }}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

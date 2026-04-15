@@ -56,7 +56,7 @@
         </div>
         <div class="col-md-4 text-end">
           <form action="{{ url_for('admin.owner.exit_impersonation') }}" method="POST" style="display: inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
             <button type="submit" class="btn btn-light btn-sm" style="font-size: 11px; padding: 4px 12px; font-weight: bold; color: #ff4757; border: none;">
               <i class="bi bi-box-arrow-right me-1"></i> EXIT IMPERSONATION
             </button>
@@ -113,7 +113,7 @@
           {% endif %}
           <li class="menu-item auth">
             <form method="POST" action="{{ url_for('auth.logout') }}" style="display: inline;">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
               <button type="submit" class="logout-btn" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; font: inherit;">
                 Logout
               </button>
@@ -191,7 +191,7 @@
       {% if current_user.is_authenticated %}
         <a class="drawer-link" href="{{ links.wallet_dashboard }}">👛 Wallet</a>
         <form method="POST" action="{{ url_for('auth.logout') }}" style="display: block; width: 100%; margin: 0; padding: 0;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
           <button type="submit" class="drawer-link drawer-auth" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
             Logout
           </button>
