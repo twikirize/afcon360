@@ -47,6 +47,7 @@
 
                     {# Registration Form #}
                     <form method="POST" id="registration-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label class="form-label">Full Name *</label>
                             <input type="text" name="full_name" class="form-control"
@@ -172,9 +173,6 @@ ticketSelect.addEventListener('change', function() {
 document.getElementById('registration-form').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    const formData = new FormData(this);
-    const data = Object.fromEntries(formData.entries());
-
     // Show loading state
     const submitBtn = document.getElementById('submit-btn');
     const originalText = submitBtn.innerHTML;
@@ -182,23 +180,36 @@ document.getElementById('registration-form').addEventListener('submit', async fu
     submitBtn.disabled = true;
 
     try {
+        // Get the form data
+        const formData = new FormData(this);
+
+        // Send the request
         const response = await fetch(window.location.href, {
             method: 'POST',
+            body: formData,
             headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify(data)
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-            window.location.href = result.redirect;
+        // Check if the response is JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const result = await response.json();
+            if (result.success) {
+                // Redirect to the confirmation page
+                window.location.href = result.redirect;
+                return;
+            } else {
+                alert('Error: ' + (result.error || 'Registration failed'));
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+                return;
+            }
         } else {
-            alert('Error: ' + result.error);
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
+            // If not JSON, the server might be redirecting directly
+            // In this case, let the form submit normally
+            this.submit();
         }
     } catch (error) {
         alert('Error: ' + error.message);

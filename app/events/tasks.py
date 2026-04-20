@@ -216,6 +216,20 @@ def expire_pending_registrations(self):
         except Exception as sig_error:
             logger.warning(f"Failed to send capacity released signals: {sig_error}")
 
+        # Trigger waitlist auto-conversion for each released capacity bucket
+        for key, count in capacity_released.items():
+            event_id, ticket_type_id = key.split(':')
+            try:
+                # Call the waitlist conversion task asynchronously
+                process_waitlist_auto_conversion.delay(
+                    event_id=int(event_id),
+                    ticket_type_id=int(ticket_type_id),
+                    seats_released=count
+                )
+                logger.info(f"Triggered waitlist auto-conversion for event {event_id}, ticket type {ticket_type_id}, seats {count}")
+            except Exception as task_error:
+                logger.error(f"Failed to trigger waitlist auto-conversion task: {task_error}")
+
         logger.info(f"Reaper expired {expired_count} pending registrations, released {len(capacity_released)} capacity buckets")
 
     return {
@@ -224,6 +238,106 @@ def expire_pending_registrations(self):
         'timestamp': datetime.utcnow().isoformat()
     }
 
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=330,
+    acks_late=True
+)
+def process_waitlist_auto_conversion(self, event_id, ticket_type_id, seats_released):
+    """
+    Convert waitlisted entries to confirmed registrations when capacity becomes available.
+    This task should be triggered after capacity is released (e.g., from expired registrations).
+    """
+    app = create_flask_app()
+    with app.app_context():
+        from app.extensions import db
+        from app.events.models import Waitlist, TicketType, Event
+        from sqlalchemy import and_
+
+        try:
+            # Lock the ticket type to prevent race conditions
+            ticket_type = TicketType.query.with_for_update().filter_by(
+                id=ticket_type_id,
+                event_id=event_id
+            ).first()
+
+            if not ticket_type:
+                logger.error(f"Ticket type {ticket_type_id} not found for event {event_id}")
+                return {"status": "failed", "reason": "ticket_type_not_found"}
+
+            # Find waitlist entries for this event and ticket type
+            # Sort by position (earliest first)
+            waitlist_entries = Waitlist.query.filter(
+                and_(
+                    Waitlist.event_id == event_id,
+                    Waitlist.ticket_type_id == ticket_type_id,
+                    Waitlist.status == 'pending'
+                )
+            ).order_by(Waitlist.position.asc()).limit(seats_released).all()
+
+            converted_count = 0
+            for entry in waitlist_entries:
+                try:
+                    # Use EventService to register the user from waitlist
+                    # We need to import EventService here
+                    from app.events.services import EventService
+
+                    # Register the user for the event
+                    registration_result = EventService.register_for_event_optimistic(
+                        event_id=event_id,
+                        user_id=entry.user_id,
+                        ticket_type_id=ticket_type_id,
+                        registration_data={
+                            'full_name': entry.user.full_name if entry.user else '',
+                            'email': entry.email,
+                            'phone': entry.phone,
+                            'registered_by': 'waitlist_auto_conversion'
+                        }
+                    )
+
+                    if registration_result and registration_result.get('success'):
+                        # Mark the waitlist entry as converted
+                        entry.mark_converted()
+                        db.session.add(entry)
+                        converted_count += 1
+                        logger.info(f"Successfully converted waitlist entry {entry.id} to registration")
+                    else:
+                        logger.error(f"Failed to register waitlist entry {entry.id}: {registration_result}")
+
+                except Exception as e:
+                    logger.error(f"Failed to convert waitlist entry {entry.id}: {e}")
+                    # Continue with next entry
+
+            # Commit all changes
+            db.session.commit()
+
+            logger.info(f"Waitlist auto-conversion: converted {converted_count} entries for event {event_id}, ticket type {ticket_type_id}")
+
+            return {
+                "status": "success",
+                "converted_count": converted_count,
+                "event_id": event_id,
+                "ticket_type_id": ticket_type_id,
+                "seats_released": seats_released
+            }
+
+        except Exception as e:
+            logger.error(f"Waitlist auto-conversion task failed: {e}")
+            db.session.rollback()
+            # Retry the task
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+            else:
+                return {
+                    "status": "failed",
+                    "reason": str(e),
+                    "event_id": event_id,
+                    "ticket_type_id": ticket_type_id
+                }
 
 @celery_app.task(
     name='events.release_expired_capacity',

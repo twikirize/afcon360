@@ -1,45 +1,183 @@
 {% extends "base.html" %}
 {% block title %}Security Dashboard - Owner{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/owner.css') }}">
+{% endblock %}
 {% block content %}
-<div class="container mt-4">
-    <h1><i class="bi bi-shield-lock"></i> Security Dashboard</h1>
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="display-5 text-gradient"><i class="bi bi-shield-lock me-3"></i>Security Dashboard</h1>
+        <div class="btn-group">
+            <a href="{{ url_for('admin.owner.export_settings') }}" class="btn btn-outline-info">
+                <i class="bi bi-download"></i> Export Settings
+            </a>
+            <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="bi bi-upload"></i> Import Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- Status Overview -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card status-card bg-primary bg-gradient text-white">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-shield-check"></i> Lockdown</h5>
+                    <p class="card-text display-6">
+                        {% if settings_by_category.get('security', [])|selectattr('key', 'equalto', 'EMERGENCY_LOCKDOWN')|first %}
+                            {% set lockdown = settings_by_category.get('security', [])|selectattr('key', 'equalto', 'EMERGENCY_LOCKDOWN')|first %}
+                            {{ 'ACTIVE' if lockdown.value == 'true' else 'Inactive' }}
+                        {% else %}
+                            Inactive
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card status-card bg-warning bg-gradient text-dark">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-tools"></i> Maintenance</h5>
+                    <p class="card-text display-6">
+                        {% if settings_by_category.get('system', [])|selectattr('key', 'equalto', 'MAINTENANCE_MODE')|first %}
+                            {% set maintenance = settings_by_category.get('system', [])|selectattr('key', 'equalto', 'MAINTENANCE_MODE')|first %}
+                            {{ 'ACTIVE' if maintenance.value == 'true' else 'Inactive' }}
+                        {% else %}
+                            Inactive
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card status-card bg-success bg-gradient text-white">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-speedometer2"></i> Rate Limiting</h5>
+                    <p class="card-text display-6">
+                        {% if settings_by_category.get('security', [])|selectattr('key', 'equalto', 'RATE_LIMIT_ENABLED')|first %}
+                            {% set rate = settings_by_category.get('security', [])|selectattr('key', 'equalto', 'RATE_LIMIT_ENABLED')|first %}
+                            {{ 'Enabled' if rate.value == 'true' else 'Disabled' }}
+                        {% else %}
+                            Enabled
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card status-card bg-info bg-gradient text-white">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-clipboard-data"></i> Audit Logging</h5>
+                    <p class="card-text display-6">
+                        {% if settings_by_category.get('security', [])|selectattr('key', 'equalto', 'AUDIT_LOGGING_ENABLED')|first %}
+                            {% set audit = settings_by_category.get('security', [])|selectattr('key', 'equalto', 'AUDIT_LOGGING_ENABLED')|first %}
+                            {{ 'Enabled' if audit.value == 'true' else 'Disabled' }}
+                        {% else %}
+                            Enabled
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Emergency Controls -->
-    <div class="card mb-4">
-        <div class="card-header bg-danger text-white">Emergency Controls</div>
+    <div class="card mb-4 shadow-lg border-0">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-exclamation-triangle-fill me-2"></i>Emergency Controls</span>
+            <form method="POST" action="{{ url_for('admin.owner.toggle_maintenance') }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="enabled" value="true">
+                <button type="submit" class="btn btn-warning btn-sm">
+                    <i class="bi bi-tools"></i> Toggle Maintenance
+                </button>
+            </form>
+        </div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('admin.owner.emergency_lockdown') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="btn btn-danger">Activate Emergency Lockdown</button>
-            </form>
-            <form method="POST" action="{{ url_for('admin.owner.disable_lockdown') }}" class="mt-2">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="btn btn-success">Disable Lockdown</button>
-            </form>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-danger">Activate Emergency Lockdown</h5>
+                            <p class="card-text">Immediately restrict all non-essential system access.</p>
+                            <form method="POST" action="{{ url_for('admin.owner.emergency_lockdown') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="btn btn-danger btn-lg px-5">
+                                    <i class="bi bi-shield-lock-fill me-2"></i>Activate Lockdown
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-success">Disable Lockdown</h5>
+                            <p class="card-text">Restore normal system operations.</p>
+                            <form method="POST" action="{{ url_for('admin.owner.disable_lockdown') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="btn btn-success btn-lg px-5">
+                                    <i class="bi bi-shield-check me-2"></i>Disable Lockdown
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Settings by Category -->
     {% for category, settings in settings_by_category.items() %}
-    <div class="card mb-4">
-        <div class="card-header bg-secondary text-white">{{ category|upper }}</div>
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-gear-fill me-2"></i>{{ category|upper }}</span>
+            <span class="badge bg-light text-dark">{{ settings|length }} settings</span>
+        </div>
         <div class="card-body">
             {% for setting in settings %}
-            <div class="mb-3 pb-2 border-bottom">
-                <form method="POST" action="{{ url_for('admin.owner.update_setting') }}">
+            <div class="mb-3 pb-3 border-bottom">
+                <form method="POST" action="{{ url_for('admin.owner.update_setting') }}" class="setting-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="key" value="{{ setting.key }}">
                     <input type="hidden" name="value_type" value="{{ setting.value_type }}">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <strong>{{ setting.key }}</strong>
-                            <p class="text-muted small">{{ setting.description }}</p>
+                    <div class="row align-items-center">
+                        <div class="col-md-5">
+                            <div class="d-flex align-items-start">
+                                <div class="me-3 mt-1">
+                                    <i class="bi bi-sliders text-primary"></i>
+                                </div>
+                                <div>
+                                    <strong class="d-block">{{ setting.key }}</strong>
+                                    <small class="text-muted">{{ setting.description }}</small>
+                                    <div class="mt-1">
+                                        <span class="badge bg-secondary">{{ setting.value_type }}</span>
+                                        <span class="badge bg-light text-dark">{{ setting.category }}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-4">
-                            <input type="text" name="value" class="form-control" value="{{ setting.value }}">
+                        <div class="col-md-5">
+                            {% if setting.value_type == 'bool' %}
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch"
+                                       name="value" value="true" {% if setting.value == 'true' %}checked{% endif %}
+                                       onchange="this.form.submit()">
+                                <label class="form-check-label">
+                                    {{ 'Enabled' if setting.value == 'true' else 'Disabled' }}
+                                </label>
+                            </div>
+                            {% else %}
+                            <input type="text" name="value" class="form-control form-control-lg"
+                                   value="{{ setting.value }}">
+                            {% endif %}
                         </div>
                         <div class="col-md-2">
-                            <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                            {% if setting.value_type != 'bool' %}
+                            <button type="submit" class="btn btn-primary btn-block">
+                                <i class="bi bi-check-circle"></i> Update
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                 </form>
@@ -49,4 +187,49 @@
     </div>
     {% endfor %}
 </div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importModalLabel">Import Settings</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin.owner.import_settings') }}" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label for="settingsFile" class="form-label">Select JSON file</label>
+                        <input class="form-control" type="file" id="settingsFile" name="settings_file" accept=".json">
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        This will overwrite existing settings with matching keys.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Import Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add animation to status cards
+    const cards = document.querySelectorAll('.status-card');
+    cards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-5px)';
+            this.style.transition = 'transform 0.3s ease';
+        });
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+        });
+    });
+});
+</script>
 {% endblock %}

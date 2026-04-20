@@ -136,6 +136,22 @@ class Config:
     SECURITY_POST_LOGOUT_VIEW = os.getenv("SECURITY_POST_LOGOUT_VIEW", "/")
     SECURITY_POST_REGISTER_VIEW = os.getenv("SECURITY_POST_REGISTER_VIEW", "/dashboard")
 
+    # Custom verification toggles
+    REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
+    ALLOW_USERNAME_LOGIN = os.getenv("ALLOW_USERNAME_LOGIN", "true").lower() == "true"
+
+    # ============================================================================
+    # CSRF CONFIGURATION
+    # ============================================================================
+    WTF_CSRF_ENABLED = os.getenv('WTF_CSRF_ENABLED', 'true').lower() == 'true'
+    WTF_CSRF_SECRET_KEY = os.getenv('WTF_CSRF_SECRET_KEY') or SECRET_KEY
+    WTF_CSRF_TIME_LIMIT = int(os.getenv('WTF_CSRF_TIME_LIMIT', '3600'))
+    WTF_CSRF_SSL_STRICT = os.getenv('WTF_CSRF_SSL_STRICT', 'false').lower() == 'true'
+    WTF_CSRF_HEADERS = ['X-CSRFToken', 'X-CSRF-Token']
+    WTF_CSRF_FIELD_NAME = 'csrf_token'
+    WTF_CSRF_CHECK_DEFAULT = True
+    WTF_CSRF_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE']
+
     # ============================================================================
     # IDEMPOTENCY & AUDIT
     # ============================================================================

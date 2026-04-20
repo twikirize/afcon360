@@ -183,10 +183,352 @@ h3 { font-size: 1.2rem; font-weight: 600; }
 .btn:not(.primary) { background: transparent; color: var(--green-mid); border-color: var(--green-mid); }
 .btn:not(.primary):hover { background: var(--gold); color: var(--text); border-color: var(--gold); }
 
+/* ── PROFILE COMPLETION RING & BADGES ───────────────────────── */
+.avatar-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.avatar-progress-ring {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    width: calc(100% + 8px);
+    height: calc(100% + 8px);
+    border-radius: 50%;
+    background: conic-gradient(
+        var(--green-mid) 0%,
+        var(--green-mid) var(--progress, 0%),
+        rgba(0, 100, 0, 0.15) var(--progress, 0%),
+        rgba(0, 100, 0, 0.15) 100%
+    );
+    mask: radial-gradient(circle, transparent 65%, black 66%);
+    -webkit-mask: radial-gradient(circle, transparent 65%, black 66%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.avatar-progress-ring::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    border-radius: 50%;
+    background: var(--white);
+    z-index: -1;
+}
+
+.avatar-wrapper img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    position: relative;
+    z-index: 2;
+    border: 3px solid var(--white);
+    box-sizing: border-box;
+}
+
+/* Role badges */
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-family: var(--font-head);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    color: var(--white);
+    margin-left: 0.5rem;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.role-badge.owner {
+    background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%);
+    border: 1px solid #A0522D;
+}
+
+.role-badge.super-admin {
+    background: linear-gradient(135deg, #6A0DAD 0%, #9D4EDD 100%);
+    border: 1px solid #7B2CBF;
+}
+
+.role-badge.admin {
+    background: linear-gradient(135deg, #00509E 0%, #1E88E5 100%);
+    border: 1px solid #1565C0;
+}
+
+.role-badge.org-admin {
+    background: linear-gradient(135deg, #0D5D56 0%, #26A69A 100%);
+    border: 1px solid #00897B;
+}
+
+.role-badge.fan {
+    background: linear-gradient(135deg, #C2185B 0%, #E91E63 100%);
+    border: 1px solid #AD1457;
+}
+
+/* Tier badges */
+.tier-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-family: var(--font-head);
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--white);
+    margin-right: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    flex-shrink: 0;
+}
+
+.tier-badge.tier-0 {
+    background: linear-gradient(135deg, #757575 0%, #9E9E9E 100%);
+    border: 2px solid #616161;
+}
+
+.tier-badge.tier-1 {
+    background: linear-gradient(135deg, #CD7F32 0%, #E6AC7C 100%);
+    border: 2px solid #B8860B;
+}
+
+.tier-badge.tier-2 {
+    background: linear-gradient(135deg, #C0C0C0 0%, #E0E0E0 100%);
+    border: 2px solid #A9A9A9;
+}
+
+.tier-badge.tier-3 {
+    background: linear-gradient(135deg, #FFD700 0%, #FFF8C6 100%);
+    border: 2px solid #DAA520;
+    color: #8B6914;
+}
+
+.tier-badge.tier-4 {
+    background: linear-gradient(135deg, #E5E4E2 0%, #FFFFFF 100%);
+    border: 2px solid #C0C0C0;
+    color: #555;
+}
+
+.tier-badge.tier-5 {
+    background: linear-gradient(135deg, #50C878 0%, #A7FFC9 100%);
+    border: 2px solid #32CD32;
+    color: #006400;
+}
+
+/* User dropdown enhancements for mobile */
+.user-dropdown {
+    position: relative;
+}
+
+.user-dropdown .dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 280px;
+    background: var(--white);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 1rem;
+    z-index: 1000;
+    margin-top: 0.5rem;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+}
+
+.user-dropdown.open .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.dropdown-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--green-light);
+    margin-bottom: 0.75rem;
+}
+
+.dropdown-header .avatar-wrapper {
+    width: 48px;
+    height: 48px;
+}
+
+.dropdown-header .user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.dropdown-header .user-name {
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dropdown-header .user-roles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    padding: 0.6rem 0.5rem;
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    transition: background 0.15s;
+    gap: 0.75rem;
+}
+
+.dropdown-item:hover {
+    background: var(--green-light);
+    color: var(--green-dark);
+}
+
+.dropdown-item .icon {
+    width: 20px;
+    text-align: center;
+    font-size: 1rem;
+    color: var(--green-mid);
+    flex-shrink: 0;
+}
+
+.dropdown-footer {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--green-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.progress-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.progress-text {
+    font-family: var(--font-head);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--green-mid);
+}
+
 /* ── RESPONSIVE GLOBAL ──────────────────────────────────────── */
-@media (max-width: 1024px) { .hamburger { display: flex; } .desktop-nav { display: none; } .site-header { padding: 0 1rem; } }
-@media (max-width: 768px) { main#main { margin: 1rem 0.75rem 2.5rem; padding: 1.25rem 1rem; } .footer-inner { flex-direction: column; gap: 0.5rem; text-align: center; } }
-@media (max-width: 480px) { :root { --header-h: 54px; } .brand-link { font-size: 1.1rem; } }
+@media (max-width: 1024px) {
+    .hamburger { display: flex; }
+    .desktop-nav { display: none; }
+    .site-header { padding: 0 1rem; }
+
+    /* Mobile user dropdown adjustments */
+    .user-dropdown .dropdown-menu {
+        position: fixed;
+        top: var(--header-h);
+        left: 0;
+        right: 0;
+        min-width: auto;
+        width: 100vw;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        margin-top: 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        max-height: calc(100vh - var(--header-h));
+        overflow-y: auto;
+    }
+
+    .dropdown-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.75rem;
+    }
+
+    .dropdown-header .user-info {
+        width: 100%;
+    }
+
+    .dropdown-header .user-roles {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    main#main {
+        margin: 1rem 0.75rem 2.5rem;
+        padding: 1.25rem 1rem;
+    }
+    .footer-inner {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+
+    /* Adjust avatar sizes on mobile */
+    .avatar-wrapper {
+        width: 56px;
+        height: 56px;
+    }
+
+    .role-badge {
+        font-size: 0.6rem;
+        padding: 0.15rem 0.5rem;
+        margin-left: 0.3rem;
+    }
+
+    .tier-badge {
+        min-width: 22px;
+        height: 22px;
+        font-size: 0.65rem;
+    }
+}
+
+@media (max-width: 480px) {
+    :root {
+        --header-h: 54px;
+    }
+    .brand-link {
+        font-size: 1.1rem;
+    }
+
+    /* Further mobile adjustments */
+    .avatar-wrapper {
+        width: 48px;
+        height: 48px;
+    }
+
+    .dropdown-item {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.9rem;
+    }
+}
 
 /* =============================================================
    SUPER ADMIN  (sad-* — zero conflict with site styles)

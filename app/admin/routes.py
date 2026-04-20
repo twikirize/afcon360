@@ -23,6 +23,16 @@ from app.auth.decorators import (
 )
 from app.profile.models import get_profile_by_user
 
+# Import event-related modules
+try:
+    from app.events.services import EventService
+    from app.events.models import Event
+    EVENTS_MODULE_AVAILABLE = True
+except ImportError:
+    EVENTS_MODULE_AVAILABLE = False
+    EventService = None
+    Event = None
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -113,6 +123,29 @@ def super_dashboard():
         manageable_categories = ManageableCategory.query.filter_by(is_active=True).all()
         manageable_items = ManageableItem.query.filter_by(is_approved=True).all()
 
+        # Event statistics
+        total_events = 0
+        active_events = 0
+        pending_events = 0
+        total_registrations = 0
+        pending_events_list = []
+
+        if EVENTS_MODULE_AVAILABLE and EventService and Event:
+            try:
+                event_stats = EventService.get_admin_dashboard_data()
+                total_events = event_stats.get('total_events', 0)
+                active_events = event_stats.get('active_events', 0)
+                pending_events = event_stats.get('pending_events', 0)
+                total_registrations = event_stats.get('total_registrations', 0)
+
+                # Get pending events list
+                pending_events_list = Event.query.filter_by(
+                    status='pending',
+                    is_deleted=False
+                ).order_by(Event.created_at.desc()).limit(10).all()
+            except Exception as e:
+                logger.warning(f"Could not load event statistics: {e}")
+
         return render_template(
             "super_admindashboard.html",
             total_users=total_users,
@@ -127,6 +160,12 @@ def super_dashboard():
             tourism_features=current_app.config.get("TOURISM_FEATURES", {}),
             accommodation_features=current_app.config.get("ACCOMMODATION_FEATURES", {}),
             transport_features=current_app.config.get("TRANSPORT_FEATURES", {}),
+            # Event statistics
+            total_events=total_events,
+            active_events=active_events,
+            pending_events=pending_events,
+            total_registrations=total_registrations,
+            pending_events_list=pending_events_list,
         )
     except Exception as e:
         db.session.rollback()
@@ -138,7 +177,7 @@ def super_dashboard():
 # -----------------------------
 # User Management
 # -----------------------------
-@admin_bp.route("/users", endpoint="manage_users")
+@admin_bp.route("/users", endpoint="manage_users", methods=['GET'])
 @login_required
 @admin_required
 def manage_users():
@@ -576,6 +615,7 @@ def view_user(user_id):
     """View detailed user information."""
     from app.identity.models.user import User
     from flask import abort
+    from app.auth.kyc_compliance import calculate_kyc_tier
 
     print("=" * 60)
     print(f"DEBUG view_user: user_id parameter = '{user_id}'")
@@ -625,9 +665,18 @@ def view_user(user_id):
     if user_roles is None:
         user_roles = []
 
+    # Get KYC tier information
+    try:
+        kyc_info = calculate_kyc_tier(user.id)
+        print(f"DEBUG view_user: kyc_info = {kyc_info}")
+    except Exception as e:
+        print(f"DEBUG view_user: Error calculating KYC tier: {e}")
+        kyc_info = None
+
     return render_template("admin/view_user.html",
                           user=user,
-                          user_roles=user_roles)
+                          user_roles=user_roles,
+                          kyc_info=kyc_info)
 
 @admin_bp.route("/users/username/<string:username>/view", endpoint="view_user_by_username")
 @login_required
@@ -635,8 +684,25 @@ def view_user(user_id):
 def view_user_by_username(username):
     """View user by username instead of UUID."""
     from app.identity.models.user import User
+    from app.profile.models import get_profile_by_user
+    from app.auth.kyc_compliance import calculate_kyc_tier
+
     user = User.query.filter_by(username=username).first_or_404()
-    return render_template("admin/view_user.html", user=user, user_roles=get_user_roles_map([user]).get(user.id, []))
+    profile = get_profile_by_user(user)
+    user_roles = get_user_roles_map([user]).get(user.id, [])
+
+    # Get KYC tier information
+    try:
+        kyc_info = calculate_kyc_tier(user.id)
+    except Exception as e:
+        print(f"Error calculating KYC tier for user {username}: {e}")
+        kyc_info = None
+
+    return render_template("admin/view_user.html",
+                          user=user,
+                          profile=profile,
+                          user_roles=user_roles,
+                          kyc_info=kyc_info)
 
 @admin_bp.route("/users/username/<string:username>/update", methods=["GET", "POST"], endpoint="update_user_by_username")
 @login_required
@@ -645,7 +711,46 @@ def update_user_by_username(username):
     """Update user by username instead of UUID."""
     from app.identity.models.user import User
     user = User.query.filter_by(username=username).first_or_404()
-    return redirect(url_for('admin.update_user', user_id=user.public_id))
+
+    if request.method == "POST":
+        # Change reason is optional for account updates (default reason provided)
+        change_reason = request.form.get('change_reason', '').strip()
+        if not change_reason:
+            change_reason = f"Account update by {current_user.username}"
+
+        # Process changes...
+        if 'username' in request.form:
+            new_username = request.form.get('username', user.username)
+            if new_username != user.username:
+                user.username = new_username
+
+        if 'email' in request.form:
+            new_email = request.form.get('email', user.email)
+            if new_email != user.email:
+                user.email = new_email
+
+        if 'phone' in request.form:
+            new_phone = request.form.get('phone', user.phone)
+            if new_phone != user.phone:
+                user.phone = new_phone
+
+        db.session.commit()
+
+        # Audit log the change
+        from app.audit.comprehensive_audit import AuditService
+        AuditService.data_change(
+            entity_type="user",
+            entity_id=user.public_id,
+            operation="update",
+            changed_by=current_user.id,
+            ip_address=request.remote_addr,
+            extra_data={"reason": change_reason}
+        )
+
+        flash(f"User {user.username} updated successfully.", "success")
+        return redirect(url_for('admin.view_user_by_username', username=user.username))
+
+    return render_template("admin/update_user.html", user=user)
 
 @admin_bp.route("/users/username/<string:username>/profile", methods=["GET", "POST"], endpoint="update_profile_by_username")
 @login_required
@@ -653,8 +758,87 @@ def update_user_by_username(username):
 def update_profile_by_username(username):
     """Update user profile by username instead of UUID."""
     from app.identity.models.user import User
+    from app.profile.models import get_profile_by_user, UserProfile
+    from app.auth.kyc_compliance import calculate_kyc_tier
+
     user = User.query.filter_by(username=username).first_or_404()
-    return redirect(url_for('admin.update_profile', user_id=user.public_id))
+    profile = get_profile_by_user(user)
+    if not profile:
+        profile = UserProfile(user_id=user.id)
+        db.session.add(profile)
+        db.session.commit()
+
+    kyc_info = calculate_kyc_tier(user.id)
+
+    if request.method == "POST":
+        change_reason = request.form.get('change_reason', '').strip()
+        if not change_reason:
+            flash("Reason for change is required.", "danger")
+            return render_template("admin/update_profile.html", user=user, profile=profile, kyc_info=kyc_info)
+
+        changes_made = {}
+
+        # Update profile fields
+        new_address = request.form.get('address', '')
+        if new_address != (profile.address or ''):
+            profile.address = new_address
+            changes_made['address'] = {'old': profile.address, 'new': new_address}
+
+        if hasattr(profile, 'city'):
+            new_city = request.form.get('city', '')
+            if new_city != (profile.city or ''):
+                profile.city = new_city
+                changes_made['city'] = {'old': profile.city, 'new': new_city}
+
+        if hasattr(profile, 'country'):
+            new_country = request.form.get('country', '')
+            if new_country != (profile.country or ''):
+                profile.country = new_country
+                changes_made['country'] = {'old': profile.country, 'new': new_country}
+
+        # Handle phone number update with uniqueness validation
+        new_phone = request.form.get('phone', '').strip()
+
+        if new_phone:
+            # Check if phone is already used by ANOTHER user (different ID)
+            from app.identity.models.user import User
+            existing_user = User.query.filter(User.phone == new_phone, User.id != user.id).first()
+            if existing_user:
+                flash(f"Phone number {new_phone} is already registered to another user: {existing_user.username}. Please use a different phone number.", "danger")
+                return render_template("admin/update_profile.html", user=user, profile=profile, kyc_info=kyc_info)
+
+            # Only update if phone number changed
+            if new_phone != (user.phone or ''):
+                user.phone = new_phone
+                changes_made['phone'] = {'old': user.phone, 'new': new_phone}
+
+        if changes_made:
+            db.session.commit()
+
+            # Log the changes to audit service
+            try:
+                from app.audit.comprehensive_audit import AuditService
+                AuditService.data_change(
+                    entity_type="user_profile",
+                    entity_id=user.public_id,
+                    operation="update",
+                    old_value={k: v['old'] for k, v in changes_made.items()},
+                    new_value={k: v['new'] for k, v in changes_made.items()},
+                    changed_by=current_user.id,
+                    ip_address=request.remote_addr,
+                    user_agent=request.user_agent.string if request.user_agent else None,
+                    extra_data={"reason": change_reason}
+                )
+            except Exception as e:
+                logger.error(f"Failed to log profile update audit: {e}")
+
+            flash(f"Profile updated successfully. Changes logged for audit.", "success")
+        else:
+            flash("No changes were made.", "info")
+
+        return redirect(url_for('admin.view_user_by_username', username=user.username))
+
+    return render_template("admin/update_profile.html", user=user, profile=profile, kyc_info=kyc_info)
 
 
 @admin_bp.route("/users/<string:user_id>/roles/add/<string:role_name>", methods=["POST"], endpoint="add_user_role")
@@ -729,6 +913,47 @@ def remove_user_role(user_id, role_name):
 
     return redirect(url_for("admin.view_user", user_id=user.public_id))
 
+
+# -----------------------------
+# Email Verification Toggle
+# -----------------------------
+@admin_bp.route("/toggle-email-verification", methods=["POST"], endpoint="toggle_email_verification")
+@login_required
+@admin_required
+def toggle_email_verification():
+    """Toggle email verification requirement."""
+    try:
+        # Get current value, default to True if not set
+        current_value = current_app.config.get('REQUIRE_EMAIL_VERIFICATION', True)
+        new_value = not current_value
+
+        # Update the configuration
+        current_app.config['REQUIRE_EMAIL_VERIFICATION'] = new_value
+
+        # Audit the change
+        try:
+            from app.audit.comprehensive_audit import AuditService, AuditSeverity
+            AuditService.security(
+                event_type="email_verification_toggle",
+                severity=AuditSeverity.WARNING,
+                description=f"Email verification requirement {'enabled' if new_value else 'disabled'} by {current_user.username}",
+                user_id=current_user.id,
+                ip_address=request.remote_addr,
+                metadata={
+                    "old_value": current_value,
+                    "new_value": new_value,
+                    "action": "toggle_email_verification"
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to log email verification toggle: {e}")
+
+        flash(f"Email verification requirement {'enabled' if new_value else 'disabled'} successfully.", "success")
+    except Exception as e:
+        logger.error(f"Error toggling email verification: {e}")
+        flash("Error toggling email verification requirement.", "danger")
+
+    return redirect(url_for("admin.super_dashboard"))
 
 # -----------------------------
 # Module Toggles (Owner Only - Most Sensitive)
@@ -1382,6 +1607,218 @@ def events_admin_events():
     """Placeholder for events management page."""
     flash("Events management is not yet implemented.", "info")
     return redirect(url_for("admin.super_dashboard"))
+
+# -----------------------------
+# User Activity Log
+# -----------------------------
+@admin_bp.route("/users/<string:user_id>/activity", endpoint="user_activity")
+@login_required
+@admin_required
+def user_activity(user_id):
+    """View user activity history (logins, actions, etc.)"""
+    from app.identity.models.user import User
+    from app.audit.comprehensive_audit import (
+        SecurityEventLog, DataAccessLog, DataChangeLog, APIAuditLog
+    )
+
+    user = User.query.filter_by(public_id=user_id).first_or_404()
+
+    # Get security events for this user
+    security_events = SecurityEventLog.query.filter_by(
+        user_id=user.id
+    ).order_by(SecurityEventLog.created_at.desc()).limit(50).all()
+
+    # Get data access logs for this user
+    data_access_logs = DataAccessLog.query.filter_by(
+        accessed_by=user.id
+    ).order_by(DataAccessLog.created_at.desc()).limit(50).all()
+
+    # Get data changes made by this user
+    data_changes = DataChangeLog.query.filter_by(
+        changed_by=user.id
+    ).order_by(DataChangeLog.created_at.desc()).limit(50).all()
+
+    # Get API calls made by this user
+    api_calls = APIAuditLog.query.filter_by(
+        user_id=user.id
+    ).order_by(APIAuditLog.created_at.desc()).limit(50).all()
+
+    return render_template(
+        "admin/user_activity.html",
+        user=user,
+        security_events=security_events,
+        data_access_logs=data_access_logs,
+        data_changes=data_changes,
+        api_calls=api_calls
+    )
+
+
+# -----------------------------
+# KYC Document Viewer
+# -----------------------------
+@admin_bp.route("/users/<string:user_id>/kyc-documents", endpoint="view_kyc_documents")
+@login_required
+@admin_required
+def view_kyc_documents(user_id):
+    """View KYC documents for a user."""
+    from app.identity.models.user import User
+    from app.identity.individuals.individual_document import IndividualKYCDocument
+
+    user = User.query.filter_by(public_id=user_id).first_or_404()
+
+    # Get KYC documents
+    kyc_documents = IndividualKYCDocument.query.filter_by(
+        user_id=user.id
+    ).order_by(IndividualKYCDocument.created_at.desc()).all()
+
+    # Get KYC tier info
+    from app.auth.kyc_compliance import calculate_kyc_tier
+    kyc_info = calculate_kyc_tier(user.id)
+
+    return render_template(
+        "admin/kyc_documents.html",
+        user=user,
+        kyc_documents=kyc_documents,
+        kyc_info=kyc_info
+    )
+
+
+# -----------------------------
+# KYC Document Approval
+# -----------------------------
+@admin_bp.route("/users/<string:user_id>/kyc-documents/<int:doc_id>/approve",
+                methods=["POST"], endpoint="approve_kyc_document")
+@login_required
+@require_role('compliance_officer')
+def approve_kyc_document(user_id, doc_id):
+    """Approve a KYC document."""
+    from app.identity.models.user import User
+    from app.identity.individuals.individual_document import IndividualKYCDocument
+    from app.audit.comprehensive_audit import AuditService, AuditSeverity
+
+    user = User.query.filter_by(public_id=user_id).first_or_404()
+    document = IndividualKYCDocument.query.get_or_404(doc_id)
+
+    if document.user_id != user.id:
+        flash("Document does not belong to this user.", "danger")
+        return redirect(url_for("admin.view_kyc_documents", user_id=user_id))
+
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        flash("Approval reason is required.", "danger")
+        return redirect(url_for("admin.view_kyc_documents", user_id=user_id))
+
+    try:
+        old_status = document.status
+        document.status = "approved"
+        document.reviewed_by = current_user.id
+        document.reviewed_at = datetime.utcnow()
+        document.review_notes = reason
+
+        db.session.commit()
+
+        # Log the approval
+        AuditService.data_change(
+            entity_type="kyc_document",
+            entity_id=str(document.id),
+            operation="approve",
+            old_value={"status": old_status},
+            new_value={"status": "approved", "reviewed_by": current_user.id},
+            changed_by=current_user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string if request.user_agent else None,
+            extra_data={"reason": reason, "document_type": document.document_type}
+        )
+
+        flash(f"KYC document {document.document_type} approved successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error approving KYC document: {e}")
+        flash(f"Error approving document: {str(e)}", "danger")
+
+    return redirect(url_for("admin.view_kyc_documents", user_id=user_id))
+
+
+@admin_bp.route("/users/<string:user_id>/kyc-documents/<int:doc_id>/reject",
+                methods=["POST"], endpoint="reject_kyc_document")
+@login_required
+@require_role('compliance_officer')
+def reject_kyc_document(user_id, doc_id):
+    """Reject a KYC document."""
+    from app.identity.models.user import User
+    from app.identity.individuals.individual_document import IndividualKYCDocument
+    from app.audit.comprehensive_audit import AuditService, AuditSeverity
+
+    user = User.query.filter_by(public_id=user_id).first_or_404()
+    document = IndividualKYCDocument.query.get_or_404(doc_id)
+
+    if document.user_id != user.id:
+        flash("Document does not belong to this user.", "danger")
+        return redirect(url_for("admin.view_kyc_documents", user_id=user_id))
+
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        flash("Rejection reason is required.", "danger")
+        return redirect(url_for("admin.view_kyc_documents", user_id=user_id))
+
+    try:
+        old_status = document.status
+        document.status = "rejected"
+        document.reviewed_by = current_user.id
+        document.reviewed_at = datetime.utcnow()
+        document.review_notes = reason
+
+        db.session.commit()
+
+        # Log the rejection
+        AuditService.data_change(
+            entity_type="kyc_document",
+            entity_id=str(document.id),
+            operation="reject",
+            old_value={"status": old_status},
+            new_value={"status": "rejected", "reviewed_by": current_user.id},
+            changed_by=current_user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string if request.user_agent else None,
+            extra_data={"reason": reason, "document_type": document.document_type}
+        )
+
+        flash(f"KYC document {document.document_type} rejected.", "warning")
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error rejecting KYC document: {e}")
+        flash(f"Error rejecting document: {str(e)}", "danger")
+
+    return redirect(url_for("admin.view_kyc_documents", user_id=user_id))
+
+
+# -----------------------------
+# Enhanced Audit Logging for Existing Endpoints
+# -----------------------------
+def _log_role_change(user, action, role_name, changed_by, ip_address, reason=None):
+    """Helper to log role changes to audit service."""
+    from app.audit.comprehensive_audit import AuditService
+
+    try:
+        AuditService.data_change(
+            entity_type="user_role",
+            entity_id=user.public_id,
+            operation=action,
+            old_value={"roles_before": [r.role.name for r in user.roles]},
+            new_value={"roles_after": [r.role.name for r in user.roles]},
+            changed_by=changed_by,
+            ip_address=ip_address,
+            extra_data={
+                "specific_role": role_name,
+                "reason": reason or f"{action} by admin",
+                "username": user.username
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to log role change audit: {e}")
+
 
 # -----------------------------
 # Error Handlers

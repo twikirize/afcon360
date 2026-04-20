@@ -130,6 +130,9 @@ class EventService:
         query = Event.query
         if status:
             query = query.filter_by(status=status)
+        else:
+            # Only show active events to public (not pending/rejected)
+            query = query.filter_by(status='active')
         events = query.order_by(Event.start_date).all()
         return [cls._event_to_dict(event) for event in events]
 
@@ -140,9 +143,29 @@ class EventService:
         return cls._event_to_dict(event) if event else None
 
     @classmethod
-    def create_event(cls, data: Dict, organizer_id: int) -> Tuple[Optional[Dict], Optional[str]]:
-        """Create a new event"""
+    def create_event(cls, data: Dict, user_id: int, creator_type: str = 'individual', organization_id: int = None) -> Tuple[Optional[Dict], Optional[str]]:
+        """Create a new event with authorization checks"""
         try:
+            from app.auth.helpers import has_global_role, has_org_role
+            from app.identity.models.user import User
+            import uuid
+
+            user = User.query.get(user_id)
+            if not user:
+                return None, 'User not found'
+
+            # System admins and event managers can create any type
+            can_create_system = has_global_role(user, 'owner', 'super_admin', 'admin', 'event_manager')
+
+            if creator_type == 'system' and not can_create_system:
+                return None, 'Only system admins can create system events'
+
+            if creator_type == 'organization':
+                if not organization_id:
+                    return None, 'Organization ID required'
+                if not has_org_role(user, organization_id, 'org_owner', 'org_admin'):
+                    return None, 'Not authorized to create events for this organization'
+
             # Generate slug from name
             slug = re.sub(r"[^a-z0-9]+", "-", data["name"].lower()).strip("-")
 
@@ -152,6 +175,23 @@ class EventService:
             while Event.query.filter_by(slug=slug).first():
                 slug = f"{original_slug}-{counter}"
                 counter += 1
+
+            # Determine organizer_id based on creator_type
+            if creator_type == 'organization':
+                organizer_id = organization_id
+            else:
+                organizer_id = user_id
+
+            # Determine status based on permissions
+            status = 'pending'
+            approved_at = None
+            approved_by_id = None
+
+            # Auto-approve if event_manager creates
+            if has_global_role(user, 'event_manager'):
+                status = 'active'
+                approved_at = datetime.utcnow()
+                approved_by_id = user_id
 
             event = Event(
                 slug=slug,
@@ -172,7 +212,16 @@ class EventService:
                 contact_email=data.get("contact_email"),
                 contact_phone=data.get("contact_phone"),
                 event_metadata=data.get("metadata", {}),
-                status='pending',
+                status=status,
+                # Add new ownership fields
+                created_by_type=creator_type,
+                organization_id=organization_id if creator_type == 'organization' else None,
+                is_system_event=(creator_type == 'system'),
+                original_creator_id=user_id,
+                current_owner_type=creator_type,
+                current_owner_id=organization_id if creator_type == 'organization' else user_id,
+                approved_at=approved_at,
+                approved_by_id=approved_by_id,
             )
 
             event.generate_ref()
@@ -209,7 +258,7 @@ class EventService:
 
             db.session.commit()
 
-            logger.info(f"Event created: {event.slug}")
+            logger.info(f"Event created: {event.slug} by user {user_id} (type: {creator_type})")
             return cls._event_to_dict(event), None
 
         except Exception as e:
@@ -292,16 +341,16 @@ class EventService:
 
     @classmethod
     def get_featured_event(cls) -> Optional[Dict]:
-        """Get the featured event (AFCON priority)"""
+        """Get the featured event (only active)"""
         # Try featured flag first
-        featured = Event.query.filter_by(featured=True, status="active").first()
+        featured = Event.query.filter_by(featured=True, status='active').first()
         if featured:
             return cls._event_to_dict(featured)
 
         # Otherwise get next upcoming event
         from datetime import date
         upcoming = Event.query.filter(
-            Event.status == "active",
+            Event.status == 'active',
             Event.start_date >= date.today()
         ).order_by(Event.start_date).first()
 
@@ -309,10 +358,10 @@ class EventService:
 
     @classmethod
     def get_upcoming_events(cls, limit: int = 3, exclude_featured: bool = False) -> List[Dict]:
-        """Get upcoming events"""
+        """Get upcoming events (only active ones)"""
         from datetime import date
         query = Event.query.filter(
-            Event.status == "active",
+            Event.status == 'active',
             Event.start_date >= date.today()
         ).order_by(Event.start_date)
 
@@ -392,12 +441,16 @@ class EventService:
     @classmethod
     def _event_to_dict(cls, event: Event) -> Dict:
         """Convert Event model to dict"""
+        # Normalize website field: empty string becomes None
+        website = event.website
+        if website == "":
+            website = None
+
         return {
             # Core fields
-            "id": event.slug,
-            "event_id": event.id,
+            "id": event.public_id,  # API consumers get UUID
+            "slug": event.slug,  # Keep slug for browser URLs
             "event_ref": event.event_ref,
-            "slug": event.slug,
             "name": event.name,
             "description": event.description,
             "category": event.category,
@@ -425,14 +478,13 @@ class EventService:
             "organizer_id": event.organizer_id,
 
             # Contact & Media
-            "website": event.website,
+            "website": website,
             "contact_email": event.contact_email,
             "contact_phone": event.contact_phone,
             "metadata": event.event_metadata or {},
 
             # Approval Workflow Fields
             "approved_at": event.approved_at.isoformat() if event.approved_at else None,
-            "approved_by_id": event.approved_by_id,
             "rejected_at": event.rejected_at.isoformat() if event.rejected_at else None,
             "rejection_reason": event.rejection_reason,
 
@@ -502,6 +554,7 @@ class EventService:
         Returns: (registration_dict, qr_code_base64, error_message)
         """
         from sqlalchemy import func, and_
+        from decimal import Decimal
 
         # Check idempotency
         if idempotency_key:
@@ -554,7 +607,21 @@ class EventService:
                         if not ticket_type:
                             return None, None, "No active ticket types available for this event."
 
-                    # 3. Handle capacity with atomic SQL update
+                    # 3. Validate discount code if present
+                    discount_amount = Decimal("0.00")
+                    discount_code = data.get("discount_code")
+                    if discount_code:
+                        discount, error = cls.validate_discount_code(event_slug, discount_code, ticket_type_id)
+                        if error:
+                            return None, None, f"Discount code error: {error}"
+                        if discount:
+                            discount_amount = discount
+
+                    # Calculate final price after discount
+                    ticket_price = Decimal(str(ticket_type.price))
+                    final_price = max(ticket_price - discount_amount, Decimal("0.00"))
+
+                    # 4. Handle capacity with atomic SQL update
                     # If capacity is 0 or None, it's unlimited - skip capacity checks
                     if ticket_type.capacity and ticket_type.capacity > 0:
                         # Use atomic update to decrement available_seats
@@ -606,22 +673,30 @@ class EventService:
                     ).scalar()
                     sequence = (max_id if max_id else 0) + 1
 
-                    registration = EventRegistration(
-                        event_id=event.id,
-                        user_id=user_id,
-                        ticket_type_id=ticket_type.id,
-                        full_name=data.get("full_name", "").strip(),
-                        email=data.get("email", "").strip().lower(),
-                        phone=data.get("phone", "").strip(),
-                        nationality=data.get("nationality", "").strip(),
-                        id_number=data.get("id_number", "").strip(),
-                        id_type=data.get("id_type", "national_id"),
-                        ticket_type=ticket_type.name,
-                        registration_fee=float(ticket_type.price),
-                        payment_status="free" if ticket_type.price == 0 else "pending",
-                        registered_by="self",
-                        status="confirmed" if ticket_type.price == 0 else "pending_payment"
-                    )
+                    # Prepare registration data
+                    registration_data = {
+                        'event_id': event.id,
+                        'user_id': user_id,
+                        'ticket_type_id': ticket_type.id,
+                        'full_name': data.get("full_name", "").strip(),
+                        'email': data.get("email", "").strip().lower(),
+                        'phone': data.get("phone", "").strip(),
+                        'nationality': data.get("nationality", "").strip(),
+                        'id_number': data.get("id_number", "").strip(),
+                        'id_type': data.get("id_type", "national_id"),
+                        'ticket_type': ticket_type.name,
+                        'registration_fee': float(final_price),
+                        'payment_status': "free" if final_price == 0 else "pending",
+                        'registered_by': "self",
+                        'status': "confirmed" if final_price == 0 else "pending_payment",
+                    }
+
+                    # Add discount fields if applicable
+                    if discount_code:
+                        registration_data['discount_code_applied'] = discount_code
+                        registration_data['discount_amount'] = float(discount_amount)
+
+                    registration = EventRegistration(**registration_data)
 
                     registration.generate_refs(event.slug, sequence)
                     db.session.add(registration)
@@ -977,7 +1052,7 @@ class EventService:
         """Generate QR code as base64 string"""
         # Create QR code data (URL to check-in endpoint)
         # For production, use absolute URL
-        checkin_url = f"/events/api/checkin?token={qr_token}"
+        checkin_url = url_for('events.api_checkin', _external=True) + f"?token={qr_token}"
 
         qr = qrcode.QRCode(
             version=1,
@@ -1002,7 +1077,7 @@ class EventService:
         """Convert Registration model to dict"""
         event = Event.query.get(registration.event_id)
 
-        return {
+        result = {
             "id": registration.id,
             "registration_ref": registration.registration_ref,
             "ticket_number": registration.ticket_number,
@@ -1019,12 +1094,21 @@ class EventService:
             "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
             "created_at": registration.created_at.isoformat() if registration.created_at else None,
             "event": {
+                "id": event.public_id if event else None,
                 "slug": event.slug if event else None,
                 "name": event.name if event else None,
                 "start_date": event.start_date.isoformat() if event and event.start_date else None,
                 "end_date": event.end_date.isoformat() if event and event.end_date else None,
             } if event else None,
         }
+
+        # Add discount fields if they exist
+        if hasattr(registration, 'discount_code_applied'):
+            result['discount_code_applied'] = registration.discount_code_applied
+        if hasattr(registration, 'discount_amount'):
+            result['discount_amount'] = float(registration.discount_amount) if registration.discount_amount else 0.0
+
+        return result
 
     # Get Event by ID
 
@@ -1464,22 +1548,172 @@ class EventService:
             return None, None, "An unexpected error occurred during registration"
 
     @classmethod
-    def get_admin_dashboard_data(cls) -> Dict:
+    def validate_discount_code(cls, event_slug: str, code: str, ticket_type_id: Optional[int] = None) -> Tuple[Optional[Decimal], Optional[str]]:
         """
-        Gathers data for the super admin dashboard.
-        """
-        total_events = Event.query.count()
-        active_events = Event.query.filter_by(status='active').count()
-        pending_events = Event.query.filter_by(status='pending').count()
-        rejected_events = Event.query.filter_by(status='rejected').count()
-        total_registrations = EventRegistration.query.count()
-        checked_in_registrations = EventRegistration.query.filter_by(status='checked_in').count()
+        Validate a discount code for an event.
 
-        return {
-            'total_events': total_events,
-            'active_events': active_events,
-            'pending_events': pending_events,
-            'rejected_events': rejected_events,
-            'total_registrations': total_registrations,
-            'checked_in_registrations': checked_in_registrations
+        Returns: (discount_amount, error_message)
+        - discount_amount: The amount to subtract from the ticket price (could be fixed amount or percentage)
+        - error_message: None if valid, otherwise error description
+
+        For now, this is a placeholder implementation that can be extended with a proper DiscountCode model.
+        """
+        from decimal import Decimal
+        from datetime import datetime, date
+
+        # Try to import DiscountCode model if it exists
+        try:
+            from app.events.models import DiscountCode
+            discount_model = DiscountCode
+        except ImportError:
+            # Fallback to a simple in-memory or configuration-based approach
+            discount_model = None
+
+        event = cls.get_event_model(event_slug)
+        if not event:
+            return None, "Event not found"
+
+        # For now, implement a simple hardcoded validation
+        # In production, this should query the database for active discount codes
+        # Check if code is valid and applicable to the event
+
+        # Example: Check against a system setting or hardcoded codes
+        # This is a placeholder - replace with actual database queries
+
+        # Get ticket type if specified
+        ticket_type = None
+        if ticket_type_id:
+            ticket_type = TicketType.query.filter_by(id=ticket_type_id, event_id=event.id).first()
+            if not ticket_type:
+                return None, "Invalid ticket type"
+
+        # Simple hardcoded discount codes for demonstration
+        # In reality, these would come from a database table
+        valid_codes = {
+            "EARLYBIRD": {
+                "discount_amount": Decimal("10.00"),  # Fixed amount discount
+                "discount_type": "fixed",
+                "min_ticket_price": Decimal("50.00"),  # Minimum ticket price to apply
+                "max_uses": 100,
+                "valid_until": datetime(2026, 12, 31).date(),
+                "applicable_ticket_types": None,  # All ticket types
+            },
+            "SAVE20": {
+                "discount_amount": Decimal("20.00"),  # 20% discount
+                "discount_type": "percentage",
+                "percentage": 20,
+                "min_ticket_price": Decimal("0.00"),
+                "max_uses": 50,
+                "valid_until": datetime(2026, 6, 30).date(),
+                "applicable_ticket_types": [1, 2, 3],  # Specific ticket type IDs
+            },
+            "FREE": {
+                "discount_amount": Decimal("100.00"),  # 100% discount (free ticket)
+                "discount_type": "percentage",
+                "percentage": 100,
+                "min_ticket_price": Decimal("0.00"),
+                "max_uses": 10,
+                "valid_until": datetime(2026, 3, 31).date(),
+                "applicable_ticket_types": None,
+            }
         }
+
+        code_upper = code.strip().upper()
+        if code_upper not in valid_codes:
+            return None, "Invalid discount code"
+
+        discount_info = valid_codes[code_upper]
+
+        # Check expiration
+        if discount_info["valid_until"] < date.today():
+            return None, "Discount code has expired"
+
+        # Check if applicable to ticket type
+        if (discount_info["applicable_ticket_types"] is not None and
+            ticket_type and
+            ticket_type.id not in discount_info["applicable_ticket_types"]):
+            return None, "Discount code not applicable to selected ticket type"
+
+        # Calculate discount amount based on ticket price
+        if ticket_type:
+            ticket_price = Decimal(str(ticket_type.price))
+        else:
+            # If no specific ticket type, we'll calculate discount later when ticket is selected
+            ticket_price = Decimal("0.00")
+
+        # Check minimum ticket price requirement
+        if ticket_price < discount_info["min_ticket_price"]:
+            return None, f"Discount requires minimum ticket price of {discount_info['min_ticket_price']}"
+
+        # Calculate discount amount
+        if discount_info["discount_type"] == "fixed":
+            discount_amount = discount_info["discount_amount"]
+        elif discount_info["discount_type"] == "percentage":
+            percentage = discount_info["percentage"]
+            discount_amount = (ticket_price * Decimal(percentage) / Decimal(100)).quantize(Decimal("0.01"))
+        else:
+            return None, "Invalid discount type"
+
+        # Ensure discount doesn't exceed ticket price
+        if discount_amount > ticket_price:
+            discount_amount = ticket_price
+
+        # Ensure discount amount is not negative
+        if discount_amount < Decimal("0.00"):
+            discount_amount = Decimal("0.00")
+
+        # For now, we're not tracking usage counts - in production, you'd update usage count
+        # and check against max_uses
+
+        logger.info(f"Discount code '{code}' validated for event '{event_slug}': {discount_amount}")
+        return discount_amount, None
+
+    @classmethod
+    def get_admin_dashboard_data(cls) -> Dict:
+        """Get comprehensive admin dashboard statistics"""
+        try:
+            # Debug logging
+            logger.info("Fetching admin dashboard data")
+
+            from app.events.models import Event, EventRegistration
+
+            # Count events, excluding soft-deleted ones
+            total_events = Event.query.filter_by(is_deleted=False).count()
+            active_events = Event.query.filter_by(status='active', is_deleted=False).count()
+            pending_events = Event.query.filter_by(status='pending', is_deleted=False).count()
+            rejected_events = Event.query.filter_by(status='rejected', is_deleted=False).count()
+            suspended_events = Event.query.filter_by(status='suspended', is_deleted=False).count()
+            deactivated_events = Event.query.filter_by(status='deactivated', is_deleted=False).count()
+            archived_events = Event.query.filter_by(status='archived', is_deleted=False).count()
+
+            # Count registrations
+            total_registrations = EventRegistration.query.count()
+            checked_in_registrations = EventRegistration.query.filter_by(status='checked_in').count()
+
+            logger.info(f"Admin dashboard stats: total_events={total_events}, active={active_events}, pending={pending_events}")
+
+            return {
+                'total_events': total_events,
+                'active_events': active_events,
+                'pending_events': pending_events,
+                'rejected_events': rejected_events,
+                'suspended_events': suspended_events,
+                'deactivated_events': deactivated_events,
+                'archived_events': archived_events,
+                'total_registrations': total_registrations,
+                'checked_in_registrations': checked_in_registrations
+            }
+        except Exception as e:
+            logger.error(f"Error in get_admin_dashboard_data: {e}")
+            # Return zeros to prevent template errors
+            return {
+                'total_events': 0,
+                'active_events': 0,
+                'pending_events': 0,
+                'rejected_events': 0,
+                'suspended_events': 0,
+                'deactivated_events': 0,
+                'archived_events': 0,
+                'total_registrations': 0,
+                'checked_in_registrations': 0
+            }

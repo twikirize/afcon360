@@ -18,6 +18,7 @@ from flask import render_template, jsonify, request, url_for, flash, redirect, s
 from flask_login import login_required, current_user
 
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
+from app.auth.decorators import require_profile_completion, require_kyc_tier
 from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_switch import check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
@@ -25,6 +26,7 @@ from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.models import Booking, DriverProfile, Vehicle
 from app.extensions import db
+from app.auth.decorators import require_profile_completion, require_kyc_tier
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +206,8 @@ def bookings_new():
 @transport_bp.route("/book", methods=["GET", "POST"])
 @module_enabled_required("transport")
 @login_required
+@require_profile_completion
+@require_kyc_tier(2)  # Tier 2 required for booking transport
 @rate_limit("book_transport", per_minute=5)
 def book_transport():
     """Submit a booking"""
@@ -347,6 +351,8 @@ def drivers_new():
 @transport_bp.route("/become-driver", methods=["GET", "POST"])
 @module_enabled_required("transport")
 @login_required
+@require_profile_completion
+@require_kyc_tier(3)  # Tier 3 required to become a driver
 @role_required("provider")
 def become_driver():
     """Register as a transport driver"""

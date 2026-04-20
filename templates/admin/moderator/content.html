@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - AFCON360{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mt-4">Content Moderation</h1>
+            <ol class="breadcrumb mb-4">
+                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item active">Content</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Status Filter Tabs -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link {% if status == 'pending' %}active{% endif %}" href="{{ url_for('moderator.content_moderation', status='pending') }}">Pending</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if status == 'approved' %}active{% endif %}" href="{{ url_for('moderator.content_moderation', status='approved') }}">Approved</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if status == 'rejected' %}active{% endif %}" href="{{ url_for('moderator.content_moderation', status='rejected') }}">Rejected</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if status == 'all' %}active{% endif %}" href="{{ url_for('moderator.content_moderation', status='all') }}">All</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Submissions Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-file-alt me-1"></i>
+                    Content Submissions
+                </div>
+                <div class="card-body">
+                    {% if submissions.items %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Title</th>
+                                    <th>Submitted By</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for submission in submissions.items %}
+                                <tr>
+                                    <td>{{ submission.id }}</td>
+                                    <td><span class="badge bg-secondary">{{ submission.content_type }}</span></td>
+                                    <td>{{ submission.title }}</td>
+                                    <td>{{ submission.user.username if submission.user else 'Unknown' }}</td>
+                                    <td>{{ submission.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'warning' if submission.status == 'pending' else 'success' if submission.status == 'approved' else 'danger' }}">
+                                            {{ submission.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('moderator.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-primary">Review</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if submissions.pages > 1 %}
+                    <nav>
+                        <ul class="pagination">
+                            {% for page in submissions.iter_pages() %}
+                                {% if page %}
+                                    <li class="page-item {% if page == submissions.page %}active{% endif %}">
+                                        <a class="page-link" href="{{ url_for('moderator.content_moderation', page=page, status=status) }}">{{ page }}</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                {% endif %}
+                            {% endfor %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted">No content submissions found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

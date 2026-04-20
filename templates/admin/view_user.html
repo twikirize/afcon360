@@ -213,11 +213,10 @@
             <i class="bi bi-person-circle"></i>
         </div>
         <div class="user-info">
-            <h1>{{ user.username }}</h1>
+            <h1>{{ profile.full_name if profile and profile.full_name else user.username }}</h1>
             <p><i class="bi bi-envelope"></i> {{ user.email or "No email" }}</p>
-            <p><i class="bi bi-person-badge"></i> ID: {{ user.id }} | UUID: {{ user.public_id }}</p>
+            <p><i class="bi bi-person-badge"></i> @{{ user.username }}</p>
         </div>
-
     </div>
 
     <!-- Stats -->
@@ -239,7 +238,11 @@
     <!-- Details Grid -->
     <div class="detail-grid">
         <div class="detail-card">
-            <h3><i class="bi bi-info-circle"></i> Basic Information</h3>
+            <h3><i class="bi bi-person-circle"></i> Personal Information</h3>
+            <div class="detail-row">
+                <span class="detail-label">Full Name:</span>
+                <span class="detail-value"><strong>{{ profile.full_name if profile and profile.full_name else "Not provided" }}</strong></span>
+            </div>
             <div class="detail-row">
                 <span class="detail-label">Username:</span>
                 <span class="detail-value">{{ user.username }}</span>
@@ -253,8 +256,34 @@
                 <span class="detail-value">{{ user.phone or "-" }}</span>
             </div>
             <div class="detail-row">
-                <span class="detail-label">Created:</span>
-                <span class="detail-value">{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else "-" }}</span>
+                <span class="detail-label">Member Since:</span>
+                <span class="detail-value">{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else "-" }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">KYC Tier:</span>
+                <span class="detail-value">
+                    {% if kyc_info %}
+                        <span class="badge" style="background:
+                            {% if kyc_info.tier == 0 %}#e2e3e5
+                            {% elif kyc_info.tier == 1 %}#cce5ff
+                            {% elif kyc_info.tier == 2 %}#d1ecf1
+                            {% elif kyc_info.tier == 3 %}#d4edda
+                            {% elif kyc_info.tier == 4 %}#d1e7dd
+                            {% else %}#6c757d{% endif %};
+                            color:
+                            {% if kyc_info.tier == 0 %}#383d41
+                            {% elif kyc_info.tier == 1 %}#004085
+                            {% elif kyc_info.tier == 2 %}#0c5460
+                            {% elif kyc_info.tier == 3 %}#155724
+                            {% elif kyc_info.tier == 4 %}#0f5132
+                            {% else %}white{% endif %};">
+                            Tier {{ kyc_info.tier }}
+                            {% if kyc_info.label %} - {{ kyc_info.label }}{% endif %}
+                        </span>
+                    {% else %}
+                        <span class="badge badge-default">Not Calculated</span>
+                    {% endif %}
+                </span>
             </div>
         </div>
 
@@ -284,6 +313,17 @@
                     {% else %}
                         <span class="badge badge-default">Standard User</span>
                     {% endif %}
+                </span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Quick Links:</span>
+                <span class="detail-value">
+                    <a href="{{ url_for('admin.user_activity', user_id=user.public_id) }}" class="btn btn-view" style="padding: 3px 8px; font-size: 11px; margin-right: 5px;">
+                        <i class="bi bi-clock-history"></i> Activity
+                    </a>
+                    <a href="{{ url_for('admin.view_kyc_documents', user_id=user.public_id) }}" class="btn btn-info" style="padding: 3px 8px; font-size: 11px; background: #17a2b8; color: white;">
+                        <i class="bi bi-file-earmark-text"></i> KYC Docs
+                    </a>
                 </span>
             </div>
         </div>

@@ -8,6 +8,7 @@ from app.events import events_bp
 from app.events.services import EventService
 # SoldOutException is inside EventService class
 from app.events.models import Event, EventRegistration, TicketType, Waitlist
+from app.events.permissions import is_system_admin
 # Remove tight coupling - define fallback functions
 def search_properties(city=None, limit=10):
     """Fallback function when accommodation module is not available"""
@@ -86,18 +87,16 @@ logger = logging.getLogger(__name__)
 # HELPER FUNCTIONS
 # ============================================================
 
-def is_system_admin(user):
-    """Check if user is a system admin (super admin)"""
-    if not user or not user.is_authenticated:
-        return False
+def resolve_event(identifier):
+    '''Resolve event by public_id (UUID) or slug'''
+    from app.events.models import Event
+    # Try as public_id first (exact UUID match)
+    event = Event.query.filter_by(public_id=identifier).first()
+    if event:
+        return event
+    # Fall back to slug
+    return Event.query.filter_by(slug=identifier).first()
 
-    # Use proper permission checking
-    from app.auth.policy import can
-    try:
-        return can(user, "admin.system")
-    except:
-        # Fallback to legacy method
-        return user.is_super_admin() if hasattr(user, 'is_super_admin') else False
 
 
 # ============================================================
@@ -111,12 +110,46 @@ def list():
     return render_template('events/public/list.html', events=events)
 
 
+@events_bp.route("/<identifier>")
 @events_bp.route("/<event_slug>")
-def landing(event_slug):
+def landing(identifier=None, event_slug=None):
     """Landing page for an event"""
-    event = EventService.get_event(event_slug)
+    # Use identifier if provided, otherwise use event_slug
+    lookup = identifier or event_slug
+    if not lookup:
+        return render_template('events/public/not_found.html'), 404
+
+    event_model = resolve_event(lookup)
+    if not event_model:
+        return render_template('events/public/not_found.html', event_slug=lookup), 404
+
+    # Convert to dict using EventService
+    event = EventService._event_to_dict(event_model)
     if not event:
-        return render_template('events/public/not_found.html', event_slug=event_slug), 404
+        return render_template('events/public/not_found.html', event_slug=lookup), 404
+
+    # Check if current user is registered for this event
+    user_registered = False
+    if current_user.is_authenticated:
+        from app.events.models import EventRegistration
+        registration = EventRegistration.query.filter_by(
+            event_id=event_model.id,
+            user_id=current_user.id,
+            status='confirmed'
+        ).first()
+        user_registered = registration is not None
+
+    # Calculate remaining capacity for each ticket type
+    if event.get('ticket_types'):
+        for tt in event['ticket_types']:
+            tt['remaining'] = tt['capacity'] - tt['registration_count'] if tt.get('capacity') else None
+
+    # Get total registrations count for social proof
+    from app.events.models import EventRegistration
+    total_registrations = EventRegistration.query.filter_by(event_id=event_model.id).count()
+
+    # Get start time from event metadata if available
+    start_time = event_model.event_metadata.get('start_time', '00:00:00') if event_model.event_metadata else '00:00:00'
 
     properties = search_properties(city=event['city'])
 
@@ -125,19 +158,41 @@ def landing(event_slug):
         event=event,
         properties=properties,
         context_type=BookingContextType.EVENT.value,
-        context_id=event_slug,
+        context_id=event['slug'],
         context_metadata={
             'event_name': event['name'],
             'event_dates': f"{event['start_date']} to {event['end_date']}" if event.get('start_date') else '',
             'venue': event.get('venue', '')
-        }
+        },
+        is_admin=is_system_admin(current_user) if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated else False,
+        user_registered=user_registered,
+        now=datetime.utcnow,
+        total_registrations=total_registrations,
+        event_start_time=start_time
     )
 
 
+@events_bp.route("/api/event/<public_id>")
+def api_get_event_by_public_id(public_id):
+    """Get event by public_id (UUID)"""
+    event_model = resolve_event(public_id)
+    if not event_model:
+        return jsonify({'error': 'Event not found'}), 404
+    return jsonify(EventService._event_to_dict(event_model))
+
+@events_bp.route("/api/<identifier>/properties")
 @events_bp.route("/api/<event_slug>/properties")
-def api_properties(event_slug):
+def api_properties(identifier=None, event_slug=None):
     """JSON API for event properties"""
-    event = EventService.get_event(event_slug)
+    # Use identifier if provided, otherwise use event_slug
+    lookup = identifier or event_slug
+    if not lookup:
+        return jsonify({'error': 'Event not found'}), 404
+
+    event_model = resolve_event(lookup)
+    if not event_model:
+        return jsonify({'error': 'Event not found'}), 404
+    event = EventService._event_to_dict(event_model)
     if not event:
         return jsonify({'error': 'Event not found'}), 404
 
@@ -273,7 +328,7 @@ def create_event():
         return jsonify({'success': False, 'error': 'Too many requests. Please try again later.'}), 429
 
     if request.method == 'GET':
-        return render_template('events/create.html')
+        return render_template('events/organizer/create.html')
 
     # Handle both JSON and form data
 
@@ -337,7 +392,7 @@ def edit_event(event_slug):
         return redirect(url_for('events.my_events'))
 
     if request.method == 'GET':
-        return render_template('events/edit.html', event=event)
+        return render_template('events/organizer/edit.html', event=event)
 
     try:
         data = request.get_json()
@@ -516,7 +571,15 @@ def register(event_slug):
         return render_template('events/attendee/register.html', event=event, user_data=user_data)
 
     try:
-        data = request.get_json()
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+        else:
+            # Handle form data
+            data = request.form.to_dict()
+            # Convert numeric fields
+            if 'ticket_type_id' in data:
+                data['ticket_type_id'] = int(data['ticket_type_id'])
 
         # 1. Perform database transaction (Atomic Registration)
         registration, _, error = EventService.register_for_event(
@@ -526,6 +589,26 @@ def register(event_slug):
         if error:
             return jsonify({'success': False, 'error': error}), 400
 
+        # Store registration data in session for the confirmation page
+        # We need to get the actual registration object to generate QR code
+        from app.events.models import EventRegistration
+        reg_obj = EventRegistration.query.filter_by(registration_ref=registration['registration_ref']).first()
+        if reg_obj:
+            # Generate QR code
+            qr_code = EventService._generate_qr_code(reg_obj.qr_token, reg_obj.registration_ref)
+            session['last_registration'] = {
+                'registration': EventService._registration_to_dict(reg_obj),
+                'qr_code': qr_code,
+                'event': event
+            }
+        else:
+            # Fallback to using the registration dict
+            session['last_registration'] = {
+                'registration': registration,
+                'qr_code': None,
+                'event': event
+            }
+
         # 2. Trigger Background Task (Async Processing)
         process_event_registration.delay(registration['id'], event_slug)
 
@@ -533,7 +616,7 @@ def register(event_slug):
             'success': True,
             'redirect': url_for('events.registration_confirmation', reg_ref=registration['registration_ref']),
             'message': 'Registration received and is being processed!'
-        }), 202
+        }), 200
 
     except Exception as e:
         # Check if it's a SoldOutException
@@ -547,25 +630,31 @@ def register(event_slug):
 @login_required
 def registration_confirmation(reg_ref):
     """Show registration confirmation with QR code"""
-    # Get from session or database
+    # First, try to get from session
     reg_data = session.get('last_registration')
 
-    if not reg_data or reg_data['registration']['registration_ref'] != reg_ref:
-        # Fetch from database
-        registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
-        if not registration or registration.user_id != current_user.id:
-            flash('Registration not found', 'danger')
-            return redirect(url_for('events.my_registrations'))
+    # Check if the session data matches the requested registration reference
+    if reg_data and reg_data.get('registration', {}).get('registration_ref') == reg_ref:
+        # Clear the session data after using it to prevent reuse
+        session.pop('last_registration', None)
+        return render_template('events/attendee/registration_confirmation.html', **reg_data)
 
-        # Generate QR code again
-        qr_code = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
-        event = EventService.get_event(registration.event.slug)
+    # If not in session, fetch from database
+    from app.events.models import EventRegistration
+    registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
+    if not registration or registration.user_id != current_user.id:
+        flash('Registration not found', 'danger')
+        return redirect(url_for('events.my_registrations'))
 
-        reg_data = {
-            'registration': EventService._registration_to_dict(registration),
-            'qr_code': qr_code,
-            'event': event
-        }
+    # Generate QR code
+    qr_code = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
+    event = EventService.get_event(registration.event.slug)
+
+    reg_data = {
+        'registration': EventService._registration_to_dict(registration),
+        'qr_code': qr_code,
+        'event': event
+    }
 
     return render_template('events/attendee/registration_confirmation.html', **reg_data)
 
@@ -620,44 +709,283 @@ def admin_dashboard():
         flash('Admin access required', 'danger')
         return redirect(url_for('events.list'))
 
-    data = EventService.get_admin_dashboard_data()
-    from app.events.models import Event
-    recent_events = Event.query.order_by(Event.created_at.desc()).limit(10).all()
-    pending_approval = Event.query.filter_by(status='pending').all()
+    # Get dashboard data using the service
+    dashboard_data = EventService.get_admin_dashboard_data()
 
-    # Categories for chart
-    categories = db.session.query(Event.category, func.count(Event.id)).group_by(Event.category).all()
+    # Get pending events for approval
+    pending_approval = Event.query.filter_by(status='pending', is_deleted=False).order_by(Event.created_at.desc()).all()
+
+    # Get recent events - order by status to show active and suspended first, then by creation date
+    recent_events = Event.query.filter_by(is_deleted=False).order_by(Event.status.desc(), Event.created_at.desc()).limit(20).all()
+
+    # Get category distribution
+    categories = db.session.query(Event.category, func.count(Event.id)).filter_by(is_deleted=False).group_by(Event.category).all()
 
     return render_template('events/admin/dashboard.html',
-                           **data,
-                           recent_events=recent_events,
-                           pending_approval=pending_approval,
-                           categories=categories)
+                         total_events=dashboard_data.get('total_events', 0),
+                         active_events=dashboard_data.get('active_events', 0),
+                         pending_events=dashboard_data.get('pending_events', 0),
+                         rejected_events=dashboard_data.get('rejected_events', 0),
+                         total_registrations=dashboard_data.get('total_registrations', 0),
+                         checked_in_registrations=dashboard_data.get('checked_in_registrations', 0),
+                         pending_approval=pending_approval,
+                         recent_events=recent_events,
+                         categories=categories)
 
 
 @events_bp.route("/admin/<event_slug>/approve", methods=['POST'])
 @login_required
 def admin_approve(event_slug):
-    """Admin approve event"""
+    """Admin approve event - only for super_admin and owner"""
     if not is_system_admin(current_user):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
 
-    success, error = EventService.approve_event(event_slug, current_user.id)
-    if success:
-        flash('Event approved', 'success')
-    return redirect(url_for('events.admin_dashboard'))
+    event = Event.query.filter_by(slug=event_slug).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    event.status = 'active'
+    event.approved_at = datetime.utcnow()
+    event.approved_by_id = current_user.id
+    # Clear any rejection fields if they exist
+    event.rejected_at = None
+    event.rejection_reason = None
+
+    db.session.commit()
+
+    # Audit logging
+    logger.info(
+        f"MODERATION | approve | event={event.slug} | admin={current_user.id} "
+        f"| previous_status={event.status}"
+    )
+
+    return jsonify({'success': True, 'message': f'Event {event.name} approved'})
 
 
 @events_bp.route("/admin/<event_slug>/reject", methods=['POST'])
 @login_required
 def admin_reject(event_slug):
-    """Admin reject event"""
+    """Admin reject event - only for super_admin and owner"""
     if not is_system_admin(current_user):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
 
-    reason = request.get_json().get('reason', 'No reason provided')
-    success, error = EventService.reject_event(event_slug, current_user.id, reason)
-    return jsonify({'success': success})
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    reason = data.get('reason', 'No reason provided')
+
+    event = Event.query.filter_by(slug=event_slug).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    event.status = 'rejected'
+    event.rejected_at = datetime.utcnow()
+    event.rejection_reason = reason
+    # Clear any approval fields if they exist
+    event.approved_at = None
+    event.approved_by_id = None
+
+    db.session.commit()
+
+    # Audit logging
+    logger.info(
+        f"MODERATION | reject | event={event.slug} | admin={current_user.id} "
+        f"| reason={reason[:80]}"
+    )
+
+    return jsonify({'success': True, 'message': f'Event {event.name} rejected'})
+
+@events_bp.route("/admin/<event_slug>/suspend", methods=['POST'])
+@login_required
+def admin_suspend(event_slug):
+    """
+    Suspend an active event - only for super_admin and owner.
+    Hides it from the public portal. Organiser can request reinstatement.
+    """
+    if not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    reason   = data.get('reason', '').strip()
+    duration = data.get('duration', '7d')
+
+    if not reason:
+        return jsonify({'success': False, 'error': 'Suspension reason is required'}), 400
+
+    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    if event.status not in ('active',):
+        return jsonify({'success': False, 'error': f'Cannot suspend an event with status "{event.status}"'}), 400
+
+    event.status             = 'suspended'
+    event.suspension_reason  = reason
+    event.suspension_duration= duration
+    event.suspended_at       = datetime.utcnow()
+    event.suspended_by_id    = current_user.id
+
+    try:
+        db.session.commit()
+        logger.info(
+            f"MODERATION | suspend | event={event.slug} | admin={current_user.id} "
+            f"| duration={duration} | reason={reason[:80]}"
+        )
+        return jsonify({'success': True, 'message': f'Event "{event.name}" suspended ({duration})'})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"admin_suspend error: {e}")
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+
+@events_bp.route("/admin/<event_slug>/deactivate", methods=['POST'])
+@login_required
+def admin_deactivate(event_slug):
+    """
+    Deactivate an event — disabled but NOT deleted - only for super_admin and owner.
+    Organiser data preserved. Reactivation requires support contact.
+    """
+    if not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    reason = data.get('reason', '').strip()
+    if not reason:
+        return jsonify({'success': False, 'error': 'Deactivation reason is required'}), 400
+
+    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    if event.status in ('archived', 'deactivated'):
+        return jsonify({'success': False, 'error': f'Event is already "{event.status}"'}), 400
+
+    event.status              = 'deactivated'
+    event.deactivation_reason = reason
+    event.deactivated_at      = datetime.utcnow()
+    event.deactivated_by_id   = current_user.id
+
+    try:
+        db.session.commit()
+        logger.info(
+            f"MODERATION | deactivate | event={event.slug} | admin={current_user.id} "
+            f"| reason={reason[:80]}"
+        )
+        return jsonify({'success': True, 'message': f'Event "{event.name}" deactivated'})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"admin_deactivate error: {e}")
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+
+@events_bp.route("/admin/<event_slug>/takedown", methods=['POST'])
+@login_required
+def admin_takedown(event_slug):
+    """
+    Policy takedown — severe enforcement action - only for super_admin and owner.
+    Immediately removes event from public view.
+    Logs the action with admin ID for compliance audit.
+    Optionally notifies the organiser.
+    """
+    if not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    category        = data.get('category', '').strip()
+    reason          = data.get('reason', '').strip()
+    notify_organiser= data.get('notify_organiser', True)
+
+    if not category:
+        return jsonify({'success': False, 'error': 'Violation category is required'}), 400
+    if not reason:
+        return jsonify({'success': False, 'error': 'Detailed reason is required'}), 400
+
+    VALID_CATEGORIES = {
+        'fraud', 'illegal_activity', 'hate_speech',
+        'misinformation', 'spam', 'copyright', 'other'
+    }
+    if category not in VALID_CATEGORIES:
+        return jsonify({'success': False, 'error': 'Invalid violation category'}), 400
+
+    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    # Record takedown details before archiving
+    event.takedown_reason    = reason
+    event.takedown_category  = category
+    event.taken_down_at      = datetime.utcnow()
+    event.taken_down_by_id   = current_user.id
+    event.status             = 'archived'   # removes from public listings
+    event.rejection_reason   = f"[POLICY TAKEDOWN – {category.upper()}] {reason}"
+
+    # Soft-delete so it's fully hidden
+    event.is_deleted  = True
+    event.deleted_at  = datetime.utcnow()
+    event.deleted_by_id = current_user.id
+
+    try:
+        db.session.commit()
+
+        # Compliance audit log (replace with your audit service if available)
+        logger.warning(
+            f"COMPLIANCE | takedown | event={event.slug} | admin={current_user.id} "
+            f"| category={category} | notify={notify_organiser} | reason={reason[:120]}"
+        )
+
+        # TODO: if notify_organiser, send email via your notification service
+        # e.g. send_moderation_email(event.organizer, 'takedown', reason, category)
+
+        return jsonify({
+            'success': True,
+            'message': f'Event "{event.name}" taken down for policy violation ({category})'
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"admin_takedown error: {e}")
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+
+@events_bp.route("/admin/<event_slug>/restore", methods=['POST'])
+@login_required
+def admin_restore(event_slug):
+    """
+    Restore a suspended event back to active - only for super_admin and owner.
+    Clears suspension fields.
+    """
+    if not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
+
+    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    if event.status != 'suspended':
+        return jsonify({'success': False, 'error': f'Event is not suspended (current: {event.status})'}), 400
+
+    event.status              = 'active'
+    event.suspension_reason   = None
+    event.suspension_duration = None
+    event.suspended_at        = None
+    event.suspended_by_id     = None
+
+    try:
+        db.session.commit()
+        logger.info(
+            f"MODERATION | restore | event={event.slug} | admin={current_user.id}"
+        )
+        return jsonify({'success': True, 'message': f'Event "{event.name}" reinstated as active'})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"admin_restore error: {e}")
+        return jsonify({'success': False, 'error': 'Database error'}), 500
 
 
 @events_bp.route("/admin/events")
@@ -685,7 +1013,16 @@ def api_admin_stats():
 
     try:
         data = EventService.get_admin_dashboard_data()
-        return jsonify({"success": True, **data})
+        logger.info(f"API admin stats: {data}")
+        return jsonify({
+            "success": True,
+            "total_events": data.get('total_events', 0),
+            "active_events": data.get('active_events', 0),
+            "pending_events": data.get('pending_events', 0),
+            "rejected_events": data.get('rejected_events', 0),
+            "total_registrations": data.get('total_registrations', 0),
+            "checked_in_registrations": data.get('checked_in_registrations', 0)
+        })
     except Exception as e:
         logger.error(f"api_admin_stats error: {e}")
         return jsonify({"success": False, "error": "Could not load stats"}), 500
@@ -785,3 +1122,75 @@ def remove_staff(staff_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@events_bp.route("/admin/debug/events")
+@login_required
+def admin_debug_events():
+    """Debug endpoint to list all events with their statuses"""
+    if not is_system_admin(current_user):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    try:
+        events = Event.query.all()
+        events_data = []
+        for event in events:
+            events_data.append({
+                'id': event.id,
+                'slug': event.slug,
+                'name': event.name,
+                'status': event.status,
+                'is_deleted': event.is_deleted,
+                'created_at': event.created_at.isoformat() if event.created_at else None,
+                'organizer_id': event.organizer_id
+            })
+
+        # Count by status
+        status_counts = {}
+        for event in events:
+            status = event.status
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        return jsonify({
+            "success": True,
+            "events": events_data,
+            "counts": status_counts,
+            "total": len(events)
+        })
+    except Exception as e:
+        logger.error(f"admin_debug_events error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@events_bp.route("/admin/debug/counts")
+@login_required
+def admin_debug_counts():
+    """Quick debug endpoint for event counts"""
+    if not is_system_admin(current_user):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    try:
+        from sqlalchemy import func
+        counts = {
+            'total': Event.query.filter_by(is_deleted=False).count(),
+            'active': Event.query.filter_by(status='active', is_deleted=False).count(),
+            'pending': Event.query.filter_by(status='pending', is_deleted=False).count(),
+            'rejected': Event.query.filter_by(status='rejected', is_deleted=False).count(),
+            'suspended': Event.query.filter_by(status='suspended', is_deleted=False).count(),
+            'deactivated': Event.query.filter_by(status='deactivated', is_deleted=False).count(),
+            'archived': Event.query.filter_by(status='archived', is_deleted=False).count(),
+        }
+
+        # Registration counts
+        from app.events.models import EventRegistration
+        reg_counts = {
+            'total': EventRegistration.query.count(),
+            'checked_in': EventRegistration.query.filter_by(status='checked_in').count(),
+        }
+
+        return jsonify({
+            "success": True,
+            "event_counts": counts,
+            "registration_counts": reg_counts
+        })
+    except Exception as e:
+        logger.error(f"admin_debug_counts error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

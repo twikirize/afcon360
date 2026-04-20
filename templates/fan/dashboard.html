@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Fan Dashboard - {{ app_name }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fan/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container outlook-layout">
+
+    <!-- LEFT PANE - Static Navigation -->
+    <aside class="left-pane" id="leftPane">
+        {% include "fan/components/left_pane.html" %}
+    </aside>
+
+    <!-- MIDDLE PANE - Content List -->
+    <section class="middle-pane" id="middlePane">
+        {% include "fan/components/middle_pane.html" %}
+    </section>
+
+    <!-- RIGHT PANE - Detail View -->
+    <section class="right-pane" id="rightPane">
+        {% include "fan/components/right_pane.html" %}
+    </section>
+
+    <!-- Mobile Navigation Bar -->
+    <nav class="mobile-nav" id="mobileNav">
+        {% include "fan/components/mobile_nav.html" %}
+    </nav>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/fan/dashboard.js') }}"></script>
+<script>
+    // Initialize the Outlook-style dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof FanDashboard !== 'undefined') {
+            window.dashboard = new FanDashboard();
+        }
+    });
+</script>
+{% endblock %}

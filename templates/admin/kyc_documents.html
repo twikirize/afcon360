@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}KYC Documents - {{ user.username }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .kyc-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    .user-header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 30px;
+        padding: 25px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        color: white;
+    }
+    .user-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+    }
+    .user-info h1 {
+        margin: 0 0 10px 0;
+        font-size: 24px;
+    }
+    .user-info p {
+        margin: 5px 0;
+        opacity: 0.9;
+    }
+    .kyc-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .stat-number {
+        font-size: 28px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 5px;
+    }
+    .stat-label {
+        font-size: 14px;
+        color: #666;
+    }
+    .documents-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .document-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 4px solid #ddd;
+    }
+    .document-card.approved { border-left-color: #28a745; }
+    .document-card.pending { border-left-color: #ffc107; }
+    .document-card.rejected { border-left-color: #dc3545; }
+    .document-card.expired { border-left-color: #6c757d; }
+    .document-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .document-title {
+        font-weight: 600;
+        color: #333;
+        font-size: 16px;
+    }
+    .document-status {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .status-approved { background: #d4edda; color: #155724; }
+    .status-pending { background: #fff3cd; color: #856404; }
+    .status-rejected { background: #f8d7da; color: #721c24; }
+    .status-expired { background: #e2e3e5; color: #383d41; }
+    .document-details {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 15px;
+    }
+    .document-details p {
+        margin: 5px 0;
+    }
+    .document-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .btn-view { background: #007bff; color: white; }
+    .btn-approve { background: #28a745; color: white; }
+    .btn-reject { background: #dc3545; color: white; }
+    .btn-download { background: #6c757d; color: white; }
+    .btn-sm:hover { opacity: 0.9; transform: translateY(-1px); }
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+    .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #667eea;
+        text-decoration: none;
+    }
+    .back-link:hover {
+        text-decoration: underline;
+    }
+    .kyc-tier {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: 600;
+        margin-left: 10px;
+    }
+    .tier-0 { background: #e2e3e5; color: #383d41; }
+    .tier-1 { background: #cce5ff; color: #004085; }
+    .tier-2 { background: #d1ecf1; color: #0c5460; }
+    .tier-3 { background: #d4edda; color: #155724; }
+    .tier-4 { background: #d1e7dd; color: #0f5132; }
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-content {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 90%;
+    }
+    .modal-content textarea {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        resize: vertical;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kyc-container">
+    <a href="{{ url_for('admin.view_user', user_id=user.public_id) }}" class="back-link">
+        <i class="bi bi-arrow-left"></i> Back to User Profile
+    </a>
+
+    <div class="user-header">
+        <div class="user-avatar">
+            <i class="bi bi-person-badge"></i>
+        </div>
+        <div class="user-info">
+            <h1>{{ user.username }} - KYC Documents</h1>
+            <p><i class="bi bi-envelope"></i> {{ user.email or "No email" }}</p>
+            <p>
+                <strong>KYC Tier:</strong>
+                <span class="kyc-tier tier-{{ kyc_info.tier if kyc_info else 0 }}">
+                    Tier {{ kyc_info.tier if kyc_info else 0 }}
+                    {% if kyc_info and kyc_info.label %}
+                    - {{ kyc_info.label }}
+                    {% endif %}
+                </span>
+            </p>
+        </div>
+    </div>
+
+    <!-- KYC Statistics -->
+    <div class="kyc-stats">
+        <div class="stat-card">
+            <div class="stat-number">{{ kyc_documents|length }}</div>
+            <div class="stat-label">Total Documents</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ kyc_documents|selectattr('status', 'equalto', 'approved')|list|length }}</div>
+            <div class="stat-label">Approved</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ kyc_documents|selectattr('status', 'equalto', 'pending')|list|length }}</div>
+            <div class="stat-label">Pending Review</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ kyc_documents|selectattr('status', 'equalto', 'rejected')|list|length }}</div>
+            <div class="stat-label">Rejected</div>
+        </div>
+    </div>
+
+    <!-- Documents Grid -->
+    {% if kyc_documents %}
+    <div class="documents-grid">
+        {% for doc in kyc_documents %}
+        <div class="document-card {{ doc.status }}">
+            <div class="document-header">
+                <div class="document-title">
+                    <i class="bi bi-file-earmark-text"></i>
+                    {{ doc.document_type|replace('_', ' ')|title }}
+                </div>
+                <div class="document-status status-{{ doc.status }}">
+                    {{ doc.status|upper }}
+                </div>
+            </div>
+
+            <div class="document-details">
+                <p><strong>Uploaded:</strong> {{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else "Unknown" }}</p>
+                <p><strong>Expires:</strong>
+                    {% if doc.expiry_date %}
+                        {{ doc.expiry_date.strftime('%Y-%m-%d') }}
+                        {% if doc.is_expired %}
+                            <span class="status-expired" style="margin-left: 5px;">EXPIRED</span>
+                        {% endif %}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </p>
+                {% if doc.reviewed_by %}
+                <p><strong>Reviewed by:</strong> Admin #{{ doc.reviewed_by }}</p>
+                <p><strong>Reviewed at:</strong> {{ doc.reviewed_at.strftime('%Y-%m-%d %H:%M') if doc.reviewed_at else "N/A" }}</p>
+                {% endif %}
+                {% if doc.review_notes %}
+                <p><strong>Notes:</strong> {{ doc.review_notes }}</p>
+                {% endif %}
+            </div>
+
+            <div class="document-actions">
+                {% if doc.file_path %}
+                <a href="{{ doc.file_path }}" target="_blank" class="btn-sm btn-view">
+                    <i class="bi bi-eye"></i> View
+                </a>
+                <a href="{{ doc.file_path }}" download class="btn-sm btn-download">
+                    <i class="bi bi-download"></i> Download
+                </a>
+                {% endif %}
+
+                {% if doc.status == 'pending' and current_user.has_global_role('compliance_officer') %}
+                <button type="button" class="btn-sm btn-approve"
+                        onclick="showApproveModal('{{ doc.id }}', '{{ doc.document_type }}')">
+                    <i class="bi bi-check-circle"></i> Approve
+                </button>
+                <button type="button" class="btn-sm btn-reject"
+                        onclick="showRejectModal('{{ doc.id }}', '{{ doc.document_type }}')">
+                    <i class="bi bi-x-circle"></i> Reject
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-file-earmark-x"></i>
+        <h3>No KYC Documents Found</h3>
+        <p>This user has not uploaded any KYC documents yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Approve Modal -->
+<div id="approveModal" class="modal">
+    <div class="modal-content">
+        <h3><i class="bi bi-check-circle"></i> Approve Document</h3>
+        <p>Approve <strong id="approveDocName"></strong></p>
+        <form id="approveForm" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <textarea name="reason" rows="3" placeholder="Reason for approval (required for audit trail)..." required></textarea>
+            <div style="text-align:right; margin-top: 15px;">
+                <button type="button" onclick="closeApproveModal()" class="btn-sm" style="background:#6c757d;color:white">Cancel</button>
+                <button type="submit" class="btn-sm" style="background:#28a745;color:white">Approve Document</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal" class="modal">
+    <div class="modal-content">
+        <h3><i class="bi bi-x-circle"></i> Reject Document</h3>
+        <p>Reject <strong id="rejectDocName"></strong></p>
+        <form id="rejectForm" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <textarea name="reason" rows="3" placeholder="Reason for rejection (required for audit trail)..." required></textarea>
+            <div style="text-align:right; margin-top: 15px;">
+                <button type="button" onclick="closeRejectModal()" class="btn-sm" style="background:#6c757d;color:white">Cancel</button>
+                <button type="submit" class="btn-sm" style="background:#dc3545;color:white">Reject Document</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let currentDocId = null;
+
+    function showApproveModal(docId, docName) {
+        currentDocId = docId;
+        document.getElementById('approveDocName').textContent = docName;
+        document.getElementById('approveForm').action = "{{ url_for('admin.approve_kyc_document', user_id=user.public_id, doc_id='') }}" + docId;
+        document.getElementById('approveModal').style.display = 'flex';
+    }
+
+    function showRejectModal(docId, docName) {
+        currentDocId = docId;
+        document.getElementById('rejectDocName').textContent = docName;
+        document.getElementById('rejectForm').action = "{{ url_for('admin.reject_kyc_document', user_id=user.public_id, doc_id='') }}" + docId;
+        document.getElementById('rejectModal').style.display = 'flex';
+    }
+
+    function closeApproveModal() {
+        document.getElementById('approveModal').style.display = 'none';
+        document.getElementById('approveForm').querySelector('textarea').value = '';
+    }
+
+    function closeRejectModal() {
+        document.getElementById('rejectModal').style.display = 'none';
+        document.getElementById('rejectForm').querySelector('textarea').value = '';
+    }
+
+    window.onclick = function(e) {
+        if (e.target == document.getElementById('approveModal')) {
+            closeApproveModal();
+        }
+        if (e.target == document.getElementById('rejectModal')) {
+            closeRejectModal();
+        }
+    };
+</script>
+{% endblock %}

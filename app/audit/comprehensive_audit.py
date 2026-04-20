@@ -492,24 +492,30 @@ class DataChangeLog(BaseModel):
         sanitized_new = None
 
         if old_value:
-            sanitized_old = {}
-            for key, value in old_value.items():
-                if 'password' in key.lower() or 'secret' in key.lower():
-                    sanitized_old[key] = '[REDACTED]'
-                elif 'account_number' in key.lower() and isinstance(value, str) and len(value) > 4:
-                    sanitized_old[key] = value[:4] + '****'
-                else:
-                    sanitized_old[key] = value
+            if isinstance(old_value, dict):
+                sanitized_old = {}
+                for key, value in old_value.items():
+                    if 'password' in key.lower() or 'secret' in key.lower():
+                        sanitized_old[key] = '[REDACTED]'
+                    elif 'account_number' in key.lower() and isinstance(value, str) and len(value) > 4:
+                        sanitized_old[key] = value[:4] + '****'
+                    else:
+                        sanitized_old[key] = value
+            else:
+                sanitized_old = {'value': str(old_value)}
 
         if new_value:
-            sanitized_new = {}
-            for key, value in new_value.items():
-                if 'password' in key.lower() or 'secret' in key.lower():
-                    sanitized_new[key] = '[REDACTED]'
-                elif 'account_number' in key.lower() and isinstance(value, str) and len(value) > 4:
-                    sanitized_new[key] = value[:4] + '****'
-                else:
-                    sanitized_new[key] = value
+            if isinstance(new_value, dict):
+                sanitized_new = {}
+                for key, value in new_value.items():
+                    if 'password' in key.lower() or 'secret' in key.lower():
+                        sanitized_new[key] = '[REDACTED]'
+                    elif 'account_number' in key.lower() and isinstance(value, str) and len(value) > 4:
+                        sanitized_new[key] = value[:4] + '****'
+                    else:
+                        sanitized_new[key] = value
+            else:
+                sanitized_new = {'value': str(new_value)}
 
         log_entry = DataChangeLog(
             entity_type=entity_type,

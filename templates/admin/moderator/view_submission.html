@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% extends "base.html" %}
+
+{% block title %}{{ title }} - AFCON360{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mt-4">Review Content Submission #{{ submission.id }}</h1>
+            <ol class="breadcrumb mb-4">
+                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('moderator.content_moderation') }}">Content Moderation</a></li>
+                <li class="breadcrumb-item active">Review</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Submission Details -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Submission Details
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tr>
+                            <th style="width: 150px;">ID:</th>
+                            <td>{{ submission.id }}</td>
+                        </tr>
+                        <tr>
+                            <th>Content Type:</th>
+                            <td><span class="badge bg-secondary">{{ submission.content_type }}</span></td>
+                        </tr>
+                        <tr>
+                            <th>Title:</th>
+                            <td><h4>{{ submission.title }}</h4></td>
+                        </tr>
+                        {% if submission.description %}
+                        <tr>
+                            <th>Description:</th>
+                            <td>{{ submission.description }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if submission.content %}
+                        <tr>
+                            <th>Content:</th>
+                            <td>
+                                <div class="border p-3 rounded bg-light">
+                                    {{ submission.content }}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <th>Submitted By:</th>
+                            <td>{{ submission.user.username if submission.user else 'Unknown' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Submitted At:</th>
+                            <td>{{ submission.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        </tr>
+                        <tr>
+                            <th>Current Status:</th>
+                            <td>
+                                <span class="badge bg-{{ 'warning' if submission.status == 'pending' else 'success' if submission.status == 'approved' else 'danger' }}">
+                                    {{ submission.status }}
+                                </span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Review Actions -->
+        <div class="col-lg-4">
+            {% if submission.status == 'pending' %}
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <i class="fas fa-gavel me-1"></i>
+                    Review Actions
+                </div>
+                <div class="card-body">
+                    <!-- Approve Form -->
+                    <form action="{{ url_for('moderator.approve_submission', submission_id=submission.id) }}" method="POST" class="mb-3">
+                        <div class="mb-3">
+                            <label for="approve_notes" class="form-label">Review Notes (Optional)</label>
+                            <textarea name="notes" id="approve_notes" class="form-control" rows="3" placeholder="Add any notes about this approval..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-check"></i> Approve Submission
+                        </button>
+                    </form>
+
+                    <hr>
+
+                    <!-- Reject Form -->
+                    <form action="{{ url_for('moderator.reject_submission', submission_id=submission.id) }}" method="POST">
+                        <div class="mb-3">
+                            <label for="reject_notes" class="form-label">Rejection Reason *</label>
+                            <textarea name="notes" id="reject_notes" class="form-control" rows="3" placeholder="Please provide a reason for rejection..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-danger w-100">
+                            <i class="fas fa-times"></i> Reject Submission
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <div class="card mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <i class="fas fa-history me-1"></i>
+                    Review Information
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tr>
+                            <th>Reviewed By:</th>
+                            <td>{{ submission.reviewer.username if submission.reviewer else 'Unknown' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Reviewed At:</th>
+                            <td>{{ submission.reviewed_at.strftime('%Y-%m-%d %H:%M:%S') if submission.reviewed_at else 'N/A' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Review Notes:</th>
+                            <td>{{ submission.review_notes or 'No notes provided' }}</td>
+                        </tr>
+                    </table>
+                    <a href="{{ url_for('moderator.content_moderation') }}" class="btn btn-primary w-100">
+                        <i class="fas fa-arrow-left"></i> Back to Content List
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <i class="fas fa-tips me-1"></i>
+                    Guidelines
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-check-circle text-success"></i> Ensure content is appropriate</li>
+                        <li><i class="fas fa-check-circle text-success"></i> Verify no copyright violations</li>
+                        <li><i class="fas fa-check-circle text-success"></i> Check for offensive material</li>
+                        <li><i class="fas fa-check-circle text-success"></i> Confirm accuracy of information</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}</title>
+</head>
+<body>
+
+</body>
+</html>

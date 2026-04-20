@@ -52,6 +52,8 @@ class User(UserMixin, ProtectedModel):
 
     # Lifecycle flags
     is_verified = Column(Boolean, default=False, nullable=False)
+    email_verified = Column(Boolean, default=False, nullable=True, server_default='f')
+    phone_verified = Column(Boolean, default=False, nullable=True, server_default='f')
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -62,6 +64,11 @@ class User(UserMixin, ProtectedModel):
     # KYC / login state
     kyc_level = Column(BigInteger, default=0, nullable=False)
     failed_logins = Column(BigInteger, default=0, nullable=False)
+
+    # Security recovery fields
+    security_question = Column(String(255), nullable=True)
+    security_answer_hash = Column(String(255), nullable=True)
+    recovery_code = Column(String(255), nullable=True)
 
     # Default organisation — use_alter=True prevents circular dependency on table creation
     default_org_id = Column(
@@ -188,13 +195,24 @@ class User(UserMixin, ProtectedModel):
 
         # Log the password change
         try:
+            # Use public_id which is always available, even for new users
+            # self.id may be None for new users before they're saved to the database
+            entity_id = self.public_id
+            # changed_by needs to be an integer, but if self.id is None, we need to handle it
+            # Since changed_by_user_id is provided, use it, or fallback to self.id if available
+            changed_by = changed_by_user_id or self.id
+            # If both are None, we can't log a user id, but we should still log the change
+            # In that case, use a placeholder
+            if changed_by is None:
+                changed_by = 0  # System or unknown user
+
             AuditService.data_change(
                 entity_type="user",
-                entity_id=self.id,
+                entity_id=entity_id,
                 operation="password_change",
                 old_value={"password_changed_at": str(self.password_changed_at)},
                 new_value={"password_changed_at": str(datetime.utcnow())},
-                changed_by=changed_by_user_id or self.id,
+                changed_by=changed_by,
                 ip_address=request.remote_addr if request else None,
                 user_agent=request.user_agent.string if request and request.user_agent else None,
                 extra_data={
@@ -209,6 +227,15 @@ class User(UserMixin, ProtectedModel):
 
     def verify_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
+
+    def verify_security_answer(self, answer: str) -> bool:
+        """Verify security answer for password recovery without email."""
+        if not self.security_answer_hash or not answer:
+            return False
+        # Hash the provided answer and compare with stored hash
+        import hashlib
+        answer_hash = hashlib.sha256(answer.encode()).hexdigest()
+        return answer_hash == self.security_answer_hash
 
     # ---------------------------
     # Login helpers

@@ -1,26 +1,198 @@
 {% extends "base.html" %}
-{% block content%}
-    <meta charset="UTF-8">
-    <title>Register</title>
-    <h2>Register</h2>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <ul>
-          {% for msg in messages %}
-            <li>{{ msg }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
-    <form method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label>Username:</label><br>
-        <input type="text" name="username"><br>
-        <label>Email:</label><br>
-        <input type="email" name="email"><br>
-        <label>Password:</label><br>
-        <input type="password" name="password"><br><br>
-        <button type="submit">Register</button>
-    </form>
-    <p><a href="{{ url_for('auth.login') }}">Already have an account? Login</a></p>
+{% block content %}
+<style>
+    body {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+        min-height: 100vh;
+    }
+</style>
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh; background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);">
+    <div class="card shadow-sm" style="width: 100%; max-width: 500px; border-radius: 12px; border: none; border-top: 4px solid #ffcc00;">
+        <div class="card-body p-4 p-md-5">
+            <!-- Back to Home link -->
+            <div class="mb-4">
+                <a href="{{ url_for('index') }}" class="text-decoration-none text-secondary">
+                    &larr; Back to Home
+                </a>
+            </div>
+
+            <h2 class="card-title text-center mb-4">Create Account</h2>
+
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="alert alert-info" role="alert">
+                        <ul class="mb-0 ps-3">
+                            {% for msg in messages %}
+                                <li>{{ msg }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" class="needs-validation" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <!-- Username -->
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="username" name="username" required>
+                    <div class="invalid-feedback">
+                        Please choose a username.
+                    </div>
+                </div>
+
+                <!-- Email -->
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" name="email">
+                    <div class="form-text">We'll never share your email with anyone else.</div>
+                </div>
+
+                <!-- Password -->
+                <div class="mb-4">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                    <div class="invalid-feedback">
+                        Please provide a password.
+                    </div>
+                </div>
+
+                <!-- Security question section - only show if email verification is not required -->
+                {% if config is defined and not config.REQUIRE_EMAIL_VERIFICATION %}
+                <div id="security-question-section" class="mb-4" style="display: none;">
+                    <div class="alert alert-info" role="alert">
+                        <strong>Why is this needed?</strong> Since you're not providing an email, a security question helps protect your account and allows account recovery if you forget your password.
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="security_question" class="form-label">Security Question</label>
+                        <select class="form-select" id="security_question" name="security_question">
+                            <option value="">Select a question</option>
+                            <option value="pet">What is your pet's name?</option>
+                            <option value="city">What city were you born in?</option>
+                            <option value="school">What was your first school's name?</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="security_answer" class="form-label">Security Answer</label>
+                        <input type="text" class="form-control" id="security_answer" name="security_answer">
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Submit button -->
+                <div class="d-grid mb-4">
+                    <button type="submit" class="btn btn-primary btn-lg" style="background-color: #006400; border-color: #006400; color: #ffffff;">Register</button>
+                </div>
+
+                <!-- Login link -->
+                <div class="text-center">
+                    <p class="mb-0">
+                        Already have an account?
+                        <a href="{{ url_for('auth.login') }}" class="text-decoration-none">Login</a>
+                    </p>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if config is defined and not config.REQUIRE_EMAIL_VERIFICATION %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const emailField = document.getElementById('email');
+        const securitySection = document.getElementById('security-question-section');
+
+        if (!emailField || !securitySection) {
+            return;
+        }
+
+        // Hide by default
+        securitySection.style.display = 'none';
+
+        // Track if email field has been interacted with
+        let emailInteracted = false;
+
+        emailField.addEventListener('focus', function() {
+            emailInteracted = true;
+        });
+
+        // Show on blur if email is empty and user has interacted with the field
+        emailField.addEventListener('blur', function() {
+            if (emailInteracted && emailField.value.trim() === '') {
+                securitySection.style.display = 'block';
+            } else {
+                securitySection.style.display = 'none';
+            }
+        });
+
+        // Hide immediately when user starts typing in email field
+        emailField.addEventListener('input', function() {
+            if (emailField.value.trim() !== '') {
+                securitySection.style.display = 'none';
+            }
+        });
+    });
+</script>
+{% endif %}
+
+<!-- Form validation -->
+<script>
+    // Bootstrap form validation
+    (function () {
+        'use strict'
+        var forms = document.querySelectorAll('.needs-validation')
+        Array.prototype.slice.call(forms)
+            .forEach(function (form) {
+                form.addEventListener('submit', function (event) {
+                    if (!form.checkValidity()) {
+                        event.preventDefault()
+                        event.stopPropagation()
+                    }
+                    form.classList.add('was-validated')
+                }, false)
+            })
+    })()
+</script>
+
+<style>
+    .card {
+        background-color: #ffffff;
+    }
+    .btn-primary {
+        background-color: #006400;
+        border-color: #006400;
+        padding: 0.75rem;
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        color: #ffffff;
+    }
+    .btn-primary:hover {
+        background-color: #ffcc00;
+        border-color: #ffcc00;
+        color: #000000;
+    }
+    .form-control, .form-select {
+        border-radius: 8px;
+        padding: 0.75rem;
+        border: 1px solid #dee2e6;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    @media (max-width: 768px) {
+        .card {
+            width: 100% !important;
+            margin: 1rem;
+        }
+        .container {
+            min-height: 70vh;
+        }
+    }
+</style>
 {% endblock %}

@@ -1,0 +1,109 @@
+<div class="middle-pane-content">
+
+    <!-- Pane Header with Filter -->
+    <div class="pane-header">
+        <h2 id="paneTitle">Upcoming Events</h2>
+        <div class="filter-tabs">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="events">Events</button>
+            <button class="filter-btn" data-filter="stays">Stays</button>
+            <button class="filter-btn" data-filter="trips">Trips</button>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="search-bar">
+        <i class="bi bi-search"></i>
+        <input type="text" placeholder="Search..." id="paneSearch">
+    </div>
+
+    <!-- Content List -->
+    <div class="content-list" id="contentList">
+
+        <!-- Events Section -->
+        <div class="list-section" data-category="events">
+            <div class="section-header">
+                <h3>📅 Upcoming Events</h3>
+                <span class="count">{{ upcoming_events|length }}</span>
+            </div>
+
+            {% if upcoming_events %}
+                {% for event in upcoming_events %}
+                <div class="list-item" data-id="{{ event.id }}" data-type="event">
+                    <div class="item-icon">🏆</div>
+                    <div class="item-content">
+                        <div class="item-title">{{ event.name }}</div>
+                        <div class="item-subtitle">{{ event.start_date.strftime('%b %d, %Y') }}</div>
+                        <div class="item-meta">{{ event.location }}</div>
+                    </div>
+                    {% if event.is_new %}
+                    <span class="item-badge new">New</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-calendar-x"></i>
+                    <p>No upcoming events</p>
+                    <a href="{{ url_for('events.list') }}" class="btn btn-sm">Browse Events</a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Recent Stays Section -->
+        <div class="list-section" data-category="stays">
+            <div class="section-header">
+                <h3>🏨 Recent Stays</h3>
+                <span class="count">{{ recent_stays|length }}</span>
+            </div>
+
+            {% if recent_stays %}
+                {% for stay in recent_stays %}
+                <div class="list-item" data-id="{{ stay.id }}" data-type="stay">
+                    <div class="item-icon">🏨</div>
+                    <div class="item-content">
+                        <div class="item-title">{{ stay.property_name }}</div>
+                        <div class="item-subtitle">{{ stay.location }}</div>
+                        <div class="item-meta">
+                            <span class="rating">★ {{ stay.rating }}</span>
+                            <span class="price">UGX {{ stay.price_per_night|int }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-house"></i>
+                    <p>No recent stays</p>
+                    <a href="{{ url_for('accommodation.index') }}" class="btn btn-sm">Find Accommodation</a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Recommended Section -->
+        <div class="list-section" data-category="recommended">
+            <div class="section-header">
+                <h3>🚌 Recommended For You</h3>
+            </div>
+
+            {% if recommended %}
+                {% for item in recommended %}
+                <div class="list-item" data-id="{{ item.id }}" data-type="recommended">
+                    <div class="item-icon">{{ item.icon }}</div>
+                    <div class="item-content">
+                        <div class="item-title">{{ item.title }}</div>
+                        <div class="item-subtitle">{{ item.subtitle }}</div>
+                        <div class="item-meta">{{ item.price }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-compass"></i>
+                    <p>Complete your profile for personalized recommendations</p>
+                </div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>

@@ -134,19 +134,6 @@ def create_app(config_object=None) -> Flask:
     # Load configuration
     app.config.from_object(config_object or Config)
 
-    # Set default rate limit to 100 requests per minute
-    app.config['RATELIMIT_DEFAULT'] = "100 per minute"
-
-    # CSRF Configuration
-    app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'true').lower() == 'true'
-    app.config['WTF_CSRF_SECRET_KEY'] = os.getenv('WTF_CSRF_SECRET_KEY') or app.config.get('SECRET_KEY')
-    app.config['WTF_CSRF_TIME_LIMIT'] = int(os.getenv('WTF_CSRF_TIME_LIMIT', '3600'))
-    app.config['WTF_CSRF_SSL_STRICT'] = os.getenv('WTF_CSRF_SSL_STRICT', 'false').lower() == 'true'
-    app.config['WTF_CSRF_HEADERS'] = ['X-CSRFToken', 'X-CSRF-Token']
-    app.config['WTF_CSRF_FIELD_NAME'] = 'csrf_token'
-    app.config['WTF_CSRF_CHECK_DEFAULT'] = True
-    app.config['WTF_CSRF_METHODS'] = ['POST', 'PUT', 'PATCH', 'DELETE']
-
     # Critical Config Fallbacks with validation
     # SECRET_KEY validation
     secret_key = app.config.get('SECRET_KEY') or os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
@@ -346,6 +333,8 @@ def create_app(config_object=None) -> Flask:
         events_bp = Blueprint('events', __name__)
     from app.tools.theme_routes import theme_bp
     from app.kyc.routes import kyc_bp  # Integrated KYC
+    from app.profile.routes import profile_bp
+    from app.placeholder import placeholder_bp
 
     # Import auth KYC blueprint
     try:
@@ -410,6 +399,8 @@ def create_app(config_object=None) -> Flask:
         (events_bp, None),
         (theme_bp, None),
         (kyc_bp, '/kyc'),  # Fixed: Added KYC with prefix
+        (profile_bp, None),
+        (placeholder_bp, None),
     ]
 
     # Add auth KYC blueprint if available
@@ -421,6 +412,17 @@ def create_app(config_object=None) -> Flask:
 
     for bp, prefix in core_blueprints:
         app.register_blueprint(bp, url_prefix=prefix)
+
+    # Register organization blueprint
+    try:
+        from app.org.routes import org_bp
+        app.register_blueprint(org_bp)
+    except ImportError as e:
+        logger.warning(f"Organization blueprint not found: {e}")
+        # Create a dummy blueprint to prevent crashes
+        from flask import Blueprint
+        org_bp = Blueprint('org', __name__)
+        app.register_blueprint(org_bp)
 
     # 2. Register API Blueprints
     api_blueprints = [wallet_api_bp, admin_wallet_bp, audit_bp, webhook_bp]
@@ -539,6 +541,8 @@ def create_app(config_object=None) -> Flask:
             "app_name": current_app.config.get("APP_NAME", "AFCON 360"),
             "tournament_name": current_app.config.get("TOURNAMENT_NAME", "AFCON Tournament"),
             "year": current_app.config.get("YEAR", 2025),
+            "require_email_verification": current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False),
+            "allow_username_login": current_app.config.get("ALLOW_USERNAME_LOGIN", True),
         }
 
     @app.context_processor
@@ -608,6 +612,22 @@ def create_app(config_object=None) -> Flask:
                 return str(value)
         return {'intcomma': intcomma}
 
+    # Add format_number template filter
+    @app.template_filter('format_number')
+    def format_number_filter(value):
+        """Format number with commas as thousands separators (template filter version)."""
+        if value is None:
+            return ''
+        try:
+            # Try to convert to integer first
+            return f"{int(value):,}"
+        except (ValueError, TypeError):
+            # If it's a float, format with 2 decimal places
+            try:
+                return f"{float(value):,.2f}"
+            except (ValueError, TypeError):
+                return str(value)
+
     @app.context_processor
     def inject_kyc_data():
         """Inject KYC tier data into all templates."""
@@ -661,6 +681,77 @@ def create_app(config_object=None) -> Flask:
                 logger.warning(f"Audit summary injection error: {e}")
                 return {'audit_summary': []}
         return {'audit_summary': []}
+
+    # Add user context processor
+    @app.context_processor
+    def inject_user_context():
+        """Inject user context into all templates."""
+        from flask_login import current_user
+        from app.wallet.models import Wallet
+        from app.profile.models import get_profile_by_user
+
+        if not current_user.is_authenticated:
+            return {}
+
+        # Calculate profile completion percentage
+        profile_completion = 0
+        try:
+            profile = get_profile_by_user(current_user.public_id)
+            if profile:
+                # Check various profile fields
+                fields_to_check = [
+                    ('full_name', bool(getattr(profile, 'full_name', None))),
+                    ('phone_number', bool(getattr(profile, 'phone_number', None))),
+                    ('email_verified', getattr(profile, 'email_verified', False)),
+                    ('phone_verified', getattr(profile, 'phone_verified', False)),
+                    ('address', bool(getattr(profile, 'address', None))),
+                ]
+                completed = sum(1 for _, is_complete in fields_to_check if is_complete)
+                profile_completion = int((completed / len(fields_to_check)) * 100)
+        except Exception as e:
+            logger.warning(f"Profile completion calculation error: {e}")
+
+        # Get highest role
+        user_highest_role = "Fan"
+        if hasattr(current_user, 'is_app_owner') and current_user.is_app_owner():
+            user_highest_role = "Owner"
+        elif hasattr(current_user, 'has_global_role'):
+            if current_user.has_global_role('super_admin'):
+                user_highest_role = "Super Admin"
+            elif current_user.has_global_role('admin'):
+                user_highest_role = "Admin"
+            elif current_user.has_global_role('org_admin'):
+                user_highest_role = "Org Admin"
+            elif current_user.has_global_role('moderator'):
+                user_highest_role = "Moderator"
+            elif current_user.has_global_role('support'):
+                user_highest_role = "Support"
+
+        # Get wallet balance
+        wallet_balance = "UGX 0"
+        try:
+            wallet = Wallet.query.filter_by(user_id=current_user.id).first()
+            if wallet:
+                wallet_balance = f"UGX {wallet.balance:,.2f}"
+        except Exception as e:
+            logger.warning(f"Wallet balance query error: {e}")
+
+        # Get KYC tier from session or default
+        from flask import session
+        kyc_tier = session.get('kyc_tier', 0)
+
+        # Get organization role if in org context
+        org_role_name = None
+        if session.get('current_context') == 'organization' and session.get('current_org_id'):
+            org_role_name = session.get('org_role_name', 'Member')
+
+        return {
+            'profile_completion': profile_completion,
+            'user_highest_role': user_highest_role,
+            'wallet_balance': wallet_balance,
+            'kyc_tier': kyc_tier,
+            'org_role_name': org_role_name,
+        }
 
     @login_manager.user_loader
     def load_user(public_id):

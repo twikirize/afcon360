@@ -1,102 +1,291 @@
-/* static/css/modules/events/public.css */
+/* ============================================
+   PUBLIC EVENT PAGE - CUSTOM GRID (No Bootstrap)
+   ============================================ */
 
-/* Styles for Public Event Listings and Landing Pages */
-
-/* Hero section for event landing page */
-.event-hero {
-    position: relative;
-    padding: var(--space-12) 0;
-    color: white;
-    background-size: cover;
-    background-position: center;
-    border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
-    margin-bottom: var(--space-8);
+/* Override Bootstrap grid on event page only */
+.event-page-container {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px;
 }
 
-.event-hero::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, var(--opacity-overlay)); /* Overlay for readability */
-    border-radius: inherit;
-}
-
-.event-hero-content {
-    position: relative;
-    z-index: var(--z-elevate);
-}
-
-.event-hero h1 {
-    font-size: var(--font-size-4xl);
-    font-weight: var(--font-weight-extrabold);
-    margin-bottom: var(--space-4);
-    color: white;
-}
-
-.event-hero .lead {
-    font-size: var(--font-size-lg);
-    max-width: 700px;
-}
-
-/* Event Detail Section */
-.event-details-grid {
+/* Custom Grid System - Replaces Bootstrap's row/col */
+.event-grid-2cols {
     display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: var(--space-7);
+    grid-template-columns: 1fr 380px;
+    gap: 40px;
+    align-items: start;
 }
 
-.event-info-main {
-    background-color: var(--bg-surface);
-    padding: var(--space-7);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
-    border: 1px solid var(--border-light);
+.event-grid-2cols-reverse {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 40px;
+    align-items: start;
 }
 
-.event-sidebar {
-    position: sticky;
-    top: var(--header-height);
+/* Hero section custom grid */
+.hero-grid-2cols {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 40px;
+    align-items: center;
 }
 
-.registration-card {
-    background-color: var(--bg-surface);
-    padding: var(--space-6);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    text-align: center;
-    border: 1px solid var(--border-light);
-}
-
-.registration-card h3 {
-    margin-bottom: var(--space-5);
-    color: var(--text-primary);
-}
-
-.registration-price {
-    font-size: var(--font-size-3xl);
-    font-weight: var(--font-weight-extrabold);
-    color: var(--brand-primary);
-    margin-bottom: var(--space-5);
-}
-
-.registration-price small {
-    font-size: var(--font-size-base);
-    color: var(--text-muted);
-    font-weight: var(--font-weight-normal);
-}
-
-/* Responsive adjustments */
+/* Responsive */
 @media (max-width: 992px) {
-    .event-details-grid {
+    .event-grid-2cols,
+    .event-grid-2cols-reverse,
+    .hero-grid-2cols {
+        grid-template-columns: 1fr;
+        gap: 30px;
+    }
+}
+
+/* Custom cards that were using Bootstrap classes */
+.custom-card {
+    background: white;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border: 1px solid #e0e0e0;
+}
+
+.custom-card-header {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Hero section */
+.event-hero-custom {
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    border-radius: 0 0 40px 40px;
+    padding: 60px 0;
+    margin-bottom: 40px;
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 2;
+}
+
+/* Registration card */
+.registration-card-custom {
+    background: white;
+    border-radius: 24px;
+    padding: 32px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    text-align: center;
+}
+
+/* Info cards grid */
+.info-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 24px 0;
+}
+
+.info-card-custom {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.3s;
+}
+
+.info-card-custom:hover {
+    transform: translateY(-5px);
+}
+
+/* Countdown */
+.countdown-custom {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.countdown-item-custom {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 12px 16px;
+    text-align: center;
+    min-width: 70px;
+}
+
+.countdown-number {
+    font-size: 28px;
+    font-weight: 700;
+    color: white;
+}
+
+.countdown-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+}
+
+/* Ticket items */
+.ticket-item-custom {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 12px;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.ticket-item-custom:hover {
+    border-color: #667eea;
+    transform: translateX(5px);
+    box-shadow: 0 5px 15px rgba(102,126,234,0.1);
+}
+
+.ticket-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ticket-price {
+    font-size: 24px;
+    font-weight: 700;
+    color: #667eea;
+}
+
+/* Progress bar */
+.progress-custom {
+    margin-top: 20px;
+}
+
+.progress-bar-bg {
+    background: #e0e0e0;
+    height: 8px;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    background: linear-gradient(90deg, #00e5a0, #00b87d);
+    height: 100%;
+    width: 0%;
+    transition: width 0.5s;
+}
+
+.progress-stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Buttons */
+.btn-primary-custom {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 50px;
+    font-size: 16px;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.btn-primary-custom:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(102,126,234,0.3);
+    color: white;
+}
+
+.btn-free-custom {
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+}
+
+/* Accommodation items */
+.accommodation-item-custom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.accommodation-item-custom:last-child {
+    border-bottom: none;
+}
+
+/* Sticky sidebar */
+.sticky-sidebar {
+    position: sticky;
+    top: 20px;
+}
+
+/* Badges */
+.badge-free-custom {
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+    color: #000;
+    padding: 8px 20px;
+    border-radius: 50px;
+    font-weight: 700;
+    display: inline-block;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+/* Info list */
+.info-list-custom {
+    list-style: none;
+    padding: 0;
+}
+
+.info-list-custom li {
+    padding: 12px 0;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.info-list-custom li:last-child {
+    border-bottom: none;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+    .info-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .info-cards-grid {
         grid-template-columns: 1fr;
     }
-    .event-sidebar {
-        position: static;
+
+    .countdown-custom {
+        flex-wrap: wrap;
     }
-    .event-hero h1 {
-        font-size: var(--font-size-2xl);
+
+    .countdown-item-custom {
+        flex: 1;
+    }
+
+    .hero-grid-2cols,
+    .event-grid-2cols {
+        grid-template-columns: 1fr;
     }
 }

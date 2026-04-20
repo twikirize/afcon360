@@ -179,6 +179,45 @@ def get_current_org_id():
     return org_id if context == "organization" else None
 
 # ---------------------------------------------------------------------------
+# Profile completion helpers
+# ---------------------------------------------------------------------------
+
+def get_profile_completion_data(user: "User"):
+    """
+    Get profile completion data for a user.
+    Returns a dictionary with completion percentage and breakdown.
+    """
+    if not user:
+        return {
+            'percentage': 0,
+            'breakdown': {},
+            'needs_completion': False
+        }
+
+    # Try to get the user's profile
+    try:
+        from app.profile.models import get_profile_by_user
+        profile = get_profile_by_user(user.public_id)
+
+        if profile:
+            percentage = profile.get_completion_percentage()
+            breakdown = profile.get_completion_breakdown()
+            return {
+                'percentage': percentage,
+                'breakdown': breakdown,
+                'needs_completion': percentage < 100
+            }
+    except Exception:
+        # If there's any error, fall back to default
+        pass
+
+    return {
+        'percentage': 0,
+        'breakdown': {},
+        'needs_completion': True
+    }
+
+# ---------------------------------------------------------------------------
 # Organisation role helpers
 # ---------------------------------------------------------------------------
 

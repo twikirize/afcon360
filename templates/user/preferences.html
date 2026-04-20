@@ -245,9 +245,129 @@
                     </div>
                 </div>
 
+
+                <!-- DASHBOARD COLORS SECTION - NEW -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>🎨 Dashboard Colors (Owner/Admin Only)</span>
+                    </div>
+                    <div class="small text-muted mb-3">
+                        Customize the appearance of your admin dashboard. These colors only affect your view.
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Page Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardPageBg" class="form-control form-control-color" style="width: 60px;" value="#f5f7fa">
+                                <input type="text" id="dashboardPageBgText" class="form-control form-control-sm" style="width: 100px;" value="#f5f7fa">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardPageBg" data-default="#f5f7fa">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Sidebar Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardSidebarBg" class="form-control form-control-color" style="width: 60px;" value="#ffffff">
+                                <input type="text" id="dashboardSidebarBgText" class="form-control form-control-sm" style="width: 100px;" value="#ffffff">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardSidebarBg" data-default="#ffffff">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Card Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardCardBg" class="form-control form-control-color" style="width: 60px;" value="#ffffff">
+                                <input type="text" id="dashboardCardBgText" class="form-control form-control-sm" style="width: 100px;" value="#ffffff">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardCardBg" data-default="#ffffff">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Header Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardHeaderBg" class="form-control form-control-color" style="width: 60px;" value="#1a1a2e">
+                                <input type="text" id="dashboardHeaderBgText" class="form-control form-control-sm" style="width: 100px;" value="#1a1a2e">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardHeaderBg" data-default="#1a1a2e">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Primary Green</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardPrimaryGreen" class="form-control form-control-color" style="width: 60px;" value="#10b981">
+                                <input type="text" id="dashboardPrimaryGreenText" class="form-control form-control-sm" style="width: 100px;" value="#10b981">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardPrimaryGreen" data-default="#10b981">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Text Primary</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardTextPrimary" class="form-control form-control-color" style="width: 60px;" value="#111827">
+                                <input type="text" id="dashboardTextPrimaryText" class="form-control form-control-sm" style="width: 100px;" value="#111827">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardTextPrimary" data-default="#111827">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Border Radius (px)</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="range" id="dashboardBorderRadius" min="0" max="24" value="8" class="form-range" style="flex:1">
+                                <span id="borderRadiusValue" class="badge bg-secondary" style="min-width: 45px;">8px</span>
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-radius" data-default="8">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Card Padding (px)</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="range" id="dashboardCardPadding" min="12" max="32" value="16" class="form-range" style="flex:1">
+                                <span id="cardPaddingValue" class="badge bg-secondary" style="min-width: 45px;">16px</span>
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-padding" data-default="16">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="preview-box" id="dashboardLivePreview">
+                            <div style="background: var(--dashboard-card-bg, white); border-radius: var(--dashboard-radius, 8px); padding: var(--dashboard-padding, 16px); border: 1px solid #e5e7eb;">
+                                <div style="color: var(--dashboard-text-primary, #111827); font-weight: 600;">Live Preview Card</div>
+                                <div style="color: var(--dashboard-text-secondary, #4b5563); font-size: 13px; margin-top: 8px;">This is how your dashboard will look</div>
+                                <div style="margin-top: 12px;">
+                                    <button style="background: var(--dashboard-primary, #10b981); color: white; border: none; padding: 6px 12px; border-radius: 6px;">Sample Button</button>
+                                    <button style="background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; padding: 6px 12px; border-radius: 6px; margin-left: 8px;">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" id="dashboardPresetDefault" class="btn btn-outline-primary btn-sm">Default Green</button>
+                            <button type="button" id="dashboardPresetDark" class="btn btn-outline-primary btn-sm">Dark Mode</button>
+                            <button type="button" id="dashboardPresetBlue" class="btn btn-outline-primary btn-sm">Blue Theme</button>
+                            <button type="button" id="dashboardPresetPurple" class="btn btn-outline-primary btn-sm">Purple Theme</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 d-flex gap-3">
+                        <button id="saveDashboardPreferences" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Changes
+                        </button>
+                        <button id="resetDashboardPreferences" class="btn btn-outline-secondary">
+                            <i class="fas fa-undo me-2"></i>Reset to Saved
+                        </button>
+                    </div>
+                </div>
+
+
                 <div class="d-flex gap-3 mt-4">
-                    <button type="submit" class="btn btn-primary">💾 Save Preferences</button>
-                    <button type="button" id="resetPreferences" class="btn btn-outline-secondary">↺ Reset to Defaults</button>
+                    <button type="submit" class="btn btn-primary">💾 Save All Preferences</button>
+                    <button type="button" id="resetPreferences" class="btn btn-outline-secondary">↺ Reset All to Defaults</button>
                 </div>
             </form>
         </div>
@@ -271,18 +391,91 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Update radius and padding value displays
+    const radiusSlider = document.getElementById('dashboardBorderRadius');
+    const radiusValue = document.getElementById('borderRadiusValue');
+    if (radiusSlider && radiusValue) {
+        radiusSlider.addEventListener('input', (e) => {
+            radiusValue.textContent = e.target.value + 'px';
+        });
+    }
+
+    const paddingSlider = document.getElementById('dashboardCardPadding');
+    const paddingValue = document.getElementById('cardPaddingValue');
+    if (paddingSlider && paddingValue) {
+        paddingSlider.addEventListener('input', (e) => {
+            paddingValue.textContent = e.target.value + 'px';
+        });
+    }
+
+    // Sync color text inputs with color pickers
+    const colorMappings = {
+        'dashboardPageBg': 'dashboardPageBgText',
+        'dashboardSidebarBg': 'dashboardSidebarBgText',
+        'dashboardCardBg': 'dashboardCardBgText',
+        'dashboardHeaderBg': 'dashboardHeaderBgText',
+        'dashboardPrimaryGreen': 'dashboardPrimaryGreenText',
+        'dashboardTextPrimary': 'dashboardTextPrimaryText'
+    };
+
+    for (const [colorId, textId] of Object.entries(colorMappings)) {
+        const colorPicker = document.getElementById(colorId);
+        const textInput = document.getElementById(textId);
+        if (colorPicker && textInput) {
+            colorPicker.addEventListener('input', (e) => {
+                textInput.value = e.target.value;
+            });
+            textInput.addEventListener('input', (e) => {
+                colorPicker.value = e.target.value;
+            });
+        }
+    }
+
+    // Reset color buttons
+    document.querySelectorAll('.reset-dashboard-color').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const target = this.dataset.target;
+            const defaultValue = this.dataset.default;
+            const colorPicker = document.getElementById(target);
+            const textInput = document.getElementById(target + 'Text');
+            if (colorPicker) colorPicker.value = defaultValue;
+            if (textInput) textInput.value = defaultValue;
+            // Trigger input event to update working preferences
+            if (colorPicker) colorPicker.dispatchEvent(new Event('input'));
+        });
+    });
+
+    // Reset radius button
+    document.querySelectorAll('.reset-dashboard-radius').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const defaultValue = this.dataset.default;
+            const slider = document.getElementById('dashboardBorderRadius');
+            if (slider) {
+                slider.value = defaultValue;
+                slider.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
+    // Reset padding button
+    document.querySelectorAll('.reset-dashboard-padding').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const defaultValue = this.dataset.default;
+            const slider = document.getElementById('dashboardCardPadding');
+            if (slider) {
+                slider.value = defaultValue;
+                slider.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
     // Handled by window.themeManager defined in static/js/theme-manager.js
-    // We just need to make sure the form submission is intercepted if themeManager handles it
     const form = document.getElementById('preferencesForm');
     form.addEventListener('submit', function(e) {
         e.preventDefault();
-        // The theme-manager.js already has listeners for inputs, but we'll trigger a save
-        if (window.themeManager) {
-            window.themeManager.savePreferences().then(result => {
-                if(result.success) {
-                    // Success is handled by showToast in theme-manager.js
-                }
-            });
+        // Save all preferences (including dashboard)
+        if (window.themeManager && window.themeManager.saveUserPreferences) {
+            window.themeManager.saveUserPreferences();
         }
     });
 });

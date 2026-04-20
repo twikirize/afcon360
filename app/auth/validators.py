@@ -24,3 +24,17 @@ def validate_registration(username, password, email=None):
         return False, "Invalid email format"
 
     return True, ""
+
+def validate_security_answer(answer):
+    """
+    Validate security answer.
+    Returns: (is_valid, error_message)
+    """
+    if not answer or len(answer.strip()) == 0:
+        return False, "Security answer cannot be empty"
+
+    if len(answer.strip()) < 2:
+        return False, "Security answer must be at least 2 characters long"
+
+    # Additional validation can be added here
+    return True, ""

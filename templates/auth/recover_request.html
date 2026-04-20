@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Password Recovery{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Password Recovery</h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        If you don't have an email associated with your account, you can recover your password using your security question.
+                    </p>
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST" action="{{ url_for('auth.recover') }}">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username"
+                                   value="{{ username or '' }}" required autofocus>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Continue</button>
+                            <a href="{{ url_for('auth.login') }}" class="btn btn-outline-secondary">Back to Login</a>
+                        </div>
+                    </form>
+
+                    <div class="mt-3 text-center">
+                        <small class="text-muted">
+                            If you have an email associated with your account, use
+                            <a href="{{ url_for('auth.reset_request') }}">email-based password reset</a> instead.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

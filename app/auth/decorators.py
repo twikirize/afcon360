@@ -516,15 +516,18 @@ def require_verified(fn: Callable) -> Callable:
     return wrapper
 
 # ---------------------------------------------------------------------------
-# @require_profile_complete
+# @require_profile_completion
 # ---------------------------------------------------------------------------
 
-def require_profile_complete(fn: Callable) -> Callable:
+def require_profile_completion(fn: Callable) -> Callable:
     """
-    Abort with 403 if user's profile is not complete.
+    Redirect to profile completion if profile is incomplete.
+    Checks session flag 'profile_incomplete'.
     """
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        from flask import session, flash, redirect, url_for, request
+
         user = _get_current_user()
 
         if not user:
@@ -532,20 +535,50 @@ def require_profile_complete(fn: Callable) -> Callable:
             flash("Please log in to access this page.", "warning")
             return redirect(url_for("auth.login", next=request.url))
 
-        # Check if profile is complete
-        if hasattr(user, 'profile') and user.profile:
-            if not user.profile.profile_completed:
-                _log_denied("incomplete_profile", user, fn.__qualname__)
-                flash("Please complete your profile to access this feature.", "info")
-                return redirect(url_for("auth.complete_profile"))
-        else:
-            # User has no profile, which is also incomplete
-            _log_denied("no_profile", user, fn.__qualname__)
-            flash("Please complete your profile to access this feature.", "info")
+        # Check if profile is incomplete via session flag
+        if session.get("profile_incomplete"):
+            flash("Please complete your profile to access this feature.", "warning")
             return redirect(url_for("auth.complete_profile"))
 
         return fn(*args, **kwargs)
     return wrapper
+
+# ---------------------------------------------------------------------------
+# @require_kyc_tier
+# ---------------------------------------------------------------------------
+
+def require_kyc_tier(min_tier: int) -> Callable:
+    """
+    Redirect to KYC upgrade if user's KYC tier is below required level.
+    """
+    def decorator(fn: Callable) -> Callable:
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            from flask import flash, redirect, url_for
+
+            user = _get_current_user()
+
+            if not user:
+                _log_denied("unauthenticated", None, fn.__qualname__)
+                flash("Please log in to access this page.", "warning")
+                return redirect(url_for("auth.login", next=request.url))
+
+            # Get user's KYC level
+            kyc_level = getattr(user, 'kyc_level', 0)
+
+            if kyc_level < min_tier:
+                _log_denied(
+                    "insufficient_kyc_tier", user, fn.__qualname__,
+                    required_tier=min_tier,
+                    current_tier=kyc_level
+                )
+                flash(f"This feature requires KYC Tier {min_tier} verification. Your current tier is {kyc_level}.", "warning")
+                # Redirect to KYC upgrade page
+                return redirect(url_for("kyc.upgrade"))
+
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
 # ---------------------------------------------------------------------------
 # Convenience aliases

@@ -1,0 +1,112 @@
+<div class="left-pane-content">
+
+    <!-- User Profile Card -->
+    <div class="user-card">
+        <div class="user-avatar">
+            {{ user.username[0]|upper }}
+        </div>
+        <div class="user-info">
+            <h3>{{ user.username }}</h3>
+            <span class="user-email">{{ user.email or 'No email' }}</span>
+            <div class="user-badges">
+                <span class="tier-badge tier-{{ kyc_info.tier }}">T{{ kyc_info.tier }}</span>
+                <span class="role-badge fan">Fan</span>
+            </div>
+            <div class="progress-container">
+                <div class="progress-label">
+                    <span>Profile {{ completion }}%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ completion }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Main Navigation -->
+    <nav class="pane-nav">
+        <a href="#" class="nav-item active" data-pane="dashboard" data-view="overview">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-pane="events" data-view="my-events">
+            <i class="bi bi-calendar-event"></i>
+            <span>My Events</span>
+            <span class="badge">{{ stats.events_count|default(0) }}</span>
+        </a>
+        <a href="#" class="nav-item" data-pane="trips" data-view="my-trips">
+            <i class="bi bi-geo-alt"></i>
+            <span>My Trips</span>
+            <span class="badge">{{ stats.trips_count|default(0) }}</span>
+        </a>
+        <a href="#" class="nav-item" data-pane="stays" data-view="my-stays">
+            <i class="bi bi-building"></i>
+            <span>My Stays</span>
+            <span class="badge">{{ stats.stays_count|default(0) }}</span>
+        </a>
+        <a href="#" class="nav-item" data-pane="wallet" data-view="wallet-overview">
+            <i class="bi bi-wallet2"></i>
+            <span>Wallet</span>
+            <span class="wallet-balance">UGX {{ wallet_balance|default(0)|int }}</span>
+        </a>
+    </nav>
+
+    <hr class="divider">
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <h4>Quick Actions</h4>
+        <div class="action-grid">
+            <a href="{{ url_for('transport.book_transport') }}" class="action-btn">
+                <i class="bi bi-bus-front"></i>
+                <span>Book Transport</span>
+            </a>
+            <a href="{{ url_for('accommodation.index') }}" class="action-btn">
+                <i class="bi bi-house-door"></i>
+                <span>Find Stay</span>
+            </a>
+            <a href="{{ url_for('events.list') }}" class="action-btn">
+                <i class="bi bi-ticket-perforated"></i>
+                <span>Browse Events</span>
+            </a>
+            <a href="{{ url_for('tourism.home') }}" class="action-btn">
+                <i class="bi bi-compass"></i>
+                <span>Explore Tours</span>
+            </a>
+        </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- KYC Progress -->
+    <div class="kyc-section">
+        <h4>KYC Progress</h4>
+        <div class="tier-info">
+            <span class="current-tier">Tier {{ kyc_info.tier }}: {{ kyc_info.tier_name }}</span>
+        </div>
+        <div class="next-tier">
+            {% if kyc_info.tier < 5 %}
+            <span>Next: Tier {{ kyc_info.tier + 1 }}</span>
+            <a href="{{ url_for('kyc.upgrade') }}" class="upgrade-link">Upgrade →</a>
+            {% else %}
+            <span>Maximum Tier Reached</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Settings & Support -->
+    <div class="bottom-nav">
+        <a href="{{ url_for('profile.edit_profile') }}" class="nav-item">
+            <i class="bi bi-gear"></i>
+            <span>Settings</span>
+        </a>
+        <a href="#" class="nav-item" data-support>
+            <i class="bi bi-question-circle"></i>
+            <span>Support</span>
+        </a>
+    </div>
+</div>

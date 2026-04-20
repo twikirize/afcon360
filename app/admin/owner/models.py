@@ -231,7 +231,6 @@ class SystemSetting(ProtectedModel):
     @classmethod
     def initialize_defaults(cls):
         """Create default system settings if they don't exist."""
-        from app.extensions import db
         defaults = [
             {
                 'key': 'EMERGENCY_LOCKDOWN',
@@ -256,10 +255,31 @@ class SystemSetting(ProtectedModel):
             },
             {
                 'key': 'PAYMENT_PROCESSING_ENABLED',
-                'value': 'true',
+                'value': 'false',
                 'value_type': 'bool',
                 'category': 'payment',
                 'description': 'Enable payment processing'
+            },
+            {
+                'key': 'RATE_LIMIT_ENABLED',
+                'value': 'true',
+                'value_type': 'bool',
+                'category': 'security',
+                'description': 'Enable rate limiting for API endpoints'
+            },
+            {
+                'key': 'SECURITY_HEADERS_ENABLED',
+                'value': 'true',
+                'value_type': 'bool',
+                'category': 'security',
+                'description': 'Enable security headers in HTTP responses'
+            },
+            {
+                'key': 'AUDIT_LOGGING_ENABLED',
+                'value': 'true',
+                'value_type': 'bool',
+                'category': 'security',
+                'description': 'Enable comprehensive audit logging'
             },
             {
                 'key': 'SITE_NAME',
@@ -276,6 +296,7 @@ class SystemSetting(ProtectedModel):
                 'description': 'Primary contact email'
             },
         ]
+        created_count = 0
         for item in defaults:
             existing = cls.query.filter_by(key=item['key']).first()
             if not existing:
@@ -287,4 +308,6 @@ class SystemSetting(ProtectedModel):
                     description=item['description']
                 )
                 db.session.add(setting)
+                created_count += 1
         db.session.commit()
+        return created_count

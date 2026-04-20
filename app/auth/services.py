@@ -8,14 +8,15 @@
 # ============================================================================
 
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple, Any
 import hashlib
+import secrets
 import uuid
 from functools import wraps
 
-from app.extensions import db
+from app.extensions import db, cache
 from app.identity.models.user import User, UserRole
-from app.identity.models.roles_permission import Role
+from app.identity.models.roles_permission import Role, get_or_create_role
 from app.audit.user import AuditLog  # FIXED: Use correct audit model
 from app.audit.forensic_audit import ForensicAuditService
 from app.profile.models import UserProfile
@@ -27,6 +28,7 @@ from app.auth.tokens import (
 )
 from app.auth.sessions import start_server_session, revoke_all_sessions_for_user, revoke_session
 from app.auth.roles import DEFAULT_SCOPE
+from app.auth.otp_service import otp_service
 
 # ----------------------------
 # Constants
@@ -239,29 +241,36 @@ def register_user(
         password: str,
         email: Optional[str] = None,
         full_name: Optional[str] = None,
+        security_question: Optional[str] = None,
+        security_answer: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
 ) -> User:
     """
-    Register a new user with email verification.
+    Register a new user with email verification or security question.
 
     Emits: user.created
     """
     # Log attempt
     audit_id = ForensicAuditService.log_attempt(
         entity_type="user",
-        entity_id="new",
+        entity_id=str(uuid.uuid4()),
         action="register",
         user_id=None,  # No user yet
-        details={"username": username, "email": email},
+        details={
+            "username": username,
+            "email": email,
+            "has_security_question": security_question is not None
+        },
         ip_address=ip_address,
         user_agent=user_agent
     )
 
+    # Check for existing username
     if User.query.filter_by(username=username).first():
         ForensicAuditService.log_blocked(
             entity_type="user",
-            entity_id="new",
+            entity_id=str(uuid.uuid4()),
             action="register",
             user_id=None,
             reason="Username already exists",
@@ -270,10 +279,12 @@ def register_user(
             user_agent=user_agent
         )
         raise ValueError(f"Username '{username}' already exists")
+
+    # Check for existing email if provided
     if email and User.query.filter_by(email=email).first():
         ForensicAuditService.log_blocked(
             entity_type="user",
-            entity_id="new",
+            entity_id=str(uuid.uuid4()),
             action="register",
             user_id=None,
             reason="Email already exists",
@@ -283,23 +294,79 @@ def register_user(
         )
         raise ValueError(f"Email '{email}' already exists")
 
+    # Validate security question/answer when no email is provided
+    if not email:
+        if not security_question or not security_answer:
+            ForensicAuditService.log_blocked(
+                entity_type="user",
+                entity_id=str(uuid.uuid4()),
+                action="register",
+                user_id=None,
+                reason="Security question and answer required when email is not provided",
+                attempted_value=None,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            raise ValueError("Security question and answer are required when email is not provided")
+
+    # Generate recovery code if no email
+    recovery_code = None
+    hashed_security_answer = None
+    if not email and security_answer:
+        # Generate recovery code
+        recovery_code = secrets.token_urlsafe(16)
+        # Hash the security answer
+        hashed_security_answer = hashlib.sha256(security_answer.encode()).hexdigest()
+
     public_id = str(uuid.uuid4())
     user = User(public_id=public_id, username=username, email=email)
     user.set_password(password)
+
+    # Set verification and active status
+    if email:
+        user.is_verified = False
+    else:
+        user.is_verified = True
+        # Store security question and hashed answer
+        # Assuming the User model has these fields
+        if hasattr(user, 'security_question'):
+            user.security_question = security_question
+        if hasattr(user, 'security_answer_hash'):
+            user.security_answer_hash = hashed_security_answer
+        if hasattr(user, 'recovery_code_hash') and recovery_code:
+            # Hash the recovery code for storage
+            recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
+            user.recovery_code_hash = recovery_code_hash
+
+    # Always set is_active=True
+    user.is_active = True
 
     try:
         db.session.add(user)
         db.session.flush()
 
-        # Assign default role
-        default_role = Role.query.filter_by(name="fan", scope=DEFAULT_SCOPE).first()
-        if default_role:
-            db.session.add(UserRole(user_id=user.id, role_id=default_role.id))
+        # Assign default 'user' role (not 'fan')
+        # Use get_or_create_role to ensure it exists
+        default_role = get_or_create_role(
+            name="user",
+            scope=DEFAULT_SCOPE,
+            description="Default role for registered users",
+            level=6,  # Same level as 'fan' was supposed to be
+            commit=False  # We'll commit later with the transaction
+        )
+        # Assign the role to the user
+        user_role = UserRole(user_id=user.id, role_id=default_role.id)
+        db.session.add(user_role)
 
-        # Create profile
-        db.session.add(UserProfile(user=user, full_name=full_name or username, email=email))
+        # Create profile with profile_completed=False
+        db.session.add(UserProfile(
+            user=user,
+            full_name=full_name or username,
+            email=email,
+            profile_completed=False
+        ))
 
-        # Generate email verification token
+        # Generate email verification token if email is provided
         nonce = None
         if hasattr(user, "email_verify_nonce") and email:
             nonce = str(uuid.uuid4())
@@ -307,13 +374,23 @@ def register_user(
 
         token = generate_email_token(user.public_id, nonce=nonce) if email else None
 
-        _emit("user.created", {
+        # Prepare audit payload
+        audit_payload = {
             **_user_payload(user),
             "verify_token": token,
             "email_provided": bool(email),
+            "has_security_question": security_question is not None,
             "resource_type": "user",
             "resource_id": user.public_id
-        })
+        }
+
+        # If recovery code was generated, attach it to user object for one-time display
+        if recovery_code:
+            user._recovery_code = recovery_code
+            # Don't include the actual recovery code in audit logs for security
+            audit_payload["recovery_code_generated"] = True
+
+        _emit("user.created", audit_payload)
 
         db.session.commit()
 
@@ -321,7 +398,13 @@ def register_user(
         ForensicAuditService.log_completion(
             audit_id=audit_id,
             status="completed",
-            result_details={"user_id": user.public_id, "username": username}
+            result_details={
+                "user_id": user.public_id,
+                "username": username,
+                "email_provided": bool(email),
+                "is_verified": user.is_verified,
+                "is_active": user.is_active
+            }
         )
     except Exception as e:
         db.session.rollback()
@@ -372,10 +455,54 @@ def authenticate_user(
     _reset_failed_login_counter(user)
     user.last_login = datetime.now(timezone.utc)
 
-    requires_mfa = getattr(user, "requires_mfa", lambda: False)()
+    # Check if MFA is enabled for the user
+    requires_mfa = user.mfa_enabled
+
     if requires_mfa:
-        db.session.commit()
-        return AuthResult.MFA_REQUIRED, {"user": user, "user_id": user.public_id}
+        # Get user's MFA method
+        mfa_method = otp_service.get_user_mfa_method(user.id)
+
+        if mfa_method == "totp":
+            # For TOTP, we don't need to generate/send OTP here
+            # The client should prompt for TOTP code
+            _emit("user.mfa_required", {
+                "user_id": user.public_id,
+                "id": user.id,
+                "mfa_method": mfa_method,
+                "resource_type": "user",
+                "resource_id": user.public_id
+            })
+
+            db.session.commit()
+            return AuthResult.MFA_REQUIRED, {
+                "user": user,
+                "user_id": user.public_id,
+                "mfa_type": mfa_method,
+                "message": "TOTP authentication required"
+            }
+        else:
+            # For SMS or other methods, generate and send OTP
+            otp = otp_service.generate_sms_otp()
+            # TODO: Get user's phone number from profile
+            # For now, store OTP
+            otp_service.store_otp(str(user.id), otp, purpose="2fa_login")
+
+            # Log 2FA requirement
+            _emit("user.mfa_required", {
+                "user_id": user.public_id,
+                "id": user.id,
+                "mfa_method": mfa_method or "sms",
+                "resource_type": "user",
+                "resource_id": user.public_id
+            })
+
+            db.session.commit()
+            return AuthResult.MFA_REQUIRED, {
+                "user": user,
+                "user_id": user.public_id,
+                "mfa_type": mfa_method or "sms",
+                "message": "OTP authentication required"
+            }
 
     session_id = start_server_session(user.public_id, ip, user_agent)
     db.session.commit()
@@ -581,6 +708,329 @@ def remove_role(
     db.session.commit()
     return True
 
+
+# ----------------------------
+# 2FA/OTP Verification
+# ----------------------------
+def verify_2fa_otp(user_id: str, otp: str, ip: Optional[str] = None,
+                   user_agent: Optional[str] = None) -> Tuple[bool, Optional[dict]]:
+    """
+    Verify 2FA OTP for a user.
+
+    Returns: (success, payload dict)
+    """
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return False, {"error": "User not found"}
+
+    # Check if MFA is enabled
+    if not user.mfa_enabled:
+        # MFA not enabled, treat as successful
+        session_id = start_server_session(user.public_id, ip, user_agent)
+        return True, {
+            "user": user,
+            "session_id": session_id,
+            "message": "MFA not enabled for user"
+        }
+
+    # Get user's MFA method
+    mfa_method = otp_service.get_user_mfa_method(user.id)
+
+    if mfa_method == "totp":
+        # Verify TOTP
+        success = otp_service.verify_user_2fa(user.id, otp)
+        if not success:
+            # Audit failed TOTP attempt
+            _emit("user.mfa_failed", {
+                "user_id": user.public_id,
+                "id": user.id,
+                "ip": ip,
+                "user_agent": user_agent,
+                "reason": "Invalid TOTP code",
+                "mfa_method": "totp",
+                "resource_type": "user",
+                "resource_id": user.public_id
+            })
+
+            return False, {
+                "error": "Invalid TOTP code",
+                "remaining_attempts": None  # TOTP doesn't have attempt limits in this implementation
+            }
+    else:
+        # Verify stored OTP (for SMS/email)
+        success, result = otp_service.verify_stored_otp(
+            identifier=str(user.id),
+            otp=otp,
+            purpose="2fa_login"
+        )
+
+        if not success:
+            # Audit failed OTP attempt
+            _emit("user.mfa_failed", {
+                "user_id": user.public_id,
+                "id": user.id,
+                "ip": ip,
+                "user_agent": user_agent,
+                "reason": result.get("error", "Invalid OTP"),
+                "mfa_method": mfa_method or "sms",
+                "resource_type": "user",
+                "resource_id": user.public_id
+            })
+
+            return False, {
+                "error": result.get("error", "Invalid OTP"),
+                "remaining_attempts": result.get("remaining", 0)
+            }
+
+    # Start server session
+    session_id = start_server_session(user.public_id, ip, user_agent)
+
+    # Audit successful 2FA verification
+    _emit("user.mfa_verified", {
+        "user_id": user.public_id,
+        "id": user.id,
+        "ip": ip,
+        "user_agent": user_agent,
+        "mfa_method": mfa_method or "sms",
+        "resource_type": "user",
+        "resource_id": user.public_id
+    })
+
+    return True, {
+        "user": user,
+        "session_id": session_id,
+        "message": "2FA verification successful"
+    }
+
+# ----------------------------
+# 2FA Management
+# ----------------------------
+def setup_2fa(user_id: str) -> Dict[str, Any]:
+    """Setup 2FA for a user"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        raise ValueError("User not found")
+
+    return otp_service.setup_user_2fa(user.id, user.email or user.username)
+
+def verify_2fa_setup(user_id: str, otp: str) -> Tuple[bool, str]:
+    """Verify and enable 2FA setup"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return False, "User not found"
+
+    return otp_service.verify_and_enable_2fa(user.id, otp)
+
+def disable_2fa(user_id: str, reason: str = "user_requested") -> bool:
+    """Disable 2FA for a user"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return False
+
+    return otp_service.disable_user_2fa(user.id, reason)
+
+# ----------------------------
+# MFA Status Check
+# ----------------------------
+def is_mfa_enabled(user_id: str) -> bool:
+    """Check if MFA is enabled for a user"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return False
+
+    return user.mfa_enabled
+
+def get_mfa_method(user_id: str) -> Optional[str]:
+    """Get the MFA method for a user"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return None
+
+    return otp_service.get_user_mfa_method(user.id)
+
+# ----------------------------
+# OTP Generation and Sending
+# ----------------------------
+def send_sms_otp(phone_number: str, purpose: str = "verification",
+                 user_id: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+    """
+    Send OTP via SMS.
+
+    Returns: (success, otp_code)
+    """
+    from app.identity.models.user import User
+
+    internal_user_id = None
+    if user_id:
+        user = User.query.filter_by(public_id=user_id).first()
+        if user:
+            internal_user_id = user.id
+
+    otp = otp_service.generate_sms_otp()
+
+    # Store OTP for verification
+    identifier = phone_number
+    if internal_user_id:
+        identifier = str(internal_user_id)
+
+    stored = otp_service.store_otp(identifier, otp, purpose)
+    if not stored:
+        return False, None
+
+    # Send SMS
+    sent = otp_service.send_sms_otp(phone_number, otp, internal_user_id)
+    if not sent:
+        return False, None
+
+    return True, otp
+
+def send_email_otp(email: str, purpose: str = "verification",
+                   user_id: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+    """
+    Send OTP via email.
+
+    Returns: (success, otp_code)
+    """
+    from app.identity.models.user import User
+
+    internal_user_id = None
+    if user_id:
+        user = User.query.filter_by(public_id=user_id).first()
+        if user:
+            internal_user_id = user.id
+
+    otp = otp_service.generate_email_otp()
+
+    # Store OTP for verification
+    identifier = email
+    if internal_user_id:
+        identifier = str(internal_user_id)
+
+    stored = otp_service.store_otp(identifier, otp, purpose)
+    if not stored:
+        return False, None
+
+    # Send email
+    sent = otp_service.send_email_otp(email, otp, internal_user_id)
+    if not sent:
+        return False, None
+
+    return True, otp
+
+def verify_otp(identifier: str, otp: str, purpose: str = "verification") -> Tuple[bool, Dict[str, Any]]:
+    """
+    Verify OTP for any purpose.
+
+    Returns: (success, result_data)
+    """
+    return otp_service.verify_stored_otp(identifier, otp, purpose)
+
+# ----------------------------
+# Backup Codes Management
+# ----------------------------
+def generate_backup_codes(user_id: str) -> Tuple[List[str], bool]:
+    """Generate backup codes for 2FA recovery"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return [], False
+
+    return otp_service.regenerate_backup_codes(user.id)
+
+def verify_backup_code(user_id: str, code: str) -> bool:
+    """Verify a backup code for 2FA recovery"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return False
+
+    return otp_service.verify_backup_code_for_user(user.id, code)
+
+def has_backup_codes(user_id: str) -> bool:
+    """Check if user has backup codes available"""
+    from app.identity.models.user import User
+
+    user = User.query.filter_by(public_id=user_id).first()
+    if not user:
+        return False
+
+    return otp_service.has_backup_codes(user.id)
+
+# ----------------------------
+# Password Recovery without Email
+# ----------------------------
+def initiate_password_recovery(username: str) -> Tuple[bool, Optional[dict]]:
+    """
+    Initiate password recovery for users without email.
+    Returns: (success, user_data dict with security question if available)
+    """
+    user = User.query.filter_by(username=username).first()
+
+    if not user:
+        return False, None
+
+    # Check if user has security question setup
+    if not user.security_question or not user.security_answer_hash:
+        return False, {"error": "No security question configured for this account"}
+
+    # Check if user has email (should use email-based recovery instead)
+    if user.email:
+        return False, {"error": "Please use email-based password recovery"}
+
+    return True, {
+        "user_id": user.public_id,
+        "username": user.username,
+        "security_question": user.security_question
+    }
+
+def verify_security_answer_and_reset_password(
+    username: str,
+    answer: str,
+    new_password: str
+) -> Tuple[bool, Optional[str]]:
+    """
+    Verify security answer and reset password for users without email.
+    Returns: (success, error_message)
+    """
+    user = User.query.filter_by(username=username).first()
+
+    if not user:
+        return False, "User not found"
+
+    # Verify security answer
+    if not user.verify_security_answer(answer):
+        return False, "Incorrect security answer"
+
+    # Reset password
+    user.set_password(new_password)
+
+    # Revoke all sessions on password change
+    from app.auth.sessions import revoke_all_sessions_for_user
+    revoke_all_sessions_for_user(user.public_id)
+
+    # Emit audit event
+    _emit("password.recovered_via_security_question", {
+        "user_id": user.public_id,
+        "resource_type": "user",
+        "resource_id": user.public_id
+    })
+
+    db.session.commit()
+    return True, None
 
 # ----------------------------
 # Admin User Management

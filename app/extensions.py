@@ -6,6 +6,7 @@ from flask_wtf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
+from flask_mail import Mail
 import redis
 import os
 
@@ -20,6 +21,9 @@ login_manager.session_protection = "strong"
 
 # CSRF protection for forms
 csrf = CSRFProtect()
+
+# Email sending
+mail = Mail()
 
 # Redis URL from environment - will be validated in create_app
 # Use a placeholder that will be replaced when app is initialized

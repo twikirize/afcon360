@@ -71,6 +71,8 @@ class UserProfile(BaseModel):
     gender = Column(SAEnum(*GENDERS, name="gender_enum"), nullable=True)
     nationality = Column(String(64), nullable=True)
     address = Column(String(256), nullable=True)
+    city = Column(String(128), nullable=True)
+    country = Column(String(64), nullable=True)
     phone_number = Column(String(32), nullable=True, index=True)
     email = Column(String(128), nullable=True, index=True)
 
@@ -147,6 +149,71 @@ class UserProfile(BaseModel):
             "full_name": self.full_name,
             "verification_status": self.verification_status,
             "kyc_level": self.kyc_level,
+        }
+
+    def get_completion_percentage(self):
+        """
+        Calculate profile completion percentage based on:
+        - email_verified (20%)
+        - phone_verified (20%)
+        - full_name (20%)
+        - address (20%)
+        - city (10%)
+        - country (10%)
+        """
+        percentage = 0
+
+        # Check each component
+        if self.email_verified:
+            percentage += 20
+        if self.phone_verified:
+            percentage += 20
+        if self.full_name and len(self.full_name.strip()) > 0:
+            percentage += 20
+        if self.address and len(self.address.strip()) > 0:
+            percentage += 20
+        if self.city and len(self.city.strip()) > 0:
+            percentage += 10
+        if self.country and len(self.country.strip()) > 0:
+            percentage += 10
+
+        return percentage
+
+    def get_completion_breakdown(self):
+        """
+        Return a dictionary with completion status for each component.
+        """
+        return {
+            'email_verified': {
+                'completed': bool(self.email_verified),
+                'weight': 20,
+                'label': 'Email Verified'
+            },
+            'phone_verified': {
+                'completed': bool(self.phone_verified),
+                'weight': 20,
+                'label': 'Phone Verified'
+            },
+            'full_name': {
+                'completed': bool(self.full_name and len(self.full_name.strip()) > 0),
+                'weight': 20,
+                'label': 'Full Name'
+            },
+            'address': {
+                'completed': bool(self.address and len(self.address.strip()) > 0),
+                'weight': 20,
+                'label': 'Address'
+            },
+            'city': {
+                'completed': bool(self.city and len(self.city.strip()) > 0),
+                'weight': 10,
+                'label': 'City'
+            },
+            'country': {
+                'completed': bool(self.country and len(self.country.strip()) > 0),
+                'weight': 10,
+                'label': 'Country'
+            }
         }
 
     # ---------------------------
@@ -285,6 +352,33 @@ def get_profile_by_user(user_or_public_id):
         else user_or_public_id
     )
     return UserProfile.query.filter_by(user_id=public_id).first()
+
+def calculate_profile_completion(profile):
+    """
+    Calculate profile completion percentage.
+
+    Args:
+        profile: UserProfile instance
+
+    Returns:
+        int: Percentage (0-100)
+    """
+    if not profile:
+        return 0
+
+    # Define important fields to check
+    important_fields = [
+        'full_name', 'date_of_birth', 'gender',
+        'nationality', 'address', 'phone_number', 'email'
+    ]
+
+    completed_fields = 0
+    for field in important_fields:
+        value = getattr(profile, field, None)
+        if value:
+            completed_fields += 1
+
+    return int((completed_fields / len(important_fields)) * 100)
 
 if __name__ == '__main__':
     # Test that integer input is rejected

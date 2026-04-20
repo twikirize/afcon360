@@ -62,7 +62,7 @@
           <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/>
         </svg>
         Events
-        <span class="sad-nav-pill" id="pendingEventsCount">0</span>
+        <span class="sad-nav-pill" id="pendingEventsCount">{{ pending_events|default(0) }}</span>
       </a>
 
       <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-nav-item">
@@ -224,23 +224,23 @@
           <div class="sad-stats" style="grid-template-columns:repeat(4,1fr)">
             <div class="sad-stat s-blue">
               <div class="sad-stat-label">Total Events</div>
-              <div class="sad-stat-value" id="totalEvents">0</div>
+              <div class="sad-stat-value">{{ total_events|default(0) }}</div>
             </div>
             <div class="sad-stat s-green">
               <div class="sad-stat-label">Active</div>
-              <div class="sad-stat-value" id="activeEvents">0</div>
+              <div class="sad-stat-value">{{ active_events|default(0) }}</div>
             </div>
             <div class="sad-stat s-amber">
               <div class="sad-stat-label">Pending</div>
-              <div class="sad-stat-value" id="pendingEvents">0</div>
+              <div class="sad-stat-value">{{ pending_events|default(0) }}</div>
             </div>
             <div class="sad-stat s-cyan">
               <div class="sad-stat-label">Registrations</div>
-              <div class="sad-stat-value" id="totalRegistrations">0</div>
+              <div class="sad-stat-value">{{ total_registrations|default(0) }}</div>
             </div>
           </div>
           <div class="sad-alert info" style="margin-top:12px;font-size:11px">
-            <a href="{{ url_for('events.admin_events') }}?status=pending" style="color:var(--sad-amber)">📋 {{ pending_events_count|default(0) }} events pending approval</a>
+            <a href="{{ url_for('events.admin_events') }}?status=pending" style="color:var(--sad-amber)">📋 {{ pending_events|default(0) }} events pending approval</a>
           </div>
         </div>
       </div>
@@ -651,6 +651,52 @@
             </div>
           </div>
 
+          <!-- Verification Settings -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(245,166,35,0.1);color:var(--sad-amber)">✉️</div>
+                Verification Settings
+              </div>
+              {% if config.get('REQUIRE_EMAIL_VERIFICATION', False) %}
+                <span class="sad-badge on">Required</span>
+              {% else %}
+                <span class="sad-badge off">Optional</span>
+              {% endif %}
+            </div>
+            <div class="sad-card-body">
+              <form method="POST" action="{{ url_for('admin.toggle_email_verification') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="sad-feature-row" style="margin-bottom:16px">
+                  <div>
+                    <div class="sad-feature-name">Require Email Verification</div>
+                    <div class="sad-feature-desc">
+                      When ON, users must verify their email address to access the platform.
+                      When OFF, email is optional and users without email must set a security question.
+                    </div>
+                  </div>
+                  <div class="sad-feature-right">
+                    {% if config.get('REQUIRE_EMAIL_VERIFICATION', False) %}
+                      <span class="sad-badge on">On</span>
+                    {% else %}
+                      <span class="sad-badge off">Off</span>
+                    {% endif %}
+                    <label class="sad-toggle">
+                      <input type="checkbox" name="require_email_verification"
+                             {% if config.get('REQUIRE_EMAIL_VERIFICATION', False) %}checked{% endif %}
+                             onchange="this.form.submit()">
+                      <span class="sad-toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </form>
+              <div class="sad-alert info" style="margin-top:12px;font-size:11px">
+                <strong>Note:</strong> When email verification is OFF, email becomes optional.
+                Users who register without an email must set up a security question for account recovery.
+              </div>
+            </div>
+          </div>
+
           <!-- Content Statistics -->
           <div class="sad-card">
             <div class="sad-card-head">
@@ -759,10 +805,6 @@
 <!-- ============================================================================ -->
 <script>
 
-function updateDashboardUI(data) {
-    // Implement if needed for live stats
-}
-
 function prepareModuleToggle(moduleName, checkbox) {
     const isDisabling = !checkbox.checked;
 
@@ -830,19 +872,6 @@ function prepareModuleToggle(moduleName, checkbox) {
         }
     }
 }
-
-fetch('{{ url_for("events.api_admin_stats") }}')
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('totalEvents').textContent = data.total_events;
-            document.getElementById('activeEvents').textContent = data.active_events;
-            document.getElementById('pendingEvents').textContent = data.pending_events;
-            document.getElementById('totalRegistrations').textContent = data.total_registrations;
-            document.getElementById('pendingEventsCount').textContent = data.pending_events;
-        }
-    })
-    .catch(err => console.error('Error loading event stats:', err));
 
 </script>
 

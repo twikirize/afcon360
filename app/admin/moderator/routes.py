@@ -93,7 +93,8 @@ def approve_submission(submission_id):
     db.session.commit()
 
     flash('Submission approved successfully', 'success')
-    return redirect(url_for('moderator.content_moderation'))
+    # FIXED: Added 'admin.' prefix
+    return redirect(url_for('admin.moderator.content_moderation'))
 
 @moderator_bp.route('/content/<int:submission_id>/reject', methods=['POST'])
 @login_required
@@ -110,7 +111,8 @@ def reject_submission(submission_id):
     db.session.commit()
 
     flash('Submission rejected', 'warning')
-    return redirect(url_for('moderator.content_moderation'))
+    # FIXED: Added 'admin.' prefix
+    return redirect(url_for('admin.moderator.content_moderation'))
 
 @moderator_bp.route('/users')
 @login_required

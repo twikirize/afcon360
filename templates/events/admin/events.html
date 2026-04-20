@@ -1,143 +1,723 @@
 {#
   FILE: templates/events/admin/events.html
-  PURPOSE: System Admin view for managing all events platform-wide
-  ACCESS: System Admin (Super Admin) only
+  PURPOSE: Admin — Browse all events with status filters and per-row moderation
+  ACCESS: System Admin only
   RELATED: events.admin_events route
+  CSS: static/css/modules/events/dashboard.css (shared with command centre)
 #}
 
 {% extends "base.html" %}
 
-{% block title %}Manage Events - Admin{% endblock %}
+{% block title %}All Events — AFCON360 Admin{% endblock %}
+
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+  <style>
+    /* ── Page-specific additions ── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .filter-tab {
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      text-decoration: none;
+      color: var(--brand-muted);
+      background: var(--brand-surface);
+      border: 1px solid var(--brand-border);
+      transition: all .18s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-tab:hover {
+      border-color: var(--brand-border2);
+      color: var(--brand-text);
+    }
+    .filter-tab.active {
+      background: var(--brand-accent);
+      color: #000;
+      border-color: var(--brand-accent);
+    }
+    .filter-tab .tab-count {
+      font-size: 10px;
+      opacity: .7;
+    }
+    .filter-tab.active .tab-count { opacity: .6; }
+
+    .search-wrap {
+      margin-left: auto;
+      position: relative;
+    }
+    .search-wrap i {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--brand-muted);
+      font-size: 12px;
+      pointer-events: none;
+    }
+    .search-input {
+      background: var(--brand-surface);
+      border: 1px solid var(--brand-border2);
+      border-radius: 6px;
+      color: var(--brand-text);
+      font-family: var(--font-body);
+      font-size: 13px;
+      padding: 8px 14px 8px 34px;
+      width: 220px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .search-input:focus { border-color: var(--brand-accent); }
+    .search-input::placeholder { color: var(--brand-muted); }
+
+    .events-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--brand-muted);
+      padding: 12px 24px 6px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+
+    .data-table .col-name  { min-width: 220px; }
+    .data-table .col-org   { min-width: 130px; }
+    .data-table .col-dates { min-width: 130px; white-space: nowrap; }
+    .data-table .col-reg   { min-width: 80px; text-align: right; }
+    .data-table .col-acts  { min-width: 200px; }
+
+    .reg-count {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--brand-text);
+      text-align: right;
+    }
+
+    .empty-filter {
+      padding: 72px 32px;
+      text-align: center;
+      color: var(--brand-sub);
+    }
+    .empty-filter i { font-size: 32px; color: var(--brand-border2); margin-bottom: 14px; display: block; }
+    .empty-filter h3 { font-family: var(--font-display); font-size: 18px; color: var(--brand-muted); margin-bottom: 6px; }
+
+    tr.hidden-by-search { display: none; }
+
+    /* Restore button variant in table */
+    .tbl-btn-restore { background: rgba(0,229,160,.12); color: var(--brand-accent); }
+    .tbl-btn-restore:hover { background: var(--brand-accent); color: #000; }
+
+    @media (max-width:640px) {
+      .filter-bar { gap: 4px; }
+      .search-wrap { margin-left: 0; width: 100%; }
+      .search-input { width: 100%; }
+    }
+  </style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h1><i class="fas fa-calendar-alt"></i> Manage Events</h1>
-                    <p class="lead">View and manage all platform events</p>
+<div class="afcon-admin">
+
+  <!-- ─── TOPBAR ─── -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="dot"></div>
+      AFCON360 &nbsp;/&nbsp; All Events
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge">SYSTEM ADMIN</span>
+      <span class="topbar-time" id="live-time"></span>
+    </div>
+  </div>
+
+  <!-- ─── PAGE HEADER ─── -->
+  <div class="page-header">
+    <div>
+      <h1>All <em>Events</em></h1>
+      <p>Browse, filter and act on every event on the platform</p>
+    </div>
+    <div class="header-actions">
+      <a href="{{ url_for('events.admin_dashboard') }}" class="btn-ghost">
+        <i class="fas fa-tachometer-alt"></i> Command Centre
+      </a>
+      <a href="{{ url_for('events.list') }}" class="btn-accent">
+        <i class="fas fa-globe"></i> Public Portal
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content" style="gap:0;padding-bottom:60px;">
+
+    <!-- ─── FILTER BAR ─── -->
+    <div class="panel" style="border-radius:12px 12px 0 0;border-bottom:none;padding:16px 24px;">
+      <div class="filter-bar">
+        {% set status_tabs = [
+          ('all',        'All',         events|length),
+          ('active',     'Active',      events|selectattr('status','equalto','active')|list|length),
+          ('pending',    'Pending',     events|selectattr('status','equalto','pending')|list|length),
+          ('suspended',  'Suspended',   events|selectattr('status','equalto','suspended')|list|length),
+          ('rejected',   'Rejected',    events|selectattr('status','equalto','rejected')|list|length),
+          ('deactivated','Deactivated', events|selectattr('status','equalto','deactivated')|list|length),
+          ('archived',   'Archived',    events|selectattr('status','equalto','archived')|list|length),
+        ] %}
+        {% for val, label, count in status_tabs %}
+        <a href="{{ url_for('events.admin_events', status=val) }}"
+           class="filter-tab{% if current_filter == val %} active{% endif %}">
+          {{ label }}
+          <span class="tab-count">{{ count }}</span>
+        </a>
+        {% endfor %}
+
+        <div class="search-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" class="search-input" id="eventSearch"
+                 placeholder="Search events…"
+                 oninput="filterRows(this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── EVENTS TABLE ─── -->
+    <div class="panel" style="border-radius:0 0 12px 12px;">
+      <div class="events-count" id="eventsCount">
+        {{ events|length }} event{% if events|length != 1 %}s{% endif %}
+        {% if current_filter != 'all' %} · filtered: <strong>{{ current_filter }}</strong>{% endif %}
+      </div>
+
+      {% if events %}
+      <div class="table-wrap">
+        <table class="data-table" id="eventsTable">
+          <thead>
+            <tr>
+              <th class="col-name">Event</th>
+              <th>Status</th>
+              <th class="col-org">Organizer</th>
+              <th class="col-dates">Dates</th>
+              <th class="col-reg">Regs</th>
+              <th class="col-acts">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in events %}
+            <tr id="row-{{ event.slug }}" data-name="{{ event.name|lower }}" data-city="{{ event.city|lower }}">
+              <td class="col-name">
+                <div class="event-name">{{ event.name }}</div>
+                <div class="event-loc">
+                  <i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:3px;"></i>
+                  {{ event.city }}{% if event.country and event.country != 'Uganda' %}, {{ event.country }}{% endif %}
                 </div>
-                <a href="{{ url_for('events.admin_dashboard') }}" class="btn btn-outline-primary">
-                    <i class="fas fa-arrow-left"></i> Back to Dashboard
-                </a>
-            </div>
-        </div>
+                <div style="margin-top:3px;">
+                  <span class="badge badge-cat">{{ event.category }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="badge badge-{{ event.status }}">{{ event.status }}</span>
+                {% if event.status == 'suspended' and event.suspension_reason %}
+                <div style="font-size:11px;color:var(--brand-orange);margin-top:3px;" title="{{ event.suspension_reason }}">
+                  <i class="fas fa-info-circle"></i>
+                  {{ event.suspension_reason|truncate(30, true, '…') }}
+                </div>
+                {% endif %}
+              </td>
+              <td class="col-org">
+                <div class="organizer-tag">
+                  <div class="avatar">U</div>
+                  <div>
+                    <div style="font-size:12px;color:var(--brand-text);">
+                      {% if event.organizer %}{{ event.organizer.username }}{% else %}ID {{ event.organizer_id }}{% endif %}
+                    </div>
+                    <div style="font-size:11px;color:var(--brand-muted);">
+                      {% if event.organizer %}{{ event.organizer.email }}{% endif %}
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="col-dates">
+                <div class="date-tag">
+                  {% if event.start_date %}{{ event.start_date.strftime('%d %b %Y') }}{% else %}—{% endif %}
+                </div>
+                {% if event.end_date and event.end_date != event.start_date %}
+                <div class="date-tag" style="margin-top:2px;">
+                  → {{ event.end_date.strftime('%d %b %Y') }}
+                </div>
+                {% endif %}
+                <div style="font-size:10px;color:var(--brand-sub);margin-top:3px;font-family:var(--font-mono);">
+                  Added {{ event.created_at.strftime('%d %b %Y') if event.created_at else '?' }}
+                </div>
+              </td>
+              <td class="col-reg">
+                <div class="reg-count">
+                  {% set reg_count = event.registrations|length if event.registrations else 0 %}
+                  {{ reg_count }}
+                </div>
+                <div style="font-size:10px;color:var(--brand-sub);text-align:right;font-family:var(--font-mono);">
+                  regs
+                </div>
+              </td>
+              <td class="col-acts" style="overflow: visible !important; position: relative;">
+                <div class="tbl-actions" style="overflow: visible !important;">
+                  <!-- View public page -->
+                  <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                     class="tbl-btn tbl-btn-view" target="_blank" title="View public page">
+                    <i class="fas fa-eye"></i>
+                  </a>
+
+                  <!-- Attendees (if there are registrations) -->
+                  {% if event.registrations %}
+                  <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}"
+                     class="tbl-btn tbl-btn-manage" title="View attendees">
+                    <i class="fas fa-users"></i>
+                  </a>
+                  {% endif %}
+
+                  <!-- Status-specific primary actions -->
+                  {% if event.status == 'pending' %}
+                    <button class="tbl-btn tbl-btn-approve js-approve-btn"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-check"></i> Approve
+                    </button>
+                    <button class="tbl-btn tbl-btn-reject js-mod-action"
+                            data-action="reject"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}"
+                            data-status="pending">
+                      <i class="fas fa-times"></i> Reject
+                    </button>
+
+                  {% elif event.status == 'suspended' %}
+                    <button class="tbl-btn tbl-btn-approve js-mod-action"
+                            data-action="restore"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-check-circle"></i> Restore
+                    </button>
+                    <button class="tbl-btn tbl-btn-reject js-mod-action"
+                            data-action="takedown"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-exclamation-triangle"></i> Takedown
+                    </button>
+                    <button class="tbl-btn tbl-btn-manage js-mod-action"
+                            data-action="deactivate"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-ban"></i> Deactivate
+                    </button>
+
+                  {% elif event.status == 'active' %}
+                    <button class="tbl-btn tbl-btn-mod js-mod-action"
+                            data-action="suspend"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-pause-circle"></i> Suspend
+                    </button>
+                    <button class="tbl-btn tbl-btn-reject js-mod-action"
+                            data-action="takedown"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-exclamation-triangle"></i> Takedown
+                    </button>
+                    <button class="tbl-btn tbl-btn-manage js-mod-action"
+                            data-action="deactivate"
+                            data-slug="{{ event.slug }}"
+                            data-name="{{ event.name|e }}">
+                      <i class="fas fa-ban"></i> Deactivate
+                    </button>
+
+                  {% else %}
+                    <!-- archived / rejected / deactivated — read-only link -->
+                    <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                       class="tbl-btn tbl-btn-manage" target="_blank">
+                      <i class="fas fa-external-link-alt"></i> View
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div id="noResults" style="display:none;" class="empty-filter">
+        <i class="fas fa-search"></i>
+        <h3>No events match your search</h3>
+        <p>Try a different name or city</p>
+      </div>
+      {% else %}
+      <div class="empty-filter">
+        <i class="fas fa-calendar-times"></i>
+        <h3>No events{% if current_filter != 'all' %} with status "{{ current_filter }}"{% endif %}</h3>
+        <p style="margin-top:6px;">
+          {% if current_filter != 'all' %}
+          <a href="{{ url_for('events.admin_events') }}" style="color:var(--brand-accent);text-decoration:none;">
+            View all events →
+          </a>
+          {% else %}
+          No events have been created on the platform yet.
+          {% endif %}
+        </p>
+      </div>
+      {% endif %}
     </div>
 
-    {# Filter Tabs #}
-    <ul class="nav nav-tabs mb-4">
-        <li class="nav-item">
-            <a class="nav-link {% if current_filter == 'all' %}active{% endif %}"
-               href="{{ url_for('events.admin_events') }}?status=all">
-                All Events
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link {% if current_filter == 'active' %}active{% endif %}"
-               href="{{ url_for('events.admin_events') }}?status=active">
-                <i class="fas fa-check-circle text-success"></i> Active
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link {% if current_filter == 'pending' %}active{% endif %}"
-               href="{{ url_for('events.admin_events') }}?status=pending">
-                <i class="fas fa-clock text-warning"></i> Pending
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link {% if current_filter == 'rejected' %}active{% endif %}"
-               href="{{ url_for('events.admin_events') }}?status=rejected">
-                <i class="fas fa-ban text-danger"></i> Rejected
-            </a>
-        </li>
-    </ul>
+  </div><!-- /main-content -->
+</div><!-- /afcon-admin -->
 
-    {# Events Table #}
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>ID</th>
-                            <th>Event Name</th>
-                            <th>Category</th>
-                            <th>Location</th>
-                            <th>Dates</th>
-                            <th>Status</th>
-                            <th>Organizer</th>
-                            <th>Registrations</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for event in events %}
-                        <tr>
-                            <td><small>#{{ event.id }}</small></td>
-                            <td>
-                                <strong>{{ event.name }}</strong>
-                                <br>
-                                <small class="text-muted">{{ event.slug }}</small>
-                            </td>
-                            <td><span class="badge bg-secondary">{{ event.category }}</span></td>
-                            <td>{{ event.city }}{% if event.country %}, {{ event.country }}{% endif %}</td>
-                            <td>
-                                <small>
-                                    {{ event.start_date.strftime('%Y-%m-%d') if event.start_date else 'TBD' }}
-                                    {% if event.end_date and event.end_date != event.start_date %}
-                                        <br>to {{ event.end_date.strftime('%Y-%m-%d') }}
-                                    {% endif %}
-                                </small>
-                            </td>
-                            <td>
-                                {% if event.status == 'active' %}
-                                    <span class="badge bg-success">Active</span>
-                                {% elif event.status == 'pending' %}
-                                    <span class="badge bg-warning">Pending</span>
-                                {% elif event.status == 'rejected' %}
-                                    <span class="badge bg-danger">Rejected</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">{{ event.status }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <small>ID: {{ event.organizer_id }}</small>
-                                <br>
-                                <small class="text-muted">Created: {{ event.created_at.strftime('%Y-%m-%d') if event.created_at else 'N/A' }}</small>
-                            </td>
-                            <td><span class="badge bg-info">{{ event.registrations|length if event.registrations else 0 }}</span></td>
-                            <td>
-                                <div class="btn-group btn-group-sm">
-                                    <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
-                                       class="btn btn-outline-primary" title="View">
-                                        <i class="fas fa-eye"></i>
-                                    </a>
-                                    <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}"
-                                       class="btn btn-outline-secondary" title="Edit">
-                                        <i class="fas fa-edit"></i>
-                                    </a>
-                                    {% if event.status == 'pending' %}
-                                        <form method="POST" action="{{ url_for('events.admin_approve', event_slug=event.slug) }}"
-                                              style="display:inline;">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="btn btn-outline-success" title="Approve">
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                        </form>
-                                    {% endif %}
-                                    <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}"
-                                       class="btn btn-outline-info" title="Attendees">
-                                        <i class="fas fa-users"></i>
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+
+{# ════════ MODALS (same as command centre — needed for moderation actions) ════════ #}
+
+<div class="modal-overlay" id="modal-reject">
+  <div class="modal-box">
+    <div class="modal-severity sev-warn"><i class="fas fa-times-circle"></i><span>Rejecting event — organiser will be notified</span></div>
+    <div class="modal-title">Reject Event</div>
+    <div class="modal-subtitle" id="modal-reject-subtitle">Provide a clear reason.</div>
+    <div class="modal-field danger">
+      <label>Rejection Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="reject-reason" rows="4" placeholder="e.g. Incomplete venue details, missing contact info…"></textarea>
     </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('reject')">Cancel</button>
+      <button class="btn-modal-reject" onclick="submitAction('reject')"><i class="fas fa-times-circle"></i> Reject Event</button>
+    </div>
+  </div>
 </div>
+
+<div class="modal-overlay" id="modal-suspend">
+  <div class="modal-box">
+    <div class="modal-severity sev-orange"><i class="fas fa-pause-circle"></i><span>Suspension — event hidden from public immediately</span></div>
+    <div class="modal-title">Suspend Event</div>
+    <div class="modal-subtitle" id="modal-suspend-subtitle">The event will be hidden until reinstated.</div>
+    <div class="modal-field">
+      <label>Duration</label>
+      <select id="suspend-duration">
+        <option value="24h">24 hours</option>
+        <option value="72h">72 hours</option>
+        <option value="7d" selected>7 days</option>
+        <option value="14d">14 days</option>
+        <option value="indefinite">Indefinite</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="suspend-reason" rows="3" placeholder="e.g. Reported for misleading ticket pricing…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('suspend')">Cancel</button>
+      <button class="btn-modal-orange" onclick="submitAction('suspend')"><i class="fas fa-pause-circle"></i> Suspend Event</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-deactivate">
+  <div class="modal-box">
+    <div class="modal-severity sev-orange"><i class="fas fa-ban"></i><span>Deactivation — event disabled, data preserved</span></div>
+    <div class="modal-title">Deactivate Event</div>
+    <div class="modal-subtitle" id="modal-deactivate-subtitle">Removed from public listings. Reactivation via support.</div>
+    <div class="modal-field">
+      <label>Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="deactivate-reason" rows="3" placeholder="e.g. Organiser requested, event moved, duplicate…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('deactivate')">Cancel</button>
+      <button class="btn-modal-warn" onclick="submitAction('deactivate')"><i class="fas fa-ban"></i> Deactivate Event</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-takedown">
+  <div class="modal-box">
+    <div class="modal-severity sev-red"><i class="fas fa-exclamation-triangle"></i><span>Policy Takedown — permanent, compliance logged</span></div>
+    <div class="modal-title">Policy Takedown</div>
+    <div class="modal-subtitle" id="modal-takedown-subtitle">Immediately removed. Logged to compliance audit with your admin ID.</div>
+    <div class="modal-field">
+      <label>Violation Category <span style="color:var(--brand-red)">*</span></label>
+      <select id="takedown-category">
+        <option value="">— Select violation type —</option>
+        <option value="fraud">Fraud / Scam</option>
+        <option value="illegal_activity">Illegal Activity</option>
+        <option value="hate_speech">Hate Speech / Discrimination</option>
+        <option value="misinformation">Dangerous Misinformation</option>
+        <option value="spam">Spam / Duplicate</option>
+        <option value="copyright">Copyright / IP Violation</option>
+        <option value="other">Other Policy Violation</option>
+      </select>
+    </div>
+    <div class="modal-field danger">
+      <label>Detailed Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="takedown-reason" rows="4" placeholder="Describe the specific policy violation…"></textarea>
+    </div>
+    <div class="modal-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;font-size:13px;letter-spacing:0;">
+        <input type="checkbox" id="takedown-notify" checked style="accent-color:var(--brand-red);width:15px;height:15px;">
+        Notify organiser via email
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('takedown')">Cancel</button>
+      <button class="btn-modal-reject" onclick="submitAction('takedown')"><i class="fas fa-exclamation-triangle"></i> Execute Takedown</button>
+    </div>
+  </div>
+</div>
+
+<div class="mod-overlay" id="modOverlay"></div>
+<div class="toast-stack" id="toastStack"></div>
+
 {% endblock %}
+
+{% block scripts %}
+<script>
+/* ── STATE ── */
+let _activeModal = null, _modalSlug = null, _modalName = null;
+
+/* ── LIVE CLOCK ── */
+function tickClock(){
+  const el=document.getElementById('live-time');
+  if(el) el.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});
+  setTimeout(tickClock,1000);
+}
+
+/* ── CSRF ── */
+function csrf(){
+  const m=document.querySelector('meta[name="csrf-token"]');
+  return m?m.getAttribute('content'):'';
+}
+
+/* ── TOAST ── */
+function toast(msg,type='ok'){
+  const icons={ok:'✓',err:'✕',warn:'⚠',info:'ℹ'};
+  const stack=document.getElementById('toastStack');
+  const el=document.createElement('div');
+  el.className=`toast toast-${type}`;
+  el.innerHTML=`<span class="toast-icon">${icons[type]||'•'}</span><span>${msg}</span>`;
+  stack.appendChild(el);
+  setTimeout(()=>{
+    el.style.transition='all .3s';el.style.opacity='0';el.style.transform='translateX(20px)';
+    setTimeout(()=>el.remove(),300);
+  },4000);
+}
+
+/* ── CLIENT-SIDE SEARCH ── */
+function filterRows(q){
+  q = q.toLowerCase().trim();
+  const rows = document.querySelectorAll('#eventsTable tbody tr');
+  let visible = 0;
+  rows.forEach(row=>{
+    const name = row.dataset.name || '';
+    const city = row.dataset.city || '';
+    const match = !q || name.includes(q) || city.includes(q);
+    row.classList.toggle('hidden-by-search', !match);
+    if(match) visible++;
+  });
+  const noResults = document.getElementById('noResults');
+  const countEl   = document.getElementById('eventsCount');
+  if(noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
+  if(countEl){
+    countEl.textContent = q
+      ? `${visible} of ${rows.length} events match "${q}"`
+      : `${rows.length} event${rows.length!==1?'s':''}`;
+  }
+}
+
+/* ── APPROVE ── */
+function approveEvent(slug, name, triggerBtn){
+  if(!confirm(`Approve "${name}"?\n\nThis will publish the event to the public portal.`)) return;
+  if(triggerBtn){ triggerBtn.innerHTML='<span class="loading-dots"><span></span><span></span><span></span></span>'; triggerBtn.disabled=true; }
+  fetch(`/events/admin/${slug}/approve`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},
+    body:JSON.stringify({})
+  }).then(r=>r.json()).then(data=>{
+    if(data.success){
+      toast(`"${name}" approved and now live`,'ok');
+      const row=document.getElementById('row-'+slug);
+      if(row){
+        /* update status badge in-place instead of removing row */
+        const badge=row.querySelector('.badge');
+        if(badge){ badge.className='badge badge-active'; badge.textContent='active'; }
+        /* swap action cell */
+        const actCell=row.querySelector('.tbl-actions');
+        if(actCell) actCell.innerHTML=`
+          <a href="/events/${slug}" class="tbl-btn tbl-btn-view" target="_blank"><i class="fas fa-eye"></i></a>
+          <div class="mod-wrap">
+            <button class="tbl-btn tbl-btn-mod js-mod-trigger" data-slug="${slug}" data-name="${name.replace(/"/g,'&quot;')}" data-status="active">
+              <i class="fas fa-shield-alt"></i> Moderate ▾
+            </button>
+            <div class="mod-dropdown" id="moddrop-${slug}">
+              <div class="mod-dropdown-header">${name.substring(0,24)}</div>
+              <button class="mod-option js-mod-action" data-action="suspend" data-slug="${slug}" data-name="${name.replace(/"/g,'&quot;')}" data-status="active">
+                <div class="mod-icon mod-icon-suspend"><i class="fas fa-pause-circle"></i></div><div><div>Suspend</div><div class="mod-option-desc">Temporarily hide</div></div>
+              </button>
+              <button class="mod-option danger js-mod-action" data-action="takedown" data-slug="${slug}" data-name="${name.replace(/"/g,'&quot;')}" data-status="active">
+                <div class="mod-icon mod-icon-takedown"><i class="fas fa-exclamation-triangle"></i></div><div><div>Policy Takedown</div><div class="mod-option-desc">Violates platform rules</div></div>
+              </button>
+            </div>
+          </div>`;
+        row.classList.remove('urgency-row');
+      }
+    } else {
+      toast(data.error||'Approval failed','err');
+      if(triggerBtn){ triggerBtn.innerHTML='<i class="fas fa-check"></i> Approve'; triggerBtn.disabled=false; }
+    }
+  }).catch(()=>{
+    toast('Network error','err');
+    if(triggerBtn){ triggerBtn.innerHTML='<i class="fas fa-check"></i> Approve'; triggerBtn.disabled=false; }
+  });
+}
+
+/* ── RESTORE ── */
+function restoreEvent(slug, name){
+  if(!confirm(`Restore "${name}" to active?`)) return;
+  fetch(`/events/admin/${slug}/restore`,{
+    method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify({})
+  }).then(r=>r.json()).then(data=>{
+    if(data.success){ toast(`"${name}" reinstated`,'ok'); setTimeout(()=>location.reload(),800); }
+    else toast(data.error||'Restore failed','err');
+  }).catch(()=>toast('Network error','err'));
+}
+
+/* ── EVENT DELEGATION ── */
+document.addEventListener('click', function(e){
+  const approveBtn = e.target.closest('.js-approve-btn');
+  if(approveBtn){ e.stopPropagation(); closeAllModMenus(); approveEvent(approveBtn.dataset.slug, approveBtn.dataset.name, approveBtn); return; }
+
+  const trigger = e.target.closest('.js-mod-trigger');
+  if(trigger){
+    e.stopPropagation();
+    const slug  = trigger.dataset.slug;
+    const drop  = document.getElementById('moddrop-'+slug);
+    const ov    = document.getElementById('modOverlay');
+    if(!drop) return;
+    const open  = drop.classList.contains('open');
+    closeAllModMenus();
+    if(!open){
+      const rect = trigger.getBoundingClientRect();
+      drop.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+      drop.style.left = Math.min(rect.right - 220, window.innerWidth - 240) + 'px';
+      drop.classList.add('open');
+      if(ov) ov.classList.add('active');
+    }
+    return;
+  }
+
+  const action = e.target.closest('.js-mod-action');
+  if(action){
+    e.stopPropagation();
+    const { slug, name } = action.dataset;
+    const act = action.dataset.action;
+    closeAllModMenus();
+    if(act === 'restore'){ restoreEvent(slug, name); }
+    else { openModal(act, slug, name); }
+    return;
+  }
+
+  closeAllModMenus();
+});
+
+function closeAllModMenus(){
+  document.querySelectorAll('.mod-dropdown').forEach(d=>d.classList.remove('open'));
+  const ov=document.getElementById('modOverlay');
+  if(ov) ov.classList.remove('active');
+}
+
+/* ── MODAL CONFIG ── */
+const MODALS={
+  reject:{
+    subtitleEl:'modal-reject-subtitle',
+    subtitle:(n)=>`Rejecting "${n}". Provide a clear reason.`,
+    endpoint:(s)=>`/events/admin/${s}/reject`,
+    payload:()=>{const r=document.getElementById('reject-reason').value.trim();if(!r){toast('Enter a rejection reason','warn');return null;}return{reason:r};},
+    msg:(n)=>`"${n}" rejected`,type:'warn',removeRow:true,focus:'reject-reason'
+  },
+  suspend:{
+    subtitleEl:'modal-suspend-subtitle',
+    subtitle:(n)=>`Suspending "${n}".`,
+    endpoint:(s)=>`/events/admin/${s}/suspend`,
+    payload:()=>{const r=document.getElementById('suspend-reason').value.trim();const d=document.getElementById('suspend-duration').value;if(!r){toast('Enter a suspension reason','warn');return null;}return{reason:r,duration:d};},
+    msg:(n)=>`"${n}" suspended`,type:'warn',reload:true,focus:'suspend-reason'
+  },
+  deactivate:{
+    subtitleEl:'modal-deactivate-subtitle',
+    subtitle:(n)=>`Deactivating "${n}".`,
+    endpoint:(s)=>`/events/admin/${s}/deactivate`,
+    payload:()=>{const r=document.getElementById('deactivate-reason').value.trim();if(!r){toast('Enter a deactivation reason','warn');return null;}return{reason:r};},
+    msg:(n)=>`"${n}" deactivated`,type:'info',reload:true,focus:'deactivate-reason'
+  },
+  takedown:{
+    subtitleEl:'modal-takedown-subtitle',
+    subtitle:(n)=>`Policy takedown for "${n}".`,
+    endpoint:(s)=>`/events/admin/${s}/takedown`,
+    payload:()=>{
+      const cat=document.getElementById('takedown-category').value;
+      const r=document.getElementById('takedown-reason').value.trim();
+      const notify=document.getElementById('takedown-notify').checked;
+      if(!cat){toast('Select a violation category','warn');return null;}
+      if(!r){toast('Describe the violation','warn');return null;}
+      return{category:cat,reason:r,notify_organiser:notify};
+    },
+    msg:(n)=>`"${n}" taken down`,type:'err',reload:true,focus:'takedown-category'
+  }
+};
+
+function openModal(type, slug, name){
+  const cfg=MODALS[type]; if(!cfg) return;
+  _activeModal=type; _modalSlug=slug; _modalName=name;
+  const subEl=document.getElementById(cfg.subtitleEl);
+  if(subEl) subEl.textContent=cfg.subtitle(name);
+  ['reject-reason','suspend-reason','deactivate-reason','takedown-reason'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const cat=document.getElementById('takedown-category');if(cat)cat.value='';
+  const chk=document.getElementById('takedown-notify');if(chk)chk.checked=true;
+  document.getElementById(`modal-${type}`).classList.add('open');
+  setTimeout(()=>{const f=document.getElementById(cfg.focus);if(f)f.focus();},150);
+}
+
+function closeModal(type){
+  const el=document.getElementById(`modal-${type}`);if(el)el.classList.remove('open');
+  if(_activeModal===type){_activeModal=null;_modalSlug=null;_modalName=null;}
+}
+
+function submitAction(type){
+  const cfg=MODALS[type];if(!cfg)return;
+  const slug=_modalSlug, name=_modalName;
+  const payload=cfg.payload();if(!payload)return;
+  closeModal(type);
+  fetch(cfg.endpoint(slug),{
+    method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},
+    body:JSON.stringify(payload)
+  }).then(r=>r.json()).then(data=>{
+    if(data.success){
+      toast(cfg.msg(name),cfg.type);
+      if(cfg.removeRow){ const row=document.getElementById('row-'+slug);if(row){row.style.transition='opacity .4s,transform .4s';row.style.opacity='0';setTimeout(()=>row.remove(),420);} }
+      else if(cfg.reload) setTimeout(()=>location.reload(),900);
+    } else toast(data.error||`${type} failed`,'err');
+  }).catch(()=>toast('Network error','err'));
+}
+
+['reject','suspend','deactivate','takedown'].forEach(t=>{
+  const o=document.getElementById(`modal-${t}`);
+  if(o) o.addEventListener('click',e=>{if(e.target===o) closeModal(t);});
+});
+
+document.addEventListener('DOMContentLoaded',()=>{
+  tickClock();
+  /* preserve search query on filter tab navigation */
+  const q=new URLSearchParams(location.search).get('q')||'';
+  const si=document.getElementById('eventSearch');
+  if(si&&q){si.value=q;filterRows(q);}
+});
+</script>
+{% endblock %}y

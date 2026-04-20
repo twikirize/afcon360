@@ -4,7 +4,7 @@ Owner routes - Highest privilege level
 Includes Master Key Impersonation by Role and Security Dashboard
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from flask import (
     render_template, redirect, url_for, flash,
@@ -40,7 +40,7 @@ def owner_login_required(f):
 @owner_bp.context_processor
 def utility_processor():
     def now():
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
 
     return {
         'now': now,
@@ -59,91 +59,83 @@ def dashboard():
     """Owner dashboard - platform overview"""
     try:
         db.session.rollback()
+
+        # User statistics
         total_users = User.query.count()
         active_users = User.query.filter_by(is_active=True).count()
         verified_users = User.query.filter_by(is_verified=True).count()
 
-        # Get counts for the Master Key section - with error handling
-        try:
-            role_stats = db.session.query(Role.name, func.count(UserRole.user_id))\
-                .join(UserRole, Role.id == UserRole.role_id).group_by(Role.name).all()
-        except Exception as role_error:
-            logger.warning(f"Role stats query error: {role_error}")
-            db.session.rollback()
-            role_stats = []
+        # Get new users today
+        today_utc = datetime.now(timezone.utc).date()
+        new_users_today = User.query.filter(
+            func.date(User.created_at) == today_utc
+        ).count()
 
-        # Get organization stats - with error handling
+        # Organization statistics
+        total_orgs = 0
         try:
             from app.identity.models.organisation import Organisation
             total_orgs = Organisation.query.count()
         except Exception as org_error:
             logger.warning(f"Organization query error: {org_error}")
-            total_orgs = 0
-        pending_orgs = 0  # Temporarily disabled due to schema issue
 
-        # Get role stats - with error handling
+        pending_orgs = 0  # Placeholder for pending organization approvals
+
+        # Role statistics
+        total_roles = Role.query.count()
+
+        # Get role distribution
+        role_stats = []
         try:
-            total_roles = Role.query.count()
-        except Exception as role_count_error:
-            logger.warning(f"Role count error: {role_count_error}")
-            total_roles = 0
+            role_stats = db.session.query(Role.name, func.count(UserRole.user_id))\
+                .join(UserRole, Role.id == UserRole.role_id)\
+                .group_by(Role.name).all()
+        except Exception as role_error:
+            logger.warning(f"Role stats query error: {role_error}")
 
-        # Get super admins - with error handling
+        # Super admin management
         super_admins = []
+        regular_users = []
         try:
             super_admin_role = Role.query.filter_by(name='super_admin').first()
             if super_admin_role:
-                super_admins = db.session.query(User).join(UserRole, User.id == UserRole.user_id).join(Role, Role.id == UserRole.role_id)\
+                super_admins = db.session.query(User)\
+                    .join(UserRole, User.id == UserRole.user_id)\
+                    .join(Role, Role.id == UserRole.role_id)\
                     .filter(Role.name == 'super_admin').all()
-        except Exception as super_admin_error:
-            logger.warning(f"Super admin query error: {super_admin_error}")
-            db.session.rollback()
 
-        # Get regular users (non-super admins) - with error handling
-        regular_users = []
-        try:
-            regular_users = db.session.query(User).outerjoin(UserRole, User.id == UserRole.user_id).outerjoin(Role, Role.id == UserRole.role_id)\
-                .filter((Role.name != 'super_admin') | (Role.name.is_(None))).all()
-        except Exception as regular_error:
-            logger.warning(f"Regular users query error: {regular_error}")
-            db.session.rollback()
+            # Get regular users (non-super admins)
+            regular_users = db.session.query(User)\
+                .outerjoin(UserRole, User.id == UserRole.user_id)\
+                .outerjoin(Role, Role.id == UserRole.role_id)\
+                .filter((Role.name != 'super_admin') | (Role.name.is_(None)))\
+                .limit(50).all()
+        except Exception as admin_error:
+            logger.warning(f"Super admin query error: {admin_error}")
 
-        # Get recent users - with error handling
-        recent_users = []
-        try:
-            recent_users = User.query.order_by(User.created_at.desc()).limit(5).all()
-        except Exception as recent_error:
-            logger.warning(f"Recent users query error: {recent_error}")
-            db.session.rollback()
+        # Recent users
+        recent_users = User.query.order_by(User.created_at.desc()).limit(5).all()
 
-        # Get new users today - with error handling
-        new_users_today = 0
-        try:
-            from datetime import date
-            new_users_today = User.query.filter(
-                func.date(User.created_at) == date.today()
-            ).count()
-        except Exception as new_users_error:
-            logger.warning(f"New users today query error: {new_users_error}")
-            db.session.rollback()
-
-        # Get recent audit logs - temporarily disabled due to schema issues
+        # Recent audit logs - simplified
         recent_logs = []
-
-        # Get system health - with error handling
-        health = None
         try:
-            health = get_system_health()
-        except Exception as health_error:
-            logger.warning(f"System health error: {health_error}")
+            from app.admin.owner.models import OwnerAuditLog
+            recent_logs = OwnerAuditLog.query\
+                .order_by(OwnerAuditLog.created_at.desc())\
+                .limit(10).all()
+        except Exception as log_error:
+            logger.warning(f"Audit log query error: {log_error}")
 
-        # Get system settings for dashboard
+        # System health
+        health = get_system_health()
+
+        # System settings
         from app.admin.owner.models import SystemSetting
         lockdown_enabled = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
         maintenance_enabled = SystemSetting.get('MAINTENANCE_MODE', False)
         wallet_enabled = SystemSetting.get('ENABLE_WALLET', True)
 
-        # Get compliance metrics for dashboard
+        # Compliance metrics
         pending_reviews_count = 0
         try:
             from app.audit.forensic_audit import ForensicAuditService
@@ -151,6 +143,43 @@ def dashboard():
             pending_reviews_count = len(pending_reviews)
         except Exception as e:
             logger.warning(f"Could not load pending reviews: {e}")
+            pending_reviews = []
+
+        # Financial metrics placeholder
+        total_revenue = 0
+        try:
+            # This would need actual transaction data
+            from app.wallet.models import Transaction
+            # Check if Transaction has a 'status' field, if not, count all transactions
+            # Let's be safe and count all transactions for now
+            total_revenue = Transaction.query.count()  # Placeholder count
+        except Exception as revenue_error:
+            logger.warning(f"Revenue query error: {revenue_error}")
+
+        # Event statistics
+        total_events = 0
+        active_events = 0
+        pending_events = 0
+        total_registrations = 0
+        pending_events_list = []
+
+        try:
+            from app.events.services import EventService
+            from app.events.models import Event
+
+            event_stats = EventService.get_admin_dashboard_data()
+            total_events = event_stats.get('total_events', 0)
+            active_events = event_stats.get('active_events', 0)
+            pending_events = event_stats.get('pending_events', 0)
+            total_registrations = event_stats.get('total_registrations', 0)
+
+            # Get pending events list
+            pending_events_list = Event.query.filter_by(
+                status='pending',
+                is_deleted=False
+            ).order_by(Event.created_at.desc()).limit(10).all()
+        except Exception as e:
+            logger.warning(f"Could not load event statistics: {e}")
 
         return render_template('owner/dashboard.html',
                                # User stats
@@ -185,7 +214,17 @@ def dashboard():
                                owner_is_verified=current_user.is_verified,
 
                                # Compliance metrics
-                               pending_reviews_count=pending_reviews_count)
+                               pending_reviews_count=pending_reviews_count,
+
+                               # Financial placeholder
+                               total_revenue=total_revenue,
+
+                               # Event statistics
+                               total_events=total_events,
+                               active_events=active_events,
+                               pending_events=pending_events,
+                               total_registrations=total_registrations,
+                               pending_events_list=pending_events_list)
     except Exception as e:
         logger.error(f"Owner dashboard error: {e}")
         return render_template('owner/dashboard.html',
@@ -198,7 +237,14 @@ def dashboard():
                                maintenance_enabled=False,
                                wallet_enabled=True,
                                owner_username=current_user.username,
-                               owner_is_verified=current_user.is_verified)
+                               owner_is_verified=current_user.is_verified,
+                               total_revenue=0,
+                               # Event statistics with defaults
+                               total_events=0,
+                               active_events=0,
+                               pending_events=0,
+                               total_registrations=0,
+                               pending_events_list=[])
 
 # ============================================================================
 # Master Key: Impersonate by Role
@@ -327,7 +373,6 @@ def audit_logs():
     """View owner audit logs"""
     try:
         from app.audit.comprehensive_audit import SecurityEventLog
-        from datetime import datetime, timedelta
 
         # Get filter parameters
         event_type = request.args.get('event_type')
@@ -342,7 +387,7 @@ def audit_logs():
             query = query.filter_by(severity=severity)
 
         # Filter by date
-        since_date = datetime.utcnow() - timedelta(days=days)
+        since_date = datetime.now(timezone.utc) - timedelta(days=days)
         query = query.filter(SecurityEventLog.created_at >= since_date)
 
         logs = query.order_by(SecurityEventLog.created_at.desc()).limit(100).all()
@@ -583,7 +628,7 @@ def add_super_admin():
                 level=100  # High level for super admin
             )
             db.session.add(super_admin_role)
-            db.session.flush()
+            db.session.commit()  # Commit to ensure role exists
 
         # Check if user already has this role
         existing_role = UserRole.query.filter_by(
@@ -592,14 +637,8 @@ def add_super_admin():
         ).first()
 
         if not existing_role:
-            # Assign the role to the user
-            user_role = UserRole(
-                user_id=user.id,
-                role_id=super_admin_role.id,
-                assigned_by_id=current_user.id
-            )
-            db.session.add(user_role)
-            db.session.commit()
+            # Assign the role to the user using assign_global_role
+            assign_global_role(user.id, 'super_admin', assigned_by_id=current_user.id)
             flash(f"✅ {user.username} is now a Super Admin", "success")
         else:
             flash(f"⚠️ {user.username} is already a Super Admin", "info")
@@ -622,7 +661,7 @@ def remove_super_admin(user_id):
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
 
-        revoke_global_role(user, 'super_admin')
+        revoke_global_role(user.id, 'super_admin', revoked_by_id=current_user.id)
         flash(f"✅ Super admin privileges removed from {user.username}", "success")
 
     except Exception as e:
@@ -795,7 +834,7 @@ def suspicious_activity():
             query = query.filter_by(event_type=event_type)
 
         # Filter by date
-        since_date = datetime.utcnow() - timedelta(days=days)
+        since_date = datetime.now(timezone.utc) - timedelta(days=days)
         query = query.filter(SecurityEventLog.created_at >= since_date)
 
         logs = query.order_by(SecurityEventLog.created_at.desc()).limit(200).all()
@@ -830,13 +869,13 @@ def kyc_compliance_reports():
 
         # Set default date range
         if report_type == 'daily':
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=1)
         elif report_type == 'weekly':
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=7)
         elif report_type == 'monthly':
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=30)
 
         # Generate report data
@@ -847,7 +886,7 @@ def kyc_compliance_reports():
             'large_transactions': 0,  # Would need transaction data
             'aml_flags': 0,  # Would need AML flag data
             'report_period': f"{start_date.date()} to {end_date.date()}",
-            'generated_at': datetime.utcnow()
+            'generated_at': datetime.now(timezone.utc)
         }
 
         # Calculate KYC tier distribution
@@ -987,7 +1026,7 @@ def compliance_reports_page():
         report_type = request.args.get('type', 'daily')
 
         # Set default date ranges
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         if report_type == 'daily':
             start_date = end_date - timedelta(days=1)
         elif report_type == 'weekly':

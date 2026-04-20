@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - AFCON360{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mt-4">Moderator Dashboard</h1>
+            <ol class="breadcrumb mb-4">
+                <li class="breadcrumb-item active">Dashboard</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Stats Cards -->
+        <div class="col-xl-4 col-md-6">
+            <div class="card bg-primary text-white mb-4">
+                <div class="card-body">
+                    <h3>{{ pending_submissions|length }}</h3>
+                    <div>Pending Content Submissions</div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="{{ url_for('moderator.content_moderation', status='pending') }}">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6">
+            <div class="card bg-warning text-white mb-4">
+                <div class="card-body">
+                    <h3>{{ flagged_items|length }}</h3>
+                    <div>Flagged Items</div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="{{ url_for('moderator.flagged_content') }}">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6">
+            <div class="card bg-info text-white mb-4">
+                <div class="card-body">
+                    <h3>{{ recent_users|length }}</h3>
+                    <div>New Users (7 days)</div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="{{ url_for('moderator.user_moderation', filter='recent') }}">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Pending Submissions -->
+        <div class="col-xl-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-clock me-1"></i>
+                    Pending Content Submissions
+                </div>
+                <div class="card-body">
+                    {% if pending_submissions %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Title</th>
+                                    <th>Submitted</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for submission in pending_submissions %}
+                                <tr>
+                                    <td>{{ submission.id }}</td>
+                                    <td>{{ submission.content_type }}</td>
+                                    <td>{{ submission.title }}</td>
+                                    <td>{{ submission.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <a href="{{ url_for('moderator.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-primary">Review</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{{ url_for('moderator.content_moderation', status='pending') }}" class="btn btn-link">View All →</a>
+                    {% else %}
+                    <p class="text-muted">No pending submissions.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Flagged Items -->
+        <div class="col-xl-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-flag me-1"></i>
+                    Flagged Content
+                </div>
+                <div class="card-body">
+                    {% if flagged_items %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Type</th>
+                                    <th>Flagged At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in flagged_items %}
+                                <tr>
+                                    <td>{{ item.title }}</td>
+                                    <td>{{ item.item_type }}</td>
+                                    <td>{{ item.updated_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <a href="#" class="btn btn-sm btn-warning">Review</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{{ url_for('moderator.flagged_content') }}" class="btn btn-link">View All →</a>
+                    {% else %}
+                    <p class="text-muted">No flagged items.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Recent Users -->
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-users me-1"></i>
+                    Recent User Registrations
+                </div>
+                <div class="card-body">
+                    {% if recent_users %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Registered</th>
+                                    <th>Verified</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in recent_users %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td>{{ user.username }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ '✓' if user.is_verified else '✗' }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if user.is_active else 'danger' }}">
+                                            {{ 'Active' if user.is_active else 'Inactive' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{{ url_for('moderator.user_moderation') }}" class="btn btn-link">View All Users →</a>
+                    {% else %}
+                    <p class="text-muted">No recent user registrations.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

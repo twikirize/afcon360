@@ -1,12 +1,57 @@
-<!DOCTYPE html>
-<html>
-<head><title>Complete Profile</title></head>
-<body>
-    <h1>Complete Your Profile</h1>
-    <form method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">  ← add this
-        <input type="text" name="full_name" placeholder="Full Name">
-        <button type="submit">Submit</button>
-    </form>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Complete Your Profile - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Complete Your Profile</h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Please provide your full name to continue. This helps us personalize your experience.
+                    </p>
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div class="mb-3">
+                            <label for="full_name" class="form-label">Full Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="full_name" name="full_name"
+                                   required placeholder="Enter your full name" autofocus>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="phone_number" class="form-label">Phone Number <span class="text-muted">(optional)</span></label>
+                            <input type="tel" class="form-control" id="phone_number" name="phone_number"
+                                   placeholder="e.g., +256 123 456 789">
+                            <div class="form-text">We'll use this for booking confirmations and important updates.</div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Complete Profile</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-muted text-center">
+                    <small>This information can be updated later in your account settings.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Account - {{ user.username or 'User' }}</title>
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #06b6d4;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+
+        body {
+            background-color: #f9fafb;
+            color: var(--gray-900);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+
+        .profile-section {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        @media (max-width: 768px) {
+            .profile-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .profile-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            margin-right: 20px;
+        }
+
+        .user-info h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .user-info p {
+            color: var(--gray-700);
+            margin-bottom: 2px;
+        }
+
+        .verification-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        .verified {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .pending {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .kyc-section {
+            margin-bottom: 24px;
+        }
+
+        .kyc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .kyc-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .tier-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .progress-container {
+            margin-bottom: 16px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .progress-bar {
+            height: 10px;
+            background-color: var(--gray-200);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: var(--success-color);
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+
+        .next-tier-info {
+            font-size: 14px;
+            color: var(--gray-700);
+            margin-top: 8px;
+        }
+
+        .requirements-list {
+            margin-top: 16px;
+        }
+
+        .requirements-list h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .requirements-list ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .requirements-list li {
+            padding: 6px 0;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+        }
+
+        .requirements-list li::before {
+            content: "•";
+            color: var(--primary-color);
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .requirements-list .missing {
+            color: var(--danger-color);
+        }
+
+        .requirements-list .missing::before {
+            color: var(--danger-color);
+        }
+
+        .quick-actions {
+            margin-top: 24px;
+        }
+
+        .quick-actions h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .action-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            text-decoration: none;
+            color: inherit;
+            border: 1px solid var(--gray-200);
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .action-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-color: var(--primary-color);
+        }
+
+        .action-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            font-size: 24px;
+        }
+
+        .wallet-icon {
+            background-color: #dbeafe;
+            color: var(--primary-color);
+        }
+
+        .bookings-icon {
+            background-color: #f0f9ff;
+            color: var(--info-color);
+        }
+
+        .trips-icon {
+            background-color: #f0fdf4;
+            color: var(--success-color);
+        }
+
+        .settings-icon {
+            background-color: #fef7cd;
+            color: var(--warning-color);
+        }
+
+        .action-card h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .action-card p {
+            font-size: 14px;
+            color: var(--gray-700);
+        }
+
+        .profile-completion {
+            margin-top: 24px;
+            padding: 20px;
+            background-color: #f0f9ff;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .profile-completion h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .profile-completion p {
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn:hover {
+            background-color: #2563eb;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--gray-200);
+        }
+
+        .stat-card h4 {
+            font-size: 14px;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+
+        .stat-card .subtext {
+            font-size: 12px;
+            color: var(--gray-700);
+            margin-top: 4px;
+        }
+
+        .alert {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+        }
+
+        .alert-warning {
+            background-color: #fef3c7;
+            border-left: 4px solid var(--warning-color);
+            color: #92400e;
+        }
+
+        .alert-info {
+            background-color: #dbeafe;
+            border-left: 4px solid var(--primary-color);
+            color: #1e40af;
+        }
+
+        .alert-icon {
+            margin-right: 12px;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>My Account</h1>
+            <a href="{{ url_for('profile.my_public_profile') }}" class="btn">View Public Profile</a>
+        </div>
+
+        {% if profile and not profile.profile_completed %}
+        <div class="alert alert-warning">
+            <div class="alert-icon">⚠️</div>
+            <div>
+                <strong>Complete your profile!</strong> Your profile is only {{ profile_completion }}% complete.
+                <a href="#" style="color: inherit; text-decoration: underline; margin-left: 5px;">Complete it now</a> to unlock all features.
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h4>Wallet Balance</h4>
+                <div class="value">{{ wallet_balance }} {{ wallet_currency }}</div>
+                <div class="subtext">Available funds</div>
+            </div>
+            <div class="stat-card">
+                <h4>KYC Tier</h4>
+                <div class="value">{{ tier_name }}</div>
+                <div class="subtext">Tier {{ current_tier }}</div>
+            </div>
+            <div class="stat-card">
+                <h4>Bookings</h4>
+                <div class="value">{{ recent_bookings_count }}</div>
+                <div class="subtext">Total accommodations</div>
+            </div>
+            <div class="stat-card">
+                <h4>Verification</h4>
+                <div class="value" style="text-transform: capitalize;">{{ verification_status }}</div>
+                <div class="subtext">{{ kyc_level }} KYC</div>
+            </div>
+            {% if 'owner' in user_roles or 'admin' in user_roles %}
+            <div class="stat-card">
+                <h4>Admin Level</h4>
+                <div class="value">
+                    {% if 'owner' in user_roles %}Owner{% else %}Admin{% endif %}
+                </div>
+                <div class="subtext">System Access</div>
+            </div>
+            {% endif %}
+            {% if 'driver' in user_roles %}
+            <div class="stat-card">
+                <h4>Driver Trips</h4>
+                <div class="value">{{ role_stats.get('driver_trips', 0) }}</div>
+                <div class="subtext">Completed trips</div>
+            </div>
+            {% endif %}
+            {% if 'host' in user_roles %}
+            <div class="stat-card">
+                <h4>Properties</h4>
+                <div class="value">{{ role_stats.get('host_properties', 0) }}</div>
+                <div class="subtext">Listed properties</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Role-specific sections -->
+        {% if 'owner' in user_roles or 'admin' in user_roles %}
+        <div class="alert alert-info" style="margin-bottom: 30px;">
+            <div class="alert-icon">👑</div>
+            <div>
+                <strong>Administrator Access</strong>
+                You have {% if 'owner' in user_roles %}full owner{% else %}admin{% endif %} privileges.
+                <a href="{{ url_for('admin.dashboard') if 'owner' in user_roles else '#' }}"
+                   style="color: inherit; text-decoration: underline; margin-left: 5px;">
+                    Go to Admin Panel
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if 'driver' in user_roles %}
+        <div class="profile-card" style="margin-bottom: 30px;">
+            <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">
+                <i class="fas fa-car" style="margin-right: 8px;"></i>Driver Dashboard
+            </h3>
+            <div class="action-grid">
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #dbeafe; color: #3b82f6;">
+                        🚗
+                    </div>
+                    <h4>Active Trips</h4>
+                    <p>View and manage current trips</p>
+                </a>
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #f0f9ff; color: #06b6d4;">
+                        📊
+                    </div>
+                    <h4>Earnings</h4>
+                    <p>Track your driver earnings</p>
+                </a>
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #f0fdf4; color: #10b981;">
+                        ⭐
+                    </div>
+                    <h4>Ratings</h4>
+                    <p>View passenger ratings</p>
+                </a>
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #fef7cd; color: #f59e0b;">
+                        🕒
+                    </div>
+                    <h4>Schedule</h4>
+                    <p>Manage your driving schedule</p>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if 'host' in user_roles %}
+        <div class="profile-card" style="margin-bottom: 30px;">
+            <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">
+                <i class="fas fa-home" style="margin-right: 8px;"></i>Host Dashboard
+            </h3>
+            <div class="action-grid">
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #dbeafe; color: #3b82f6;">
+                        🏠
+                    </div>
+                    <h4>Properties</h4>
+                    <p>Manage your listings</p>
+                </a>
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #f0f9ff; color: #06b6d4;">
+                        📅
+                    </div>
+                    <h4>Bookings</h4>
+                    <p>View upcoming reservations</p>
+                </a>
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #f0fdf4; color: #10b981;">
+                        💰
+                    </div>
+                    <h4>Revenue</h4>
+                    <p>Track your hosting income</p>
+                </a>
+                <a href="#" class="action-card">
+                    <div class="action-icon" style="background-color: #fef7cd; color: #f59e0b;">
+                        ⭐
+                    </div>
+                    <h4>Reviews</h4>
+                    <p>View guest feedback</p>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="profile-section">
+            <div class="profile-card">
+                <div class="profile-header">
+                    <div class="avatar">
+                        {{ (user.username or 'U')[0] | upper }}
+                    </div>
+                    <div class="user-info">
+                        <h2>{{ user.username or 'User' }}</h2>
+                        <p>{{ profile.email if profile else user.email }}</p>
+                        <p>{{ profile.phone_number if profile and profile.phone_number else 'No phone number' }}</p>
+                        <span class="verification-badge {{ 'verified' if verification_status == 'verified' else 'pending' }}">
+                            {{ verification_status | upper }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="kyc-section">
+                    <div class="kyc-header">
+                        <h3>KYC Verification</h3>
+                        <span class="tier-badge">Tier {{ current_tier }}</span>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress-label">
+                            <span>Progress to {% if next_tier %}Tier {{ next_tier }}{% else %}Max Tier{% endif %}</span>
+                            <span>{{ progress_percentage }}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {{ progress_percentage }}%;"></div>
+                        </div>
+                        {% if next_tier %}
+                        <div class="next-tier-info">
+                            Next: {{ next_tier_name }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if missing_requirements %}
+                    <div class="requirements-list">
+                        <h4>Missing for current tier:</h4>
+                        <ul>
+                            {% for req in missing_requirements %}
+                            <li class="missing">{{ req | replace('_', ' ') | title }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    {% if next_tier and next_tier_requirements %}
+                    <div class="requirements-list">
+                        <h4>Requirements for Tier {{ next_tier }}:</h4>
+                        <ul>
+                            {% for req in next_tier_requirements %}
+                            <li>{{ req | replace('_', ' ') | title }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if profile and profile_completion < 100 %}
+                <div class="profile-completion">
+                    <h3>Complete Your Profile</h3>
+                    <p>Your profile is {{ profile_completion }}% complete. Complete your profile to improve your account security and access more features.</p>
+                    <a href="#" class="btn">Complete Profile</a>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="profile-card">
+                <div class="quick-actions">
+                    <h3>Quick Actions</h3>
+                    <div class="action-grid">
+                        <a href="#" class="action-card">
+                            <div class="action-icon wallet-icon">
+                                💳
+                            </div>
+                            <h4>Wallet</h4>
+                            <p>View balance, add funds, withdraw</p>
+                        </a>
+
+                        <a href="#" class="action-card">
+                            <div class="action-icon bookings-icon">
+                                🏨
+                            </div>
+                            <h4>Bookings</h4>
+                            <p>Manage your accommodation bookings</p>
+                        </a>
+
+                        <a href="#" class="action-card">
+                            <div class="action-icon trips-icon">
+                                ✈️
+                            </div>
+                            <h4>Trips</h4>
+                            <p>View your travel history and trips</p>
+                        </a>
+
+                        <a href="#" class="action-card">
+                            <div class="action-icon settings-icon">
+                                ⚙️
+                            </div>
+                            <h4>Settings</h4>
+                            <p>Account settings and preferences</p>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="quick-actions" style="margin-top: 30px;">
+                    <h3>Account Limits</h3>
+                    <div class="action-grid">
+                        <div class="action-card" style="cursor: default;">
+                            <h4>Daily Limit</h4>
+                            <p style="font-size: 18px; font-weight: bold; margin: 8px 0;">
+                                {% if limits.daily %}
+                                UGX {{ "{:,}".format(limits.daily) }}
+                                {% else %}
+                                Unlimited
+                                {% endif %}
+                            </p>
+                            <p style="font-size: 12px;">
+                                {% if limits.daily_used %}
+                                Used: UGX {{ "{:,}".format(limits.daily_used) }}
+                                {% endif %}
+                            </p>
+                        </div>
+
+                        <div class="action-card" style="cursor: default;">
+                            <h4>Monthly Limit</h4>
+                            <p style="font-size: 18px; font-weight: bold; margin: 8px 0;">
+                                {% if limits.monthly %}
+                                UGX {{ "{:,}".format(limits.monthly) }}
+                                {% else %}
+                                Unlimited
+                                {% endif %}
+                            </p>
+                            <p style="font-size: 12px;">
+                                {% if limits.monthly_used %}
+                                Used: UGX {{ "{:,}".format(limits.monthly_used) }}
+                                {% endif %}
+                            </p>
+                        </div>
+
+                        <div class="action-card" style="cursor: default;">
+                            <h4>Per Transaction</h4>
+                            <p style="font-size: 18px; font-weight: bold; margin: 8px 0;">
+                                {% if limits.transaction %}
+                                UGX {{ "{:,}".format(limits.transaction) }}
+                                {% else %}
+                                Unlimited
+                                {% endif %}
+                            </p>
+                            <p style="font-size: 12px;">Maximum per transaction</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

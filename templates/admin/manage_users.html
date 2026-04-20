@@ -242,6 +242,11 @@
             <option value="unverified">Unverified Only</option>
             <option value="active">Active Only</option>
             <option value="inactive">Inactive Only</option>
+            <option value="kyc_tier_0">KYC Tier 0</option>
+            <option value="kyc_tier_1">KYC Tier 1</option>
+            <option value="kyc_tier_2">KYC Tier 2</option>
+            <option value="kyc_tier_3">KYC Tier 3</option>
+            <option value="kyc_tier_4">KYC Tier 4</option>
         </select>
         <button class="export-btn" onclick="exportUsers()"><i class="bi bi-download"></i> Export CSV</button>
     </div>
@@ -262,7 +267,7 @@
 
         <table class="users-table" id="userTable">
             <thead>
-                <tr><th style="width:30px"><input type="checkbox" id="selectAllCheckbox"></th><th>ID</th><th>Username</th><th>Email</th><th>Roles</th><th>Verified</th><th>Active</th><th>Actions</th></tr>
+                <tr><th style="width:30px"><input type="checkbox" id="selectAllCheckbox"></th><th>ID</th><th>Username</th><th>Email</th><th>Roles</th><th>Verified</th><th>Active</th><th>KYC</th><th>Actions</th></tr>
             </thead>
             <tbody>
                 {% for user in users %}
@@ -283,6 +288,18 @@
                     </td>
                     <td><span class="user-status status-{{ 'verified' if user.is_verified else 'unverified' }}"></span>{{ "Verified" if user.is_verified else "Unverified" }}</td>
                     <td><span class="user-status status-{{ 'active' if user.is_active else 'inactive' }}"></span>{{ "Active" if user.is_active else "Inactive" }}</td>
+                    <td>
+                        <a href="{{ url_for('admin.view_kyc_documents', user_id=user.public_id) }}" style="text-decoration: none;">
+                            <span class="badge" style="background: #6c757d; color: white; font-size: 10px;">
+                                <i class="bi bi-file-earmark-text"></i> Docs
+                            </span>
+                        </a>
+                        <a href="{{ url_for('admin.user_activity', user_id=user.public_id) }}" style="text-decoration: none; margin-left: 3px;">
+                            <span class="badge" style="background: #17a2b8; color: white; font-size: 10px;">
+                                <i class="bi bi-clock-history"></i> Activity
+                            </span>
+                        </a>
+                    </td>
                     <td class="action-group">
                         <a href="{{ url_for('admin.view_user_by_username', username=user.username) }}" class="btn-sm btn-view" style="display: inline-block; text-decoration: none; color: white; background: #007bff; padding: 5px 10px; font-size: 11px; border: none; border-radius: 4px; cursor: pointer; margin: 2px; transition: all 0.2s;"><i class="bi bi-eye"></i> View</a>
                         {% if not user.is_verified %}<form method="post" action="{{ url_for('admin.verify_user', user_id=user.public_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-sm btn-verify"><i class="bi bi-check2-circle"></i> Verify</button></form>{% endif %}

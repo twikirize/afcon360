@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - AFCON360{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mt-4">Flagged Content</h1>
+            <ol class="breadcrumb mb-4">
+                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item active">Flagged Items</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Flagged Items Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-flag me-1"></i>
+                    Flagged Content Items
+                </div>
+                <div class="card-body">
+                    {% if flagged_items.items %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Title</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                    <th>Flagged At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in flagged_items.items %}
+                                <tr>
+                                    <td>{{ item.id }}</td>
+                                    <td><span class="badge bg-warning">{{ item.item_type }}</span></td>
+                                    <td>{{ item.title }}</td>
+                                    <td>{{ item.description[:100] }}{% if item.description|length > 100 %}...{% endif %}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'danger' if item.is_flagged else 'success' }}">
+                                            {{ 'Flagged' if item.is_flagged else 'Normal' }}
+                                        </span>
+                                    </td>
+                                    <td>{{ item.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" onclick="clearFlag({{ item.id }})">
+                                            <i class="fas fa-check"></i> Clear Flag
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" onclick="removeItem({{ item.id }})">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if flagged_items.pages > 1 %}
+                    <nav>
+                        <ul class="pagination">
+                            {% for page in flagged_items.iter_pages() %}
+                                {% if page %}
+                                    <li class="page-item {% if page == flagged_items.page %}active{% endif %}">
+                                        <a class="page-link" href="{{ url_for('moderator.flagged_content', page=page) }}">{{ page }}</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                {% endif %}
+                            {% endfor %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted">No flagged items found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function clearFlag(itemId) {
+    if (confirm('Are you sure you want to clear the flag on this item?')) {
+        // Implement AJAX call to clear flag
+        fetch(`/api/admin/items/${itemId}/clear-flag`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        }).then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Failed to clear flag');
+            }
+        });
+    }
+}
+
+function removeItem(itemId) {
+    if (confirm('Are you sure you want to remove this item? This action cannot be undone.')) {
+        // Implement AJAX call to remove item
+        fetch(`/api/admin/items/${itemId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        }).then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Failed to remove item');
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

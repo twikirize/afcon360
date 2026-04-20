@@ -1,216 +1,868 @@
 {#
   FILE: templates/events/admin/dashboard.html
-  PURPOSE: System Admin dashboard for event oversight
+  PURPOSE: System Admin dashboard for event oversight — Command Centre
   ACCESS: System Admin (Super Admin) only
   RELATED: events.admin_dashboard route
+  CSS: static/css/modules/events/dashboard.css
 #}
 
 {% extends "base.html" %}
 
-{% block title %}Events Admin Dashboard - AFCON360{% endblock %}
+{% block title %}Events Command Centre — AFCON360{% endblock %}
 
 {% block module_styles %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h1>
-                <i class="fas fa-calendar-check text-warning me-2"></i>
-                Events Platform Oversight
-            </h1>
-            <p class="lead">Manage and monitor all platform events and registrations</p>
+<div class="afcon-admin">
+
+  <!-- ─── TOPBAR ─── -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="dot"></div>
+      AFCON360 &nbsp;/&nbsp; Events Command Centre
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge">SYSTEM ADMIN</span>
+      <span class="topbar-time" id="live-time"></span>
+    </div>
+  </div>
+
+  <!-- ─── PAGE HEADER ─── -->
+  <div class="page-header">
+    <div>
+      <h1>Events <em>Oversight</em></h1>
+      <p>Monitor, approve, and moderate all platform events in real time</p>
+    </div>
+    <div class="header-actions">
+      <a href="{{ url_for('events.list') }}" class="btn-ghost">
+        <i class="fas fa-globe"></i> Public Portal
+      </a>
+      <a href="{{ url_for('events.admin_events') }}" class="btn-accent">
+        <i class="fas fa-list"></i> All Events
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content">
+
+    <!-- ─── KPI STRIP ─── -->
+    <div class="kpi-strip">
+      <div class="kpi-card" style="--kpi-color: var(--brand-accent)">
+        <div class="kpi-label">Total Events</div>
+        <div class="kpi-value" id="total-events">{{ total_events }}</div>
+        <div class="kpi-sub">
+          <span class="delta delta-up" id="active-events-sub">+<span data-kpi="active_events">{{ active_events }}</span> active</span>
         </div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--brand-accent)">
+        <div class="kpi-label">Active</div>
+        <div class="kpi-value" id="active-events">{{ active_events }}</div>
+        <div class="kpi-sub">
+          <span style="font-size:12px;color:var(--brand-muted)">live events</span>
+        </div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--brand-gold)">
+        <div class="kpi-label">Pending</div>
+        <div class="kpi-value" id="pending-events">{{ pending_events }}</div>
+        <div class="kpi-sub">
+          {% if pending_events > 0 %}
+          <span class="delta delta-warn">Needs review</span>
+          {% else %}
+          <span class="delta delta-up">All clear</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--brand-red)">
+        <div class="kpi-label">Rejected</div>
+        <div class="kpi-value" id="rejected-events">{{ rejected_events }}</div>
+        <div class="kpi-sub">
+          <span style="font-size:12px;color:var(--brand-muted)">events declined</span>
+        </div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--brand-orange)">
+        <div class="kpi-label">Suspended</div>
+        <div class="kpi-value" id="suspended-events">0</div>
+        <div class="kpi-sub">
+          <span style="font-size:12px;color:var(--brand-muted)">temporarily hidden</span>
+        </div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--brand-blue)">
+        <div class="kpi-label">Registrations</div>
+        <div class="kpi-value" id="total-registrations">{{ total_registrations }}</div>
+        <div class="kpi-sub">
+          <span class="delta delta-up" id="checked-in-sub">{{ checked_in_registrations }} checked in</span>
+        </div>
+      </div>
     </div>
 
-    {# Stats Cards #}
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card text-center bg-primary text-white shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="mb-0 text-white">{{ total_events }}</h2>
-                    <p class="mb-0 small text-uppercase opacity-75">Total Events</p>
-                </div>
+    <!-- ─── TWO-COLUMN ─── -->
+    <div class="two-col">
+
+      <!-- LEFT COLUMN -->
+      <div style="display:flex;flex-direction:column;gap:24px;">
+
+        <!-- PENDING APPROVAL -->
+        {% if pending_approval %}
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <i class="fas fa-clock icon"></i>
+              Awaiting Approval
             </div>
+            <span class="panel-count warn" id="pendingBadge">{{ pending_approval|length }} pending</span>
+          </div>
+          <div style="overflow-x:auto; overflow-y:visible;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Organizer</th>
+                  <th>Submitted</th>
+                  <th>Category</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for event in pending_approval %}
+                <tr class="urgency-row" id="row-{{ event.slug }}">
+                  <td>
+                    <div class="event-name">{{ event.name }}</div>
+                    <div class="event-loc">
+                      <i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:4px;"></i>
+                      {{ event.city }}{% if event.venue %}, {{ event.venue }}{% endif %}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="organizer-tag">
+                      <div class="avatar">U</div>
+                      ID {{ event.organizer_id }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="date-tag">{{ event.created_at.strftime('%d %b %Y') if event.created_at else 'N/A' }}</div>
+                  </td>
+                  <td><span class="badge badge-cat">{{ event.category }}</span></td>
+                  <td>
+                    <div class="tbl-actions">
+                      <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                         class="tbl-btn tbl-btn-view" target="_blank">
+                        <i class="fas fa-eye"></i> View
+                      </a>
+                      <button class="tbl-btn tbl-btn-approve js-approve-btn"
+                              data-slug="{{ event.slug }}"
+                              data-name="{{ event.name|e }}">
+                        <i class="fas fa-check"></i> Approve
+                      </button>
+                      <button class="tbl-btn tbl-btn-reject js-mod-action"
+                              data-action="reject"
+                              data-slug="{{ event.slug }}"
+                              data-name="{{ event.name|e }}"
+                              data-status="pending">
+                        <i class="fas fa-times"></i> Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-center bg-success text-white shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="mb-0 text-white">{{ active_events }}</h2>
-                    <p class="mb-0 small text-uppercase opacity-75">Active Events</p>
-                </div>
+        {% else %}
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <i class="fas fa-clock icon"></i>
+              Awaiting Approval
             </div>
+            <span class="panel-count" id="pendingBadge">0 pending</span>
+          </div>
+          <div class="empty-state">
+            <i class="fas fa-check-circle" style="color:var(--brand-accent)"></i>
+            All caught up — no events awaiting review
+          </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-center bg-warning text-white shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="mb-0 text-white">{{ pending_events }}</h2>
-                    <p class="mb-0 small text-uppercase opacity-75">Pending Approval</p>
-                </div>
+        {% endif %}
+
+        <!-- RECENT ACTIVITY -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <i class="fas fa-stream icon"></i>
+              Recent Activity
             </div>
+            <a href="{{ url_for('events.admin_events') }}" class="panel-link">
+              View all <i class="fas fa-arrow-right" style="font-size:10px;"></i>
+            </a>
+          </div>
+
+          {% if recent_events %}
+          <div style="overflow-x:auto; overflow-y:visible;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Status</th>
+                  <th>Category</th>
+                  <th>Date</th>
+                  <th>Moderation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for event in recent_events %}
+                <tr id="row-{{ event.slug }}">
+                  <td>
+                    <div class="event-name">{{ event.name }}</div>
+                    <div class="event-loc">{{ event.city }}, {{ event.country or 'Uganda' }}</div>
+                  </td>
+                  <td>
+                    <span class="badge badge-{{ event.status }}">{{ event.status }}</span>
+                  </td>
+                  <td><span class="badge badge-cat">{{ event.category }}</span></td>
+                  <td>
+                    <div class="date-tag">
+                      {{ event.start_date.strftime('%d %b %Y') if event.start_date else '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="tbl-actions">
+                      {% if event.status == 'active' %}
+                        <button class="tbl-btn tbl-btn-mod js-mod-action"
+                                data-action="suspend"
+                                data-slug="{{ event.slug }}"
+                                data-name="{{ event.name|e }}"
+                                data-status="active">
+                          <i class="fas fa-pause-circle"></i> Suspend
+                        </button>
+                        <button class="tbl-btn tbl-btn-reject js-mod-action"
+                                data-action="takedown"
+                                data-slug="{{ event.slug }}"
+                                data-name="{{ event.name|e }}"
+                                data-status="active">
+                          <i class="fas fa-exclamation-triangle"></i> Takedown
+                        </button>
+                      {% elif event.status == 'suspended' %}
+                        <button class="tbl-btn tbl-btn-approve js-mod-action"
+                                data-action="restore"
+                                data-slug="{{ event.slug }}"
+                                data-name="{{ event.name|e }}"
+                                data-status="suspended">
+                          <i class="fas fa-check-circle"></i> Restore
+                        </button>
+                      {% elif event.status == 'pending' %}
+                        <button class="tbl-btn tbl-btn-approve js-approve-btn"
+                                data-slug="{{ event.slug }}"
+                                data-name="{{ event.name|e }}">
+                          <i class="fas fa-check"></i> Approve
+                        </button>
+                        <button class="tbl-btn tbl-btn-reject js-mod-action"
+                                data-action="reject"
+                                data-slug="{{ event.slug }}"
+                                data-name="{{ event.name|e }}"
+                                data-status="pending">
+                          <i class="fas fa-times"></i> Reject
+                        </button>
+                      {% else %}
+                        <a href="{{ url_for('events.admin_events') }}?status={{ event.status }}" class="tbl-btn tbl-btn-manage">
+                          <i class="fas fa-cog"></i> Manage
+                        </a>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="empty-state">
+            <i class="fas fa-calendar-times"></i>
+            No events found
+          </div>
+          {% endif %}
         </div>
-        <div class="col-md-3">
-            <div class="card text-center bg-info text-white shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="mb-0 text-white">{{ total_registrations }}</h2>
-                    <p class="mb-0 small text-uppercase opacity-75">Total Registrants</p>
-                    <small class="opacity-75">{{ checked_in_registrations }} checked in</small>
-                </div>
+
+      </div><!-- /left col -->
+
+      <!-- RIGHT SIDEBAR -->
+      <div class="sidebar">
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <i class="fas fa-user-check icon"></i>
+              Attendance
             </div>
+          </div>
+          <div class="checkin-meter">
+            <div class="meter-row">
+              <div class="meter-label">Check-in rate</div>
+              <div class="meter-val">
+                {% if total_registrations > 0 %}
+                  {{ ((checked_in_registrations / total_registrations) * 100)|round(1) }}%
+                {% else %}0%{% endif %}
+              </div>
+            </div>
+            <div class="meter-track">
+              <div class="meter-fill" style="width:{% if total_registrations > 0 %}{{ ((checked_in_registrations / total_registrations) * 100)|round(1) }}{% else %}0{% endif %}%"></div>
+            </div>
+            <div class="meter-sub">
+              <strong>{{ checked_in_registrations }}</strong> of <strong>{{ total_registrations }}</strong> registrants checked in
+            </div>
+          </div>
         </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <i class="fas fa-chart-bar icon"></i>
+              Category Breakdown
+            </div>
+          </div>
+          {% if categories %}
+            {% for category, count in categories %}
+            <div class="dist-item">
+              <div class="dist-row">
+                <span class="dist-label">{{ category }}</span>
+                <span class="dist-count">{{ count }}</span>
+              </div>
+              <div class="dist-bar">
+                <div class="dist-bar-fill"
+                     style="width:{{ ((count / total_events * 100) if total_events else 0)|round(1) }}%"></div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+          <div class="empty-state" style="padding:32px;">
+            <i class="fas fa-chart-bar"></i>No categories yet
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <i class="fas fa-bolt icon"></i>
+              Quick Actions
+            </div>
+          </div>
+          <div class="quick-actions">
+            <a href="{{ url_for('events.admin_events') }}" class="qa-item">
+              <div class="qa-icon qa-icon-green"><i class="fas fa-list"></i></div>
+              <div>
+                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">All Events</div>
+                <div style="font-size:11px;">Browse and manage every event</div>
+              </div>
+              <span class="qa-arrow">›</span>
+            </a>
+            <a href="{{ url_for('events.admin_events', status='pending') }}" class="qa-item">
+              <div class="qa-icon qa-icon-gold"><i class="fas fa-clock"></i></div>
+              <div>
+                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Pending Review</div>
+                <div style="font-size:11px;">{{ pending_events }} events awaiting decision</div>
+              </div>
+              <span class="qa-arrow">›</span>
+            </a>
+            <a href="{{ url_for('events.admin_events', status='active') }}" class="qa-item">
+              <div class="qa-icon qa-icon-blue"><i class="fas fa-check-circle"></i></div>
+              <div>
+                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Active Events</div>
+                <div style="font-size:11px;">{{ active_events }} live on the platform</div>
+              </div>
+              <span class="qa-arrow">›</span>
+            </a>
+            <a href="{{ url_for('events.list') }}" class="qa-item">
+              <div class="qa-icon qa-icon-purple"><i class="fas fa-globe"></i></div>
+              <div>
+                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Public Portal</div>
+                <div style="font-size:11px;">See what attendees see</div>
+              </div>
+              <span class="qa-arrow">›</span>
+            </a>
+          </div>
+        </div>
+
+      </div><!-- /sidebar -->
+    </div><!-- /two-col -->
+  </div><!-- /main-content -->
+</div><!-- /afcon-admin -->
+
+
+{# ════════ MODALS ════════ #}
+
+<div class="modal-overlay" id="modal-reject">
+  <div class="modal-box">
+    <div class="modal-severity sev-warn"><i class="fas fa-times-circle"></i><span>Rejecting event — organiser will be notified</span></div>
+    <div class="modal-title">Reject Event</div>
+    <div class="modal-subtitle" id="modal-reject-subtitle">Provide a clear reason. The organiser can revise and resubmit.</div>
+    <div class="modal-field danger">
+      <label>Rejection Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="reject-reason" rows="4" placeholder="e.g. Incomplete venue details, missing contact info…"></textarea>
     </div>
-
-    <div class="row">
-        {# Left Column #}
-        <div class="col-md-8">
-
-            {# Pending Approval Section #}
-            {% if pending_approval %}
-            <div class="card mb-4 border-0 shadow-sm">
-                <div class="card-header bg-warning-subtle py-3">
-                    <h5 class="mb-0 text-dark">
-                        <i class="fas fa-clock me-2"></i>
-                        Awaiting Approval ({{ pending_approval|length }})
-                    </h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr><th>Event</th><th>Organizer</th><th>Created</th><th>Actions</th></tr>
-                            </thead>
-                            <tbody>
-                                {% for event in pending_approval %}
-                                <tr>
-                                    <td>
-                                        <strong>{{ event.name }}</strong><br>
-                                        <small class="text-muted">{{ event.city }}</small>
-                                    </td>
-                                    <td><small>ID: {{ event.organizer_id }}</small></td>
-                                    <td><small>{{ event.created_at.strftime('%Y-%m-%d') if event.created_at else 'N/A' }}</small></td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
-                                               class="btn btn-outline-primary">View</a>
-                                            <form method="POST" action="{{ url_for('events.admin_approve', event_slug=event.slug) }}"
-                                                  style="display:inline;">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                <button type="submit" class="btn btn-success">Approve</button>
-                                            </form>
-                                            <button class="btn btn-danger" onclick="rejectEvent('{{ event.slug }}')">Reject</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            {# Recent Events #}
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white py-3">
-                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr><th>Event</th><th>Status</th><th>Category</th><th>Action</th></tr>
-                            </thead>
-                            <tbody>
-                                {% for event in recent_events %}
-                                <tr>
-                                    <td>
-                                        <strong>{{ event.name }}</strong><br>
-                                        <small class="text-muted">{{ event.city }}</small>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-event-status badge-status-{{ event.status }}">
-                                            {{ event.status }}
-                                        </span>
-                                    </td>
-                                    <td><span class="badge bg-light text-dark border">{{ event.category }}</span></td>
-                                    <td>
-                                        <a href="{{ url_for('events.admin_events') }}?status={{ event.status }}"
-                                           class="btn btn-sm btn-link">Manage</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {# Right Column #}
-        <div class="col-md-4">
-
-            {# Events by Category #}
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header bg-white py-3">
-                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Distribution</h5>
-                </div>
-                <div class="card-body">
-                    {% for category, count in categories %}
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between mb-1">
-                            <span class="small text-muted text-uppercase fw-bold">{{ category }}</span>
-                            <span class="small fw-bold">{{ count }}</span>
-                        </div>
-                        <div class="progress" style="height: 6px;">
-                            <div class="progress-bar bg-primary" style="width: {{ (count / total_events * 100) if total_events else 0 }}%"></div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            {# Quick Actions #}
-            <div class="card border-0 shadow-sm bg-dark text-white">
-                <div class="card-header border-0 py-3">
-                    <h5 class="mb-0 text-white"><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <a href="{{ url_for('events.admin_events') }}" class="btn btn-outline-light btn-sm text-start">
-                            <i class="fas fa-list me-2"></i>View All Events
-                        </a>
-                        <a href="{{ url_for('events.admin_events', status='pending') }}" class="btn btn-outline-warning btn-sm text-start">
-                            <i class="fas fa-clock me-2"></i>Pending Review
-                        </a>
-                        <a href="{{ url_for('events.list') }}" class="btn btn-outline-info btn-sm text-start">
-                            <i class="fas fa-globe me-2"></i>Public Portal
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('reject')">Cancel</button>
+      <button class="btn-modal-reject" onclick="submitAction('reject')"><i class="fas fa-times-circle"></i> Reject Event</button>
     </div>
+  </div>
 </div>
 
+<div class="modal-overlay" id="modal-suspend">
+  <div class="modal-box">
+    <div class="modal-severity sev-orange"><i class="fas fa-pause-circle"></i><span>Suspension — event hidden from public immediately</span></div>
+    <div class="modal-title">Suspend Event</div>
+    <div class="modal-subtitle" id="modal-suspend-subtitle">The event will be hidden. The organiser can resolve the issue and request reinstatement.</div>
+    <div class="modal-field">
+      <label>Duration</label>
+      <select id="suspend-duration">
+        <option value="24h">24 hours</option>
+        <option value="72h">72 hours</option>
+        <option value="7d" selected>7 days</option>
+        <option value="14d">14 days</option>
+        <option value="indefinite">Indefinite (manual review required)</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="suspend-reason" rows="3" placeholder="e.g. Reported for misleading ticket pricing, under investigation…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('suspend')">Cancel</button>
+      <button class="btn-modal-orange" onclick="submitAction('suspend')"><i class="fas fa-pause-circle"></i> Suspend Event</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-deactivate">
+  <div class="modal-box">
+    <div class="modal-severity sev-orange"><i class="fas fa-ban"></i><span>Deactivation — event disabled, data preserved</span></div>
+    <div class="modal-title">Deactivate Event</div>
+    <div class="modal-subtitle" id="modal-deactivate-subtitle">Removed from public listings. No data deleted. Organiser can request reactivation via support.</div>
+    <div class="modal-field">
+      <label>Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="deactivate-reason" rows="3" placeholder="e.g. Organiser requested deactivation, event moved, duplicate listing…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('deactivate')">Cancel</button>
+      <button class="btn-modal-warn" onclick="submitAction('deactivate')"><i class="fas fa-ban"></i> Deactivate Event</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-takedown">
+  <div class="modal-box">
+    <div class="modal-severity sev-red"><i class="fas fa-exclamation-triangle"></i><span>Policy Takedown — permanent enforcement, compliance logged</span></div>
+    <div class="modal-title">Policy Takedown</div>
+    <div class="modal-subtitle" id="modal-takedown-subtitle">This event violates platform policies. It will be immediately removed and flagged in the compliance audit log with your admin ID.</div>
+    <div class="modal-field">
+      <label>Violation Category <span style="color:var(--brand-red)">*</span></label>
+      <select id="takedown-category">
+        <option value="">— Select violation type —</option>
+        <option value="fraud">Fraud / Scam</option>
+        <option value="illegal_activity">Illegal Activity</option>
+        <option value="hate_speech">Hate Speech / Discrimination</option>
+        <option value="misinformation">Dangerous Misinformation</option>
+        <option value="spam">Spam / Duplicate</option>
+        <option value="copyright">Copyright / IP Violation</option>
+        <option value="other">Other Policy Violation</option>
+      </select>
+    </div>
+    <div class="modal-field danger">
+      <label>Detailed Reason <span style="color:var(--brand-red)">*</span></label>
+      <textarea id="takedown-reason" rows="4" placeholder="Describe the specific policy violation. This is recorded in the compliance audit log…"></textarea>
+    </div>
+    <div class="modal-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;font-size:13px;letter-spacing:0;">
+        <input type="checkbox" id="takedown-notify" checked style="accent-color:var(--brand-red);width:15px;height:15px;">
+        Notify organiser via email
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('takedown')">Cancel</button>
+      <button class="btn-modal-reject" onclick="submitAction('takedown')"><i class="fas fa-exclamation-triangle"></i> Execute Takedown</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+{% endblock %}
+
+{% block scripts %}
 <script>
-function rejectEvent(eventSlug) {
-    const reason = prompt('Please enter rejection reason:');
-    if (reason) {
-        fetch(`/events/admin/${eventSlug}/reject`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            },
-            body: JSON.stringify({reason: reason})
-        }).then(res => res.json()).then(data => {
-            if (data.success) location.reload();
-            else alert('Error: ' + data.error);
-        });
-    }
+/* ── STATE ── */
+let _activeModal = null, _modalSlug = null, _modalName = null;
+
+/* ── LIVE CLOCK ── */
+function tickClock(){
+  const el=document.getElementById('live-time');
+  if(el) el.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});
+  setTimeout(tickClock,1000);
 }
+
+/* ── CSRF ── */
+function csrf(){
+  const m=document.querySelector('meta[name="csrf-token"]');
+  return m?m.getAttribute('content'):'';
+}
+
+/* ── TOAST ── */
+function toast(msg,type='ok'){
+  const icons={ok:'✓',err:'✕',warn:'⚠',info:'ℹ'};
+  const stack=document.getElementById('toastStack');
+  const el=document.createElement('div');
+  el.className=`toast toast-${type}`;
+  el.innerHTML=`<span class="toast-icon">${icons[type]||'•'}</span><span>${msg}</span>`;
+  stack.appendChild(el);
+  setTimeout(()=>{
+    el.style.transition='all .3s';el.style.opacity='0';el.style.transform='translateX(20px)';
+    setTimeout(()=>el.remove(),300);
+  },4000);
+}
+
+/* ── APPROVE ── (fixed: find button by data-slug, not by broken onclick selector) ── */
+function approveEvent(slug, name, triggerBtn){
+  console.log('Attempting to approve event:', slug);
+  if(!confirm(`Approve "${name}"?\n\nThis will publish the event to the public portal.`)) return;
+  if(triggerBtn){
+    triggerBtn.innerHTML='<span class="loading-dots"><span></span><span></span><span></span></span>';
+    triggerBtn.disabled=true;
+  }
+
+  const url = `/events/admin/${slug}/approve`;
+  console.log('Fetching URL:', url);
+  console.log('CSRF token present:', !!csrf());
+
+  fetch(url,{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-CSRFToken':csrf()
+    },
+    body:JSON.stringify({})
+  }).then(r=>{
+    console.log('Response status:', r.status);
+    return r.json();
+  }).then(data=>{
+    console.log('Response data:', data);
+    if(data.success){
+      toast(`"${name}" approved and now live`,'ok');
+      fadeOutRow(slug, refreshPendingBadge);
+    } else {
+      toast(data.error||'Approval failed','err');
+      if(triggerBtn){triggerBtn.innerHTML='<i class="fas fa-check"></i> Approve';triggerBtn.disabled=false;}
+    }
+  }).catch((error)=>{
+    console.error('Fetch error:', error);
+    toast('Network error','err');
+    if(triggerBtn){triggerBtn.innerHTML='<i class="fas fa-check"></i> Approve';triggerBtn.disabled=false;}
+  });
+}
+
+/* ── RESTORE ── */
+function restoreEvent(slug, name){
+  if(!confirm(`Restore "${name}"?\n\nThis will reinstate it as active.`)) return;
+  fetch(`/events/admin/${slug}/restore`,{
+    method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify({})
+  }).then(r=>r.json()).then(data=>{
+    if(data.success){toast(`"${name}" reinstated`,'ok');setTimeout(()=>location.reload(),800);}
+    else toast(data.error||'Restore failed','err');
+  }).catch(()=>toast('Network error','err'));
+}
+
+/* ── EVENT DELEGATION — single handler for all actions ── */
+document.addEventListener('click', function(e){
+  console.log('Click event detected on:', e.target);
+  console.log('Target class:', e.target.className);
+  console.log('Target tag:', e.target.tagName);
+
+  /* Approve button (both in pending table and in mod dropdown) */
+  const approveBtn = e.target.closest('.js-approve-btn');
+  if(approveBtn){
+    console.log('Approve button clicked:', approveBtn.dataset.slug);
+    e.stopPropagation();
+    approveEvent(approveBtn.dataset.slug, approveBtn.dataset.name, approveBtn);
+    return;
+  }
+
+  /* Action buttons */
+  const action = e.target.closest('.js-mod-action');
+  if(action){
+    console.log('Mod action button clicked:', action.dataset.action, action.dataset.slug);
+    e.stopPropagation();
+    const { slug, name } = action.dataset;
+    const act = action.dataset.action;
+    if(act === 'restore'){
+      console.log('Restoring event:', slug);
+      restoreEvent(slug, name);
+    }
+    else {
+      console.log('Opening modal for action:', act);
+      openModal(act, slug, name);
+    }
+    return;
+  }
+
+  console.log('No matching button found');
+});
+
+/* ── MODAL CONFIG ── */
+const MODALS={
+  reject:{
+    subtitleEl:'modal-reject-subtitle',
+    subtitle:(n)=>`Rejecting: "${n}". Provide a clear reason — the organiser will be notified and can resubmit.`,
+    endpoint:(s)=>`/events/admin/${s}/reject`,
+    payload:()=>{const r=document.getElementById('reject-reason').value.trim();if(!r){toast('Enter a rejection reason','warn');return null;}return{reason:r};},
+    msg:(n)=>`"${n}" rejected`,type:'warn',reload:false,removeRow:true,focus:'reject-reason'
+  },
+  suspend:{
+    subtitleEl:'modal-suspend-subtitle',
+    subtitle:(n)=>`Suspending: "${n}". Event hidden from public immediately.`,
+    endpoint:(s)=>`/events/admin/${s}/suspend`,
+    payload:()=>{const r=document.getElementById('suspend-reason').value.trim();const d=document.getElementById('suspend-duration').value;if(!r){toast('Enter a suspension reason','warn');return null;}return{reason:r,duration:d};},
+    msg:(n)=>`"${n}" suspended`,type:'warn',reload:true,removeRow:false,focus:'suspend-reason'
+  },
+  deactivate:{
+    subtitleEl:'modal-deactivate-subtitle',
+    subtitle:(n)=>`Deactivating: "${n}". Removed from public listings.`,
+    endpoint:(s)=>`/events/admin/${s}/deactivate`,
+    payload:()=>{const r=document.getElementById('deactivate-reason').value.trim();if(!r){toast('Enter a deactivation reason','warn');return null;}return{reason:r};},
+    msg:(n)=>`"${n}" deactivated`,type:'info',reload:true,removeRow:false,focus:'deactivate-reason'
+  },
+  takedown:{
+    subtitleEl:'modal-takedown-subtitle',
+    subtitle:(n)=>`Policy takedown for: "${n}". Permanent — logged to compliance audit.`,
+    endpoint:(s)=>`/events/admin/${s}/takedown`,
+    payload:()=>{
+      const cat=document.getElementById('takedown-category').value;
+      const r=document.getElementById('takedown-reason').value.trim();
+      const notify=document.getElementById('takedown-notify').checked;
+      if(!cat){toast('Select a violation category','warn');return null;}
+      if(!r){toast('Describe the violation','warn');return null;}
+      return{category:cat,reason:r,notify_organiser:notify};
+    },
+    msg:(n)=>`"${n}" taken down — compliance log updated`,type:'err',reload:true,removeRow:false,focus:'takedown-category'
+  }
+};
+
+function openModal(type,slug,name){
+  const cfg=MODALS[type]; if(!cfg) return;
+  _activeModal=type; _modalSlug=slug; _modalName=name;
+  const subEl=document.getElementById(cfg.subtitleEl);
+  if(subEl) subEl.textContent=cfg.subtitle(name);
+  ['reject-reason','suspend-reason','deactivate-reason','takedown-reason'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const cat=document.getElementById('takedown-category'); if(cat) cat.value='';
+  const chk=document.getElementById('takedown-notify'); if(chk) chk.checked=true;
+  document.getElementById(`modal-${type}`).classList.add('open');
+  setTimeout(()=>{const f=document.getElementById(cfg.focus);if(f)f.focus();},150);
+}
+
+function closeModal(type){
+  const el=document.getElementById(`modal-${type}`); if(el) el.classList.remove('open');
+  if(_activeModal===type){_activeModal=null;_modalSlug=null;_modalName=null;}
+}
+
+function submitAction(type){
+  const cfg=MODALS[type]; if(!cfg) return;
+  const slug=_modalSlug, name=_modalName;
+  const payload=cfg.payload(); if(!payload) return;
+  closeModal(type);
+
+  console.log(`Submitting ${type} action for ${slug}`, payload);
+
+  fetch(cfg.endpoint(slug),{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-CSRFToken':csrf()
+    },
+    body:JSON.stringify(payload)
+  }).then(r=>{
+    console.log(`Response status for ${type}:`, r.status);
+    return r.json();
+  }).then(data=>{
+    console.log(`Response data for ${type}:`, data);
+    if(data.success){
+      toast(cfg.msg(name),cfg.type);
+      if(cfg.removeRow) {
+        fadeOutRow(slug, function() {
+          refreshPendingBadge();
+          refreshKPICounts();
+        });
+      } else if(cfg.reload) {
+        // Refresh counts before reloading
+        refreshKPICounts();
+        setTimeout(()=>location.reload(),900);
+      } else {
+        // Just refresh counts
+        refreshKPICounts();
+      }
+    } else {
+      toast(data.error||`${type} failed`,'err');
+    }
+  }).catch((error)=>{
+    console.error(`Network error for ${type}:`, error);
+    toast('Network error','err');
+  });
+}
+
+/* Close modals on backdrop click */
+['reject','suspend','deactivate','takedown'].forEach(t=>{
+  const o=document.getElementById(`modal-${t}`);
+  if(o) o.addEventListener('click',e=>{if(e.target===o) closeModal(t);});
+});
+
+/* ── HELPERS ── */
+function fadeOutRow(slug,cb){
+  const row=document.getElementById(`row-${slug}`);
+  if(row){row.style.transition='opacity .4s,transform .4s';row.style.opacity='0';row.style.transform='translateX(-20px)';setTimeout(()=>{row.remove();if(cb)cb();},420);}
+  else if(cb) cb();
+}
+function refreshPendingBadge(){
+  const n=document.querySelectorAll('.urgency-row').length;
+  const b=document.getElementById('pendingBadge');
+  if(b) b.textContent=`${n} pending`;
+}
+
+/* ── LOAD DASHBOARD STATS ── */
+function loadDashboardStats() {
+  fetch('/events/api/admin/stats', {
+    headers: { 'X-CSRFToken': csrf() }
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      document.getElementById('total-events').textContent = data.total_events || 0;
+      document.getElementById('active-events').textContent = data.active_events || 0;
+      document.getElementById('pending-events').textContent = data.pending_events || 0;
+      document.getElementById('rejected-events').textContent = data.rejected_events || 0;
+      document.getElementById('suspended-events').textContent = data.suspended_events || 0;
+      document.getElementById('total-registrations').textContent = data.total_registrations || 0;
+
+      // Update the sub labels
+      const activeEventsSub = document.getElementById('active-events-sub');
+      if (activeEventsSub) {
+        activeEventsSub.textContent = `+${data.active_events || 0} active`;
+      }
+
+      const checkedInSub = document.getElementById('checked-in-sub');
+      if (checkedInSub) {
+        checkedInSub.textContent = `${data.checked_in_registrations || 0} checked in`;
+      }
+
+      // Animate the new values
+      document.querySelectorAll('.kpi-value').forEach(el => {
+        const raw = el.textContent.trim();
+        const isPct = raw.endsWith('%');
+        const target = parseFloat(raw);
+        if (!isNaN(target) && target > 0) {
+          el.textContent = isPct ? '0%' : '0';
+          let cur = 0;
+          const step = target / (800 / 16);
+          const iv = setInterval(() => {
+            cur = Math.min(cur + step, target);
+            el.textContent = isPct ? cur.toFixed(1) + '%' : Math.floor(cur).toString();
+            if (cur >= target) clearInterval(iv);
+          }, 16);
+        }
+      });
+    }
+  })
+  .catch(err => console.error('Failed to load stats:', err));
+}
+
+/* ── REFRESH KPI COUNTS ── */
+function refreshKPICounts() {
+    console.log('Refreshing KPI counts...');
+    fetch('/events/api/admin/stats', {
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('KPI data received:', data);
+            // Update each KPI card
+            updateKPICard('Total Events', data.total_events);
+            updateKPICard('Pending Approval', data.pending_events);
+            updateKPICard('Total Registrants', data.total_registrations);
+            updateKPICard('Rejected', data.rejected_events);
+            updateKPICard('Check-in Rate', data.checked_in_registrations, data.total_registrations);
+
+            // Also update the active events count (not in KPI strip but in template)
+            const activeEventsElement = document.querySelector('[data-kpi="active_events"]');
+            if (activeEventsElement) {
+                activeEventsElement.textContent = data.active_events;
+            }
+        } else {
+            console.error('Failed to fetch KPI data:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching KPI counts:', error);
+    });
+}
+
+function updateKPICard(label, value, total = null) {
+    // Find the KPI card by its label
+    const kpiCards = document.querySelectorAll('.kpi-card');
+    kpiCards.forEach(card => {
+        const labelElement = card.querySelector('.kpi-label');
+        if (labelElement && labelElement.textContent.trim() === label) {
+            const valueElement = card.querySelector('.kpi-value');
+            if (valueElement) {
+                if (label === 'Check-in Rate') {
+                    // Calculate percentage
+                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                    valueElement.textContent = `${percentage}%`;
+
+                    // Update the meter
+                    const meterFill = document.querySelector('.meter-fill');
+                    if (meterFill) {
+                        meterFill.style.width = `${percentage}%`;
+                    }
+                    const meterVal = document.querySelector('.meter-val');
+                    if (meterVal) {
+                        meterVal.textContent = `${percentage}%`;
+                    }
+                } else {
+                    valueElement.textContent = value;
+                }
+            }
+        }
+    });
+}
+
+/* ── ANIMATE ON LOAD + CLOCK ── */
+document.addEventListener('DOMContentLoaded',()=>{
+  tickClock();
+
+  // Refresh KPI counts on page load
+  refreshKPICounts();
+
+  document.querySelectorAll('.dist-bar-fill').forEach((el,i)=>{
+    const t=el.style.width; el.style.width='0%';
+    setTimeout(()=>{el.style.width=t;},300+i*80);
+  });
+
+  const meter=document.querySelector('.meter-fill');
+  if(meter){const t=meter.style.width;meter.style.width='0%';setTimeout(()=>{meter.style.width=t;},400);}
+
+  document.querySelectorAll('.kpi-value').forEach(el=>{
+    const raw=el.textContent.trim();
+    const isPct=raw.endsWith('%');
+    const target=parseFloat(raw);
+    if(!isNaN(target)&&target>0){
+      el.textContent=isPct?'0%':'0';
+      let cur=0;const step=target/(800/16);
+      const iv=setInterval(()=>{cur=Math.min(cur+step,target);el.textContent=isPct?cur.toFixed(1)+'%':Math.floor(cur).toString();if(cur>=target)clearInterval(iv);},16);
+    }
+  });
+});
 </script>
 {% endblock %}

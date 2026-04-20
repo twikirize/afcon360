@@ -1,14 +1,16 @@
 /**
  * AFCON 360 Theme Manager
  * Handles user preferences, live preview, and theme switching
- * Version: 1.0.0
+ * Version: 2.0.0 - Manual save with live preview
  */
 
 class ThemeManager {
     constructor() {
-        this.preferences = null;
+        // Working copy (changes apply immediately to preview)
+        this.workingPreferences = null;
+        // Saved copy (last saved to server)
+        this.savedPreferences = null;
         this.initialized = false;
-        this.previewMode = false;
         this.init();
     }
 
@@ -20,37 +22,31 @@ class ThemeManager {
         }
 
         try {
-            // First, apply default preferences immediately to prevent FOUC
-            this.preferences = this.getDefaultPreferences();
+            // Load user preferences
+            await this.loadUserPreferences();
+
+            // Apply preferences
             this.applyPreferences();
 
-            // Check if user is authenticated via meta tag
-            const isAuthenticated = this.isUserAuthenticated();
-
-            // Only load preferences if authenticated
-            if (isAuthenticated) {
-                await this.loadPreferences();
-                // Re-apply preferences with potentially updated values
-                this.applyPreferences();
-            } else {
-                // For guests, just use defaults
-                console.log('Guest user: using default theme preferences');
-            }
-
-            // Setup event listeners for preference controls
+            // Setup event listeners
             this.setupEventListeners();
 
             // Listen for system dark mode changes
             this.setupSystemDarkModeListener();
 
+            // Apply dashboard colors and setup dashboard listeners
+            this.applyDashboardColors();
+            this.setupDashboardEventListeners();
+            this.syncUIControls();
+
             this.initialized = true;
-            console.log('Theme Manager initialized');
+            console.log('Theme Manager initialized with manual save mode');
         } catch (error) {
             console.error('Theme Manager initialization failed:', error);
         }
     }
 
-    async loadPreferences() {
+    async loadUserPreferences() {
         try {
             const response = await fetch('/theme/api/preferences', {
                 headers: {
@@ -58,35 +54,42 @@ class ThemeManager {
                     'Pragma': 'no-cache'
                 },
                 credentials: 'same-origin',
-                redirect: 'error' // Prevent following redirects
+                redirect: 'error'
             });
 
             // Check if response is a redirect (3xx status)
             if (response.redirected) {
                 console.warn('Theme API attempted redirect, using defaults');
-                this.preferences = this.getDefaultPreferences();
+                this.savedPreferences = this.getDefaultPreferences();
+                this.workingPreferences = JSON.parse(JSON.stringify(this.savedPreferences));
                 return;
             }
 
             if (response.ok) {
                 const contentType = response.headers.get('content-type');
                 if (contentType && contentType.includes('application/json')) {
-                    this.preferences = await response.json();
+                    const data = await response.json();
+                    this.savedPreferences = data || this.getDefaultPreferences();
                 } else {
                     console.warn('Theme API returned non-JSON response, using defaults');
-                    this.preferences = this.getDefaultPreferences();
+                    this.savedPreferences = this.getDefaultPreferences();
                 }
             } else if (response.status === 401 || response.status === 403) {
                 // User is not authenticated or lacks permission - use defaults
                 console.log('User not authenticated for theme preferences, using defaults');
-                this.preferences = this.getDefaultPreferences();
+                this.savedPreferences = this.getDefaultPreferences();
             } else {
                 console.warn(`Theme API returned status ${response.status}, using defaults`);
-                this.preferences = this.getDefaultPreferences();
+                this.savedPreferences = this.getDefaultPreferences();
             }
         } catch (e) {
             console.warn('Could not load preferences, using defaults:', e);
-            this.preferences = this.getDefaultPreferences();
+            this.savedPreferences = this.getDefaultPreferences();
+        }
+
+        // Initialize working preferences as a copy of saved preferences
+        if (!this.workingPreferences) {
+            this.workingPreferences = JSON.parse(JSON.stringify(this.savedPreferences || this.getDefaultPreferences()));
         }
     }
 
@@ -113,59 +116,71 @@ class ThemeManager {
             reduced_motion: false,
             reading_width: 'full',
             compact_mode: false,
-            custom_accent: null
+            custom_accent: null,
+            // Dashboard colors
+            dashboard_page_bg: '#f5f7fa',
+            dashboard_sidebar_bg: '#ffffff',
+            dashboard_card_bg: '#ffffff',
+            dashboard_header_bg: '#1a1a2e',
+            dashboard_primary: '#10b981',
+            dashboard_text_primary: '#111827',
+            dashboard_border_radius: 8,
+            dashboard_card_padding: 16
         };
     }
 
     applyPreferences() {
-        if (!this.preferences) return;
+        if (!this.workingPreferences) return;
 
         // Apply font scale
-        document.documentElement.style.setProperty('--user-font-scale', this.preferences.font_scale);
+        document.documentElement.style.setProperty('--user-font-scale', this.workingPreferences.font_scale);
 
         // Apply font family for dyslexia
-        if (this.preferences.dyslexic_font) {
+        if (this.workingPreferences.dyslexic_font) {
             document.body.classList.add('dyslexic-font');
         } else {
             document.body.classList.remove('dyslexic-font');
         }
 
         // Apply high contrast mode
-        this.applyHighContrast(this.preferences.high_contrast);
+        this.applyHighContrast(this.workingPreferences.high_contrast);
 
         // Apply color blindness filter
-        this.applyColorBlindMode(this.preferences.color_blind_mode);
+        this.applyColorBlindMode(this.workingPreferences.color_blind_mode);
 
         // Apply dark/light mode
-        this.applyDarkMode(this.preferences.dark_mode);
+        this.applyDarkMode(this.workingPreferences.dark_mode);
 
         // Apply reduced motion
-        if (this.preferences.reduced_motion) {
+        if (this.workingPreferences.reduced_motion) {
             document.body.classList.add('reduced-motion');
         } else {
             document.body.classList.remove('reduced-motion');
         }
 
         // Apply reading width
-        this.applyReadingWidth(this.preferences.reading_width);
+        this.applyReadingWidth(this.workingPreferences.reading_width);
 
         // Apply compact mode
-        if (this.preferences.compact_mode) {
+        if (this.workingPreferences.compact_mode) {
             document.body.classList.add('compact-mode');
         } else {
             document.body.classList.remove('compact-mode');
         }
 
         // Apply custom accent color
-        if (this.preferences.custom_accent) {
-            document.documentElement.style.setProperty('--brand-primary', this.preferences.custom_accent);
-            const rgb = this.hexToRgb(this.preferences.custom_accent);
+        if (this.workingPreferences.custom_accent) {
+            document.documentElement.style.setProperty('--brand-primary', this.workingPreferences.custom_accent);
+            const rgb = this.hexToRgb(this.workingPreferences.custom_accent);
             document.documentElement.style.setProperty('--brand-primary-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
         } else {
             // Reset to default (will be overridden by global CSS)
             document.documentElement.style.removeProperty('--brand-primary');
             document.documentElement.style.removeProperty('--brand-primary-rgb');
         }
+
+        // Apply dashboard colors
+        this.applyDashboardColors();
     }
 
     applyHighContrast(mode) {
@@ -226,22 +241,15 @@ class ThemeManager {
         }
     }
 
-    async updatePreference(key, value) {
-        this.preferences[key] = value;
-        this.applyPreferences();
+    async saveUserPreferences() {
+        const saveBtn = document.getElementById('saveDashboardPreferences');
+        const originalText = saveBtn ? saveBtn.innerHTML : 'Save';
 
-        // Only save to server if user is authenticated
-        if (!this.isUserAuthenticated()) {
-            console.log('Guest user: preferences not saved to server');
-            this.showToast('Preferences applied locally (guest mode)', 'info');
-            return;
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         }
 
-        // Save to server
-        await this.savePreferences();
-    }
-
-    async savePreferences() {
         try {
             const response = await fetch('/theme/preferences/save', {
                 method: 'POST',
@@ -249,21 +257,22 @@ class ThemeManager {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': this.getCsrfToken()
                 },
-                body: JSON.stringify(this.preferences),
+                body: JSON.stringify(this.workingPreferences),
                 credentials: 'same-origin',
-                redirect: 'error' // Prevent following redirects
+                redirect: 'error'
             });
 
             // Check for redirect
             if (response.redirected) {
                 console.error('Save endpoint attempted redirect');
                 this.showToast('Failed to save preferences (redirect)', 'error');
-                return { success: false };
+                return;
             }
 
             if (response.ok) {
-                console.log('Preferences saved:', this.preferences);
-                this.showToast('Preferences saved', 'success');
+                // Save successful - update savedPreferences
+                this.savedPreferences = JSON.parse(JSON.stringify(this.workingPreferences));
+                this.showToast('Preferences saved successfully!', 'success');
 
                 // Reload the user CSS to apply changes
                 const userCssLink = document.getElementById('user-theme-css');
@@ -271,32 +280,46 @@ class ThemeManager {
                     const newHref = userCssLink.href.split('?')[0] + '?t=' + Date.now();
                     userCssLink.href = newHref;
                 }
-
-                return { success: true };
             } else if (response.status === 401 || response.status === 403) {
                 console.error('User not authenticated to save preferences');
                 this.showToast('Not authenticated to save preferences', 'error');
-                return { success: false };
             } else {
                 console.error('Failed to save preference:', response.status);
                 this.showToast('Failed to save preferences', 'error');
-                return { success: false };
             }
         } catch (error) {
             console.error('Error saving preference:', error);
             this.showToast('Network error saving preferences', 'error');
-            return { success: false };
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+            }
         }
     }
 
-    async resetToDefaults() {
-        this.preferences = this.getDefaultPreferences();
+    resetToSaved() {
+        if (!this.savedPreferences) return;
+
+        // Revert workingPreferences to savedPreferences
+        this.workingPreferences = JSON.parse(JSON.stringify(this.savedPreferences));
+
+        // Update UI and apply all preferences
+        this.syncUIControls();
+        this.updatePreviewControls();
         this.applyPreferences();
+        this.showToast('Reverted to last saved preferences', 'info');
+    }
+
+    async resetToDefaults() {
+        this.workingPreferences = this.getDefaultPreferences();
+        this.applyPreferences();
+        this.syncUIControls();
+        this.updatePreviewControls();
 
         // Only reset on server if authenticated
         if (!this.isUserAuthenticated()) {
             this.showToast('Preferences reset locally (guest mode)', 'info');
-            this.updatePreviewControls();
             return;
         }
 
@@ -308,7 +331,7 @@ class ThemeManager {
                     'X-CSRF-Token': this.getCsrfToken()
                 },
                 credentials: 'same-origin',
-                redirect: 'error' // Prevent following redirects
+                redirect: 'error'
             });
 
             // Check for redirect
@@ -319,8 +342,8 @@ class ThemeManager {
             }
 
             if (response.ok) {
+                this.savedPreferences = JSON.parse(JSON.stringify(this.workingPreferences));
                 this.showToast('Preferences reset to defaults', 'success');
-                this.updatePreviewControls();
             } else if (response.status === 401 || response.status === 403) {
                 console.error('User not authenticated to reset preferences');
                 this.showToast('Not authenticated to reset preferences', 'error');
@@ -338,96 +361,105 @@ class ThemeManager {
         // Font size slider
         const fontSizeSlider = document.getElementById('fontSizeSlider');
         const fontSizeValue = document.getElementById('fontSizeValue');
-        if (fontSizeSlider) {
-            fontSizeSlider.value = this.preferences.font_scale;
+        if (fontSizeSlider && this.workingPreferences) {
+            fontSizeSlider.value = this.workingPreferences.font_scale;
             fontSizeSlider.addEventListener('input', (e) => {
                 const value = parseFloat(e.target.value);
                 if (fontSizeValue) fontSizeValue.textContent = value.toFixed(1) + 'x';
-                this.updatePreference('font_scale', value);
+                this.workingPreferences.font_scale = value;
+                this.applyPreferences(); // Live preview
             });
         }
 
         // Dyslexic font toggle
         const dyslexicToggle = document.getElementById('dyslexicFont');
-        if (dyslexicToggle) {
-            dyslexicToggle.checked = this.preferences.dyslexic_font;
+        if (dyslexicToggle && this.workingPreferences) {
+            dyslexicToggle.checked = this.workingPreferences.dyslexic_font;
             dyslexicToggle.addEventListener('change', (e) => {
-                this.updatePreference('dyslexic_font', e.target.checked);
+                this.workingPreferences.dyslexic_font = e.target.checked;
+                this.applyPreferences(); // Live preview
             });
         }
 
         // High contrast radios
         const contrastRadios = document.querySelectorAll('input[name="highContrast"]');
         contrastRadios.forEach(radio => {
-            if (radio.value === this.preferences.high_contrast) {
+            if (this.workingPreferences && radio.value === this.workingPreferences.high_contrast) {
                 radio.checked = true;
             }
             radio.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    this.updatePreference('high_contrast', e.target.value);
+                    this.workingPreferences.high_contrast = e.target.value;
+                    this.applyPreferences(); // Live preview
                 }
             });
         });
 
         // Color blind mode select
         const colorBlindSelect = document.getElementById('colorBlindMode');
-        if (colorBlindSelect) {
-            colorBlindSelect.value = this.preferences.color_blind_mode;
+        if (colorBlindSelect && this.workingPreferences) {
+            colorBlindSelect.value = this.workingPreferences.color_blind_mode;
             colorBlindSelect.addEventListener('change', (e) => {
-                this.updatePreference('color_blind_mode', e.target.value);
+                this.workingPreferences.color_blind_mode = e.target.value;
+                this.applyPreferences(); // Live preview
             });
         }
 
         // Dark mode radios
         const darkModeRadios = document.querySelectorAll('input[name="darkMode"]');
         darkModeRadios.forEach(radio => {
-            if (radio.value === this.preferences.dark_mode) {
+            if (this.workingPreferences && radio.value === this.workingPreferences.dark_mode) {
                 radio.checked = true;
             }
             radio.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    this.updatePreference('dark_mode', e.target.value);
+                    this.workingPreferences.dark_mode = e.target.value;
+                    this.applyPreferences(); // Live preview
                 }
             });
         });
 
         // Reduced motion toggle
         const reducedMotionToggle = document.getElementById('reducedMotion');
-        if (reducedMotionToggle) {
-            reducedMotionToggle.checked = this.preferences.reduced_motion;
+        if (reducedMotionToggle && this.workingPreferences) {
+            reducedMotionToggle.checked = this.workingPreferences.reduced_motion;
             reducedMotionToggle.addEventListener('change', (e) => {
-                this.updatePreference('reduced_motion', e.target.checked);
+                this.workingPreferences.reduced_motion = e.target.checked;
+                this.applyPreferences(); // Live preview
             });
         }
 
         // Reading width radios
         const widthRadios = document.querySelectorAll('input[name="readingWidth"]');
         widthRadios.forEach(radio => {
-            if (radio.value === this.preferences.reading_width) {
+            if (this.workingPreferences && radio.value === this.workingPreferences.reading_width) {
                 radio.checked = true;
             }
             radio.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    this.updatePreference('reading_width', e.target.value);
+                    this.workingPreferences.reading_width = e.target.value;
+                    this.applyPreferences(); // Live preview
                 }
             });
         });
 
         // Compact mode toggle
         const compactToggle = document.getElementById('compactMode');
-        if (compactToggle) {
-            compactToggle.checked = this.preferences.compact_mode;
+        if (compactToggle && this.workingPreferences) {
+            compactToggle.checked = this.workingPreferences.compact_mode;
             compactToggle.addEventListener('change', (e) => {
-                this.updatePreference('compact_mode', e.target.checked);
+                this.workingPreferences.compact_mode = e.target.checked;
+                this.applyPreferences(); // Live preview
             });
         }
 
         // Custom accent color
         const accentPicker = document.getElementById('customAccent');
-        if (accentPicker) {
-            accentPicker.value = this.preferences.custom_accent || '#2d5a2d';
+        if (accentPicker && this.workingPreferences) {
+            accentPicker.value = this.workingPreferences.custom_accent || '#2d5a2d';
             accentPicker.addEventListener('change', (e) => {
-                this.updatePreference('custom_accent', e.target.value);
+                this.workingPreferences.custom_accent = e.target.value;
+                this.applyPreferences(); // Live preview
             });
         }
 
@@ -444,30 +476,32 @@ class ThemeManager {
 
     updatePreviewControls() {
         // Update all form controls to match current preferences
+        if (!this.workingPreferences) return;
+
         const fontSizeSlider = document.getElementById('fontSizeSlider');
-        if (fontSizeSlider) fontSizeSlider.value = this.preferences.font_scale;
+        if (fontSizeSlider) fontSizeSlider.value = this.workingPreferences.font_scale;
 
         const dyslexicToggle = document.getElementById('dyslexicFont');
-        if (dyslexicToggle) dyslexicToggle.checked = this.preferences.dyslexic_font;
+        if (dyslexicToggle) dyslexicToggle.checked = this.workingPreferences.dyslexic_font;
 
         const reducedMotionToggle = document.getElementById('reducedMotion');
-        if (reducedMotionToggle) reducedMotionToggle.checked = this.preferences.reduced_motion;
+        if (reducedMotionToggle) reducedMotionToggle.checked = this.workingPreferences.reduced_motion;
 
         const compactToggle = document.getElementById('compactMode');
-        if (compactToggle) compactToggle.checked = this.preferences.compact_mode;
+        if (compactToggle) compactToggle.checked = this.workingPreferences.compact_mode;
 
         const colorBlindSelect = document.getElementById('colorBlindMode');
-        if (colorBlindSelect) colorBlindSelect.value = this.preferences.color_blind_mode;
+        if (colorBlindSelect) colorBlindSelect.value = this.workingPreferences.color_blind_mode;
 
         const accentPicker = document.getElementById('customAccent');
-        if (accentPicker) accentPicker.value = this.preferences.custom_accent || '#2d5a2d';
+        if (accentPicker) accentPicker.value = this.workingPreferences.custom_accent || '#2d5a2d';
     }
 
     setupSystemDarkModeListener() {
         if (window.matchMedia) {
             const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
             darkModeQuery.addEventListener('change', (e) => {
-                if (this.preferences.dark_mode === 'system') {
+                if (this.workingPreferences && this.workingPreferences.dark_mode === 'system') {
                     this.applyDarkMode('system');
                 }
             });
@@ -575,6 +609,222 @@ class ThemeManager {
                 toast.style.animation = 'slideOut 0.3s ease';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
+        }
+    }
+
+    applyDashboardColors() {
+        if (!this.workingPreferences) return;
+
+        if (this.workingPreferences.dashboard_page_bg) {
+            document.documentElement.style.setProperty('--bg-page', this.workingPreferences.dashboard_page_bg);
+        }
+        if (this.workingPreferences.dashboard_sidebar_bg) {
+            document.documentElement.style.setProperty('--bg-sidebar', this.workingPreferences.dashboard_sidebar_bg);
+        }
+        if (this.workingPreferences.dashboard_card_bg) {
+            document.documentElement.style.setProperty('--bg-card', this.workingPreferences.dashboard_card_bg);
+        }
+        if (this.workingPreferences.dashboard_header_bg) {
+            document.documentElement.style.setProperty('--bg-header', this.workingPreferences.dashboard_header_bg);
+        }
+        if (this.workingPreferences.dashboard_primary) {
+            document.documentElement.style.setProperty('--green-500', this.workingPreferences.dashboard_primary);
+        }
+        if (this.workingPreferences.dashboard_text_primary) {
+            document.documentElement.style.setProperty('--text-primary', this.workingPreferences.dashboard_text_primary);
+        }
+        if (this.workingPreferences.dashboard_border_radius) {
+            const r = this.workingPreferences.dashboard_border_radius;
+            document.documentElement.style.setProperty('--radius-sm', (r * 0.75) + 'px');
+            document.documentElement.style.setProperty('--radius-md', r + 'px');
+            document.documentElement.style.setProperty('--radius-lg', (r * 1.5) + 'px');
+        }
+        if (this.workingPreferences.dashboard_card_padding) {
+            document.documentElement.style.setProperty('--spacing-lg', this.workingPreferences.dashboard_card_padding + 'px');
+        }
+    }
+
+    syncUIControls() {
+        if (!this.workingPreferences) return;
+
+        // Update all color pickers from workingPreferences
+        const colorMappings = {
+            dashboard_page_bg: 'dashboardPageBg',
+            dashboard_sidebar_bg: 'dashboardSidebarBg',
+            dashboard_card_bg: 'dashboardCardBg',
+            dashboard_header_bg: 'dashboardHeaderBg',
+            dashboard_primary: 'dashboardPrimaryGreen',
+            dashboard_text_primary: 'dashboardTextPrimary'
+        };
+
+        for (const [prefKey, elementId] of Object.entries(colorMappings)) {
+            const colorPicker = document.getElementById(elementId);
+            const textInput = document.getElementById(elementId + 'Text');
+            if (colorPicker && this.workingPreferences[prefKey]) {
+                colorPicker.value = this.workingPreferences[prefKey];
+                if (textInput) textInput.value = this.workingPreferences[prefKey];
+            }
+        }
+
+        // Update sliders
+        const radiusSlider = document.getElementById('dashboardBorderRadius');
+        if (radiusSlider && this.workingPreferences.dashboard_border_radius) {
+            radiusSlider.value = this.workingPreferences.dashboard_border_radius;
+            const borderRadiusValue = document.getElementById('borderRadiusValue');
+            if (borderRadiusValue) borderRadiusValue.textContent = this.workingPreferences.dashboard_border_radius + 'px';
+        }
+
+        const paddingSlider = document.getElementById('dashboardCardPadding');
+        if (paddingSlider && this.workingPreferences.dashboard_card_padding) {
+            paddingSlider.value = this.workingPreferences.dashboard_card_padding;
+            const cardPaddingValue = document.getElementById('cardPaddingValue');
+            if (cardPaddingValue) cardPaddingValue.textContent = this.workingPreferences.dashboard_card_padding + 'px';
+        }
+    }
+
+    setupDashboardEventListeners() {
+        // Color pickers - update workingPreferences + live preview
+        const colorMappings = {
+            dashboardPageBg: 'dashboard_page_bg',
+            dashboardSidebarBg: 'dashboard_sidebar_bg',
+            dashboardCardBg: 'dashboard_card_bg',
+            dashboardHeaderBg: 'dashboard_header_bg',
+            dashboardPrimaryGreen: 'dashboard_primary',
+            dashboardTextPrimary: 'dashboard_text_primary'
+        };
+
+        for (const [elementId, prefKey] of Object.entries(colorMappings)) {
+            const colorPicker = document.getElementById(elementId);
+            const textInput = document.getElementById(elementId + 'Text');
+
+            if (colorPicker) {
+                colorPicker.addEventListener('input', (e) => {
+                    const value = e.target.value;
+                    if (textInput) textInput.value = value;
+                    this.workingPreferences[prefKey] = value;
+                    this.applyDashboardColors(); // Live preview
+                    // NO AUTO-SAVE
+                });
+            }
+
+            if (textInput) {
+                textInput.addEventListener('input', (e) => {
+                    const value = e.target.value;
+                    if (colorPicker) colorPicker.value = value;
+                    this.workingPreferences[prefKey] = value;
+                    this.applyDashboardColors(); // Live preview
+                    // NO AUTO-SAVE
+                });
+            }
+        }
+
+        // Sliders - live preview
+        const radiusSlider = document.getElementById('dashboardBorderRadius');
+        if (radiusSlider) {
+            radiusSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.workingPreferences.dashboard_border_radius = value;
+                const borderRadiusValue = document.getElementById('borderRadiusValue');
+                if (borderRadiusValue) borderRadiusValue.textContent = value + 'px';
+                this.applyDashboardColors(); // Live preview
+                // NO AUTO-SAVE
+            });
+        }
+
+        const paddingSlider = document.getElementById('dashboardCardPadding');
+        if (paddingSlider) {
+            paddingSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.workingPreferences.dashboard_card_padding = value;
+                const cardPaddingValue = document.getElementById('cardPaddingValue');
+                if (cardPaddingValue) cardPaddingValue.textContent = value + 'px';
+                this.applyDashboardColors(); // Live preview
+                // NO AUTO-SAVE
+            });
+        }
+
+        // Preset buttons - update workingPreferences with live preview
+        const presetButtons = ['dashboardPresetDefault', 'dashboardPresetDark', 'dashboardPresetBlue', 'dashboardPresetPurple'];
+        presetButtons.forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.addEventListener('click', (e) => {
+                    const preset = btnId.replace('dashboardPreset', '').toLowerCase();
+                    this.applyDashboardPreset(preset);
+                    this.syncUIControls();
+                    // NO AUTO-SAVE
+                });
+            }
+        });
+
+        // SAVE button - commit workingPreferences to server
+        const saveBtn = document.getElementById('saveDashboardPreferences');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                this.saveUserPreferences();
+            });
+        }
+
+        // RESET button - revert workingPreferences to savedPreferences
+        const resetBtn = document.getElementById('resetDashboardPreferences');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.resetToSaved();
+            });
+        }
+    }
+
+    applyDashboardPreset(preset) {
+        const presetColors = {
+            default: {
+                dashboard_page_bg: '#f5f7fa',
+                dashboard_sidebar_bg: '#ffffff',
+                dashboard_card_bg: '#ffffff',
+                dashboard_header_bg: '#1a1a2e',
+                dashboard_primary: '#10b981',
+                dashboard_text_primary: '#111827',
+                dashboard_border_radius: 8,
+                dashboard_card_padding: 24
+            },
+            dark: {
+                dashboard_page_bg: '#1a1a2e',
+                dashboard_sidebar_bg: '#16213e',
+                dashboard_card_bg: '#0f3460',
+                dashboard_header_bg: '#0a0a0a',
+                dashboard_primary: '#00e5a0',
+                dashboard_text_primary: '#e8f0ee',
+                dashboard_border_radius: 8,
+                dashboard_card_padding: 24
+            },
+            blue: {
+                dashboard_page_bg: '#e8f0fe',
+                dashboard_sidebar_bg: '#ffffff',
+                dashboard_card_bg: '#ffffff',
+                dashboard_header_bg: '#1e3a8a',
+                dashboard_primary: '#3b82f6',
+                dashboard_text_primary: '#1e293b',
+                dashboard_border_radius: 8,
+                dashboard_card_padding: 24
+            },
+            purple: {
+                dashboard_page_bg: '#f5f0ff',
+                dashboard_sidebar_bg: '#ffffff',
+                dashboard_card_bg: '#ffffff',
+                dashboard_header_bg: '#6d28d9',
+                dashboard_primary: '#8b5cf6',
+                dashboard_text_primary: '#2d1b4e',
+                dashboard_border_radius: 8,
+                dashboard_card_padding: 24
+            }
+        };
+
+        const colors = presetColors[preset];
+        if (colors) {
+            // Update workingPreferences with preset values
+            Object.keys(colors).forEach(key => {
+                this.workingPreferences[key] = colors[key];
+            });
+            this.applyDashboardColors();
         }
     }
 }

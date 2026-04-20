@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% extends "base.html" %}
+
+{% block title %}{{ title }} - AFCON360{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mt-4">User Moderation</h1>
+            <ol class="breadcrumb mb-4">
+                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item active">Users</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link {% if current_filter == 'all' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='all') }}">All Users</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if current_filter == 'recent' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='recent') }}">Recent (7 days)</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if current_filter == 'unverified' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='unverified') }}">Unverified</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if current_filter == 'inactive' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='inactive') }}">Inactive</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-users me-1"></i>
+                    User List
+                </div>
+                <div class="card-body">
+                    {% if users.items %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Registered</th>
+                                    <th>Verified</th>
+                                    <th>Active</th>
+                                    <th>Roles</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users.items %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td>{{ user.username }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if user.is_verified else 'warning' }}">
+                                            {{ 'Verified' if user.is_verified else 'Unverified' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if user.is_active else 'danger' }}">
+                                            {{ 'Active' if user.is_active else 'Inactive' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% for role in user.roles %}
+                                            <span class="badge bg-info">{{ role.name }}</span>
+                                        {% else %}
+                                            <span class="text-muted">No roles</span>
+                                        {% endfor %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if users.pages > 1 %}
+                    <nav>
+                        <ul class="pagination">
+                            {% for page in users.iter_pages() %}
+                                {% if page %}
+                                    <li class="page-item {% if page == users.page %}active{% endif %}">
+                                        <a class="page-link" href="{{ url_for('moderator.user_moderation', page=page, filter=current_filter) }}">{{ page }}</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                {% endif %}
+                            {% endfor %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted">No users found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}</title>
+</head>
+<body>
+
+</body>
+</html>

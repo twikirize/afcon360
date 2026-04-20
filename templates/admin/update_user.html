@@ -1,41 +1,138 @@
-<#update_user.html file#>
+{# templates/admin/update_user.html #}
 {% extends "base.html" %}
 
 {% block title %}Update User - {{ user.username }}{% endblock %}
 
+{% block styles %}
+{{ super() }}
+<style>
+    .update-container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    .card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px 12px 0 0 !important;
+        padding: 20px;
+    }
+    .card-header h3 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+    .card-header p {
+        margin: 5px 0 0;
+        opacity: 0.9;
+        font-size: 0.85rem;
+    }
+    .form-label {
+        font-weight: 600;
+        color: #333;
+    }
+    .form-control {
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        padding: 10px 12px;
+    }
+    .form-control:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 0.2rem rgba(102,126,234,0.25);
+    }
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        border-radius: 8px;
+        padding: 10px 24px;
+        font-weight: 600;
+    }
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+    }
+    .btn-secondary {
+        background: #6c757d;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 24px;
+        font-weight: 600;
+    }
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+    .alert-info {
+        background: #e3f2fd;
+        border: 1px solid #90caf9;
+        color: #1565c0;
+        border-radius: 8px;
+        font-size: 0.85rem;
+    }
+    .help-text {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-top: 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h3>Update User: {{ user.username }}</h3>
-                </div>
-                <div class="card-body">
-                    <form method="post">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="update-container">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="bi bi-pencil-square"></i> Update User Account</h3>
+                <p>Update basic account information for {{ user.username }}</p>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                        <div class="mb-3">
-                            <label for="username" class="form-label">Username</label>
-                            <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
-                        </div>
+                    <div class="mb-3">
+                        <label for="username" class="form-label">
+                            <i class="bi bi-person"></i> Username
+                        </label>
+                        <input type="text" class="form-control" id="username" name="username"
+                               value="{{ user.username }}" required>
+                        <div class="help-text">3-30 characters, letters, numbers, underscores, dots, or hyphens</div>
+                    </div>
 
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" value="{{ user.email or '' }}">
-                        </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">
+                            <i class="bi bi-envelope"></i> Email
+                        </label>
+                        <input type="email" class="form-control" id="email" name="email"
+                               value="{{ user.email or '' }}">
+                        <div class="help-text">Used for login and notifications</div>
+                    </div>
 
-                        <div class="mb-3">
-                            <label for="phone" class="form-label">Phone</label>
-                            <input type="text" class="form-control" id="phone" name="phone" value="{{ user.phone or '' }}">
-                        </div>
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">
+                            <i class="bi bi-telephone"></i> Phone
+                        </label>
+                        <input type="tel" class="form-control" id="phone" name="phone"
+                               value="{{ user.phone or '' }}">
+                        <div class="help-text">Contact number (changes are logged for audit)</div>
+                    </div>
 
-                        <div class="d-flex justify-content-between">
-                            <button type="submit" class="btn btn-primary">Update User</button>
-                            <a href="{{ url_for('admin.view_user', user_id=user.public_id) }}" class="btn btn-secondary">Cancel</a>
-                        </div>
-                    </form>
-                </div>
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Note:</strong> To change personal information (name, address, ID documents),
+                        please use the <a href="{{ url_for('admin.update_profile_by_username', username=user.username) }}" class="alert-link">Edit Profile</a> page.
+                    </div>
+
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Update User
+                        </button>
+                        <a href="{{ url_for('admin.view_user_by_username', username=user.username) }}" class="btn btn-secondary">
+                            <i class="bi bi-x-lg"></i> Cancel
+                        </a>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

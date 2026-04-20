@@ -12,6 +12,8 @@ from datetime import datetime
 from app.extensions import db
 from app.wallet.middleware.kill_switch import require_wallet_enabled
 from app.wallet.middleware.wallet_activation import require_wallet_activated
+from app.auth.decorators import require_profile_completion, require_kyc_tier
+from app.auth.decorators import require_profile_completion, require_kyc_tier
 
 # Standardized blueprint name: wallet
 wallet_bp = Blueprint("wallet", __name__)
@@ -29,6 +31,7 @@ def wallet_home():
 
 
 @wallet_bp.route("/wallet/dashboard", endpoint="wallet_dashboard")
+@require_profile_completion
 @require_wallet_activated
 @require_wallet_enabled
 def wallet_dashboard():
@@ -69,6 +72,8 @@ def wallet_dashboard():
 
 @wallet_bp.route("/wallet/activate", methods=["GET", "POST"], endpoint="activate_wallet")
 @login_required
+@require_profile_completion
+@require_kyc_tier(3)  # Tier 3 required to activate wallet
 def activate_wallet():
     """Wallet activation page."""
     from app.wallet.repositories.wallet_repository import WalletRepository
@@ -82,6 +87,11 @@ def activate_wallet():
     if existing_wallet and existing_wallet.verified:
         flash("Your wallet is already activated.", "info")
         return redirect(url_for("wallet.wallet_dashboard"))
+
+    # Check KYC level
+    if hasattr(current_user, 'kyc_level') and current_user.kyc_level < 3:
+        flash("Wallet activation requires KYC Tier 3 verification.", "warning")
+        # The decorator should handle redirect, but we'll add this message anyway
 
     if existing_wallet and not existing_wallet.verified:
         if request.method == "POST":
@@ -139,6 +149,7 @@ def activate_wallet():
 
 @wallet_bp.route("/wallet/deposit", endpoint="deposit_page")
 @login_required
+@require_profile_completion
 @require_wallet_enabled
 def deposit_page():
     """Deposit page - HTML form."""
@@ -147,6 +158,7 @@ def deposit_page():
 
 @wallet_bp.route("/wallet/send", endpoint="send_page")
 @login_required
+@require_profile_completion
 @require_wallet_enabled
 def send_page():
     """Send funds page - HTML form."""
@@ -155,6 +167,7 @@ def send_page():
 
 @wallet_bp.route("/wallet/withdraw", endpoint="withdraw_page")
 @login_required
+@require_profile_completion
 @require_wallet_enabled
 def withdraw_page():
     """Withdraw page - HTML form."""
@@ -167,6 +180,7 @@ def withdraw_page():
 
 @wallet_bp.route("/wallet/transactions", endpoint="wallet_transactions")
 @login_required
+@require_profile_completion
 @require_wallet_activated
 @require_wallet_enabled
 def wallet_transactions():
@@ -207,6 +221,7 @@ def wallet_transactions():
 
 @wallet_bp.route("/wallet/commissions", endpoint="agent_commissions")
 @login_required
+@require_profile_completion
 @require_wallet_activated
 @require_wallet_enabled
 def agent_commissions():
@@ -244,6 +259,7 @@ def agent_commissions():
 
 @wallet_bp.route("/wallet/payouts", endpoint="agent_payout_history")
 @login_required
+@require_profile_completion
 @require_wallet_activated
 @require_wallet_enabled
 def agent_payout_history():
@@ -287,6 +303,7 @@ def agent_payout_history():
 
 @wallet_bp.route("/wallet/payouts/request", endpoint="agent_payout_request_page")
 @login_required
+@require_profile_completion
 @require_wallet_activated
 @require_wallet_enabled
 def agent_payout_request_page():

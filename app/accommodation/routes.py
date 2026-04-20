@@ -2,13 +2,14 @@
 from flask import render_template, request
 from flask_login import login_required, current_user
 from app.accommodation import accommodation_bp
-from app.auth.decorators import require_role
+from app.auth.decorators import require_role, require_profile_completion, require_kyc_tier
 from app.audit.forensic_audit import ForensicAuditService
 from app.utils.id_guard import IDGuard
 
 @accommodation_bp.route("/", endpoint="home")
 @login_required
 @require_role('fan', 'admin', 'owner')
+@require_profile_completion
 def home():
     # Log access
     ForensicAuditService.log_attempt(
@@ -41,3 +42,14 @@ def detail(public_id):
     # Get accommodation using public_id (implementation depends on your model)
     # For now, we'll pass the public_id to template
     return render_template('accommodation/detail.html', public_id=public_id)
+
+@accommodation_bp.route("/host/register", endpoint="host_register")
+@login_required
+@require_profile_completion
+@require_kyc_tier(3)
+def host_register():
+    """Host registration page."""
+    from flask import flash
+    flash("Host registration requires KYC Tier 3 verification.", "info")
+    # In a real implementation, this would render a host registration form
+    return render_template("accommodation/host_register.html")

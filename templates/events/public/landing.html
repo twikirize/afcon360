@@ -2,142 +2,493 @@
 
 {% block title %}{{ event.name }} - AFCON360 Accommodation{% endblock %}
 
+{% set total_registrations = total_registrations|default(0) %}
+
 {% block module_styles %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/public.css') }}">
+
+    {% if event.start_date %}
+    <script>
+    function updateCountdown() {
+        const eventDate = new Date('{{ event.start_date }}T{{ event_start_time|default("00:00:00") }}').getTime();
+        const now = new Date().getTime();
+        const distance = eventDate - now;
+
+        if (distance < 0) {
+            const timer = document.getElementById('countdown-timer');
+            if (timer) timer.innerHTML = '<div class="text-success fw-bold">EVENT IN PROGRESS</div>';
+            return;
+        }
+
+        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+        const daysEl = document.getElementById('days');
+        const hoursEl = document.getElementById('hours');
+        const minutesEl = document.getElementById('minutes');
+        const secondsEl = document.getElementById('seconds');
+
+        if (daysEl) daysEl.innerHTML = days.toString().padStart(2, '0');
+        if (hoursEl) hoursEl.innerHTML = hours.toString().padStart(2, '0');
+        if (minutesEl) minutesEl.innerHTML = minutes.toString().padStart(2, '0');
+        if (secondsEl) secondsEl.innerHTML = seconds.toString().padStart(2, '0');
+    }
+
+    setInterval(updateCountdown, 1000);
+    updateCountdown();
+    </script>
+    {% endif %}
+
+    <style>
+    .row > [class*="col-lg-"] { flex: 0 0 auto !important; }
+    .col-lg-8 { width: 66.66666667% !important; }
+    .col-lg-5 { width: 41.66666667% !important; min-width: 280px !important; }
+    .col-lg-4 { width: 33.33333333% !important; }
+    .card { overflow: visible !important; word-wrap: break-word !important; }
+    .event-hero { position: relative; overflow: hidden; }
+    .ticket-tier { transition: all 0.3s ease; }
+    .ticket-tier:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+    #countdown-timer > div { background: rgba(255,255,255,0.1); padding: 10px 15px; border-radius: 10px; min-width: 80px; }
+    #countdown-timer > div > div { font-size: 2rem; font-weight: bold; }
+    .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; transition: all 0.3s ease; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102,126,234,0.4); }
+    .btn-lg { padding: 1rem 2rem; font-size: 1.25rem; }
+    .property-item:hover { background-color: rgba(0,0,0,0.02); transform: translateX(5px); }
+    .registration-card { border-radius: 15px; overflow: hidden; }
+    .badge { white-space: nowrap; }
+    @media (max-width: 992px) { .col-lg-8, .col-lg-5, .col-lg-4 { width: 100% !important; min-width: auto !important; } }
+    @media (max-width: 768px) { .event-hero { padding: 2rem 0 !important; } .display-4 { font-size: 2.5rem; } #countdown-timer { font-size: 1rem; } #countdown-timer > div { min-width: 60px; } #countdown-timer > div > div { font-size: 1.5rem; } }
+    @media (max-width: 480px) { .badge { white-space: normal; word-break: keep-all; } }
+    </style>
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container py-4" style="width: 100%; max-width: 1200px; margin: 0 auto;">
+
+    {# Admin moderation panel - only visible to admins #}
+    {% if current_user.is_authenticated and current_user.has_global_role('owner', 'super_admin', 'admin') %}
+    <div class="ev-admin-bar" id="evAdminBar">
+      <div class="ev-admin-bar__inner">
+        <div class="ev-admin-bar__info">
+          <span class="ev-admin-bar__label">ADMIN</span>
+          <span class="ev-admin-bar__name">{{ event.name|truncate(40, true, '…') }}</span>
+          <span class="ev-admin-badge ev-admin-badge--{{ event.status }}">{{ event.status }}</span>
+          {% if event.status == 'suspended' and event.suspension_reason %}
+          <span class="ev-admin-bar__reason" title="{{ event.suspension_reason }}">⚠ {{ event.suspension_reason|truncate(50, true, '…') }}</span>
+          {% endif %}
+        </div>
+        <div class="ev-admin-bar__actions">
+          {% if event.status == 'pending' %}
+            <button class="ev-btn ev-btn--approve" data-action="approve" data-slug="{{ event.slug }}">✓ Approve</button>
+            <button class="ev-btn ev-btn--danger" data-action="reject" data-slug="{{ event.slug }}">✕ Reject</button>
+          {% elif event.status == 'active' %}
+            <button class="ev-btn ev-btn--warn" data-action="suspend" data-slug="{{ event.slug }}">⏸ Suspend</button>
+            <button class="ev-btn ev-btn--muted" data-action="deactivate" data-slug="{{ event.slug }}">⊘ Deactivate</button>
+            <button class="ev-btn ev-btn--danger" data-action="takedown" data-slug="{{ event.slug }}">⚑ Takedown</button>
+          {% elif event.status == 'suspended' %}
+            <button class="ev-btn ev-btn--approve" data-action="restore" data-slug="{{ event.slug }}">↺ Restore</button>
+            <button class="ev-btn ev-btn--muted" data-action="deactivate" data-slug="{{ event.slug }}">⊘ Deactivate</button>
+            <button class="ev-btn ev-btn--danger" data-action="takedown" data-slug="{{ event.slug }}">⚑ Takedown</button>
+          {% elif event.status in ['rejected', 'deactivated', 'archived'] %}
+            <span class="ev-admin-bar__note">No further actions available.</span>
+            <a href="{{ url_for('events.admin_events') }}" class="ev-btn ev-btn--muted">← All Events</a>
+          {% endif %}
+          <a href="{{ url_for('events.admin_dashboard') }}" class="ev-btn ev-btn--ghost">Command Centre</a>
+        </div>
+      </div>
+
+      {% if event.status in ['pending', 'active', 'suspended'] %}
+      <div class="ev-admin-bar__forms" id="evAdminForms" style="display:none;">
+        <div class="ev-admin-form" id="evForm-reject" style="display:none;">
+          <div class="ev-admin-form__title">Reject Event</div>
+          <textarea id="ev-reject-reason" rows="3" placeholder="Reason for rejection…"></textarea>
+          <div class="ev-admin-form__actions">
+            <button class="ev-btn ev-btn--ghost" onclick="evCancelForm()">Cancel</button>
+            <button class="ev-btn ev-btn--danger" data-action-submit="reject">Confirm Reject</button>
+          </div>
+        </div>
+        <div class="ev-admin-form" id="evForm-suspend" style="display:none;">
+          <div class="ev-admin-form__title">Suspend Event</div>
+          <select id="ev-suspend-duration">
+            <option value="24h">24 hours</option><option value="72h">72 hours</option>
+            <option value="7d" selected>7 days</option><option value="14d">14 days</option>
+            <option value="indefinite">Indefinite</option>
+          </select>
+          <textarea id="ev-suspend-reason" rows="2" placeholder="Reason for suspension…"></textarea>
+          <div class="ev-admin-form__actions">
+            <button class="ev-btn ev-btn--ghost" onclick="evCancelForm()">Cancel</button>
+            <button class="ev-btn ev-btn--warn" data-action-submit="suspend">Confirm Suspend</button>
+          </div>
+        </div>
+        <div class="ev-admin-form" id="evForm-deactivate" style="display:none;">
+          <div class="ev-admin-form__title">Deactivate Event</div>
+          <textarea id="ev-deactivate-reason" rows="2" placeholder="Reason for deactivation…"></textarea>
+          <div class="ev-admin-form__actions">
+            <button class="ev-btn ev-btn--ghost" onclick="evCancelForm()">Cancel</button>
+            <button class="ev-btn ev-btn--warn" data-action-submit="deactivate">Confirm Deactivate</button>
+          </div>
+        </div>
+        <div class="ev-admin-form" id="evForm-takedown" style="display:none;">
+          <div class="ev-admin-form__title">Policy Takedown</div>
+          <select id="ev-takedown-category">
+            <option value="">— Select violation —</option>
+            <option value="fraud">Fraud / Scam</option>
+            <option value="illegal_activity">Illegal Activity</option>
+            <option value="hate_speech">Hate Speech</option>
+            <option value="misinformation">Misinformation</option>
+            <option value="spam">Spam / Duplicate</option>
+            <option value="copyright">Copyright Violation</option>
+            <option value="other">Other</option>
+          </select>
+          <textarea id="ev-takedown-reason" rows="3" placeholder="Detailed reason…"></textarea>
+          <label><input type="checkbox" id="ev-takedown-notify" checked> Notify organiser</label>
+          <div class="ev-admin-form__actions">
+            <button class="ev-btn ev-btn--ghost" onclick="evCancelForm()">Cancel</button>
+            <button class="ev-btn ev-btn--danger" data-action-submit="takedown">Execute Takedown</button>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="ev-admin-bar__toast" id="evToast" style="display:none;"></div>
+    </div>
+    <style>
+    .ev-admin-bar { position: sticky; top: 0; z-index: 9000; background: #0d1514; border-bottom: 2px solid #00e5a0; font-family: 'DM Sans', sans-serif; font-size: 13px; }
+    .ev-admin-bar__inner { display: flex; align-items: center; gap: 16px; padding: 10px 20px; flex-wrap: wrap; }
+    .ev-admin-bar__label { font-size: 10px; font-weight: 700; color: #00e5a0; background: rgba(0,229,160,.12); border: 1px solid rgba(0,229,160,.3); border-radius: 4px; padding: 2px 7px; }
+    .ev-admin-bar__name { font-weight: 500; color: #e8f0ee; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ev-admin-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; }
+    .ev-admin-badge--active { background: rgba(0,229,160,.15); color: #00e5a0; }
+    .ev-admin-badge--pending { background: rgba(245,200,66,.15); color: #f5c842; }
+    .ev-admin-badge--suspended { background: rgba(255,140,66,.15); color: #ff8c42; }
+    .ev-admin-bar__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+    .ev-btn { padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; }
+    .ev-btn--approve { background: #00e5a0; color: #000; }
+    .ev-btn--danger { background: #ff4d4d; color: #fff; }
+    .ev-btn--warn { background: #ff8c42; color: #000; }
+    .ev-btn--muted { background: #243530; color: #6b8a84; border: 1px solid #1f2e2b; }
+    .ev-btn--ghost { background: transparent; color: #6b8a84; border: 1px solid #1f2e2b; }
+    @media (max-width: 768px) { .ev-admin-bar__inner { flex-direction: column; align-items: stretch; } .ev-admin-bar__actions { margin-left: 0; justify-content: center; } .ev-btn { width: 100%; justify-content: center; } }
+    </style>
+    {% endif %}
+
+    <!-- ========== ADMIN JAVASCRIPT - MOVED OUTSIDE CONDITIONAL ========== -->
+    <script>
+    // Admin action handler - defined globally so it works even if admin bar conditionally shows
+    (function(){
+      // Get current event slug from the page
+      var SLUG = '{{ event.slug }}';
+
+      function getCsrf(){
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') : '';
+      }
+
+      function showToast(msg, type){
+        var t = document.getElementById('evToast');
+        if(!t) return;
+        t.textContent = msg;
+        t.className = 'ev-admin-bar__toast ' + type;
+        t.style.display = 'block';
+        setTimeout(function(){ if(t) t.style.display = 'none'; }, 5000);
+      }
+
+      function evCancelForm(){
+        var forms = document.getElementById('evAdminForms');
+        if(forms) forms.style.display = 'none';
+        var allForms = document.querySelectorAll('.ev-admin-form');
+        if(allForms) allForms.forEach(function(f){ f.style.display = 'none'; });
+        var textareas = document.querySelectorAll('.ev-admin-bar__forms textarea');
+        if(textareas) textareas.forEach(function(t){ if(t) t.value = ''; });
+      }
+
+      function evFire(action, payload){
+        fetch('/events/admin/' + SLUG + '/' + action, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrf()
+          },
+          body: JSON.stringify(payload)
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if(data.success){
+            showToast(data.message || action + ' completed', 'ok');
+            evCancelForm();
+            setTimeout(function(){ location.reload(); }, 1200);
+          } else {
+            showToast(data.error || action + ' failed', 'err');
+          }
+        })
+        .catch(function(){ showToast('Network error', 'err'); });
+      }
+
+      // Handle button clicks via event delegation (works for dynamically added buttons)
+      document.addEventListener('click', function(e){
+        // Check for approve button
+        var approveBtn = e.target.closest('[data-action="approve"]');
+        if(approveBtn){
+          e.preventDefault();
+          e.stopPropagation();
+          var slug = approveBtn.getAttribute('data-slug') || SLUG;
+          if(confirm('Approve this event and publish it to the public portal?')){
+            evFire('approve', {});
+          }
+          return;
+        }
+
+        // Check for restore button
+        var restoreBtn = e.target.closest('[data-action="restore"]');
+        if(restoreBtn){
+          e.preventDefault();
+          e.stopPropagation();
+          if(confirm('Restore this event to active?')){
+            evFire('restore', {});
+          }
+          return;
+        }
+
+        // Check for action buttons that need forms (suspend, deactivate, takedown, reject)
+        var actionBtn = e.target.closest('[data-action="suspend"], [data-action="deactivate"], [data-action="takedown"], [data-action="reject"]');
+        if(actionBtn){
+          e.preventDefault();
+          e.stopPropagation();
+          var action = actionBtn.getAttribute('data-action');
+          evCancelForm();
+          var forms = document.getElementById('evAdminForms');
+          var form = document.getElementById('evForm-' + action);
+          if(forms) forms.style.display = 'block';
+          if(form) form.style.display = 'block';
+          if(form){
+            var textarea = form.querySelector('textarea');
+            var select = form.querySelector('select');
+            if(textarea) textarea.focus();
+            if(select) select.focus();
+          }
+          return;
+        }
+
+        // Check for form submission buttons
+        var submitBtn = e.target.closest('[data-action-submit]');
+        if(submitBtn){
+          e.preventDefault();
+          e.stopPropagation();
+          var action = submitBtn.getAttribute('data-action-submit');
+          var payload = {};
+
+          if(action === 'reject'){
+            var r = document.getElementById('ev-reject-reason');
+            if(!r || !r.value.trim()){ showToast('Enter a rejection reason', 'warn'); return; }
+            payload = { reason: r.value.trim() };
+          }
+          else if(action === 'suspend'){
+            var r = document.getElementById('ev-suspend-reason');
+            var d = document.getElementById('ev-suspend-duration');
+            if(!r || !r.value.trim()){ showToast('Enter a suspension reason', 'warn'); return; }
+            payload = { reason: r.value.trim(), duration: d ? d.value : '7d' };
+          }
+          else if(action === 'deactivate'){
+            var r = document.getElementById('ev-deactivate-reason');
+            if(!r || !r.value.trim()){ showToast('Enter a deactivation reason', 'warn'); return; }
+            payload = { reason: r.value.trim() };
+          }
+          else if(action === 'takedown'){
+            var cat = document.getElementById('ev-takedown-category');
+            var r = document.getElementById('ev-takedown-reason');
+            var note = document.getElementById('ev-takedown-notify');
+            if(!cat || !cat.value){ showToast('Select a violation category', 'warn'); return; }
+            if(!r || !r.value.trim()){ showToast('Describe the violation', 'warn'); return; }
+            payload = { category: cat.value, reason: r.value.trim(), notify_organiser: note ? note.checked : true };
+          }
+
+          evFire(action, payload);
+          return;
+        }
+      });
+
+      // Make functions available globally for inline onclick handlers
+      window.evAdminAction = function(action){
+        var btn = document.querySelector('[data-action="' + action + '"]');
+        if(btn){
+          var clickEvent = new Event('click');
+          btn.dispatchEvent(clickEvent);
+        }
+      };
+      window.evCancelForm = evCancelForm;
+      window.evSubmit = function(action){
+        var btn = document.querySelector('[data-action-submit="' + action + '"]');
+        if(btn){
+          var clickEvent = new Event('click');
+          btn.dispatchEvent(clickEvent);
+        }
+      };
+    })();
+    </script>
+
     <!-- Event Hero Section -->
-    <div class="event-hero mb-4" style="background-image: url('https://via.placeholder.com/1200x400/007bff/ffffff?text={{ event.name | urlencode }}');">
-        <div class="container event-hero-content">
-            <h1 class="display-4">{{ event.name }}</h1>
-            <p class="lead">{{ event.description }}</p>
-            <div class="row mt-4">
-                <div class="col-md-4">
-                    <p class="mb-1"><i class="fas fa-calendar-alt me-2"></i>
-                    {% if event.start_date %}
-                        {{ event.start_date[:10] }}
-                        {% if event.end_date and event.end_date != event.start_date %}
-                            - {{ event.end_date[:10] }}
-                        {% endif %}
-                    {% else %}
-                        Date TBD
+    <div class="event-hero mb-4" style="background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%); color: white; padding: 3rem 0; border-radius: 15px;">
+        <div class="container">
+            <div class="row align-items-start">
+                <!-- LEFT COLUMN: Event Info -->
+                <div class="col-lg-7">
+                    {% if not event.ticket_types or (event.ticket_types|length == 0) %}
+                    <span class="badge bg-warning text-dark mb-3 px-3 py-2 rounded-pill">
+                        <i class="fas fa-gift me-1"></i> FREE ENTRY
+                    </span>
                     {% endif %}
-                    </p>
+
+                    <h1 class="display-4 fw-bold mb-3">{{ event.name }}</h1>
+                    <p class="lead mb-4" style="font-size: 1.25rem; opacity: 0.9;">{{ event.description[:200] }}{% if event.description|length > 200 %}...{% endif %}</p>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4"><i class="fas fa-calendar-alt me-2"></i>{% if event.start_date %}{{ event.start_date[:10] }}{% else %}TBD{% endif %}</div>
+                        <div class="col-md-4"><i class="fas fa-map-marker-alt me-2"></i>{{ event.venue }}, {{ event.city }}</div>
+                        <div class="col-md-4"><i class="fas fa-users me-2"></i>{{ total_registrations }} attending</div>
+                    </div>
+
+                    {% if event.start_date %}
+                    <div id="countdown-timer" class="d-flex gap-3 mb-4">
+                        <div class="text-center bg-dark bg-opacity-25 rounded p-2"><div id="days" class="fw-bold h4 mb-0">00</div><small>Days</small></div>
+                        <div class="text-center bg-dark bg-opacity-25 rounded p-2"><div id="hours" class="fw-bold h4 mb-0">00</div><small>Hours</small></div>
+                        <div class="text-center bg-dark bg-opacity-25 rounded p-2"><div id="minutes" class="fw-bold h4 mb-0">00</div><small>Minutes</small></div>
+                        <div class="text-center bg-dark bg-opacity-25 rounded p-2"><div id="seconds" class="fw-bold h4 mb-0">00</div><small>Seconds</small></div>
+                    </div>
+                    {% endif %}
                 </div>
-                <div class="col-md-4">
-                    <p class="mb-1"><i class="fas fa-map-marker-alt me-2"></i> {{ event.city }}</p>
+
+                <!-- RIGHT COLUMN: Registration CTA Card -->
+                <div class="col-lg-5 mt-4 mt-lg-0">
+                    <div class="card shadow-lg border-0" style="border-radius: 15px; background: white; width: 100%;">
+                        <div class="card-body p-4 text-center">
+                            <h3 class="card-title mb-4">Join This Event</h3>
+
+                            {% if event.registration_required %}
+                                {% if not event.ticket_types or event.ticket_types|length == 0 %}
+                                    <div class="mb-3">
+                                        <span class="badge bg-success px-4 py-2 rounded-pill" style="font-size: 1.2rem; white-space: nowrap;">
+                                            <i class="fas fa-gift me-2"></i>FREE ENTRY
+                                        </span>
+                                    </div>
+                                    <a href="{{ url_for('events.register', event_slug=event.slug) }}" class="btn btn-success btn-lg w-100 py-3 fw-bold" style="border-radius: 50px; font-size: 1.1rem;">
+                                        <i class="fas fa-ticket-alt me-2"></i>Register Now - Free
+                                    </a>
+                                {% else %}
+                                    <div class="mb-3">
+                                        <div class="display-5 fw-bold text-primary">{{ event.currency }} {{ "%.2f"|format(event.ticket_types[0].price) }}</div>
+                                    </div>
+                                    <a href="{{ url_for('events.register', event_slug=event.slug, ticket_type_id=event.ticket_types[0].id) }}" class="btn btn-primary btn-lg w-100 py-3 fw-bold" style="border-radius: 50px; font-size: 1.1rem;">
+                                        <i class="fas fa-ticket-alt me-2"></i>Register Now
+                                    </a>
+                                {% endif %}
+
+                                {% if event.max_capacity and total_registrations %}
+                                <div class="mt-3">
+                                    <small class="text-muted"><i class="fas fa-chair me-1"></i>{{ event.max_capacity - total_registrations }} seats remaining</small>
+                                </div>
+                                {% endif %}
+                            {% else %}
+                                <div class="py-3">
+                                    <i class="fas fa-door-open fa-3x text-muted mb-2"></i>
+                                    <p class="text-muted mb-0">Open Event - No Registration Needed</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-4">
-                    <p class="mb-1"><i class="fas fa-map-pin me-2"></i> {{ event.venue }}</p>
-                </div>
-            </div>
-            <div class="mt-4">
-                <a href="{{ url_for('events.register', event_slug=event.slug) }}" class="btn btn-warning btn-lg">
-                    <i class="fas fa-ticket-alt me-2"></i>Register Now
-                </a>
             </div>
         </div>
     </div>
 
-    <!-- Event Details and Sidebar -->
+    <!-- Rest of your content remains the same... -->
     <div class="row event-details-grid">
         <div class="col-lg-8">
             <div class="event-info-main">
                 <h2 class="mb-3">About This Event</h2>
-                <p>{{ event.description }}</p>
+                <p>{{ event.description or 'No description provided.' }}</p>
 
                 <h3 class="mt-4 mb-3">Key Information</h3>
                 <ul class="list-group list-group-flush">
                     <li class="list-group-item"><i class="fas fa-tag me-2"></i><strong>Category:</strong> {{ event.category|capitalize }}</li>
                     <li class="list-group-item"><i class="fas fa-globe me-2"></i><strong>Location:</strong> {{ event.venue }}, {{ event.city }}, {{ event.country }}</li>
-                    <li class="list-group-item"><i class="fas fa-link me-2"></i><strong>Website:</strong> <a href="{{ event.website }}" target="_blank">{{ event.website }}</a></li>
-                    <li class="list-group-item"><i class="fas fa-envelope me-2"></i><strong>Contact:</strong> {{ event.contact_email }}</li>
-                    <li class="list-group-item"><i class="fas fa-phone me-2"></i><strong>Phone:</strong> {{ event.contact_phone }}</li>
+                    <li class="list-group-item"><i class="fas fa-link me-2"></i><strong>Website:</strong> {% if event.website %}<a href="{{ event.website }}" target="_blank">{{ event.website }}</a>{% else %}Not provided{% endif %}</li>
+                    <li class="list-group-item"><i class="fas fa-envelope me-2"></i><strong>Contact:</strong> {{ event.contact_email or 'Not provided' }}</li>
+                    <li class="list-group-item"><i class="fas fa-phone me-2"></i><strong>Phone:</strong> {{ event.contact_phone or 'Not provided' }}</li>
                 </ul>
 
+                {% if event.ticket_types and event.ticket_types|length > 0 %}
                 <h3 class="mt-4 mb-3">Ticket Information</h3>
-                {% if event.ticket_types %}
-                    <div class="table-responsive">
-                        <table class="table table-striped event-table">
-                            <thead>
-                                <tr>
-                                    <th>Tier</th>
-                                    <th>Price</th>
-                                    <th>Capacity</th>
-                                    <th>Available</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for tt in event.ticket_types %}
-                                <tr>
-                                    <td>{{ tt.name }}</td>
-                                    <td>{{ event.currency }} {{ "%.2f"|format(tt.price) }}</td>
-                                    <td>{% if tt.capacity %}{{ tt.capacity }}{% else %}Unlimited{% endif %}</td>
-                                    <td>{% if tt.capacity %}{{ tt.capacity - tt.registration_count }}{% else %}Unlimited{% endif %}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <p class="text-muted">No specific ticket tiers defined. Check registration for details.</p>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead><tr><th>Tier</th><th>Price</th><th>Capacity</th><th>Available</th><th>Status</th></tr></thead>
+                        <tbody>
+                            {% for tt in event.ticket_types %}
+                            <tr>
+                                <td>{{ tt.name }}</td>
+                                <td>{{ event.currency }} {{ "%.2f"|format(tt.price) }}</td>
+                                <td>{% if tt.capacity %}{{ tt.capacity }}{% else %}Unlimited{% endif %}</td>
+                                <td>{% if tt.capacity %}{{ tt.capacity - tt.registration_count }}{% else %}Unlimited{% endif %}</td>
+                                <td>{% if tt.capacity and tt.registration_count >= tt.capacity %}<span class="badge bg-danger">Sold Out</span>{% else %}<span class="badge bg-success">Available</span>{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
                 {% endif %}
             </div>
         </div>
 
         <div class="col-lg-4">
             <div class="event-sidebar">
-                <div class="registration-card mb-4">
-                    <h3>Ready to Join?</h3>
-                    {% if event.registration_required %}
-                        <p class="registration-price">
-                            {% if event.ticket_types %}
-                                {% set min_price = (event.ticket_types | map(attribute='price') | min) %}
-                                {% if min_price == 0 %}
-                                    FREE
-                                {% else %}
-                                    From {{ event.currency }} {{ "%.2f"|format(min_price) }}
-                                {% endif %}
-                            {% else %}
-                                FREE
+                <div class="card shadow-sm mb-4 border-0" style="border-radius: 15px; overflow: hidden;">
+                    <div class="card-header bg-primary text-white py-3 border-0">
+                        <h5 class="mb-0 fw-bold text-center"><i class="fas fa-user-plus me-2"></i>Ready to Join?</h5>
+                    </div>
+                    <div class="card-body p-4 text-center">
+                        {% if event.registration_required %}
+                            <div class="mb-3">
+                                <span class="display-6 fw-bold text-primary">
+                                    {% if event.ticket_types %}
+                                        {% set min_price = (event.ticket_types | map(attribute='price') | min) %}
+                                        {% if min_price == 0 %}FREE{% else %}From {{ event.currency }} {{ "%.2f"|format(min_price) }}{% endif %}
+                                    {% else %}FREE{% endif %}
+                                </span>
+                            </div>
+                            <a href="{{ url_for('events.register', event_slug=event.slug) }}" class="btn btn-primary btn-lg w-100 py-3 fw-bold" style="border-radius: 50px;">Register Now</a>
+                            {% if event.max_capacity %}
+                            <div class="mt-3">
+                                <div class="progress" style="height: 8px;"><div class="progress-bar bg-success" style="width: {{ (total_registrations / event.max_capacity * 100)|round|int }}%;"></div></div>
+                                <small class="text-muted mt-2 d-block">{{ total_registrations }} of {{ event.max_capacity }} seats filled</small>
+                            </div>
                             {% endif %}
-                        </p>
-                        <a href="{{ url_for('events.register', event_slug=event.slug) }}" class="btn btn-primary btn-lg w-100">
-                            <i class="fas fa-user-plus me-2"></i>Register Now
-                        </a>
-                    {% else %}
-                        <p class="lead text-success">No Registration Required!</p>
-                        <a href="#" class="btn btn-success btn-lg w-100 disabled">
-                            <i class="fas fa-check-circle me-2"></i>Open Event
-                        </a>
-                    {% endif %}
+                        {% else %}
+                            <div><i class="fas fa-door-open fa-4x text-success mb-3"></i><p class="lead text-success fw-bold">No Registration Required!</p></div>
+                            <div class="alert alert-success">This is an open event. Just show up and enjoy!</div>
+                        {% endif %}
+                    </div>
                 </div>
 
-                <!-- Accommodation Section -->
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0"><i class="fas fa-hotel me-2"></i>Accommodation near {{ event.city }}</h5>
-                    </div>
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold"><i class="fas fa-hotel me-2 text-primary"></i>Accommodation near {{ event.city }}</h5></div>
                     <div class="card-body">
-                        {% if properties %}
-                            {% for property in properties[:3] %} {# Show top 3 properties #}
-                            <div class="d-flex mb-3">
-                                <img src="{{ property.images[0] if property.images else 'https://via.placeholder.com/80' }}" alt="{{ property.name }}" class="rounded me-3" style="width: 80px; height: 60px; object-fit: cover;">
-                                <div>
-                                    <h6 class="mb-0">{{ property.name }}</h6>
-                                    <p class="text-muted small mb-1">{{ property.city }}</p>
-                                    <strong class="text-primary">${{ property.price }}</strong> <small class="text-muted">/ night</small>
+                        {% if properties and properties|length > 0 %}
+                            {% for property in properties[:3] %}
+                            <div class="d-flex mb-3 pb-2 border-bottom">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1 fw-bold">{{ property.name|truncate(30) }}</h6>
+                                    <p class="text-muted small mb-1"><i class="fas fa-map-marker-alt me-1"></i>{{ property.city }}</p>
+                                    <div class="d-flex justify-content-between align-items-center mt-2">
+                                        <strong class="text-primary">${{ property.price }}/night</strong>
+                                        <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="btn btn-sm btn-outline-primary rounded-pill">View</a>
+                                    </div>
                                 </div>
                             </div>
                             {% endfor %}
-                            <a href="{{ url_for('accommodation.accommodation_guest.search', city=event.city) }}" class="btn btn-outline-secondary btn-sm w-100 mt-3">
-                                View All Accommodation
-                            </a>
+                            <a href="{{ url_for('accommodation.guest.search', city=event.city) }}" class="btn btn-outline-primary w-100 mt-2 rounded-pill">View All Properties</a>
                         {% else %}
-                            <p class="text-muted text-center">No accommodation found in {{ event.city }}.</p>
+                            <div class="text-center py-4"><i class="fas fa-hotel fa-2x text-muted mb-2"></i><p class="text-muted mb-0">No accommodation found in {{ event.city }}</p><small class="text-muted">Check back soon</small></div>
                         {% endif %}
                     </div>
                 </div>

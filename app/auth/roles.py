@@ -23,7 +23,7 @@ from typing import List, Optional
 
 from app.extensions import db
 from app.identity.models.organisation_member import OrgUserRole, OrganisationMember
-from app.identity.models.roles_permission import Role
+from app.identity.models.roles_permission import Role, get_or_create_role
 from app.identity.models.user import UserRole
 from app.utils.transactions import db_transaction
 
@@ -52,6 +52,8 @@ ROLE_USER = "user"
 # Org roles
 ROLE_ORG_ADMIN = "org_admin"
 ROLE_ORG_MEMBER = "org_member"
+ROLE_ORG_OWNER = "org_owner"
+ROLE_FINANCE_MANAGER = "finance_manager"
 
 # All global roles (for reference)
 ALL_GLOBAL_ROLES_LIST = [
@@ -79,12 +81,32 @@ ROLE_PERMISSIONS = {
     ROLE_COMPLIANCE_OFFICER: ["audit.read", "aml.review", "aml.resolve"],
     ROLE_MODERATOR: ["content.moderate", "audit.read"],
     ROLE_SUPPORT: ["support.tickets", "user.view", "audit.read"],
-    ROLE_EVENT_MANAGER: ["events.manage", "events.approve", "events.analytics"],
+    ROLE_EVENT_MANAGER: [
+        "events.manage",      # Create, edit, delete events
+        "events.approve",     # Approve/reject events
+        "events.analytics",   # View event analytics
+        "events.staff.manage", # NEW: Manage event staff
+        "events.tickets.manage", # NEW: Manage ticket types
+        "events.export",      # NEW: Export attendee data
+        "events.checkin",     # NEW: Check in attendees
+    ],
     ROLE_TRANSPORT_ADMIN: ["transport.manage", "transport.analytics"],
     ROLE_WALLET_ADMIN: ["wallet.manage", "transactions.view", "wallet.approve"],
     ROLE_ACCOMMODATION_ADMIN: ["accommodation.manage", "accommodation.approve"],
     ROLE_TOURISM_ADMIN: ["tourism.manage", "content.manage"],
     ROLE_USER: [],
+    ROLE_ORG_OWNER: [
+        'org.events.manage',
+        'org.events.analytics',
+        'org.events.staff.manage',
+    ],
+    ROLE_ORG_ADMIN: [
+        'org.events.manage',
+        'org.events.analytics',
+    ],
+    ROLE_FINANCE_MANAGER: [
+        'org.events.finance.view',
+    ],
 }
 
 
