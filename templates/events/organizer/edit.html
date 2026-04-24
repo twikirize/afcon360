@@ -109,10 +109,10 @@
                 <div class="card-body">
                     <h6>Event Management</h6>
                     <div class="d-grid gap-2 mt-3">
-                        <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="btn btn-outline-primary btn-sm text-start">
+                        <a href="{{ url_for('events.event_attendees', identifier=event.slug) }}" class="btn btn-outline-primary btn-sm text-start">
                             <i class="fas fa-users me-2"></i> View Attendees
                         </a>
-                        <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}" class="btn btn-outline-primary btn-sm text-start">
+                        <a href="{{ url_for('events.event_staff', identifier=event.slug) }}" class="btn btn-outline-primary btn-sm text-start">
                             <i class="fas fa-user-shield me-2"></i> Manage Staff
                         </a>
                     </div>
@@ -201,7 +201,7 @@ document.getElementById('add-ticket-form').addEventListener('submit', async func
     const data = Object.fromEntries(formData.entries());
 
     try {
-        const response = await fetch('{{ url_for("events.add_ticket_type", event_slug=event.slug) }}', {
+        const response = await fetch('{{ url_for("events.add_ticket_type", identifier=event.slug) }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

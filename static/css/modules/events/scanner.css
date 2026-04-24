@@ -1,7 +1,5 @@
 /* static/css/modules/events/scanner.css */
 
-/* Styles for the QR Code Scanner Interface */
-
 .scanner-container {
     max-width: 500px;
     margin: 30px auto;
@@ -13,97 +11,98 @@
     border: 1px solid var(--border-light);
 }
 
-.scanner-header {
-    margin-bottom: var(--space-4);
-}
-
 .scanner-header h2 {
     font-size: var(--font-size-xl);
     color: var(--text-primary);
     margin-bottom: var(--space-1);
 }
 
+/* Camera feed styling */
 #reader {
     width: 100%;
-    max-width: 400px; /* Limit scanner size */
     margin: 0 auto;
     border: 2px solid var(--brand-primary);
     border-radius: var(--radius-md);
-    overflow: hidden; /* Ensure video stays within bounds */
+    overflow: hidden;
+    background-color: #000;
 }
 
 #reader video {
     width: 100% !important;
     height: auto !important;
+    object-fit: cover;
 }
 
+/* Hide library-injected UI elements */
+#reader a, #reader button {
+    display: none !important;
+}
+
+/* Scan Result Box */
 .scanner-result {
+    transition: all 0.3s ease;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     margin-top: var(--space-4);
-    padding: var(--space-4);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-bold);
 }
 
-.result-success {
-    background-color: rgba(var(--success-rgb), 0.1);
-    color: var(--success);
-    border: 1px solid var(--success);
-}
+/* Status Colors matching JS logic */
+.bg-success { background-color: var(--success) !important; color: white !important; }
+.bg-danger { background-color: var(--danger) !important; color: white !important; }
+.bg-info { background-color: var(--info) !important; color: white !important; }
+.bg-warning { background-color: var(--warning) !important; color: #212529 !important; }
 
-.result-error {
-    background-color: rgba(var(--danger-rgb), 0.1);
-    color: var(--danger);
-    border: 1px solid var(--danger);
+/* Sync Indicator */
+.sync-status {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-left: 10px;
 }
+.sync-online { color: var(--success); border: 1px solid var(--success); }
+.sync-offline { color: var(--danger); border: 1px solid var(--danger); }
 
-.result-info {
-    background-color: rgba(var(--info-rgb), 0.1);
-    color: var(--info);
-    border: 1px solid var(--info);
-}
-
+/* History List */
 .scan-history-list {
-    list-style: none;
-    padding: 0;
-    margin-top: var(--space-4);
-    max-height: 200px;
-    overflow-y: auto;
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: #fcfcfc;
 }
 
-.scan-history-item {
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--border-light);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+.scan-history-list::-webkit-scrollbar {
+    width: 4px;
+}
+.scan-history-list::-webkit-scrollbar-thumb {
+    background: var(--border-light);
+    border-radius: 10px;
 }
 
-.scan-history-item:last-child {
-    border-bottom: none;
+/* Manual Entry section */
+.manual-entry-section {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: var(--radius-md);
 }
 
-.scan-history-item .status-badge {
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-bold);
+/* Animation for new scan entries */
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+.list-group-item {
+    animation: slideIn 0.3s ease-out;
 }
 
-.status-badge.success { background-color: var(--success); color: white; }
-.status-badge.fail { background-color: var(--danger); color: white; }
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
+@media (max-width: 576px) {
     .scanner-container {
-        margin: var(--space-3);
+        margin: 10px;
         padding: var(--space-3);
-    }
-    .scanner-header h2 {
-        font-size: var(--font-size-lg);
+        border: none;
+        box-shadow: none;
     }
 }

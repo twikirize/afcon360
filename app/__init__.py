@@ -816,8 +816,15 @@ def create_app(config_object=None) -> Flask:
     #===================================================
     #Whre am i
     #===================================
+    from flask import abort
+    from flask_login import login_required
+    from app.auth.decorators import require_role
     @app.route('/where-am-i')
+    @login_required
+    @require_role('owner')
     def where_am_i():
+        if current_app.config['FLASK_ENV'] == 'production':
+            abort(404)
         from flask import current_app
         from app.extensions import db
         from sqlalchemy import inspect, text

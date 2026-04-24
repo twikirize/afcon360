@@ -165,6 +165,12 @@ class AccommodationBooking(BaseModel):
     context_metadata = Column(JSON, default=dict)
 
     # -------------------------------
+    # Event Orchestration
+    # -------------------------------
+    event_id = Column(BigInteger, nullable=True, index=True)
+    event_participation_id = Column(BigInteger, nullable=True, index=True)
+
+    # -------------------------------
     # Check-in/out Tracking
     # -------------------------------
     checked_in_at = Column(DateTime, nullable=True)

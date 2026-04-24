@@ -111,9 +111,44 @@ def process_event_registration(self, registration_id: int, event_slug: str, task
                     registration.notes = ""
                 registration.notes += f"\nQR generated at: {datetime.utcnow().isoformat()}"
 
-                # 2. Send Confirmation Email (placeholder)
+                # 2. Send Confirmation Email
                 logger.info(f"Sending confirmation email for registration {registration.registration_ref} to {registration.email}")
-                # In production: send_email_with_qr(registration.email, event.name, qr_code_base64)
+                try:
+                    from app.extensions import mail
+                    from flask_mail import Message
+                    
+                    organizer = event.organizer
+                    
+                    # Send attendee confirmation
+                    attendee_msg = Message(
+                        subject=f'Registration Confirmed - {event.name}',
+                        recipients=[registration.email],
+                        html=f'<h2>Registration Confirmed</h2>'
+                             f'<p>Dear {registration.full_name},</p>'
+                             f'<p>Your registration for <strong>{event.name}</strong> is confirmed.</p>'
+                             f'<p>Registration Ref: <strong>{registration.registration_ref}</strong></p>'
+                             f'<p>Ticket: {registration.ticket_type}</p>'
+                             f'<p>Date: {event.start_date}</p>'
+                             f'<p>Venue: {event.venue}, {event.city}</p>'
+                    )
+                    mail.send(attendee_msg)
+                    
+                    # Send organizer notification
+                    if organizer and organizer.email:
+                        organizer_msg = Message(
+                            subject=f'New Registration - {event.name}',
+                            recipients=[organizer.email],
+                            html=f'<h2>New Registration</h2>'
+                                 f'<p>A new attendee has registered for <strong>{event.name}</strong>.</p>'
+                                 f'<p>Name: {registration.full_name}</p>'
+                                 f'<p>Email: {registration.email}</p>'
+                                 f'<p>Ticket: {registration.ticket_type}</p>'
+                                 f'<p>Ref: {registration.registration_ref}</p>'
+                        )
+                        mail.send(organizer_msg)
+                        
+                except Exception as mail_error:
+                    logger.warning(f'Email sending failed: {mail_error}')
 
                 # Update status to completed
                 registration.status = "confirmed"
@@ -154,89 +189,91 @@ def expire_pending_registrations(self):
     REAPER TASK: Expires pending registrations after 2 hours
     Runs every 5 minutes via Celery beat
     """
-    from app.extensions import db
-    from app.events.models import EventRegistration, TicketType
-    from sqlalchemy import and_
-    from datetime import datetime, timedelta
+    app = create_flask_app()
+    with app.app_context():
+        from app.extensions import db
+        from app.events.models import EventRegistration, TicketType
+        from sqlalchemy import and_
+        from datetime import datetime, timedelta
 
-    cutoff_time = datetime.utcnow() - timedelta(hours=2)
+        cutoff_time = datetime.utcnow() - timedelta(hours=2)
 
-    # Find expired pending registrations with FOR UPDATE lock to prevent race conditions
-    # Use constants from the model
-    expired_registrations = db.session.query(EventRegistration).filter(
-        and_(
-            EventRegistration.payment_status == EventRegistration.PAYMENT_STATUS_PENDING,
-            EventRegistration.created_at <= cutoff_time,
-            EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT
-        )
-    ).with_for_update(of=EventRegistration).all()
+        # Find expired pending registrations with FOR UPDATE lock to prevent race conditions
+        # Use constants from the model
+        expired_registrations = db.session.query(EventRegistration).filter(
+            and_(
+                EventRegistration.payment_status == EventRegistration.PAYMENT_STATUS_PENDING,
+                EventRegistration.created_at <= cutoff_time,
+                EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT
+            )
+        ).with_for_update(of=EventRegistration).all()
 
-    expired_count = 0
-    capacity_released = {}
+        expired_count = 0
+        capacity_released = {}
 
-    for registration in expired_registrations:
-        try:
-            # Record ticket type before expiry
-            ticket_type_id = registration.ticket_type_id
-            event_id = registration.event_id
+        for registration in expired_registrations:
+            try:
+                # Record ticket type before expiry
+                ticket_type_id = registration.ticket_type_id
+                event_id = registration.event_id
 
-            # Mark as expired using model constants
-            registration.payment_status = EventRegistration.PAYMENT_STATUS_EXPIRED
-            registration.status = EventRegistration.STATUS_EXPIRED
-            registration.notes = f"Auto-expired by Reaper at {datetime.utcnow().isoformat()}"
+                # Mark as expired using model constants
+                registration.payment_status = EventRegistration.PAYMENT_STATUS_EXPIRED
+                registration.status = EventRegistration.STATUS_EXPIRED
+                registration.notes = f"Auto-expired by Reaper at {datetime.utcnow().isoformat()}"
 
-            db.session.add(registration)
+                db.session.add(registration)
 
-            # Track capacity to release
-            key = f"{event_id}:{ticket_type_id}"
-            capacity_released[key] = capacity_released.get(key, 0) + 1
+                # Track capacity to release
+                key = f"{event_id}:{ticket_type_id}"
+                capacity_released[key] = capacity_released.get(key, 0) + 1
 
-            expired_count += 1
+                expired_count += 1
 
-        except Exception as e:
-            logger.error(f"Failed to expire registration {registration.id}: {e}")
-            # Continue with other registrations
+            except Exception as e:
+                logger.error(f"Failed to expire registration {registration.id}: {e}")
+                # Continue with other registrations
 
-    # Commit all changes
-    if expired_count > 0:
-        db.session.commit()
+        # Commit all changes
+        if expired_count > 0:
+            db.session.commit()
 
-        # Send capacity release signals for each event/ticket type
-        try:
-            from app.events.signal_handlers import event_capacity_released
-            from flask import current_app
+            # Send capacity release signals for each event/ticket type
+            try:
+                from app.events.signal_handlers import event_capacity_released
+                from flask import current_app
+                for key, count in capacity_released.items():
+                    event_id, ticket_type_id = key.split(':')
+                    event_capacity_released.send(
+                        current_app._get_current_object(),
+                        event_id=int(event_id),
+                        ticket_type_id=int(ticket_type_id),
+                        seats_released=count
+                    )
+            except Exception as sig_error:
+                logger.warning(f"Failed to send capacity released signals: {sig_error}")
+
+            # Trigger waitlist auto-conversion for each released capacity bucket
             for key, count in capacity_released.items():
                 event_id, ticket_type_id = key.split(':')
-                event_capacity_released.send(
-                    current_app._get_current_object(),
-                    event_id=int(event_id),
-                    ticket_type_id=int(ticket_type_id),
-                    seats_released=count
-                )
-        except Exception as sig_error:
-            logger.warning(f"Failed to send capacity released signals: {sig_error}")
+                try:
+                    # Call the waitlist conversion task asynchronously
+                    process_waitlist_auto_conversion.delay(
+                        event_id=int(event_id),
+                        ticket_type_id=int(ticket_type_id),
+                        seats_released=count
+                    )
+                    logger.info(f"Triggered waitlist auto-conversion for event {event_id}, ticket type {ticket_type_id}, seats {count}")
+                except Exception as task_error:
+                    logger.error(f"Failed to trigger waitlist auto-conversion task: {task_error}")
 
-        # Trigger waitlist auto-conversion for each released capacity bucket
-        for key, count in capacity_released.items():
-            event_id, ticket_type_id = key.split(':')
-            try:
-                # Call the waitlist conversion task asynchronously
-                process_waitlist_auto_conversion.delay(
-                    event_id=int(event_id),
-                    ticket_type_id=int(ticket_type_id),
-                    seats_released=count
-                )
-                logger.info(f"Triggered waitlist auto-conversion for event {event_id}, ticket type {ticket_type_id}, seats {count}")
-            except Exception as task_error:
-                logger.error(f"Failed to trigger waitlist auto-conversion task: {task_error}")
+            logger.info(f"Reaper expired {expired_count} pending registrations, released {len(capacity_released)} capacity buckets")
 
-        logger.info(f"Reaper expired {expired_count} pending registrations, released {len(capacity_released)} capacity buckets")
-
-    return {
-        'expired_count': expired_count,
-        'capacity_released': capacity_released,
-        'timestamp': datetime.utcnow().isoformat()
-    }
+            return {
+                'expired_count': expired_count,
+                'capacity_released': capacity_released,
+                'timestamp': datetime.utcnow().isoformat()
+            }
 
 
 @celery_app.task(
@@ -351,27 +388,40 @@ def process_waitlist_auto_conversion(self, event_id, ticket_type_id, seats_relea
 def release_expired_capacity(self, event_id, ticket_type_id, seats_to_release=1):
     """
     Explicitly release capacity for expired registrations
-    Uses with_for_update() to prevent race conditions
     """
-    from app.extensions import db
-    from app.events.models import TicketType
+    app = create_flask_app()
+    with app.app_context():
+        from app.extensions import db
+        from app.events.models import TicketType
+        from sqlalchemy import func
 
-    try:
-        with db.session.begin_nested():
-            # Lock the ticket type row
-            ticket_type = TicketType.query.with_for_update().filter_by(
-                id=ticket_type_id,
-                event_id=event_id
-            ).first()
+        try:
+            updated = db.session.query(TicketType).filter(
+                TicketType.id == ticket_type_id,
+                TicketType.event_id == event_id
+            ).update({
+                'available_seats': func.least(
+                    TicketType.capacity,
+                    func.coalesce(TicketType.available_seats, 0) + seats_to_release
+                ),
+                'version': TicketType.version + 1
+            }, synchronize_session=False)
 
-            if ticket_type:
-                # Release capacity (for waitlist processing)
-                logger.info(f"Released {seats_to_release} seat(s) for ticket type {ticket_type.name}")
+            if updated == 0:
+                logger.warning(
+                    f"release_expired_capacity: no rows updated for "
+                    f"ticket_type_id={ticket_type_id}"
+                )
+                return False
 
-        db.session.commit()
-        return True
+            db.session.commit()
+            logger.info(
+                f"Released {seats_to_release} seat(s) for "
+                f"ticket_type_id={ticket_type_id}, event_id={event_id}"
+            )
+            return True
 
-    except Exception as e:
-        logger.error(f"Failed to release capacity: {e}")
-        db.session.rollback()
-        return False
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to release capacity: {e}")
+            return False

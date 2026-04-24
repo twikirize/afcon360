@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin/modules/admin.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 {% endblock %}
 
 {% block body %}
@@ -204,7 +205,7 @@
             <i class="bi bi-calendar-event"></i>
           </div>
           <div class="stat-info">
-            <div class="stat-value" id="totalEvents">0</div>
+            <div class="stat-value" id="totalEvents">{{ total_events|default(0) }}</div>
             <div class="stat-label">TOTAL EVENTS</div>
           </div>
         </div>
@@ -214,7 +215,7 @@
             <i class="bi bi-check-circle-fill"></i>
           </div>
           <div class="stat-info">
-            <div class="stat-value" id="activeEvents">0</div>
+            <div class="stat-value" id="activeEvents">{{ active_events|default(0) }}</div>
             <div class="stat-label">ACTIVE</div>
           </div>
         </div>
@@ -224,7 +225,7 @@
             <i class="bi bi-clock-history"></i>
           </div>
           <div class="stat-info">
-            <div class="stat-value" id="pendingEvents">0</div>
+            <div class="stat-value" id="pendingEvents">{{ pending_events|default(0) }}</div>
             <div class="stat-label">PENDING APPROVAL</div>
           </div>
         </div>
@@ -234,7 +235,7 @@
             <i class="bi bi-ticket-perforated"></i>
           </div>
           <div class="stat-info">
-            <div class="stat-value" id="totalRegistrations">0</div>
+            <div class="stat-value" id="totalRegistrations">{{ total_registrations|default(0) }}</div>
             <div class="stat-label">REGISTRATIONS</div>
           </div>
         </div>
@@ -356,7 +357,26 @@
             </div>
             <div class="card-body p-0">
               <div class="activity-list" id="pendingEventsList">
-                <div class="loading-state">Loading pending events...</div>
+                {% if pending_events_list and pending_events_list|length > 0 %}
+                  {% for event in pending_events_list %}
+                  <div class="activity-item">
+                    <div class="activity-icon">📅</div>
+                    <div class="activity-details">
+                      <div class="activity-action"><strong>{{ event.name }}</strong></div>
+                      <div class="activity-time">
+                        {{ event.city }} · Created by: {{ event.organizer_name or 'User ' + event.organizer_id|string }}
+                      </div>
+                      <div class="action-buttons">
+                        <button onclick="eventModerationAction('approve', '{{ event.slug }}')" class="btn-approve">Approve</button>
+                        <button onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})" class="btn-reject">Reject</button>
+                        <a href="/events/{{ event.slug }}" class="btn-view">View</a>
+                      </div>
+                    </div>
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="empty-state">No pending events</div>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -491,98 +511,28 @@
 </div>
 
 <script>
-// Fetch event stats for the dashboard
-async function loadEventStats() {
-    try {
-        const response = await fetch('{{ url_for("events.api_admin_stats") }}');
-        const data = await response.json();
+function eventModerationAction(action, slug, extraData = {}) {
+    const url = `/events/admin/${slug}/${action}`;
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+        body: JSON.stringify(extraData)
+    })
+    .then(r => r.json())
+    .then(data => {
         if (data.success) {
-            document.getElementById('totalEvents').textContent = data.total_events || 0;
-            document.getElementById('activeEvents').textContent = data.active_events || 0;
-            document.getElementById('pendingEvents').textContent = data.pending_events || 0;
-            document.getElementById('totalRegistrations').textContent = data.total_registrations || 0;
-        }
-    } catch (error) {
-        console.error('Error loading event stats:', error);
-    }
-}
-
-// Fetch pending events list
-async function loadPendingEvents() {
-    try {
-        const response = await fetch('{{ url_for("events.api_pending_events") }}');
-        const data = await response.json();
-        const container = document.getElementById('pendingEventsList');
-
-        if (data.success && data.events && data.events.length > 0) {
-            container.innerHTML = data.events.map(event => `
-                <div class="activity-item">
-                    <div class="activity-icon">📅</div>
-                    <div class="activity-details">
-                        <div class="activity-action"><strong>${event.name}</strong></div>
-                        <div class="activity-time">
-                            ${event.city} · Created by: ${event.organizer_name || 'User ' + event.organizer_id}
-                        </div>
-                        <div class="action-buttons">
-                            <button onclick="approveEvent('${event.slug}')" class="btn-approve">Approve</button>
-                            <button onclick="rejectEvent('${event.slug}')" class="btn-reject">Reject</button>
-                            <a href="/events/${event.slug}" class="btn-view">View</a>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+            alert(data.message || action + ' successful');
+            location.reload();
         } else {
-            container.innerHTML = '<div class="empty-state">No pending events</div>';
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
-    } catch (error) {
-        console.error('Error loading pending events:', error);
-        if (container) {
-          container.innerHTML = '<div class="empty-state error">Error loading pending events</div>';
-        }
-    }
+    })
+    .catch(err => { 
+        console.error(err); 
+        alert('Network error'); 
+    });
 }
-
-function approveEvent(eventSlug) {
-    if (confirm('Approve this event?')) {
-        fetch(`/events/admin/${eventSlug}/approve`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-            }
-        }).then(() => {
-            loadPendingEvents();
-            loadEventStats();
-        });
-    }
-}
-
-function rejectEvent(eventSlug) {
-    const reason = prompt('Enter rejection reason:');
-    if (reason) {
-        fetch(`/events/admin/${eventSlug}/reject`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify({reason: reason})
-        }).then(() => {
-            loadPendingEvents();
-            loadEventStats();
-        });
-    }
-}
-
-// Load data on page load
-loadEventStats();
-loadPendingEvents();
-
-// Refresh every 30 seconds
-setInterval(() => {
-    loadEventStats();
-    loadPendingEvents();
-}, 30000);
 </script>
 
 {% endblock %}

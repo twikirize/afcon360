@@ -4,7 +4,6 @@
   ACCESS: Authenticated users only
   RELATED: events.registration_confirmation route
 #}
-
 {% extends "base.html" %}
 
 {% block title %}Registration Confirmed - {{ event.name }}{% endblock %}
@@ -19,24 +18,31 @@
                     <h3 class="mb-0 mt-2">Registration Successful!</h3>
                 </div>
                 <div class="card-body text-center">
-
                     <div class="alert alert-success">
                         <strong>Welcome to {{ event.name }}!</strong><br>
                         Your registration has been confirmed.
                     </div>
+
+                    {# Email Configuration Warning #}
+                    {% if not mail_configured %}
+                    <div class="alert alert-warning mb-3">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Email Not Configured:</strong> Please save this page or screenshot your QR code. No confirmation email was sent.
+                    </div>
+                    {% endif %}
 
                     {# Ticket Details #}
                     <div class="row mb-4">
                         <div class="col-md-6">
                             <div class="border rounded p-3 bg-light">
                                 <small class="text-muted">Registration Reference</small>
-                                <div class="fw-bold">{{ registration.registration_ref }}</div>
+                                <div class="fw-bold">{{ registration.registration_ref|default('N/A') }}</div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="border rounded p-3 bg-light">
                                 <small class="text-muted">Ticket Number</small>
-                                <div class="fw-bold">{{ registration.ticket_number }}</div>
+                                <div class="fw-bold">{{ registration.ticket_number|default('N/A') }}</div>
                             </div>
                         </div>
                     </div>
@@ -44,8 +50,7 @@
                     {# QR Code #}
                     <div class="border p-4 text-center bg-white rounded mb-4">
                         <h5><i class="fas fa-qrcode"></i> Your Entry QR Code</h5>
-                        <img src="{{ qr_code }}" alt="QR Code"
-                             class="img-fluid" style="max-width: 250px; margin: 15px auto;">
+                        <img src="{{ qr_code }}" alt="QR Code" class="img-fluid" style="max-width: 250px; margin: 15px auto;">
                         <p class="small text-muted mt-2">
                             <i class="fas fa-save"></i> Save this QR code to your phone<br>
                             <i class="fas fa-print"></i> Or print it for entry
@@ -58,19 +63,19 @@
                         <table class="table table-sm">
                             <tr>
                                 <th style="width: 40%">Full Name:</th>
-                                <td>{{ registration.full_name }}</td>
+                                <td>{{ registration.full_name|default('N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Email:</th>
-                                <td>{{ registration.email }}</td>
+                                <td>{{ registration.email|default('N/A') }}</td>
                             </tr>
                             <tr>
                                 <th>Ticket Type:</th>
-                                <td><span class="badge bg-info">{{ registration.ticket_type|upper }}</span></td>
+                                <td><span class="badge bg-info">{{ registration.ticket_type|default('General')|upper }}</span></td>
                             </tr>
                             <tr>
                                 <th>Registration Date:</th>
-                                <td>{{ registration.created_at[:19] if registration.created_at else 'Today' }}</td>
+                                <td>{% if registration.created_at %}{{ registration.created_at[:16]|replace('T', ' ') }}{% else %}Today{% endif %}</td>
                             </tr>
                         </table>
                     </div>
@@ -80,33 +85,38 @@
                         <h6><i class="fas fa-info-circle"></i> Event Details</h6>
                         <p class="mb-1"><strong>Event:</strong> {{ event.name }}</p>
                         <p class="mb-1"><strong>Date:</strong>
-                            {{ event.start_date[:10] if event.start_date else 'TBD' }}
-                            {% if event.end_date and event.end_date != event.start_date %}
-                                - {{ event.end_date[:10] }}
-                            {% endif %}
+                            {% if event.start_date %}{{ event.start_date }}{% else %}TBD{% endif %}
+                            {% if event.end_date %} - {{ event.end_date }}{% endif %}
                         </p>
-                        <p class="mb-0"><strong>Venue:</strong> {{ event.venue or event.city }}</p>
+                        <p class="mb-0"><strong>Venue:</strong> {{ event.venue|default(event.city)|default('TBD') }}</p>
                     </div>
 
                     {# Action Buttons #}
-                    <div class="d-flex justify-content-center gap-2">
+                    <div class="d-flex justify-content-center gap-2 flex-wrap">
                         <button onclick="window.print()" class="btn btn-secondary">
                             <i class="fas fa-print"></i> Print Ticket
                         </button>
                         <a href="{{ url_for('events.my_registrations') }}" class="btn btn-primary">
                             <i class="fas fa-list"></i> My Registrations
                         </a>
-                        <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-outline-primary">
+                        <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-outline-primary">
                             <i class="fas fa-calendar-alt"></i> Event Page
                         </a>
+                        {% if registration.status not in ['cancelled', 'checked_in'] %}
+                        <button onclick="cancelRegistration()" class="btn btn-outline-danger">
+                            <i class="fas fa-times"></i> Cancel Registration
+                        </button>
+                        {% endif %}
                     </div>
 
                     <hr class="my-4">
 
+                    {% if mail_configured %}
                     <p class="small text-muted">
                         <i class="fas fa-envelope"></i>
                         A confirmation email has been sent to {{ registration.email }}
                     </p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -115,17 +125,42 @@
 
 <style>
 @media print {
-    .navbar, .site-footer, .btn, .alert-info, .card-header .btn,
-    .d-flex.justify-content-center, hr {
+    .navbar, .site-footer, .btn, .alert-info, .alert-warning, .card-header .btn, .d-flex.justify-content-center, hr {
         display: none !important;
     }
-    .card {
-        border: none !important;
-        box-shadow: none !important;
-    }
-    body {
-        background: white !important;
-    }
+    .card { border: none !important; box-shadow: none !important; }
+    body { background: white !important; }
 }
 </style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+function cancelRegistration() {
+    var eventName = "{{ event.name|e }}";
+    if (confirm('Cancel your registration for ' + eventName + '? This cannot be undone.')) {
+        fetch('/events/registration/{{ registration.registration_ref }}/cancel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.success) {
+                window.location.href = '/events/my-registrations';
+            } else {
+                alert('Error: ' + (data.error || 'Could not cancel registration'));
+            }
+        })
+        .catch(function(error) {
+            alert('Error: ' + error);
+        });
+    }
+}
+</script>
 {% endblock %}

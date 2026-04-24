@@ -1,14 +1,16 @@
 # app/events/routes.py
+
 """
 Event routes - Unified entry points for all user roles
 """
-from flask import render_template, request, jsonify, redirect, url_for, flash, session, make_response
+from flask import render_template, request, jsonify, redirect, url_for, flash, session, make_response, current_app
 from flask_login import login_required, current_user
 from app.events import events_bp
 from app.events.services import EventService
 # SoldOutException is inside EventService class
 from app.events.models import Event, EventRegistration, TicketType, Waitlist
 from app.events.permissions import is_system_admin
+from app.events.constants import EventStatus
 # Remove tight coupling - define fallback functions
 def search_properties(city=None, limit=10):
     """Fallback function when accommodation module is not available"""
@@ -25,7 +27,7 @@ except ImportError:
         TOURISM = "tourism"
         TRANSPORT = "transport"
         GENERAL = "general"
-from app.extensions import db
+from app.extensions import db, redis_client
 from app.events.tasks import process_event_registration
 from sqlalchemy import func
 from datetime import datetime, timedelta
@@ -53,32 +55,23 @@ import secrets
 
 # CSRF protection
 
-
-
-
-
-
-# Rate limiting
-import time
-from collections import defaultdict
-
-# Simple in-memory rate limiter (replace with Redis in production)
-_rate_limit_data = defaultdict(list)
-
 def rate_limit(key, limit=10, window=60):
-    """Simple rate limiter."""
-    now = time.time()
-    window_start = now - window
-
-    # Clean old entries
-    requests = _rate_limit_data[key]
-    requests[:] = [req_time for req_time in requests if req_time > window_start]
-
-    if len(requests) >= limit:
-        return False
-
-    requests.append(now)
-    return True
+    """Redis-backed rate limiter safe for multi-worker deployments."""
+    if not redis_client:
+        # Fail open if Redis is unavailable — log and allow
+        logger.warning(f"Rate limiter Redis unavailable, allowing request for key: {key}")
+        return True
+    try:
+        pipe = redis_client.pipeline()
+        cache_key = f"rate_limit:{key}"
+        pipe.incr(cache_key)
+        pipe.expire(cache_key, window)
+        results = pipe.execute()
+        current_count = results[0]
+        return current_count <= limit
+    except Exception as e:
+        logger.warning(f"Rate limiter error: {e}, allowing request")
+        return True
 
 logger = logging.getLogger(__name__)
 
@@ -106,16 +99,14 @@ def resolve_event(identifier):
 @events_bp.route("/")
 def list():
     """List all events"""
-    events = EventService.get_all_events(status='active')
+    events = EventService.get_all_events(status=EventStatus.PUBLISHED)
     return render_template('events/public/list.html', events=events)
 
 
 @events_bp.route("/<identifier>")
-@events_bp.route("/<event_slug>")
-def landing(identifier=None, event_slug=None):
+def landing(identifier=None):
     """Landing page for an event"""
-    # Use identifier if provided, otherwise use event_slug
-    lookup = identifier or event_slug
+    lookup = identifier
     if not lookup:
         return render_template('events/public/not_found.html'), 404
 
@@ -181,11 +172,9 @@ def api_get_event_by_public_id(public_id):
     return jsonify(EventService._event_to_dict(event_model))
 
 @events_bp.route("/api/<identifier>/properties")
-@events_bp.route("/api/<event_slug>/properties")
-def api_properties(identifier=None, event_slug=None):
+def api_properties(identifier=None):
     """JSON API for event properties"""
-    # Use identifier if provided, otherwise use event_slug
-    lookup = identifier or event_slug
+    lookup = identifier
     if not lookup:
         return jsonify({'error': 'Event not found'}), 404
 
@@ -258,24 +247,44 @@ def my_registrations():
     # Get current date for filtering
     from datetime import date
     current_date = date.today().isoformat()
+    
+    # Enrich registrations with assignment data
+    all_registrations = data['upcoming_registrations'] + data['past_registrations']
+    for reg in all_registrations:
+        # Get assignment for this registration
+        try:
+            from app.events.models import EventAssignment, Event
+            # Safely access event slug – event dict is always present now
+            event_slug = reg.get('event', {}).get('slug')
+            if event_slug:
+                event = Event.query.filter_by(slug=event_slug).first()
+                if event:
+                    assignment = EventAssignment.query.filter_by(
+                        event_id=event.id,
+                        attendee_id=current_user.id
+                    ).first()
+                    if assignment:
+                        reg['assignment'] = EventService._assignment_to_dict(assignment)
+        except Exception as e:
+            logger.warning(f"Could not load assignment for registration {reg.get('id')}: {e}")
 
     return render_template('events/attendee/my_registrations.html',
-                           registrations=data['upcoming_registrations'] + data['past_registrations'],
+                           registrations=all_registrations,
                            wallet_balance=wallet_balance,
                            current_date=current_date)
 
 
-@events_bp.route("/organizer/dashboard/<event_slug>")
+@events_bp.route("/organizer/dashboard/<identifier>")
 @login_required
-def organizer_dashboard(event_slug):
+def organizer_dashboard(identifier):
     """Specific Event Organizer Dashboard"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event or event.get('organizer_id') != current_user.id:
         flash('Unauthorized access', 'danger')
         return redirect(url_for('events.my_events'))
 
-    stats = EventService.get_event_stats(event_slug)
-    registrations = EventService.get_registrations_by_event(event_slug)
+    stats = EventService.get_event_stats(identifier)
+    registrations = EventService.get_registrations_by_event(identifier)
 
     return render_template('events/organizer/organizer_dashboard.html',
                            event=event,
@@ -382,11 +391,11 @@ def create_event():
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
-@events_bp.route("/<event_slug>/edit", methods=['GET', 'POST'])
+@events_bp.route("/<identifier>/edit", methods=['GET', 'POST'])
 @login_required
-def edit_event(event_slug):
+def edit_event(identifier):
     """Edit event page"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event or (event.get('organizer_id') != current_user.id and not is_system_admin(current_user)):
         flash('Unauthorized', 'danger')
         return redirect(url_for('events.my_events'))
@@ -396,7 +405,7 @@ def edit_event(event_slug):
 
     try:
         data = request.get_json()
-        success, error = EventService.update_event(event_slug, data, current_user.id)
+        success, error = EventService.update_event(identifier, data, current_user.id)
         if not success:
             return jsonify({'success': False, 'error': error}), 400
 
@@ -405,38 +414,15 @@ def edit_event(event_slug):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@events_bp.route("/<event_slug>/delete", methods=['POST'])
+
+
+@events_bp.route("/<identifier>/scanner")
 @login_required
-def delete_event(event_slug):
-    """Delete event"""
-    # First, get the event to check permissions
-    event = EventService.get_event(event_slug)
-    if not event:
-        flash('Event not found', 'danger')
-        return redirect(url_for('events.my_events'))
-
-    # Check if current user is organizer or system admin
-    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
-        flash('Unauthorized', 'danger')
-        return redirect(url_for('events.my_events'))
-
-    success, error = EventService.delete_event(event_slug, current_user.id)
-
-    if success:
-        flash('Event deleted successfully', 'success')
-    else:
-        flash(error or 'Unable to delete event', 'danger')
-
-    return redirect(url_for('events.my_events'))
-
-
-@events_bp.route("/<event_slug>/scanner")
-@login_required
-def scanner(event_slug):
+def scanner(identifier):
     """Scanner interface for event staff"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event:
-        return render_template('events/public/not_found.html', event_slug=event_slug), 404
+        return render_template('events/public/not_found.html', event_slug=identifier), 404
 
     # Define can_check_in_attendees locally since app.events.permissions doesn't exist
     def can_check_in_attendees(user, event_data):
@@ -454,8 +440,13 @@ def scanner(event_slug):
 
         # Check if user has event staff role with check-in permission
         from app.events.models import EventRole
+        # Get the actual event model to get the database ID
+        event_model = EventService.get_event_model(identifier)
+        if not event_model:
+            return False
+
         staff_role = EventRole.query.filter_by(
-            event_id=event_data.get('event_id'),
+            event_id=event_model.id,
             user_id=user.id,
             is_active=True
         ).first()
@@ -470,16 +461,16 @@ def scanner(event_slug):
 
     if not can_check_in_attendees(current_user, event):
         flash('Unauthorized', 'danger')
-        return redirect(url_for('events.landing', event_slug=event_slug))
+        return redirect(url_for('events.landing', identifier=identifier))
 
     return render_template('events/organizer/scanner.html', event=event)
 
 
-@events_bp.route("/<event_slug>/analytics")
+@events_bp.route("/<identifier>/analytics")
 @login_required
-def event_analytics(event_slug):
+def event_analytics(identifier):
     """Detailed event analytics for organizers"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event or event.get('organizer_id') != current_user.id:
         flash('Unauthorized access', 'danger')
         return redirect(url_for('events.my_events'))
@@ -494,7 +485,7 @@ def event_analytics(event_slug):
         for i in range(7, 0, -1)
     ]
 
-    stats = EventService.get_event_stats(event_slug)
+    stats = EventService.get_event_stats(identifier)
     # Add rate calculation
     stats['checked_in'] = stats.get('checked_in_count', 0)
     stats['total'] = stats.get('total_registrations', 0)
@@ -512,16 +503,16 @@ def event_analytics(event_slug):
                            demographics=demographics)
 
 
-@events_bp.route("/<event_slug>/export")
+@events_bp.route("/<identifier>/export")
 @login_required
-def export_attendees(event_slug):
+def export_attendees(identifier):
     """Export attendee list as CSV"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event or event.get('organizer_id') != current_user.id:
         flash('Unauthorized', 'danger')
         return redirect(url_for('events.my_events'))
 
-    registrations = EventService.get_registrations_by_event(event_slug)
+    registrations = EventService.get_registrations_by_event(identifier)
 
     import io
     import csv
@@ -545,7 +536,7 @@ def export_attendees(event_slug):
     return Response(
         output,
         mimetype="text/csv",
-        headers={"Content-disposition": f"attachment; filename=attendees_{event_slug}.csv"}
+        headers={"Content-disposition": f"attachment; filename=attendees_{identifier}.csv"}
     )
 
 
@@ -553,13 +544,13 @@ def export_attendees(event_slug):
 # REGISTRATION & CHECK-IN
 # ============================================================
 
-@events_bp.route("/<event_slug>/register", methods=['GET', 'POST'])
+@events_bp.route("/<identifier>/register", methods=['GET', 'POST'])
 @login_required
-def register(event_slug):
+def register(identifier):
     """Register for an event with async processing and payment integration"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event:
-        return render_template('events/public/not_found.html', event_slug=event_slug), 404
+        return render_template('events/public/not_found.html', event_slug=identifier), 404
 
     if request.method == 'GET':
         user_data = {
@@ -583,7 +574,7 @@ def register(event_slug):
 
         # 1. Perform database transaction (Atomic Registration)
         registration, _, error = EventService.register_for_event(
-            event_slug, current_user.id, data
+            identifier, current_user.id, data
         )
 
         if error:
@@ -610,13 +601,41 @@ def register(event_slug):
             }
 
         # 2. Trigger Background Task (Async Processing)
-        process_event_registration.delay(registration['id'], event_slug)
+        # process_event_registration.delay(registration['id'], identifier)
 
-        return jsonify({
-            'success': True,
-            'redirect': url_for('events.registration_confirmation', reg_ref=registration['registration_ref']),
-            'message': 'Registration received and is being processed!'
-        }), 200
+        # Flash email reminder if not configured
+        mail_configured = False
+        try:
+            mail_server = current_app.config.get('MAIL_SERVER')
+            if mail_server:
+                mail_configured = True
+        except Exception:
+            pass
+        if not mail_configured and not session.get('email_reminder_shown', False):
+            flash('⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.', 'warning')
+            session['email_reminder_shown'] = True
+
+        # Determine if this is an AJAX request
+        is_ajax = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+        if is_ajax:
+            # For AJAX/API requests, return enriched JSON with all registration details
+            return jsonify({
+                'success': True,
+                'registration_ref': registration['registration_ref'],
+                'ticket_number': registration.get('ticket_number'),
+                'qr_code': qr_code,
+                'status': registration['status'],
+                'payment_status': registration['payment_status'],
+                'registration_fee': registration['registration_fee'],
+                'ticket_type': registration['ticket_type'],
+                'event': registration.get('event'),
+                'redirect': url_for('events.registration_confirmation', reg_ref=registration['registration_ref']),
+                'message': 'Registration received and is being processed!'
+            }), 200
+        else:
+            # Regular form submission - perform actual HTTP redirect
+            return redirect(url_for('events.registration_confirmation', reg_ref=registration['registration_ref']))
 
     except Exception as e:
         # Check if it's a SoldOutException
@@ -630,49 +649,86 @@ def register(event_slug):
 @login_required
 def registration_confirmation(reg_ref):
     """Show registration confirmation with QR code"""
-    # First, try to get from session
-    reg_data = session.get('last_registration')
+    try:
+        # First, try to get from session
+        reg_data = session.get('last_registration')
 
-    # Check if the session data matches the requested registration reference
-    if reg_data and reg_data.get('registration', {}).get('registration_ref') == reg_ref:
-        # Clear the session data after using it to prevent reuse
-        session.pop('last_registration', None)
+        # Check if the session data matches the requested registration reference
+        if reg_data and reg_data.get('registration', {}).get('registration_ref') == reg_ref:
+            # Clear the session data after using it to prevent reuse
+            session.pop('last_registration', None)
+            # Check if mail is configured
+            mail_configured = False
+            try:
+                mail_server = current_app.config.get('MAIL_SERVER')
+                if mail_server:
+                    mail_configured = True
+            except Exception:
+                pass
+            
+            reg_data['mail_configured'] = mail_configured
+
+            # Flash email reminder if not configured
+            if not mail_configured and not session.get('email_reminder_shown', False):
+                flash('⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.', 'warning')
+                session['email_reminder_shown'] = True
+
+            return render_template('events/attendee/registration_confirmation.html', **reg_data)
+
+        # If not in session, fetch from database
+        from app.events.models import EventRegistration
+        registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
+        if not registration or registration.user_id != current_user.id:
+            flash('Registration not found', 'danger')
+            return redirect(url_for('events.my_registrations'))
+
+        # Generate QR code
+        qr_code = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
+        event = EventService.get_event(registration.event.slug)
+
+        reg_data = {
+            'registration': EventService._registration_to_dict(registration),
+            'qr_code': qr_code,
+            'event': event
+        }
+
+        # Check if mail is configured
+        mail_configured = False
+        try:
+            mail_server = current_app.config.get('MAIL_SERVER')
+            if mail_server:
+                mail_configured = True
+        except Exception:
+            pass
+        
+        reg_data['mail_configured'] = mail_configured
+
+        # Flash email reminder if not configured
+        if not mail_configured and not session.get('email_reminder_shown', False):
+            flash('⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.', 'warning')
+            session['email_reminder_shown'] = True
+
         return render_template('events/attendee/registration_confirmation.html', **reg_data)
-
-    # If not in session, fetch from database
-    from app.events.models import EventRegistration
-    registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
-    if not registration or registration.user_id != current_user.id:
-        flash('Registration not found', 'danger')
+    except Exception as e:
+        logger.error(f"registration_confirmation error: {e}")
+        flash('An error occurred while loading the confirmation page.', 'danger')
         return redirect(url_for('events.my_registrations'))
 
-    # Generate QR code
-    qr_code = EventService._generate_qr_code(registration.qr_token, registration.registration_ref)
-    event = EventService.get_event(registration.event.slug)
 
-    reg_data = {
-        'registration': EventService._registration_to_dict(registration),
-        'qr_code': qr_code,
-        'event': event
-    }
-
-    return render_template('events/attendee/registration_confirmation.html', **reg_data)
-
-
-@events_bp.route("/event/<event_slug>/attendees")
+@events_bp.route("/event/<identifier>/attendees")
 @login_required
-def event_attendees(event_slug):
+def event_attendees(identifier):
     """Show attendees for an event (organizer only)"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event:
-        return render_template('events/public/not_found.html', event_slug=event_slug), 404
+        return render_template('events/public/not_found.html', event_slug=identifier), 404
 
     # Check if user is organizer or system admin
     if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
         flash('You do not have permission to view attendees', 'danger')
-        return redirect(url_for('events.landing', event_slug=event_slug))
+        return redirect(url_for('events.landing', identifier=identifier))
 
-    registrations = EventService.get_registrations_by_event(event_slug)
+    registrations = EventService.get_registrations_by_event(identifier)
     stats = {
         'total': len(registrations),
         'checked_in': len([r for r in registrations if r.get('status') == 'checked_in']),
@@ -683,12 +739,45 @@ def event_attendees(event_slug):
     return render_template('events/organizer/attendees.html', event=event, registrations=registrations, stats=stats)
 
 
-@events_bp.route("/api/checkin", methods=['POST'])
+@events_bp.route("/registration/<reg_ref>/cancel", methods=['POST'])
+@login_required
+def cancel_registration(reg_ref):
+    """Cancel a registration"""
+    success, error = EventService.cancel_registration(reg_ref, current_user.id)
+    if success:
+        return jsonify({'success': True, 'message': 'Registration cancelled successfully'})
+    else:
+        return jsonify({'success': False, 'error': error}), 400
+
+
+@events_bp.route("/dismiss-email-reminder", methods=['POST'])
+@login_required
+def dismiss_email_reminder():
+    """Dismiss the email configuration reminder"""
+    session.pop('email_reminder_shown', None)
+    return jsonify({'success': True})
+
+
+@events_bp.route("/api/checkin", methods=['GET', 'POST'])
 @login_required
 def api_checkin():
     """JSON API for QR code check-in"""
-    data = request.get_json()
-    qr_token = data.get('qr_token')
+    # Rate limiting: 60 requests per 60 seconds per user
+    if not rate_limit(f"checkin:{current_user.id}", limit=60, window=60):
+        return jsonify({'success': False, 'error': 'Too many requests. Please slow down.'}), 429
+
+    # Extract token from POST JSON body or GET query param
+    qr_token = None
+    if request.method == 'POST':
+        data = request.get_json()
+        if data:
+            qr_token = data.get('qr_token')
+    else:
+        qr_token = request.args.get('token')
+
+    if not qr_token:
+        return jsonify({'success': False, 'error': 'Missing qr_token parameter'}), 400
+
     success, message, attendee = EventService.check_in_attendee(qr_token, current_user.id)
 
     if success:
@@ -696,6 +785,280 @@ def api_checkin():
     else:
         return jsonify({'success': False, 'error': message}), 400
 
+
+@events_bp.route("/api/<event_slug>/checkin-stats")
+@login_required
+def api_checkin_stats(event_slug):
+    """JSON API for real-time check-in stats (used by scanner dashboard)"""
+    event = resolve_event(event_slug)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    # Permission check: only organizer or system admin
+    if event.organizer_id != current_user.id and not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+    from app.events.models import EventRegistration
+
+    # Total registered = confirmed + checked_in
+    total_registered = EventRegistration.query.filter(
+        EventRegistration.event_id == event.id,
+        EventRegistration.status.in_(['confirmed', 'checked_in'])
+    ).count()
+
+    # Total checked in
+    total_checked_in = EventRegistration.query.filter(
+        EventRegistration.event_id == event.id,
+        EventRegistration.status == 'checked_in'
+    ).count()
+
+    # Last 10 check-ins
+    recent_qs = EventRegistration.query.filter(
+        EventRegistration.event_id == event.id,
+        EventRegistration.status == 'checked_in'
+    ).order_by(EventRegistration.checked_in_at.desc()).limit(10).all()
+
+    recent_checkins = []
+    for reg in recent_qs:
+        recent_checkins.append({
+            'full_name': reg.full_name,
+            'ticket_type': reg.ticket_type,
+            'checked_in_at': reg.checked_in_at.isoformat() if reg.checked_in_at else None,
+            'registration_ref': reg.registration_ref,
+        })
+
+    return jsonify({
+        'success': True,
+        'total_registered': total_registered,
+        'total_checked_in': total_checked_in,
+        'recent_checkins': recent_checkins,
+    })
+
+
+# ============================================================
+# EVENT MODERATION ROUTES (Protected backend-driven state transitions)
+# ============================================================
+
+@events_bp.route("/<identifier>/approve", methods=['POST'])
+@login_required
+def approve_event(identifier):
+    """Approve a pending event"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'approve')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.APPROVED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event approved'})
+
+@events_bp.route("/<identifier>/reject", methods=['POST'])
+@login_required
+def reject_event(identifier):
+    """Reject a pending event"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'reject')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Require reason for rejection
+    if request.is_json and not request.json.get('reason'):
+        return jsonify({'success': False, 'error': 'Reason is required for rejection'}), 400
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.REJECTED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event rejected'})
+
+@events_bp.route("/<identifier>/suspend", methods=['POST'])
+@login_required
+def suspend_event(identifier):
+    """Suspend a live event"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'suspend')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.SUSPENDED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event suspended'})
+
+@events_bp.route("/<identifier>/reactivate", methods=['POST'])
+@login_required
+def reactivate_event(identifier):
+    """Reactivate a suspended event"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'reactivate')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.PUBLISHED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event reactivated'})
+
+@events_bp.route("/<identifier>/pause", methods=['POST'])
+@login_required
+def pause_event(identifier):
+    """Pause a live event"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'pause')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.PAUSED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event paused'})
+
+@events_bp.route("/<identifier>/resume", methods=['POST'])
+@login_required
+def resume_event(identifier):
+    """Resume a paused event"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'resume')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.PUBLISHED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event resumed'})
+
+@events_bp.route("/<identifier>/delete", methods=['POST'])
+@login_required
+def delete_event(identifier):
+    """Delete an event (soft delete)"""
+    from app.events.constants import EventStatus
+    from app.events.permissions import require_event_permission
+    
+    event = EventService.get_event_model(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check permission
+    has_perm, error = require_event_permission(current_user, event, 'delete')
+    if not has_perm:
+        return jsonify({'success': False, 'error': error}), 403
+    
+    # Change status
+    success, error = EventService.change_event_status(
+        identifier, 
+        EventStatus.DELETED, 
+        current_user.id,
+        reason=request.json.get('reason') if request.is_json else None,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None
+    )
+    
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'message': 'Event deleted'})
 
 # ============================================================
 # SYSTEM ADMIN ROUTES
@@ -713,9 +1076,9 @@ def admin_dashboard():
     dashboard_data = EventService.get_admin_dashboard_data()
 
     # Get pending events for approval
-    pending_approval = Event.query.filter_by(status='pending', is_deleted=False).order_by(Event.created_at.desc()).all()
+    pending_approval = Event.query.filter_by(status=EventStatus.PENDING_APPROVAL, is_deleted=False).order_by(Event.created_at.desc()).all()
 
-    # Get recent events - order by status to show active and suspended first, then by creation date
+    # Get recent events - order by status to show published and suspended first, then by creation date
     recent_events = Event.query.filter_by(is_deleted=False).order_by(Event.status.desc(), Event.created_at.desc()).limit(20).all()
 
     # Get category distribution
@@ -723,7 +1086,7 @@ def admin_dashboard():
 
     return render_template('events/admin/dashboard.html',
                          total_events=dashboard_data.get('total_events', 0),
-                         active_events=dashboard_data.get('active_events', 0),
+                         published_events=dashboard_data.get('published_events', 0),
                          pending_events=dashboard_data.get('pending_events', 0),
                          rejected_events=dashboard_data.get('rejected_events', 0),
                          total_registrations=dashboard_data.get('total_registrations', 0),
@@ -733,18 +1096,19 @@ def admin_dashboard():
                          categories=categories)
 
 
-@events_bp.route("/admin/<event_slug>/approve", methods=['POST'])
+@events_bp.route("/admin/<identifier>/approve", methods=['POST'])
 @login_required
-def admin_approve(event_slug):
+def admin_approve(identifier):
     """Admin approve event - only for super_admin and owner"""
     if not is_system_admin(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
 
-    event = Event.query.filter_by(slug=event_slug).first()
+    event = resolve_event(identifier)
     if not event:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
-    event.status = 'active'
+    previous_status = event.status
+    event.status = EventStatus.PUBLISHED
     event.approved_at = datetime.utcnow()
     event.approved_by_id = current_user.id
     # Clear any rejection fields if they exist
@@ -756,15 +1120,15 @@ def admin_approve(event_slug):
     # Audit logging
     logger.info(
         f"MODERATION | approve | event={event.slug} | admin={current_user.id} "
-        f"| previous_status={event.status}"
+        f"| previous_status={previous_status}"
     )
 
     return jsonify({'success': True, 'message': f'Event {event.name} approved'})
 
 
-@events_bp.route("/admin/<event_slug>/reject", methods=['POST'])
+@events_bp.route("/admin/<identifier>/reject", methods=['POST'])
 @login_required
-def admin_reject(event_slug):
+def admin_reject(identifier):
     """Admin reject event - only for super_admin and owner"""
     if not is_system_admin(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
@@ -775,11 +1139,12 @@ def admin_reject(event_slug):
 
     reason = data.get('reason', 'No reason provided')
 
-    event = Event.query.filter_by(slug=event_slug).first()
+    event = resolve_event(identifier)
     if not event:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
-    event.status = 'rejected'
+    previous_status = event.status
+    event.status = EventStatus.REJECTED
     event.rejected_at = datetime.utcnow()
     event.rejection_reason = reason
     # Clear any approval fields if they exist
@@ -791,14 +1156,14 @@ def admin_reject(event_slug):
     # Audit logging
     logger.info(
         f"MODERATION | reject | event={event.slug} | admin={current_user.id} "
-        f"| reason={reason[:80]}"
+        f"| previous_status={previous_status} | reason={reason[:80]}"
     )
 
     return jsonify({'success': True, 'message': f'Event {event.name} rejected'})
 
-@events_bp.route("/admin/<event_slug>/suspend", methods=['POST'])
+@events_bp.route("/admin/<identifier>/suspend", methods=['POST'])
 @login_required
-def admin_suspend(event_slug):
+def admin_suspend(identifier):
     """
     Suspend an active event - only for super_admin and owner.
     Hides it from the public portal. Organiser can request reinstatement.
@@ -816,14 +1181,18 @@ def admin_suspend(event_slug):
     if not reason:
         return jsonify({'success': False, 'error': 'Suspension reason is required'}), 400
 
-    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
-    if not event:
+    event = resolve_event(identifier)
+    if not event or event.is_deleted:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
-    if event.status not in ('active',):
-        return jsonify({'success': False, 'error': f'Cannot suspend an event with status "{event.status}"'}), 400
+    # Use sanitized status for comparison
+    from app.events.services import EventService
+    current_status = EventService.sanitize_status(event.status)
+    if current_status != EventStatus.PUBLISHED.value:
+        return jsonify({'success': False, 'error': f'Cannot suspend an event with status "{current_status}"'}), 400
 
-    event.status             = 'suspended'
+    previous_status = event.status
+    event.status             = EventStatus.SUSPENDED
     event.suspension_reason  = reason
     event.suspension_duration= duration
     event.suspended_at       = datetime.utcnow()
@@ -833,7 +1202,7 @@ def admin_suspend(event_slug):
         db.session.commit()
         logger.info(
             f"MODERATION | suspend | event={event.slug} | admin={current_user.id} "
-            f"| duration={duration} | reason={reason[:80]}"
+            f"| previous_status={previous_status} | duration={duration} | reason={reason[:80]}"
         )
         return jsonify({'success': True, 'message': f'Event "{event.name}" suspended ({duration})'})
     except Exception as e:
@@ -841,9 +1210,9 @@ def admin_suspend(event_slug):
         logger.error(f"admin_suspend error: {e}")
         return jsonify({'success': False, 'error': 'Database error'}), 500
 
-@events_bp.route("/admin/<event_slug>/deactivate", methods=['POST'])
+@events_bp.route("/admin/<identifier>/deactivate", methods=['POST'])
 @login_required
-def admin_deactivate(event_slug):
+def admin_deactivate(identifier):
     """
     Deactivate an event — disabled but NOT deleted - only for super_admin and owner.
     Organiser data preserved. Reactivation requires support contact.
@@ -859,11 +1228,11 @@ def admin_deactivate(event_slug):
     if not reason:
         return jsonify({'success': False, 'error': 'Deactivation reason is required'}), 400
 
-    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
-    if not event:
+    event = resolve_event(identifier)
+    if not event or event.is_deleted:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
-    if event.status in ('archived', 'deactivated'):
+    if event.status in (EventStatus.ARCHIVED, 'deactivated'):
         return jsonify({'success': False, 'error': f'Event is already "{event.status}"'}), 400
 
     event.status              = 'deactivated'
@@ -883,9 +1252,9 @@ def admin_deactivate(event_slug):
         logger.error(f"admin_deactivate error: {e}")
         return jsonify({'success': False, 'error': 'Database error'}), 500
 
-@events_bp.route("/admin/<event_slug>/takedown", methods=['POST'])
+@events_bp.route("/admin/<identifier>/takedown", methods=['POST'])
 @login_required
-def admin_takedown(event_slug):
+def admin_takedown(identifier):
     """
     Policy takedown — severe enforcement action - only for super_admin and owner.
     Immediately removes event from public view.
@@ -915,8 +1284,8 @@ def admin_takedown(event_slug):
     if category not in VALID_CATEGORIES:
         return jsonify({'success': False, 'error': 'Invalid violation category'}), 400
 
-    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
-    if not event:
+    event = resolve_event(identifier)
+    if not event or event.is_deleted:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
     # Record takedown details before archiving
@@ -924,7 +1293,7 @@ def admin_takedown(event_slug):
     event.takedown_category  = category
     event.taken_down_at      = datetime.utcnow()
     event.taken_down_by_id   = current_user.id
-    event.status             = 'archived'   # removes from public listings
+    event.status             = EventStatus.ARCHIVED   # removes from public listings
     event.rejection_reason   = f"[POLICY TAKEDOWN – {category.upper()}] {reason}"
 
     # Soft-delete so it's fully hidden
@@ -953,9 +1322,9 @@ def admin_takedown(event_slug):
         logger.error(f"admin_takedown error: {e}")
         return jsonify({'success': False, 'error': 'Database error'}), 500
 
-@events_bp.route("/admin/<event_slug>/restore", methods=['POST'])
+@events_bp.route("/admin/<identifier>/restore", methods=['POST'])
 @login_required
-def admin_restore(event_slug):
+def admin_restore(identifier):
     """
     Restore a suspended event back to active - only for super_admin and owner.
     Clears suspension fields.
@@ -963,14 +1332,14 @@ def admin_restore(event_slug):
     if not is_system_admin(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized - Super Admin access required'}), 403
 
-    event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
-    if not event:
+    event = resolve_event(identifier)
+    if not event or event.is_deleted:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
-    if event.status != 'suspended':
+    if event.status != EventStatus.SUSPENDED:
         return jsonify({'success': False, 'error': f'Event is not suspended (current: {event.status})'}), 400
 
-    event.status              = 'active'
+    event.status              = EventStatus.PUBLISHED
     event.suspension_reason   = None
     event.suspension_duration = None
     event.suspended_at        = None
@@ -999,7 +1368,11 @@ def admin_events():
     if status == 'all':
         events = Event.query.all()
     else:
-        events = Event.query.filter_by(status=status).all()
+        # Use the sanitizer from EventService to handle legacy status values
+        from app.events.services import EventService
+        sanitized_status = EventService.sanitize_status(status)
+        # Filter by the sanitized status
+        events = Event.query.filter_by(status=sanitized_status).all()
 
     return render_template('events/admin/events.html', events=events, current_filter=status)
 
@@ -1017,7 +1390,7 @@ def api_admin_stats():
         return jsonify({
             "success": True,
             "total_events": data.get('total_events', 0),
-            "active_events": data.get('active_events', 0),
+            "published_events": data.get('published_events', 0),
             "pending_events": data.get('pending_events', 0),
             "rejected_events": data.get('rejected_events', 0),
             "total_registrations": data.get('total_registrations', 0),
@@ -1036,7 +1409,7 @@ def api_pending_events():
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
     try:
-        pending_events = Event.query.filter_by(status='pending').order_by(Event.created_at.desc()).all()
+        pending_events = Event.query.filter_by(status=EventStatus.PENDING_APPROVAL).order_by(Event.created_at.desc()).all()
         events_data = []
         for event in pending_events:
             events_data.append({
@@ -1052,11 +1425,11 @@ def api_pending_events():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@events_bp.route("/<event_slug>/add-ticket-type", methods=['POST'])
+@events_bp.route("/<identifier>/add-ticket-type", methods=['POST'])
 @login_required
-def add_ticket_type(event_slug):
+def add_ticket_type(identifier):
     """Add a new ticket type to an event"""
-    event = EventService.get_event(event_slug)
+    event = EventService.get_event(identifier)
     if not event:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
@@ -1070,7 +1443,7 @@ def add_ticket_type(event_slug):
 
         # Call service to add ticket type
         from app.events.services import EventService
-        ticket_type, error = EventService.add_ticket_type(event_slug, data, current_user.id)
+        ticket_type, error = EventService.add_ticket_type(identifier, data, current_user.id)
 
         if error:
             return jsonify({'success': False, 'error': error}), 400
@@ -1080,21 +1453,146 @@ def add_ticket_type(event_slug):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@events_bp.route("/<event_slug>/staff")
+@events_bp.route("/<identifier>/assign-service", methods=['POST'])
 @login_required
-def event_staff(event_slug):
-    """Manage event staff"""
-    event = EventService.get_event(event_slug)
+def assign_service_to_attendee_route(identifier):
+    """Assign accommodation or transport to an attendee"""
+    event = EventService.get_event(identifier)
     if not event:
-        return render_template('events/public/not_found.html', event_slug=event_slug), 404
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check if user is organizer or system admin
+    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+    
+    attendee_id = data.get('attendee_id')
+    booking_type = data.get('booking_type')  # 'accommodation' or 'transport'
+    booking_id = data.get('booking_id')
+    
+    if not attendee_id or not booking_type or not booking_id:
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    
+    if booking_type not in ['accommodation', 'transport', 'meal']:
+        return jsonify({'success': False, 'error': 'Invalid booking type'}), 400
+    
+    result, error = EventService.assign_service_to_attendee(
+        attendee_id=attendee_id,
+        identifier=identifier,
+        booking_type=booking_type,
+        booking_id=booking_id,
+        managed_by=current_user.id
+    )
+    
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+    
+    return jsonify({'success': True, 'assignment': result, 'message': f'{booking_type.title()} assigned successfully'})
+
+@events_bp.route("/<identifier>/assignments")
+@login_required
+def get_event_assignments(identifier):
+    """Get all assignments for an event"""
+    event = EventService.get_event(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Check if user is organizer or system admin
+    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    assignments = EventService.get_event_assignments(identifier)
+    return jsonify({'success': True, 'assignments': assignments})
+
+@events_bp.route("/<identifier>/available-bookings/<booking_type>")
+@login_required
+def get_available_bookings(identifier, booking_type):
+    """Get available bookings (accommodation/transport) for an event's city"""
+    event = EventService.get_event(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    city = event.get('city')
+    if not city:
+        return jsonify({'success': False, 'error': 'Event city not specified'}), 400
+    
+    bookings = []
+    
+    if booking_type == 'accommodation':
+        try:
+            from app.accommodation.models.booking import AccommodationBooking
+            from app.accommodation.models.property import Property
+            
+            # Get properties in the event city
+            properties = Property.query.filter_by(city=city, is_active=True).all()
+            property_ids = [p.id for p in properties]
+            
+            if property_ids:
+                # Get available bookings for these properties
+                acc_bookings = AccommodationBooking.query.filter(
+                    AccommodationBooking.property_id.in_(property_ids),
+                    AccommodationBooking.status.in_(['confirmed', 'pending'])
+                ).all()
+                
+                for booking in acc_bookings:
+                    bookings.append({
+                        'id': booking.id,
+                        'type': 'accommodation',
+                        'name': f"{booking.property.name} - {booking.room_type or 'Room'}",
+                        'guest_name': booking.guest_name or f"Guest #{booking.user_id}",
+                        'check_in': booking.check_in.isoformat() if booking.check_in else None,
+                        'check_out': booking.check_out.isoformat() if booking.check_out else None,
+                    })
+        except ImportError:
+            logger.warning("Accommodation module not available")
+        except Exception as e:
+            logger.error(f"Error fetching accommodation bookings: {e}")
+    
+    elif booking_type == 'transport':
+        try:
+            from app.transport.models import Booking as TransportBooking
+            
+            # Get transport bookings (simplified - you may want to filter by route/location)
+            transport_bookings = TransportBooking.query.filter(
+                TransportBooking.status.in_(['confirmed', 'pending'])
+            ).all()
+            
+            for booking in transport_bookings:
+                bookings.append({
+                    'id': booking.id,
+                    'type': 'transport',
+                    'name': f"{booking.vehicle_type or 'Vehicle'} - {booking.pickup_location} to {booking.dropoff_location}",
+                    'guest_name': f"User #{booking.user_id}",
+                    'pickup_time': booking.pickup_time.isoformat() if booking.pickup_time else None,
+                })
+        except ImportError:
+            logger.warning("Transport module not available")
+        except Exception as e:
+            logger.error(f"Error fetching transport bookings: {e}")
+    
+    return jsonify({'success': True, 'bookings': bookings})
+
+@events_bp.route("/<identifier>/staff")
+@login_required
+def event_staff(identifier):
+    """Manage event staff"""
+    event = EventService.get_event(identifier)
+    if not event:
+        return render_template('events/public/not_found.html', event_slug=identifier), 404
 
     # Check permission
     if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
         flash('Only event organizers can manage staff', 'danger')
-        return redirect(url_for('events.landing', event_slug=event_slug))
+        return redirect(url_for('events.landing', identifier=identifier))
 
     from app.events.models import EventRole
-    staff = EventRole.query.filter_by(event_id=event.get('event_id'), is_active=True).all()
+    event_model = EventService.get_event_model(identifier)
+    staff = EventRole.query.filter_by(
+        event_id=event_model.id, is_active=True
+    ).all() if event_model else []
 
     return render_template('events/admin/staff.html', event=event, staff=staff)
 
@@ -1127,6 +1625,11 @@ def remove_staff(staff_id):
 @login_required
 def admin_debug_events():
     """Debug endpoint to list all events with their statuses"""
+    import os
+    if os.getenv('FLASK_ENV', 'production') == 'production' and \
+       not os.getenv('ENABLE_DEBUG_ENDPOINTS', '').lower() == 'true':
+        return jsonify({"success": False, "error": "Not available"}), 404
+
     if not is_system_admin(current_user):
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
@@ -1164,6 +1667,11 @@ def admin_debug_events():
 @login_required
 def admin_debug_counts():
     """Quick debug endpoint for event counts"""
+    import os
+    if os.getenv('FLASK_ENV', 'production') == 'production' and \
+       not os.getenv('ENABLE_DEBUG_ENDPOINTS', '').lower() == 'true':
+        return jsonify({"success": False, "error": "Not available"}), 404
+
     if not is_system_admin(current_user):
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
@@ -1171,12 +1679,16 @@ def admin_debug_counts():
         from sqlalchemy import func
         counts = {
             'total': Event.query.filter_by(is_deleted=False).count(),
-            'active': Event.query.filter_by(status='active', is_deleted=False).count(),
-            'pending': Event.query.filter_by(status='pending', is_deleted=False).count(),
-            'rejected': Event.query.filter_by(status='rejected', is_deleted=False).count(),
-            'suspended': Event.query.filter_by(status='suspended', is_deleted=False).count(),
-            'deactivated': Event.query.filter_by(status='deactivated', is_deleted=False).count(),
-            'archived': Event.query.filter_by(status='archived', is_deleted=False).count(),
+            'published': Event.query.filter_by(status=EventStatus.PUBLISHED, is_deleted=False).count(),
+            'pending': Event.query.filter_by(status=EventStatus.PENDING_APPROVAL, is_deleted=False).count(),
+            'rejected': Event.query.filter_by(status=EventStatus.REJECTED, is_deleted=False).count(),
+            'suspended': Event.query.filter_by(status=EventStatus.SUSPENDED, is_deleted=False).count(),
+            # Handle legacy 'deactivated' status separately
+            'deactivated': Event.query.filter(
+                Event.status == 'deactivated',
+                Event.is_deleted == False
+            ).count(),
+            'archived': Event.query.filter_by(status=EventStatus.ARCHIVED, is_deleted=False).count(),
         }
 
         # Registration counts

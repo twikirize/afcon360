@@ -2,10 +2,13 @@
 Signal handlers for Events module to maintain data consistency.
 """
 
+import logging
 from flask import current_app
 from app.extensions import db
 from app.events.models import TicketType
 from sqlalchemy import and_, func
+
+logger = logging.getLogger(__name__)
 
 # Define signals here since app.events.signals doesn't exist
 try:
@@ -51,9 +54,6 @@ def handle_capacity_released(sender, **kwargs):
     seats_released = kwargs.get('seats_released', 1)
 
     if not ticket_type_id:
-        # Use logging module directly
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning("No ticket_type_id provided to handle_capacity_released")
         return
 
@@ -67,9 +67,6 @@ def handle_capacity_released(sender, **kwargs):
             ).first()
 
             if not ticket_type:
-                # Use logging module directly
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Ticket type {ticket_type_id} not found for event {event_id}")
                 return
 
@@ -83,9 +80,6 @@ def handle_capacity_released(sender, **kwargs):
                     'version': TicketType.version + 1
                 })
                 db.session.commit()
-                # Use logging module directly
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"Updated version for unlimited capacity ticket type {ticket_type_id}")
                 return
 
@@ -113,9 +107,6 @@ def handle_capacity_released(sender, **kwargs):
                 # No rows updated - this shouldn't happen, but retry
                 db.session.rollback()
                 if attempt == max_retries - 1:
-                    # Use logging module directly
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(
                         f"Failed to release capacity after {max_retries} attempts for "
                         f"ticket type {ticket_type_id}."
@@ -124,9 +115,6 @@ def handle_capacity_released(sender, **kwargs):
 
             db.session.commit()
 
-            # Use logging module directly
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info(
                 f"Capacity released: {seats_released} seat(s) for ticket type {ticket_type.name} "
                 f"(Event ID: {event_id})."
@@ -134,9 +122,6 @@ def handle_capacity_released(sender, **kwargs):
             return
 
         except Exception as e:
-            # Use logging module directly
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Failed to handle capacity release (attempt {attempt + 1}): {e}")
             db.session.rollback()
             if attempt == max_retries - 1:

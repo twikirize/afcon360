@@ -11,6 +11,7 @@ from sqlalchemy.sql import func
 from app.extensions import db
 from app.models.base import BaseModel
 from sqlalchemy import Enum as SAEnum
+from app.events.constants import EventStatus
 
 
 # ============================================================================
@@ -29,6 +30,10 @@ class OwnerType(str, enum.Enum):
     SYSTEM = 'system'
 
 
+# EventStatus has been moved to app.events.constants to avoid circular imports
+# Import it from there when needed
+
+
 class TransferStatus(str, enum.Enum):
     PENDING = 'pending'
     APPROVED = 'approved'
@@ -43,6 +48,12 @@ class DiscountType(str, enum.Enum):
 
 # ============================================================================
 # EVENT MODEL
+# ============================================================================
+# SQLAlchemy Model Safety Audit (2026-04-21):
+# - No naming conflicts found between column names and @property/method names
+# - Column names do not shadow Python properties
+# - All status helpers (is_*) are properties, not columns
+# - is_deleted column is not shadowed by any property
 # ============================================================================
 
 class Event(BaseModel):
@@ -80,7 +91,15 @@ class Event(BaseModel):
     registration_required = Column(Boolean, default=False)
     registration_fee = Column(Numeric(10, 2), default=0, nullable=False)
     currency = Column(String(3), default="USD")
-    status = Column(String(30), default="draft")
+    status = Column(
+        SAEnum(
+            EventStatus,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="eventstatus"
+        ),
+        default=EventStatus.PENDING_APPROVAL,
+        nullable=False
+    )
     featured = Column(Boolean, default=False)
     organizer_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     website = Column(String(500))
@@ -120,11 +139,27 @@ class Event(BaseModel):
     updated_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # Ownership tracking (NEW)
-    created_by_type = Column(SAEnum(CreatorType, name="creatortype"), nullable=False, default=CreatorType.INDIVIDUAL)
+    created_by_type = Column(
+        SAEnum(
+            CreatorType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="creatortype"
+        ),
+        nullable=False,
+        default=CreatorType.INDIVIDUAL
+    )
     organization_id = Column(BigInteger, ForeignKey('organisations.id', ondelete='SET NULL'), nullable=True, index=True)
     is_system_event = Column(Boolean, default=False, nullable=False, index=True)
     original_creator_id = Column(BigInteger, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-    current_owner_type = Column(SAEnum(OwnerType, name="ownertype"), nullable=False, default=OwnerType.INDIVIDUAL)
+    current_owner_type = Column(
+        SAEnum(
+            OwnerType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="ownertype"
+        ),
+        nullable=False,
+        default=OwnerType.INDIVIDUAL
+    )
     current_owner_id = Column(BigInteger, nullable=False, index=True)
 
     # Relationships
@@ -166,34 +201,115 @@ class Event(BaseModel):
         return f"<Event {self.id}: {self.name} ({self.slug})>"
 
     @property
+    def is_active_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.PUBLISHED
+
+    @property
+    def is_pending_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.PENDING_APPROVAL
+
+    @property
+    def is_rejected_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.REJECTED
+
+    @property
+    def is_draft_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.DRAFT
+
+    @property
+    def is_cancelled_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.CANCELLED
+
+    @property
+    def is_archived_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.ARCHIVED
+
+    @property
+    def is_suspended_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.SUSPENDED
+
+    @property
+    def is_paused_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.PAUSED
+
+    @property
+    def is_approved_flag(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.APPROVED
+
+    @property
+    def is_deleted_status(self):
+        """Computed field - use suffix per convention"""
+        return self.status == EventStatus.DELETED
+
+    # Backward compatibility aliases - DEPRECATED (violate rule #1 if kept long-term)
+    @property
     def is_active(self):
-        return self.status == "active"
+        import warnings
+        warnings.warn("Use is_active_flag instead", DeprecationWarning)
+        return self.is_active_flag
 
     @property
     def is_pending(self):
-        return self.status == "pending"
+        import warnings
+        warnings.warn("Use is_pending_flag instead", DeprecationWarning)
+        return self.is_pending_flag
 
     @property
     def is_rejected(self):
-        return self.status == "rejected"
+        import warnings
+        warnings.warn("Use is_rejected_flag instead", DeprecationWarning)
+        return self.is_rejected_flag
 
     @property
     def is_draft(self):
-        return self.status == "draft"
+        import warnings
+        warnings.warn("Use is_draft_flag instead", DeprecationWarning)
+        return self.is_draft_flag
 
     @property
     def is_cancelled(self):
-        return self.status == "cancelled"
+        import warnings
+        warnings.warn("Use is_cancelled_flag instead", DeprecationWarning)
+        return self.is_cancelled_flag
 
     @property
     def is_archived(self):
-        return self.status == "archived"
+        import warnings
+        warnings.warn("Use is_archived_flag instead", DeprecationWarning)
+        return self.is_archived_flag
+
+    @property
+    def is_suspended(self):
+        import warnings
+        warnings.warn("Use is_suspended_flag instead", DeprecationWarning)
+        return self.is_suspended_flag
+
+    @property
+    def is_paused(self):
+        import warnings
+        warnings.warn("Use is_paused_flag instead", DeprecationWarning)
+        return self.is_paused_flag
+
+    @property
+    def is_approved(self):
+        import warnings
+        warnings.warn("Use is_approved_flag instead", DeprecationWarning)
+        return self.is_approved_flag
 
     def soft_delete(self, user_id):
         self.is_deleted = True
         self.deleted_at = func.now()
         self.deleted_by_id = user_id
-        self.status = "archived"
+        self.status = EventStatus.ARCHIVED
 
     def restore(self):
         self.is_deleted = False
@@ -240,7 +356,8 @@ class TicketType(BaseModel):
         return f"<TicketType {self.name} for {self.event.name}>"
 
     @property
-    def is_sold_out(self):
+    def is_sold_out_flag(self):
+        """Computed field - use suffix per convention"""
         if self.capacity == 0:
             return False
         if self.available_seats is None:
@@ -251,6 +368,13 @@ class TicketType(BaseModel):
             ).scalar()
             return count >= self.capacity
         return self.available_seats <= 0
+
+    # Backward compatibility alias - DEPRECATED
+    @property
+    def is_sold_out(self):
+        import warnings
+        warnings.warn("Use is_sold_out_flag instead", DeprecationWarning)
+        return self.is_sold_out_flag
 
     def reserve_seat(self):
         if self.capacity == 0:
@@ -346,14 +470,30 @@ class EventRegistration(BaseModel):
 
     def generate_refs(self, event_slug: str, sequence: int):
         import secrets
+        import hmac
+        import hashlib
+        import os
+        import time
         slug_part = event_slug.upper().replace("-", "_")[:20]
         self.registration_ref = f"ER-{slug_part}-{sequence:05d}"
         self.ticket_number = f"TKT-{slug_part}-{sequence:05d}"
-        self.qr_token = secrets.token_urlsafe(32)
+        # Build HMAC-signed QR token
+        payload = f"AFCON360:{self.registration_ref}:{sequence}"
+        key = os.environ.get('QR_SECRET_KEY', 'dev-secret-change-in-production').encode()
+        signature = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()[:16]
+        self.qr_token = f"{payload}:{signature}"
 
     @property
-    def is_checked_in(self):
+    def is_checked_in_flag(self):
+        """Computed field - use suffix per convention"""
         return self.status == "checked_in"
+
+    # Backward compatibility alias - DEPRECATED
+    @property
+    def is_checked_in(self):
+        import warnings
+        warnings.warn("Use is_checked_in_flag instead", DeprecationWarning)
+        return self.is_checked_in_flag
 
     def __repr__(self):
         return f"<EventRegistration {self.registration_ref}: {self.full_name}>"
@@ -447,7 +587,14 @@ class DiscountCode(BaseModel):
 
     event_id = Column(BigInteger, ForeignKey('events.id', ondelete='CASCADE'), nullable=False, index=True)
     code = Column(String(50), nullable=False, unique=True, index=True)
-    discount_type = Column(SAEnum(DiscountType, name="discounttype"), nullable=False)
+    discount_type = Column(
+        SAEnum(
+            DiscountType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="discounttype"
+        ),
+        nullable=False
+    )
     discount_value = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default='USD')
     valid_from = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -498,7 +645,15 @@ class EventTransferRequest(BaseModel):
     to_user_id = Column(BigInteger, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     to_organization_id = Column(BigInteger, ForeignKey('organisations.id', ondelete='SET NULL'), nullable=True)
     requested_by_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
-    status = Column(SAEnum(TransferStatus, name="transferstatus"), nullable=False, default=TransferStatus.PENDING)
+    status = Column(
+        SAEnum(
+            TransferStatus,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="transferstatus"
+        ),
+        nullable=False,
+        default=TransferStatus.PENDING
+    )
     reason = Column(Text, nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     approved_at = Column(DateTime, nullable=True)
@@ -522,6 +677,50 @@ class EventTransferRequest(BaseModel):
 
 
 # ============================================================================
+# EVENT MODERATION LOG MODEL
+# ============================================================================
+
+class EventModerationLog(BaseModel):
+    __tablename__ = 'event_moderation_logs'
+    __table_args__ = (
+        Index('idx_moderation_event', 'event_id'),
+        Index('idx_moderation_user', 'user_id'),
+        Index('idx_moderation_action', 'action'),
+        Index('idx_moderation_date', 'created_at'),
+    )
+
+    event_id = Column(BigInteger, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
+    action = Column(String(50), nullable=False)  # approve, reject, suspend, reactivate, pause, resume, delete
+    from_status = Column(
+        SAEnum(
+            EventStatus,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="eventstatus"
+        ),
+        nullable=False
+    )
+    to_status = Column(
+        SAEnum(
+            EventStatus,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="eventstatus"
+        ),
+        nullable=False
+    )
+    reason = Column(Text, nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    extra_data = Column(JSON, default=dict)
+
+    event = relationship('Event', foreign_keys=[event_id])
+    user = relationship('User', foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<EventModerationLog {self.id}: event {self.event_id} {self.action} by user {self.user_id}>"
+
+
+# ============================================================================
 # EVENT TRANSFER LOG MODEL (FIXED - using OwnerType enum)
 # ============================================================================
 
@@ -529,9 +728,23 @@ class EventTransferLog(BaseModel):
     __tablename__ = 'event_transfer_logs'
 
     event_id = Column(BigInteger, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
-    from_owner_type = Column(SAEnum(OwnerType, name="ownertype"), nullable=False)
+    from_owner_type = Column(
+        SAEnum(
+            OwnerType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="ownertype"
+        ),
+        nullable=False
+    )
     from_owner_id = Column(BigInteger, nullable=False)
-    to_owner_type = Column(SAEnum(OwnerType, name="ownertype"), nullable=False)
+    to_owner_type = Column(
+        SAEnum(
+            OwnerType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            name="ownertype"
+        ),
+        nullable=False
+    )
     to_owner_id = Column(BigInteger, nullable=False)
     transferred_by_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
     transferred_at = Column(DateTime, default=datetime.utcnow)
@@ -542,3 +755,36 @@ class EventTransferLog(BaseModel):
 
     def __repr__(self):
         return f"<EventTransferLog {self.id}: event {self.event_id} from {self.from_owner_type.value}:{self.from_owner_id} to {self.to_owner_type.value}:{self.to_owner_id}>"
+
+
+# ============================================================================
+# EVENT ASSIGNMENT MODEL
+# ============================================================================
+
+class EventAssignment(BaseModel):
+    __tablename__ = "event_assignments"
+    __table_args__ = (
+        Index("idx_event_assignment_event", "event_id"),
+        Index("idx_event_assignment_attendee", "attendee_id"),
+        Index("idx_event_assignment_registration", "registration_id"),
+        UniqueConstraint("event_id", "attendee_id", name="uq_event_assignment"),
+    )
+
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    attendee_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    registration_id = Column(BigInteger, ForeignKey("event_registrations.id", ondelete="SET NULL"), nullable=True)
+    assignment_type = Column(String(50), nullable=True)
+    role = Column(String(100), nullable=True)
+    status = Column(String(30), default="pending", nullable=False)
+    notes = Column(Text, nullable=True)
+    assigned_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    assigned_at = Column(DateTime, default=func.now())
+    is_active = Column(Boolean, default=True)
+
+    event = relationship("Event", backref="assignments")
+    attendee = relationship("User", foreign_keys=[attendee_id])
+    registration = relationship("EventRegistration", foreign_keys=[registration_id])
+    assigned_by = relationship("User", foreign_keys=[assigned_by_id])
+
+    def __repr__(self):
+        return f"<EventAssignment {self.id}: event {self.event_id} attendee {self.attendee_id} as {self.role}>"

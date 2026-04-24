@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Registration Confirmed - {{ event.name }} - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4><i class="fas fa-check-circle"></i> Registration Confirmed</h4>
+                </div>
+                <div class="card-body">
+                    {% if not mail_configured %}
+                    <div class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Email notifications are not configured. Please screenshot your QR code and save reference
+                        <code>{{ registration.registration_ref }}</code> as no email was sent.
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center mb-4">
+                        <i class="fas fa-check-circle text-success" style="font-size: 4rem;"></i>
+                        <h4>You are registered!</h4>
+                        <p>Registration Reference: <code>{{ registration.registration_ref }}</code></p>
+                        <p>Ticket Number: {{ registration.ticket_number }}</p>
+                    </div>
+
+                    {% if qr_code %}
+                    <div class="text-center mb-3">
+                        <img src="{{ qr_code }}" alt="QR Code" style="max-width:220px;" class="img-fluid mb-2">
+                        <br>
+                        <small>Save this QR code to your phone or print it for event entry.</small>
+                    </div>
+                    {% endif %}
+
+                    <table class="table table-bordered mt-4">
+                        <tr>
+                            <th>Full Name</th>
+                            <td>{{ registration.full_name|default('N/A') }}</td>
+                        </tr>
+                        <tr>
+                            <th>Email</th>
+                            <td>{{ registration.email|default('N/A') }}</td>
+                        </tr>
+                        <tr>
+                            <th>Ticket Type</th>
+                            <td><span class="badge badge-success">{{ registration.ticket_type|default('General') }}</span></td>
+                        </tr>
+                        <tr>
+                            <th>Registration Date</th>
+                            <td>{% if registration.created_at %}{{ registration.created_at[:16]|replace('T', ' ') }}{% else %}Today{% endif %}</td>
+                        </tr>
+                    </table>
+
+                    <div class="alert alert-info" role="alert">
+                        <strong>Event Details</strong><br>
+                        Name: {{ event.name }}<br>
+                        Date: {% if event.start_date %}{{ event.start_date }}{% else %}TBD{% endif %} - {% if event.end_date %}{{ event.end_date }}{% else %}TBD{% endif %}<br>
+                        Venue/City: {{ event.venue|default('N/A') }}, {{ event.city|default('N/A') }}
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 justify-content-between mt-4">
+                        <button class="btn btn-outline-secondary" onclick="window.print()">Print Ticket</button>
+                        <a href="{{ url_for('events.my_registrations') }}" class="btn btn-outline-primary">My Registrations</a>
+                        <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-outline-secondary">Event Page</a>
+                        {% if registration.status not in ('cancelled', 'checked_in') %}
+                        <button class="btn btn-outline-danger btn-sm" onclick="cancelRegistration()">Cancel Registration</button>
+                        {% endif %}
+                    </div>
+
+                    {% if mail_configured %}
+                    <small class="d-block mt-3 text-muted">Confirmation email sent to {{ registration.email }}</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+function cancelRegistration() {
+    if (!confirm('Are you sure you want to cancel this registration?')) {
+        return;
+    }
+    fetch('/events/registration/{{ registration.registration_ref }}/cancel', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            window.location.href = '/events/my-registrations';
+        } else {
+            alert('Failed to cancel registration.');
+        }
+    })
+    .catch(() => {
+        alert('Network error. Please try again.');
+    });
+}
+</script>
+{% endblock %}

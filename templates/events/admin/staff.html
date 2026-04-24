@@ -21,7 +21,7 @@
                     </h1>
                     <p class="lead">{{ event.name }}</p>
                 </div>
-                <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                <a href="{{ url_for('events.landing', identifier=event.slug) }}"
                    class="btn btn-outline-primary">
                     <i class="fas fa-arrow-left"></i> Back to Event
                 </a>

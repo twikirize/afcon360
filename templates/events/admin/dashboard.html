@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 {% endblock %}
 
 {% block content %}
@@ -149,20 +150,16 @@
                   <td><span class="badge badge-cat">{{ event.category }}</span></td>
                   <td>
                     <div class="tbl-actions">
-                      <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                      <a href="{{ url_for('events.landing', identifier=event.slug) }}"
                          class="tbl-btn tbl-btn-view" target="_blank">
                         <i class="fas fa-eye"></i> View
                       </a>
-                      <button class="tbl-btn tbl-btn-approve js-approve-btn"
-                              data-slug="{{ event.slug }}"
-                              data-name="{{ event.name|e }}">
+                      <button class="tbl-btn tbl-btn-approve"
+                              onclick="eventModerationAction('approve', '{{ event.slug }}')">
                         <i class="fas fa-check"></i> Approve
                       </button>
-                      <button class="tbl-btn tbl-btn-reject js-mod-action"
-                              data-action="reject"
-                              data-slug="{{ event.slug }}"
-                              data-name="{{ event.name|e }}"
-                              data-status="pending">
+                      <button class="tbl-btn tbl-btn-reject"
+                              onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})">
                         <i class="fas fa-times"></i> Reject
                       </button>
                     </div>
@@ -232,39 +229,26 @@
                   <td>
                     <div class="tbl-actions">
                       {% if event.status == 'active' %}
-                        <button class="tbl-btn tbl-btn-mod js-mod-action"
-                                data-action="suspend"
-                                data-slug="{{ event.slug }}"
-                                data-name="{{ event.name|e }}"
-                                data-status="active">
+                        <button class="tbl-btn tbl-btn-mod"
+                                onclick="let r=prompt('Reason:'); let d=prompt('Duration (24h,72h,7d,14d,indefinite):','7d'); if(r&&d) eventModerationAction('suspend', '{{ event.slug }}', {reason: r, duration: d})">
                           <i class="fas fa-pause-circle"></i> Suspend
                         </button>
-                        <button class="tbl-btn tbl-btn-reject js-mod-action"
-                                data-action="takedown"
-                                data-slug="{{ event.slug }}"
-                                data-name="{{ event.name|e }}"
-                                data-status="active">
+                        <button class="tbl-btn tbl-btn-reject"
+                                onclick="let c=prompt('Category (fraud,illegal_activity,hate_speech,misinformation,spam,copyright,other):'); let r=prompt('Reason:'); if(c&&r) eventModerationAction('takedown', '{{ event.slug }}', {category: c, reason: r, notify_organiser: true})">
                           <i class="fas fa-exclamation-triangle"></i> Takedown
                         </button>
                       {% elif event.status == 'suspended' %}
-                        <button class="tbl-btn tbl-btn-approve js-mod-action"
-                                data-action="restore"
-                                data-slug="{{ event.slug }}"
-                                data-name="{{ event.name|e }}"
-                                data-status="suspended">
+                        <button class="tbl-btn tbl-btn-approve"
+                                onclick="eventModerationAction('restore', '{{ event.slug }}')">
                           <i class="fas fa-check-circle"></i> Restore
                         </button>
                       {% elif event.status == 'pending' %}
-                        <button class="tbl-btn tbl-btn-approve js-approve-btn"
-                                data-slug="{{ event.slug }}"
-                                data-name="{{ event.name|e }}">
+                        <button class="tbl-btn tbl-btn-approve"
+                                onclick="eventModerationAction('approve', '{{ event.slug }}')">
                           <i class="fas fa-check"></i> Approve
                         </button>
-                        <button class="tbl-btn tbl-btn-reject js-mod-action"
-                                data-action="reject"
-                                data-slug="{{ event.slug }}"
-                                data-name="{{ event.name|e }}"
-                                data-status="pending">
+                        <button class="tbl-btn tbl-btn-reject"
+                                onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})">
                           <i class="fas fa-times"></i> Reject
                         </button>
                       {% else %}
@@ -494,8 +478,29 @@
 
 {% block scripts %}
 <script>
-/* ── STATE ── */
-let _activeModal = null, _modalSlug = null, _modalName = null;
+function eventModerationAction(action, slug, extraData = {}) {
+    const url = `/events/admin/${slug}/${action}`;
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+        body: JSON.stringify(extraData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { 
+            alert(data.message || action + ' successful'); 
+            location.reload(); 
+        }
+        else { 
+            alert('Error: ' + (data.error || 'Unknown error')); 
+        }
+    })
+    .catch(err => { 
+        console.error(err); 
+        alert('Network error'); 
+    });
+}
 
 /* ── LIVE CLOCK ── */
 function tickClock(){
@@ -504,346 +509,9 @@ function tickClock(){
   setTimeout(tickClock,1000);
 }
 
-/* ── CSRF ── */
-function csrf(){
-  const m=document.querySelector('meta[name="csrf-token"]');
-  return m?m.getAttribute('content'):'';
-}
-
-/* ── TOAST ── */
-function toast(msg,type='ok'){
-  const icons={ok:'✓',err:'✕',warn:'⚠',info:'ℹ'};
-  const stack=document.getElementById('toastStack');
-  const el=document.createElement('div');
-  el.className=`toast toast-${type}`;
-  el.innerHTML=`<span class="toast-icon">${icons[type]||'•'}</span><span>${msg}</span>`;
-  stack.appendChild(el);
-  setTimeout(()=>{
-    el.style.transition='all .3s';el.style.opacity='0';el.style.transform='translateX(20px)';
-    setTimeout(()=>el.remove(),300);
-  },4000);
-}
-
-/* ── APPROVE ── (fixed: find button by data-slug, not by broken onclick selector) ── */
-function approveEvent(slug, name, triggerBtn){
-  console.log('Attempting to approve event:', slug);
-  if(!confirm(`Approve "${name}"?\n\nThis will publish the event to the public portal.`)) return;
-  if(triggerBtn){
-    triggerBtn.innerHTML='<span class="loading-dots"><span></span><span></span><span></span></span>';
-    triggerBtn.disabled=true;
-  }
-
-  const url = `/events/admin/${slug}/approve`;
-  console.log('Fetching URL:', url);
-  console.log('CSRF token present:', !!csrf());
-
-  fetch(url,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'X-CSRFToken':csrf()
-    },
-    body:JSON.stringify({})
-  }).then(r=>{
-    console.log('Response status:', r.status);
-    return r.json();
-  }).then(data=>{
-    console.log('Response data:', data);
-    if(data.success){
-      toast(`"${name}" approved and now live`,'ok');
-      fadeOutRow(slug, refreshPendingBadge);
-    } else {
-      toast(data.error||'Approval failed','err');
-      if(triggerBtn){triggerBtn.innerHTML='<i class="fas fa-check"></i> Approve';triggerBtn.disabled=false;}
-    }
-  }).catch((error)=>{
-    console.error('Fetch error:', error);
-    toast('Network error','err');
-    if(triggerBtn){triggerBtn.innerHTML='<i class="fas fa-check"></i> Approve';triggerBtn.disabled=false;}
-  });
-}
-
-/* ── RESTORE ── */
-function restoreEvent(slug, name){
-  if(!confirm(`Restore "${name}"?\n\nThis will reinstate it as active.`)) return;
-  fetch(`/events/admin/${slug}/restore`,{
-    method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify({})
-  }).then(r=>r.json()).then(data=>{
-    if(data.success){toast(`"${name}" reinstated`,'ok');setTimeout(()=>location.reload(),800);}
-    else toast(data.error||'Restore failed','err');
-  }).catch(()=>toast('Network error','err'));
-}
-
-/* ── EVENT DELEGATION — single handler for all actions ── */
-document.addEventListener('click', function(e){
-  console.log('Click event detected on:', e.target);
-  console.log('Target class:', e.target.className);
-  console.log('Target tag:', e.target.tagName);
-
-  /* Approve button (both in pending table and in mod dropdown) */
-  const approveBtn = e.target.closest('.js-approve-btn');
-  if(approveBtn){
-    console.log('Approve button clicked:', approveBtn.dataset.slug);
-    e.stopPropagation();
-    approveEvent(approveBtn.dataset.slug, approveBtn.dataset.name, approveBtn);
-    return;
-  }
-
-  /* Action buttons */
-  const action = e.target.closest('.js-mod-action');
-  if(action){
-    console.log('Mod action button clicked:', action.dataset.action, action.dataset.slug);
-    e.stopPropagation();
-    const { slug, name } = action.dataset;
-    const act = action.dataset.action;
-    if(act === 'restore'){
-      console.log('Restoring event:', slug);
-      restoreEvent(slug, name);
-    }
-    else {
-      console.log('Opening modal for action:', act);
-      openModal(act, slug, name);
-    }
-    return;
-  }
-
-  console.log('No matching button found');
-});
-
-/* ── MODAL CONFIG ── */
-const MODALS={
-  reject:{
-    subtitleEl:'modal-reject-subtitle',
-    subtitle:(n)=>`Rejecting: "${n}". Provide a clear reason — the organiser will be notified and can resubmit.`,
-    endpoint:(s)=>`/events/admin/${s}/reject`,
-    payload:()=>{const r=document.getElementById('reject-reason').value.trim();if(!r){toast('Enter a rejection reason','warn');return null;}return{reason:r};},
-    msg:(n)=>`"${n}" rejected`,type:'warn',reload:false,removeRow:true,focus:'reject-reason'
-  },
-  suspend:{
-    subtitleEl:'modal-suspend-subtitle',
-    subtitle:(n)=>`Suspending: "${n}". Event hidden from public immediately.`,
-    endpoint:(s)=>`/events/admin/${s}/suspend`,
-    payload:()=>{const r=document.getElementById('suspend-reason').value.trim();const d=document.getElementById('suspend-duration').value;if(!r){toast('Enter a suspension reason','warn');return null;}return{reason:r,duration:d};},
-    msg:(n)=>`"${n}" suspended`,type:'warn',reload:true,removeRow:false,focus:'suspend-reason'
-  },
-  deactivate:{
-    subtitleEl:'modal-deactivate-subtitle',
-    subtitle:(n)=>`Deactivating: "${n}". Removed from public listings.`,
-    endpoint:(s)=>`/events/admin/${s}/deactivate`,
-    payload:()=>{const r=document.getElementById('deactivate-reason').value.trim();if(!r){toast('Enter a deactivation reason','warn');return null;}return{reason:r};},
-    msg:(n)=>`"${n}" deactivated`,type:'info',reload:true,removeRow:false,focus:'deactivate-reason'
-  },
-  takedown:{
-    subtitleEl:'modal-takedown-subtitle',
-    subtitle:(n)=>`Policy takedown for: "${n}". Permanent — logged to compliance audit.`,
-    endpoint:(s)=>`/events/admin/${s}/takedown`,
-    payload:()=>{
-      const cat=document.getElementById('takedown-category').value;
-      const r=document.getElementById('takedown-reason').value.trim();
-      const notify=document.getElementById('takedown-notify').checked;
-      if(!cat){toast('Select a violation category','warn');return null;}
-      if(!r){toast('Describe the violation','warn');return null;}
-      return{category:cat,reason:r,notify_organiser:notify};
-    },
-    msg:(n)=>`"${n}" taken down — compliance log updated`,type:'err',reload:true,removeRow:false,focus:'takedown-category'
-  }
-};
-
-function openModal(type,slug,name){
-  const cfg=MODALS[type]; if(!cfg) return;
-  _activeModal=type; _modalSlug=slug; _modalName=name;
-  const subEl=document.getElementById(cfg.subtitleEl);
-  if(subEl) subEl.textContent=cfg.subtitle(name);
-  ['reject-reason','suspend-reason','deactivate-reason','takedown-reason'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const cat=document.getElementById('takedown-category'); if(cat) cat.value='';
-  const chk=document.getElementById('takedown-notify'); if(chk) chk.checked=true;
-  document.getElementById(`modal-${type}`).classList.add('open');
-  setTimeout(()=>{const f=document.getElementById(cfg.focus);if(f)f.focus();},150);
-}
-
-function closeModal(type){
-  const el=document.getElementById(`modal-${type}`); if(el) el.classList.remove('open');
-  if(_activeModal===type){_activeModal=null;_modalSlug=null;_modalName=null;}
-}
-
-function submitAction(type){
-  const cfg=MODALS[type]; if(!cfg) return;
-  const slug=_modalSlug, name=_modalName;
-  const payload=cfg.payload(); if(!payload) return;
-  closeModal(type);
-
-  console.log(`Submitting ${type} action for ${slug}`, payload);
-
-  fetch(cfg.endpoint(slug),{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'X-CSRFToken':csrf()
-    },
-    body:JSON.stringify(payload)
-  }).then(r=>{
-    console.log(`Response status for ${type}:`, r.status);
-    return r.json();
-  }).then(data=>{
-    console.log(`Response data for ${type}:`, data);
-    if(data.success){
-      toast(cfg.msg(name),cfg.type);
-      if(cfg.removeRow) {
-        fadeOutRow(slug, function() {
-          refreshPendingBadge();
-          refreshKPICounts();
-        });
-      } else if(cfg.reload) {
-        // Refresh counts before reloading
-        refreshKPICounts();
-        setTimeout(()=>location.reload(),900);
-      } else {
-        // Just refresh counts
-        refreshKPICounts();
-      }
-    } else {
-      toast(data.error||`${type} failed`,'err');
-    }
-  }).catch((error)=>{
-    console.error(`Network error for ${type}:`, error);
-    toast('Network error','err');
-  });
-}
-
-/* Close modals on backdrop click */
-['reject','suspend','deactivate','takedown'].forEach(t=>{
-  const o=document.getElementById(`modal-${t}`);
-  if(o) o.addEventListener('click',e=>{if(e.target===o) closeModal(t);});
-});
-
-/* ── HELPERS ── */
-function fadeOutRow(slug,cb){
-  const row=document.getElementById(`row-${slug}`);
-  if(row){row.style.transition='opacity .4s,transform .4s';row.style.opacity='0';row.style.transform='translateX(-20px)';setTimeout(()=>{row.remove();if(cb)cb();},420);}
-  else if(cb) cb();
-}
-function refreshPendingBadge(){
-  const n=document.querySelectorAll('.urgency-row').length;
-  const b=document.getElementById('pendingBadge');
-  if(b) b.textContent=`${n} pending`;
-}
-
-/* ── LOAD DASHBOARD STATS ── */
-function loadDashboardStats() {
-  fetch('/events/api/admin/stats', {
-    headers: { 'X-CSRFToken': csrf() }
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      document.getElementById('total-events').textContent = data.total_events || 0;
-      document.getElementById('active-events').textContent = data.active_events || 0;
-      document.getElementById('pending-events').textContent = data.pending_events || 0;
-      document.getElementById('rejected-events').textContent = data.rejected_events || 0;
-      document.getElementById('suspended-events').textContent = data.suspended_events || 0;
-      document.getElementById('total-registrations').textContent = data.total_registrations || 0;
-
-      // Update the sub labels
-      const activeEventsSub = document.getElementById('active-events-sub');
-      if (activeEventsSub) {
-        activeEventsSub.textContent = `+${data.active_events || 0} active`;
-      }
-
-      const checkedInSub = document.getElementById('checked-in-sub');
-      if (checkedInSub) {
-        checkedInSub.textContent = `${data.checked_in_registrations || 0} checked in`;
-      }
-
-      // Animate the new values
-      document.querySelectorAll('.kpi-value').forEach(el => {
-        const raw = el.textContent.trim();
-        const isPct = raw.endsWith('%');
-        const target = parseFloat(raw);
-        if (!isNaN(target) && target > 0) {
-          el.textContent = isPct ? '0%' : '0';
-          let cur = 0;
-          const step = target / (800 / 16);
-          const iv = setInterval(() => {
-            cur = Math.min(cur + step, target);
-            el.textContent = isPct ? cur.toFixed(1) + '%' : Math.floor(cur).toString();
-            if (cur >= target) clearInterval(iv);
-          }, 16);
-        }
-      });
-    }
-  })
-  .catch(err => console.error('Failed to load stats:', err));
-}
-
-/* ── REFRESH KPI COUNTS ── */
-function refreshKPICounts() {
-    console.log('Refreshing KPI counts...');
-    fetch('/events/api/admin/stats', {
-        headers: {
-            'Accept': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('KPI data received:', data);
-            // Update each KPI card
-            updateKPICard('Total Events', data.total_events);
-            updateKPICard('Pending Approval', data.pending_events);
-            updateKPICard('Total Registrants', data.total_registrations);
-            updateKPICard('Rejected', data.rejected_events);
-            updateKPICard('Check-in Rate', data.checked_in_registrations, data.total_registrations);
-
-            // Also update the active events count (not in KPI strip but in template)
-            const activeEventsElement = document.querySelector('[data-kpi="active_events"]');
-            if (activeEventsElement) {
-                activeEventsElement.textContent = data.active_events;
-            }
-        } else {
-            console.error('Failed to fetch KPI data:', data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error fetching KPI counts:', error);
-    });
-}
-
-function updateKPICard(label, value, total = null) {
-    // Find the KPI card by its label
-    const kpiCards = document.querySelectorAll('.kpi-card');
-    kpiCards.forEach(card => {
-        const labelElement = card.querySelector('.kpi-label');
-        if (labelElement && labelElement.textContent.trim() === label) {
-            const valueElement = card.querySelector('.kpi-value');
-            if (valueElement) {
-                if (label === 'Check-in Rate') {
-                    // Calculate percentage
-                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                    valueElement.textContent = `${percentage}%`;
-
-                    // Update the meter
-                    const meterFill = document.querySelector('.meter-fill');
-                    if (meterFill) {
-                        meterFill.style.width = `${percentage}%`;
-                    }
-                    const meterVal = document.querySelector('.meter-val');
-                    if (meterVal) {
-                        meterVal.textContent = `${percentage}%`;
-                    }
-                } else {
-                    valueElement.textContent = value;
-                }
-            }
-        }
-    });
-}
-
 /* ── ANIMATE ON LOAD + CLOCK ── */
 document.addEventListener('DOMContentLoaded',()=>{
   tickClock();
-
-  // Refresh KPI counts on page load
-  refreshKPICounts();
 
   document.querySelectorAll('.dist-bar-fill').forEach((el,i)=>{
     const t=el.style.width; el.style.width='0%';

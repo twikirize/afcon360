@@ -1,42 +1,62 @@
+{#
+  FILE: templates/events/organizer/scanner.html
+  PURPOSE: Real-time QR scanner for event check-ins with automated stats polling
+  ACCESS: Event Organizers / Staff
+#}
 {% extends "base.html" %}
 
 {% block title %}Scan Tickets - {{ event.name }}{% endblock %}
-
-{% block module_styles %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/scanner.css') }}">
-{% endblock %}
 
 {% block content %}
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-md-8 col-lg-6">
-            <div class="scanner-container">
-                <div class="scanner-header">
-                    <h2>Ticket Scanner</h2>
+            <div class="scanner-container shadow-sm p-4 bg-white rounded border">
+                <div class="scanner-header text-center mb-4">
+                    <h2><i class="fas fa-ticket-alt text-primary"></i> Ticket Scanner</h2>
                     <p class="text-muted">{{ event.name }}</p>
                 </div>
 
-                {# Camera Container #}
-                <div id="reader"></div>
+                {# Camera Viewport #}
+                <div id="reader" class="bg-dark rounded mb-3" style="width: 100%; min-height: 300px; overflow: hidden;"></div>
 
-                <div id="result" class="scanner-result result-info">
-                    <i class="fas fa-camera me-2"></i> Ready to scan...
+                {# Scan Results Display #}
+                <div id="result" class="scanner-result p-3 mb-3 text-center border rounded bg-light">
+                    <i class="fas fa-camera fs-1 d-block mb-2 text-secondary"></i>
+                    <span>Ready to scan</span>
                 </div>
 
+                {# Actions #}
                 <div class="d-grid gap-2 mt-3">
                     <button id="restart-btn" class="btn btn-primary d-none">
-                        <i class="fas fa-sync me-2"></i> Scan Next Ticket
+                        <i class="fas fa-sync-alt me-2"></i> Scan Next Ticket
                     </button>
-                    <a href="{{ url_for('events.organizer_dashboard', event_slug=event.slug) }}" class="btn btn-outline-secondary">
+                    <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary">
                         Back to Dashboard
                     </a>
                 </div>
 
-                <div class="mt-4 text-start">
-                    <h6>Recent Scans</h6>
-                    <ul class="scan-history-list" id="scan-history">
-                        {# Dynamic list of recent scans #}
+                <hr class="my-4">
+
+                {# Manual Entry Fallback #}
+                <div class="manual-entry-section">
+                    <h6 class="mb-3 text-muted">Manual Check-In</h6>
+                    <div class="input-group">
+                        <input type="text" id="manual-token" class="form-control" placeholder="Ticket Ref or Token">
+                        <button class="btn btn-primary" type="button" onclick="processCheckin(document.getElementById('manual-token').value)">
+                            Check-In
+                        </button>
+                    </div>
+                </div>
+
+                {# History Log with Real-Time Stats #}
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6>Recent Scans</h6>
+                        <span id="checkin-count" class="badge bg-success">Loading stats...</span>
+                    </div>
+                    <ul id="scan-history" class="list-group list-group-flush border rounded" style="max-height: 250px; overflow-y: auto;">
+                        {# JS will prepend items here #}
                     </ul>
                 </div>
             </div>
@@ -44,90 +64,133 @@
     </div>
 </div>
 
-{# QR Scanner Library #}
 <script src="https://unpkg.com/html5-qrcode"></script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
 <script>
     const html5QrCode = new Html5Qrcode("reader");
-    const resultContainer = document.getElementById('result');
+    const resultDiv = document.getElementById('result');
     const restartBtn = document.getElementById('restart-btn');
-    const historyList = document.getElementById('scan-history');
+    const scanHistory = document.getElementById('scan-history');
+    const checkinCountBadge = document.getElementById('checkin-count');
 
+    // 1) Configuration & State
+    const eventSlug = '{{ event.slug }}';
+    const statsUrl = '/events/api/' + eventSlug + '/checkin-stats';
+    const seenRefs = new Set(); // Prevents duplicate entries in the UI list
+    let isProcessing = false;
     const qrConfig = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-    const onScanSuccess = (decodedText, decodedResult) => {
+    // 2) Real-time stats polling
+    async function fetchStats() {
+        try {
+            const resp = await fetch(statsUrl);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.success) return;
+
+            // Update the aggregate counter
+            checkinCountBadge.innerText = `Checked in: ${data.total_checked_in} / ${data.total_registered}`;
+
+            // Sync the recent scans list
+            if (data.recent_checkins) {
+                data.recent_checkins.forEach(item => {
+                    if (!seenRefs.has(item.registration_ref)) {
+                        seenRefs.add(item.registration_ref);
+                        const time = item.checked_in_at ? new Date(item.checked_in_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item d-flex justify-content-between align-items-center small';
+                        li.setAttribute('data-ref', item.registration_ref);
+                        li.innerHTML = `
+                            <div>
+                                <strong>${escapeHtml(item.full_name)}</strong><br>
+                                <small class="text-muted">${escapeHtml(item.ticket_type)} - ${time}</small>
+                            </div>
+                            <span class="badge bg-success">VALID</span>`;
+                        scanHistory.prepend(li);
+                    }
+                });
+            }
+        } catch(e) {
+            console.warn("Stats sync failed:", e);
+        }
+    }
+
+    // 3) Scanning Logic
+    function onScanSuccess(decodedText) {
+        if (isProcessing) return;
+        isProcessing = true;
         html5QrCode.stop().then(() => {
             processCheckin(decodedText);
-        });
-    };
+        }).catch(() => { isProcessing = false; });
+    }
 
     function processCheckin(token) {
-        resultContainer.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Verifying...';
-        resultContainer.className = 'scanner-result result-info';
+        if (!token) return;
+        isProcessing = true;
+
+        resultDiv.className = "scanner-result p-3 mb-3 text-center border rounded bg-light";
+        resultDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Verifying...</p>';
 
         fetch("{{ url_for('events.api_checkin') }}", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': "{{ csrf_token() if csrf_token else '' }}"
             },
-            body: JSON.stringify({ qr_token: token })
+            body: JSON.stringify({ qr_token: token, event_id: "{{ event.id }}" })
         })
         .then(response => response.json())
         .then(data => {
+            restartBtn.classList.remove('d-none');
             if (data.success) {
-                resultContainer.innerHTML = `<i class="fas fa-check-circle me-2"></i> ${data.attendee.name} - Verified!`;
-                resultContainer.className = 'scanner-result result-success';
-                addToHistory(data.attendee, true);
+                resultDiv.className = "scanner-result p-3 mb-3 text-center border rounded bg-success text-white";
+                resultDiv.innerHTML = `<i class="fas fa-check-circle fs-2"></i><h4 class="mt-2">Valid</h4><p>${escapeHtml(data.attendee_name)}</p>`;
+                // Immediately refresh stats to show this check-in
+                fetchStats();
             } else {
-                resultContainer.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i> ${data.error}`;
-                resultContainer.className = 'scanner-result result-error';
-                addToHistory({name: 'Invalid Ticket'}, false);
+                resultDiv.className = "scanner-result p-3 mb-3 text-center border rounded bg-danger text-white";
+                resultDiv.innerHTML = `<i class="fas fa-times-circle fs-2"></i><h4 class="mt-2">Failed</h4><p>${escapeHtml(data.message) || 'Invalid Ticket'}</p>`;
             }
+        })
+        .catch(() => {
+            resultDiv.className = "scanner-result p-3 mb-3 text-center border rounded bg-warning text-dark";
+            resultDiv.innerHTML = `<i class="fas fa-exclamation-triangle fs-2"></i><p class="mt-2">Server Connection Error</p>`;
             restartBtn.classList.remove('d-none');
         })
-        .catch(err => {
-            resultContainer.innerHTML = `<i class="fas fa-wifi me-2"></i> Connection Error`;
-            resultContainer.className = 'scanner-result result-error';
-            restartBtn.classList.remove('d-none');
-        });
+        .finally(() => { isProcessing = false; });
     }
 
-    function addToHistory(attendee, success) {
-        const item = document.createElement('li');
-        item.className = 'scan-history-item';
-        item.innerHTML = `
-            <div>
-                <strong>${attendee.name}</strong><br>
-                <small class="text-muted">${new Date().toLocaleTimeString()}</small>
-            </div>
-            <span class="status-badge ${success ? 'success' : 'fail'}">${success ? 'VALID' : 'FAILED'}</span>
-        `;
-        historyList.prepend(item);
+    function escapeHtml(t) {
+        if(!t) return '';
+        const d = document.createElement('div');
+        d.appendChild(document.createTextNode(t));
+        return d.innerHTML;
     }
-
-    restartBtn.addEventListener('click', () => {
-        restartBtn.classList.add('d-none');
-        resultContainer.innerHTML = '<i class="fas fa-camera me-2"></i> Ready to scan...';
-        resultContainer.className = 'scanner-result result-info';
-        startScanner();
-    });
 
     function startScanner() {
         html5QrCode.start({ facingMode: "environment" }, qrConfig, onScanSuccess)
             .catch(err => {
-                if (err.name === 'NotAllowedError') {
-                    resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> Camera access denied. Please allow camera access to scan tickets.`;
-                    resultContainer.className = 'scanner-result result-error';
-                } else if (err.name === 'NotFoundError') {
-                    resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> No camera found on this device.`;
-                    resultContainer.className = 'scanner-result result-error';
-                } else {
-                    resultContainer.innerHTML = `<i class="fas fa-video-slash me-2"></i> Camera Error: ${err.message}`;
-                    resultContainer.className = 'scanner-result result-error';
-                }
+                resultDiv.innerHTML = `<i class="fas fa-video-slash fs-2 text-danger"></i><p class="mt-2">Camera Error: Please ensure permissions are granted.</p>`;
             });
     }
 
-    startScanner();
+    // 4) Event Listeners
+    restartBtn.addEventListener('click', () => {
+        restartBtn.classList.add('d-none');
+        resultDiv.className = "scanner-result p-3 mb-3 text-center border rounded bg-light";
+        resultDiv.innerHTML = '<i class="fas fa-camera fs-1 d-block mb-2 text-secondary"></i><span>Ready to scan</span>';
+        startScanner();
+    });
+
+    window.addEventListener('load', () => {
+        startScanner();
+        fetchStats(); // Initial load
+        setInterval(fetchStats, 10000); // Update every 10 seconds
+    });
 </script>
 {% endblock %}

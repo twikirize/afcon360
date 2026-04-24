@@ -831,6 +831,7 @@ class Booking(TransportBase):
         Index("ix_booking_status", "status", "created_at"),
         Index("ix_booking_dates", "pickup_time", "created_at"),
         Index("ix_booking_reference", "booking_reference", unique=True),
+        Index("ix_booking_event", "event_id", "created_at"),
 
         # Spatial reference indexes
         Index("ix_booking_pickup", "pickup_point"),
@@ -996,6 +997,10 @@ class Booking(TransportBase):
     group_booking_id = db.Column(db.String(50))
     group_leader_id = db.Column(db.BigInteger)
     group_size = db.Column(db.Integer, default=1)
+
+    # Event Orchestration
+    event_id = db.Column(db.BigInteger, nullable=True, index=True)
+    event_participation_id = db.Column(db.BigInteger, nullable=True, index=True)
 
     # Insurance
     insurance_covered = db.Column(db.Boolean, default=False)

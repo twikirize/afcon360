@@ -27,10 +27,10 @@
         </div>
         <div class="col-md-4 text-md-end">
             <div class="btn-group shadow-sm">
-                <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" class="btn btn-primary">
+                <a href="{{ url_for('events.edit_event', identifier=event.slug) }}" class="btn btn-primary">
                     <i class="fas fa-edit me-1"></i> Edit
                 </a>
-                <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-outline-secondary" target="_blank">
+                <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-outline-secondary" target="_blank">
                     <i class="fas fa-external-link-alt"></i>
                 </a>
             </div>
@@ -103,7 +103,7 @@
             <div class="dashboard-content-card shadow-sm h-100">
                 <div class="dashboard-content-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Activity</h5>
-                    <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="btn btn-sm btn-link">See All</a>
+                    <a href="{{ url_for('events.event_attendees', identifier=event.slug) }}" class="btn btn-sm btn-link">See All</a>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
@@ -144,6 +144,113 @@
         </div>
     </div>
 
+    {# Attendee Services Assignment #}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="dashboard-content-card shadow-sm">
+                <div class="dashboard-content-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-concierge-bell me-2"></i>
+                        Attendee Services
+                    </h5>
+                    <button class="btn btn-sm btn-primary" onclick="showAssignServiceModal()">
+                        <i class="fas fa-plus me-1"></i>Assign Service
+                    </button>
+                </div>
+                <div class="dashboard-content-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Attendee</th>
+                                    <th>Ticket</th>
+                                    <th>Accommodation</th>
+                                    <th>Transport</th>
+                                    <th style="width: 80px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendeeServicesList">
+                                {% if registrations %}
+                                    {% for reg in registrations %}
+                                    <tr id="service-row-{{ reg.id }}">
+                                        <td>
+                                            <div class="fw-bold">{{ reg.full_name }}</div>
+                                            <small class="text-muted">{{ reg.email }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info-subtle text-info border border-info-subtle">
+                                                {{ reg.ticket_type }}
+                                            </span>
+                                        </td>
+                                        <td id="accommodation-cell-{{ reg.id }}">
+                                            <span class="text-muted">—</span>
+                                        </td>
+                                        <td id="transport-cell-{{ reg.id }}">
+                                            <span class="text-muted">—</span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-secondary" 
+                                                        onclick="showBookingSelector({{ reg.id }}, '{{ reg.full_name|escape }}', 'accommodation')"
+                                                        title="Assign Accommodation">
+                                                    <i class="fas fa-hotel"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary" 
+                                                        onclick="showBookingSelector({{ reg.id }}, '{{ reg.full_name|escape }}', 'transport')"
+                                                        title="Assign Transport">
+                                                    <i class="fas fa-bus"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4 text-muted">
+                                            No registrations yet.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Assignment Modal #}
+    <div class="modal fade" id="assignServiceModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-link me-2"></i>
+                        Assign Service to <span id="attendeeName"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="selectedAttendeeId">
+                    <input type="hidden" id="selectedBookingType">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Select Booking</label>
+                        <div id="bookingsList" class="list-group" style="max-height: 400px; overflow-y: auto;">
+                            <div class="text-center py-4 text-muted">
+                                <div class="spinner-border spinner-border-sm me-2"></div>
+                                Loading available bookings...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {# Management Tools #}
     <div class="row">
         <div class="col-md-6 mb-4">
@@ -154,25 +261,25 @@
                 <div class="dashboard-content-body">
                     <div class="row g-3">
                         <div class="col-6">
-                            <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                            <a href="{{ url_for('events.event_attendees', identifier=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
                                 <i class="fas fa-users fa-2x mb-2 text-primary"></i>
                                 <div class="small fw-bold text-dark">Attendee List</div>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                            <a href="{{ url_for('events.event_staff', identifier=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
                                 <i class="fas fa-user-shield fa-2x mb-2 text-success"></i>
                                 <div class="small fw-bold text-dark">Staff Access</div>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="{{ url_for('events.event_scanner', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                            <a href="{{ url_for('events.event_scanner', identifier=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
                                 <i class="fas fa-qrcode fa-2x mb-2 text-warning"></i>
                                 <div class="small fw-bold text-dark">QR Scanner</div>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="{{ url_for('events.event_analytics', event_slug=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
+                            <a href="{{ url_for('events.event_analytics', identifier=event.slug) }}" class="card text-center text-decoration-none p-3 hover-shadow-sm border">
                                 <i class="fas fa-chart-bar fa-2x mb-2 text-danger"></i>
                                 <div class="small fw-bold text-dark">Full Analytics</div>
                             </a>
@@ -220,4 +327,163 @@
     transition: all 0.2s;
 }
 </style>
+
+<script>
+let assignModal;
+let currentEventSlug = '{{ event.slug }}';
+
+document.addEventListener('DOMContentLoaded', function() {
+    assignModal = new bootstrap.Modal(document.getElementById('assignServiceModal'));
+    loadExistingAssignments();
+});
+
+function loadExistingAssignments() {
+    fetch(`/events/${currentEventSlug}/assignments`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.assignments) {
+                data.assignments.forEach(assignment => {
+                    updateAssignmentDisplay(assignment);
+                });
+            }
+        })
+        .catch(error => console.error('Error loading assignments:', error));
+}
+
+function updateAssignmentDisplay(assignment) {
+    const attendeeId = assignment.attendee_id;
+    
+    if (assignment.accommodation_booking_id) {
+        const cell = document.getElementById(`accommodation-cell-${attendeeId}`);
+        if (cell) {
+            cell.innerHTML = `<span class="badge bg-success-subtle text-success border border-success-subtle">
+                <i class="fas fa-check-circle me-1"></i>Assigned
+            </span>`;
+        }
+    }
+    
+    if (assignment.transport_booking_id) {
+        const cell = document.getElementById(`transport-cell-${attendeeId}`);
+        if (cell) {
+            cell.innerHTML = `<span class="badge bg-success-subtle text-success border border-success-subtle">
+                <i class="fas fa-check-circle me-1"></i>Assigned
+            </span>`;
+        }
+    }
+}
+
+function showBookingSelector(attendeeId, attendeeName, bookingType) {
+    document.getElementById('selectedAttendeeId').value = attendeeId;
+    document.getElementById('selectedBookingType').value = bookingType;
+    document.getElementById('attendeeName').textContent = attendeeName;
+    
+    const bookingsList = document.getElementById('bookingsList');
+    bookingsList.innerHTML = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading available bookings...</div>';
+    
+    assignModal.show();
+    
+    fetch(`/events/${currentEventSlug}/available-bookings/${bookingType}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.bookings && data.bookings.length > 0) {
+                    renderBookingsList(data.bookings, bookingType);
+                } else {
+                    bookingsList.innerHTML = `
+                        <div class="text-center py-4 text-muted">
+                            <i class="fas fa-info-circle fa-2x mb-2 opacity-50"></i>
+                            <p>No available ${bookingType} bookings found in ${eventCity}.</p>
+                            <small>Bookings must be created first in the ${bookingType} module.</small>
+                        </div>
+                    `;
+                }
+            } else {
+                bookingsList.innerHTML = `<div class="alert alert-danger">${data.error || 'Failed to load bookings'}</div>`;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading bookings:', error);
+            bookingsList.innerHTML = '<div class="alert alert-danger">Failed to load bookings</div>';
+        });
+}
+
+function renderBookingsList(bookings, bookingType) {
+    const bookingsList = document.getElementById('bookingsList');
+    const icon = bookingType === 'accommodation' ? 'fa-hotel' : 'fa-bus';
+    
+    let html = '';
+    bookings.forEach(booking => {
+        html += `
+            <a href="#" class="list-group-item list-group-item-action" onclick="assignBooking(${booking.id}); return false;">
+                <div class="d-flex w-100 justify-content-between align-items-center">
+                    <div>
+                        <i class="fas ${icon} me-2 text-primary"></i>
+                        <strong>${escapeHtml(booking.name)}</strong>
+                        <div class="small text-muted mt-1">
+                            <i class="fas fa-user me-1"></i>${escapeHtml(booking.guest_name)}
+                        </div>
+                    </div>
+                    <span class="badge bg-primary rounded-pill">
+                        <i class="fas fa-arrow-right"></i> Select
+                    </span>
+                </div>
+            </a>
+        `;
+    });
+    
+    bookingsList.innerHTML = html;
+}
+
+function assignBooking(bookingId) {
+    const attendeeId = document.getElementById('selectedAttendeeId').value;
+    const bookingType = document.getElementById('selectedBookingType').value;
+    
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    
+    fetch(`/events/${currentEventSlug}/assign-service`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            attendee_id: parseInt(attendeeId),
+            booking_type: bookingType,
+            booking_id: bookingId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            assignModal.hide();
+            
+            // Update the display
+            const cell = document.getElementById(`${bookingType}-cell-${attendeeId}`);
+            if (cell) {
+                cell.innerHTML = `<span class="badge bg-success-subtle text-success border border-success-subtle">
+                    <i class="fas fa-check-circle me-1"></i>Assigned
+                </span>`;
+            }
+            
+            // Show success message
+            alert(`${bookingType.charAt(0).toUpperCase() + bookingType.slice(1)} assigned successfully!`);
+        } else {
+            alert('Error: ' + (data.error || 'Failed to assign service'));
+        }
+    })
+    .catch(error => {
+        console.error('Error assigning service:', error);
+        alert('Network error. Please try again.');
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Get event city from template
+const eventCity = '{{ event.city }}';
+</script>
 {% endblock %}

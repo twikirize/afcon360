@@ -1,4 +1,23 @@
 # app/models/base.py
+"""
+DEVELOPER SAFETY GUARD - SQLAlchemy Model Conventions
+
+RULES FOR THIS PROJECT:
+1. NEVER name @property the same as a Column field
+2. All computed fields must use suffix:
+   - _flag
+   - _status
+   - _computed
+3. SQLAlchemy Column names are DB source of truth
+4. Properties are derived only
+
+Violations can cause:
+- ORM mapping conflicts
+- Runtime attribute errors
+- Data integrity issues
+- Debugging nightmares
+"""
+
 from datetime import datetime
 from sqlalchemy import Column, BigInteger, DateTime, Boolean, event
 from sqlalchemy.sql import func

@@ -30,7 +30,7 @@
                             <i class="fas fa-user"></i> Organizer ID: {{ event.organizer_id }}
                         </p>
                         <div class="btn-group">
-                            <form method="POST" action="{{ url_for('events.admin_approve', event_slug=event.slug) }}" style="display: inline;">
+                            <form method="POST" action="{{ url_for('events.admin_approve', identifier=event.slug) }}" style="display: inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-success btn-sm">Approve</button>
                             </form>

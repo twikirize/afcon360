@@ -68,10 +68,6 @@
                         <hr class="my-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>Ticketing & Registration</h5>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="reg-required" name="registration_required" checked>
-                                <label class="form-check-label" for="reg-required">Registration Required</label>
-                            </div>
                         </div>
 
                         <div id="ticketing-section">
@@ -81,12 +77,12 @@
                                     <label class="form-check-label" for="type-free">Free Event</label>
                                 </div>
                                 <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="event_type" id="type-paid" value="paid">
-                                    <label class="form-check-label" for="type-paid">Paid Event</label>
+                                    <input class="form-check-input" type="radio" name="event_type" id="type-ticketed" value="ticketed">
+                                    <label class="form-check-label" for="type-ticketed">Ticketed Event</label>
                                 </div>
                             </div>
 
-                            <div id="ticket-tiers-container" class="d-none">
+                            <div id="ticketed-fields" class="d-none">
                                 <label class="form-label fw-bold">Define Ticket Tiers</label>
                                 <div id="ticket-rows">
                                     {# Initial Row #}
@@ -143,41 +139,24 @@
 
 <script>
     // Toggle Visibility
-    const regRequired = document.getElementById('reg-required');
-    const ticketingSection = document.getElementById('ticketing-section');
-    const typePaid = document.getElementById('type-paid');
     const typeFree = document.getElementById('type-free');
-    const tiersContainer = document.getElementById('ticket-tiers-container');
+    const typeTicketed = document.getElementById('type-ticketed');
+    const ticketedFields = document.getElementById('ticketed-fields');
 
     // Initialize visibility on page load
-    const isRegRequired = regRequired.checked;
-    ticketingSection.classList.toggle('d-none', !isRegRequired);
-    tiersContainer.classList.toggle('d-none', !typePaid.checked);
-    // Set initial disabled state
-    typePaid.disabled = !isRegRequired;
-    typeFree.disabled = !isRegRequired;
-    document.querySelectorAll('#ticket-tiers-container input').forEach(input => {
-        input.disabled = !isRegRequired;
-    });
+    ticketedFields.classList.toggle('d-none', !typeTicketed.checked);
 
-    regRequired.addEventListener('change', () => {
-        const isVisible = regRequired.checked;
-        ticketingSection.classList.toggle('d-none', !isVisible);
-        // Disable radio buttons when section is hidden
-        typePaid.disabled = !isVisible;
-        typeFree.disabled = !isVisible;
-        // Also disable all tier inputs
-        document.querySelectorAll('#ticket-tiers-container input').forEach(input => {
-            input.disabled = !isVisible;
+    const updateTicketedVisibility = () => {
+        ticketedFields.classList.toggle('d-none', !typeTicketed.checked);
+        // Enable/disable inputs inside ticketed-fields
+        const inputs = ticketedFields.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.disabled = !typeTicketed.checked;
         });
-    });
-
-    const updateTierVisibility = () => {
-        tiersContainer.classList.toggle('d-none', !typePaid.checked);
     };
 
-    typePaid.addEventListener('change', updateTierVisibility);
-    typeFree.addEventListener('change', updateTierVisibility);
+    typeFree.addEventListener('change', updateTicketedVisibility);
+    typeTicketed.addEventListener('change', updateTicketedVisibility);
 
     // Add/Remove Tiers
     document.getElementById('add-tier-btn').addEventListener('click', () => {
@@ -205,11 +184,11 @@
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
 
-        // Handle boolean switch
-        data.registration_required = regRequired.checked;
+        // Handle boolean switch – always true for now (registration is always required)
+        data.registration_required = true;
 
         // Collect Ticket Tiers
-        if (data.registration_required && data.event_type === 'paid') {
+        if (data.registration_required && (data.event_type === 'paid' || data.event_type === 'ticketed')) {
             const tierNames = formData.getAll('tier_name[]');
             const tierPrices = formData.getAll('tier_price[]');
             const tierCapacities = formData.getAll('tier_capacity[]');

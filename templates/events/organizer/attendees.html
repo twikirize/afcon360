@@ -22,7 +22,7 @@
                     <p class="lead">Manage event attendees and check-ins</p>
                 </div>
                 <div>
-                    <a href="{{ url_for('events.organizer_dashboard', event_slug=event.slug) }}"
+                    <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}"
                        class="btn btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Dashboard
                     </a>

@@ -200,3 +200,51 @@
     padding: var(--space-2) var(--space-3);
   }
 }
+
+/* Styling for Ticket Confirmation & Printability */
+
+.card-header i.fa-check-circle {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+code {
+    font-size: 1.1rem;
+    color: var(--brand-primary);
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.badge-success {
+    background-color: #28a745;
+    color: white;
+    padding: 0.4em 0.8em;
+}
+
+/* Print Optimization */
+@media print {
+    /* Hide everything except the ticket card */
+    nav, footer, .btn, .alert-warning, .alert-info, .site-header {
+        display: none !important;
+    }
+    
+    .container {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    
+    .card {
+        border: 1px solid #eee !important;
+        box-shadow: none !important;
+    }
+
+    .card-header {
+        background-color: #28a745 !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+    }
+}

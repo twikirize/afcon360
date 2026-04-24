@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scanner</title>
+    <style>
+        .stats-bar {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .stats-bar .stat {
+            font-weight: 600;
+        }
+        .recent-panel {
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .recent-panel h5 {
+            margin-bottom: 0.75rem;
+        }
+        .recent-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .recent-item:last-child {
+            border-bottom: none;
+        }
+        .recent-item .name {
+            font-weight: 500;
+        }
+        .recent-item .ticket {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .recent-item .time {
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+        #syncStatus {
+            display: inline-block;
+            margin-left: 0.5rem;
+            font-size: 0.85rem;
+            vertical-align: middle;
+        }
+        #syncStatus.synced {
+            color: #28a745;
+        }
+        #syncStatus.pending {
+            color: #ffc107;
+        }
+        #syncStatus.error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Scanner</h1>
+
+        <!-- Stats bar -->
+        <div class="stats-bar" id="statsBar">
+            <span class="stat">Checked In: <span id="checkedInCount">0</span> / <span id="totalRegistered">0</span></span>
+            <span class="text-muted">(refreshing every 10s)</span>
+            <span id="syncStatus" class="synced" title="Sync Status">&#10003; Synced</span>
+        </div>
+
+        <button id="restartBtn" class="btn btn-warning mt-3" onclick="restartScanner()"><i class="fas fa-redo"></i> Restart Scanner</button>
+
+        <hr class="my-4">
+
+        <!-- Manual entry -->
+        <div class="manual-entry-section">
+            <h5 class="mb-3"><i class="fas fa-keyboard"></i> Manual Entry</h5>
+            <div class="input-group mb-3">
+                <input type="text" id="manual-token" class="form-control" placeholder="Enter token manually" aria-label="Manual token entry">
+                <button class="btn btn-primary" onclick="processCheckin(document.getElementById('manual-token').value)">
+                    <i class="fas fa-check"></i> Manual Check-In
+                </button>
+            </div>
+        </div>
+
+        <!-- Recent check-ins panel -->
+        <div class="recent-panel">
+            <h5><i class="fas fa-history"></i> Recent Check-ins</h5>
+            <div id="recentCheckinsList">
+                <p class="text-muted">Loading…</p>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0"><i class="fas fa-history"></i> Recent Scans</h4>
+            <span class="badge bg-info fs-6" id="checkin-count">Checked in today: 0</span>
+        </div>
+    </div>
+
+    <script>
+        // Polling for stats and recent check-ins
+        const eventSlug = '{{ event.slug }}';
+        const statsUrl = `/events/api/${eventSlug}/checkin-stats`;
+
+        // Processing flag to prevent duplicate fetch calls from a single scan
+        let processing = false;
+
+        async function fetchStats() {
+            try {
+                const resp = await fetch(statsUrl);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data.success) return;
+
+                document.getElementById('checkedInCount').textContent = data.total_checked_in;
+                document.getElementById('totalRegistered').textContent = data.total_registered;
+
+                const listEl = document.getElementById('recentCheckinsList');
+                if (data.recent_checkins && data.recent_checkins.length > 0) {
+                    listEl.innerHTML = data.recent_checkins.map(item => {
+                        const time = item.checked_in_at ? new Date(item.checked_in_at).toLocaleTimeString() : '';
+                        return `<div class="recent-item">
+                            <span class="name">${escapeHtml(item.full_name)}</span>
+                            <span class="ticket">${escapeHtml(item.ticket_type)}</span>
+                            <span class="time">${time}</span>
+                        </div>`;
+                    }).join('');
+                } else {
+                    listEl.innerHTML = '<p class="text-muted">No check-ins yet.</p>';
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.innerHTML;
+        }
+
+        // Poll every 10 seconds
+        setInterval(fetchStats, 10000);
+        // Initial fetch
+        fetchStats();
+
+        // Sensory feedback function
+        function triggerFeedback(isSuccess) {
+            // Vibration
+            if (navigator.vibrate) {
+                if (isSuccess) {
+                    navigator.vibrate(100);
+                } else {
+                    navigator.vibrate([200, 100, 200]);
+                }
+            }
+
+            // Web Audio beep/buzz
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                if (isSuccess) {
+                    oscillator.frequency.value = 880; // high-pitch beep
+                } else {
+                    oscillator.frequency.value = 220; // low buzz
+                }
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.3;
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } catch (e) {
+                // Web Audio not available, ignore
+            }
+        }
+
+        // processCheckin – QR now contains just the token string directly
+        function processCheckin(token) {
+            if (!token || token.trim() === '') {
+                alert('Please enter a token or scan a QR code.');
+                return;
+            }
+            // Prevent duplicate processing
+            if (processing) {
+                console.warn('Already processing a check-in, ignoring duplicate call.');
+                return;
+            }
+            processing = true;
+
+            // The token is the qr_token itself (no parsing needed)
+            const qrToken = token.trim();
+
+            fetch('/events/api/checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ qr_token: qrToken })
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.success) {
+                    triggerFeedback(true);
+                    alert('Check-in successful: ' + (data.attendee ? data.attendee.full_name : ''));
+                    // Clear manual input if used
+                    document.getElementById('manual-token').value = '';
+                    // Refresh stats immediately
+                    fetchStats();
+                } else {
+                    triggerFeedback(false);
+                    alert('Check-in failed: ' + (data.error || 'Unknown error'));
+                }
+                processing = false;
+            })
+            .catch(err => {
+                triggerFeedback(false);
+                // Offline resilience: save token to localStorage queue
+                try {
+                    const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
+                    queue.push({ token: qrToken, timestamp: new Date().toISOString() });
+                    localStorage.setItem('offline_queue', JSON.stringify(queue));
+                    updateSyncStatus('pending');
+                } catch (e) {
+                    // localStorage not available, ignore
+                }
+                alert('Offline: Saved to device');
+                processing = false;
+            });
+        }
+
+        // Sync offline queue when connection returns
+        async function syncOfflineQueue() {
+            try {
+                const queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
+                if (queue.length === 0) {
+                    updateSyncStatus('synced');
+                    return;
+                }
+                updateSyncStatus('pending');
+                for (let i = 0; i < queue.length; i++) {
+                    const item = queue[i];
+                    try {
+                        const resp = await fetch('/events/api/checkin', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ qr_token: item.token })
+                        });
+                        const data = await resp.json();
+                        if (!data.success) {
+                            // If server rejects, we still remove from queue (already processed or invalid)
+                            console.warn('Sync failed for token', item.token, data.error);
+                        }
+                    } catch (e) {
+                        // Network still down, stop syncing
+                        updateSyncStatus('error');
+                        return;
+                    }
+                }
+                // All processed, clear queue
+                localStorage.removeItem('offline_queue');
+                updateSyncStatus('synced');
+                fetchStats();
+            } catch (e) {
+                updateSyncStatus('error');
+            }
+        }
+
+        function updateSyncStatus(status) {
+            const el = document.getElementById('syncStatus');
+            if (!el) return;
+            el.className = status;
+            if (status === 'synced') {
+                el.innerHTML = '&#10003; Synced';
+                el.title = 'Sync Status: All synced';
+            } else if (status === 'pending') {
+                el.innerHTML = '&#9888; Pending';
+                el.title = 'Sync Status: Items pending sync';
+            } else if (status === 'error') {
+                el.innerHTML = '&#10007; Error';
+                el.title = 'Sync Status: Sync error';
+            }
+        }
+
+        // Listen for online event to attempt sync
+        window.addEventListener('online', function() {
+            syncOfflineQueue();
+        });
+
+        // Keep existing camera scanning logic intact (placeholder)
+        function restartScanner() {
+            // existing restart logic
+        }
+    </script>
+</body>
+</html>

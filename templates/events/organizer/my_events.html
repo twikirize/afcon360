@@ -55,10 +55,10 @@
                     </div>
                     <div class="card-footer bg-white">
                         <div class="btn-group w-100">
-                            <a href="{{ url_for('events.landing', event_slug=event.slug) }}" class="btn btn-sm btn-outline-primary">
+                            <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-sm btn-outline-primary">
                                 View
                             </a>
-                            <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}" class="btn btn-sm btn-outline-secondary">
+                            <a href="{{ url_for('events.edit_event', identifier=event.slug) }}" class="btn btn-sm btn-outline-secondary">
                                 Edit
                             </a>
                             <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ event.slug }}">
@@ -73,7 +73,7 @@
             <div class="modal fade" id="deleteModal{{ event.slug }}" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
-                        <form method="POST" action="{{ url_for('events.delete_event', event_slug=event.slug) }}">
+                        <form method="POST" action="{{ url_for('events.delete_event', identifier=event.slug) }}">
                             <div class="modal-header">
                                 <h5 class="modal-title">Delete Event</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

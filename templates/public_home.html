@@ -42,7 +42,7 @@
   </div>
   <div class="trending-tags">
     <span class="trending-label">🔥 Trending:</span>
-    <a href="{{ url_for('events.landing', event_slug='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
+    <a href="{{ url_for('events.landing', identifier='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
     <a href="#" class="trending-tag">CHOGM 2026</a>
     <a href="#" class="trending-tag">World Cup Qualifiers</a>
     <a href="#" class="trending-tag">East Africa Crusade</a>
@@ -130,7 +130,7 @@
       <div class="featured-grid">
 
         <!-- AFCON 2027 -->
-        <a href="{{ url_for('events.landing', event_slug='afcon-2027') }}" class="feat-card afcon">
+        <a href="{{ url_for('events.landing', identifier='afcon-2027') }}" class="feat-card afcon">
           <div class="feat-card-bg"></div>
           <div class="feat-card-icon">🏟️</div>
           <div class="feat-card-overlay"></div>

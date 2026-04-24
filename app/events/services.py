@@ -17,6 +17,7 @@ import secrets
 from flask import url_for, current_app
 from app.extensions import db, redis_client
 from app.events.models import Event, TicketType, EventRegistration, EventRole, Waitlist
+from app.events.constants import EventStatus
 # Remove tight coupling to accommodation module
 # from app.accommodation.models.booking import AccommodationBooking
 # BookingContextType may not exist, handle gracefully
@@ -35,6 +36,31 @@ from decimal import Decimal
 
 # ✅ DEFINE LOGGER FIRST (before any try/except blocks that use it)
 logger = logging.getLogger(__name__)
+
+# Legacy data protection layer
+# Some database records may contain legacy status values not in EventStatus enum
+def sanitize_status(status_value):
+    """
+    Safely convert any status value to a valid EventStatus enum value.
+    Returns EventStatus.DRAFT.value for any unrecognized status.
+    """
+    from app.events.constants import EventStatus
+    
+    if status_value is None:
+        return EventStatus.DRAFT.value
+    
+    # If it's already an EventStatus enum member
+    if isinstance(status_value, EventStatus):
+        return status_value.value
+    
+    # Try to match with EventStatus enum values
+    status_str = str(status_value)
+    try:
+        return EventStatus(status_str).value
+    except ValueError:
+        # Log unrecognized status for monitoring
+        logger.warning(f"Legacy status value encountered: '{status_str}', defaulting to DRAFT")
+        return EventStatus.DRAFT.value
 
 # Service provider data will be fetched via signals or separate services
 # No direct imports to maintain loose coupling
@@ -87,10 +113,10 @@ class IdempotencyChecker:
         return result is not True  # True means key already existed
 
     @staticmethod
-    def generate_key(user_id: int, event_slug: str, data_hash: str) -> str:
+    def generate_key(user_id: int, identifier: str, data_hash: str) -> str:
         """Generate idempotency key from request parameters."""
         import hashlib
-        key_data = f"{user_id}:{event_slug}:{data_hash}"
+        key_data = f"{user_id}:{identifier}:{data_hash}"
         return hashlib.sha256(key_data.encode()).hexdigest()
 
 # Import wallet service at module level
@@ -129,10 +155,12 @@ class EventService:
         """Get all events, optionally filtered by status"""
         query = Event.query
         if status:
-            query = query.filter_by(status=status)
+            # Sanitize the status parameter to ensure it's a valid EventStatus value
+            sanitized_status = cls.sanitize_status(status)
+            query = query.filter_by(status=sanitized_status)
         else:
-            # Only show active events to public (not pending/rejected)
-            query = query.filter_by(status='active')
+            # Only show published events to public (not pending/rejected)
+            query = query.filter_by(status=EventStatus.PUBLISHED)
         events = query.order_by(Event.start_date).all()
         return [cls._event_to_dict(event) for event in events]
 
@@ -143,11 +171,106 @@ class EventService:
         return cls._event_to_dict(event) if event else None
 
     @classmethod
+    def change_event_status(cls, event_id: str, new_status: str, user_id: int, 
+                           reason: str = None, ip_address: str = None, 
+                           user_agent: str = None) -> Tuple[bool, Optional[str]]:
+        """
+        Centralized function to change event status with validation.
+        Returns: (success, error_message)
+        """
+        from app.events.constants import EventStatus
+        from app.events.models import EventModerationLog
+        
+        event = cls.get_event_model(event_id)
+        if not event:
+            return False, "Event not found"
+        
+        # Convert string to EventStatus enum if needed
+        if isinstance(new_status, str):
+            try:
+                new_status = EventStatus(new_status)
+            except ValueError:
+                return False, f"Invalid status: {new_status}"
+        
+        # Define allowed state transitions
+        ALLOWED_TRANSITIONS = {
+            EventStatus.PENDING_APPROVAL: [EventStatus.APPROVED, EventStatus.REJECTED],
+            EventStatus.APPROVED: [EventStatus.PUBLISHED],
+            EventStatus.PUBLISHED: [EventStatus.SUSPENDED, EventStatus.PAUSED, EventStatus.CANCELLED],
+            EventStatus.SUSPENDED: [EventStatus.PUBLISHED],
+            EventStatus.PAUSED: [EventStatus.PUBLISHED],
+            EventStatus.CANCELLED: [EventStatus.ARCHIVED],
+            EventStatus.REJECTED: [EventStatus.DELETED],
+            EventStatus.DRAFT: [EventStatus.PENDING_APPROVAL, EventStatus.DELETED],
+            EventStatus.ARCHIVED: [EventStatus.DELETED],
+        }
+        
+        # Check if transition is allowed
+        if event.status not in ALLOWED_TRANSITIONS:
+            return False, f"Cannot transition from status {event.status.value}"
+        
+        if new_status not in ALLOWED_TRANSITIONS[event.status]:
+            return False, f"Cannot transition from {event.status.value} to {new_status.value}"
+        
+        # Map status changes to action names for logging
+        ACTION_MAP = {
+            (EventStatus.PENDING_APPROVAL, EventStatus.APPROVED): 'approve',
+            (EventStatus.PENDING_APPROVAL, EventStatus.REJECTED): 'reject',
+            (EventStatus.PUBLISHED, EventStatus.SUSPENDED): 'suspend',
+            (EventStatus.SUSPENDED, EventStatus.PUBLISHED): 'reactivate',
+            (EventStatus.PUBLISHED, EventStatus.PAUSED): 'pause',
+            (EventStatus.PAUSED, EventStatus.PUBLISHED): 'resume',
+            (EventStatus.DRAFT, EventStatus.DELETED): 'delete',
+            (EventStatus.REJECTED, EventStatus.DELETED): 'delete',
+            (EventStatus.ARCHIVED, EventStatus.DELETED): 'delete',
+            (EventStatus.APPROVED, EventStatus.PUBLISHED): 'publish',
+            (EventStatus.PUBLISHED, EventStatus.CANCELLED): 'cancel',
+            (EventStatus.CANCELLED, EventStatus.ARCHIVED): 'archive',
+        }
+        
+        action = ACTION_MAP.get((event.status, new_status), 'status_change')
+        
+        # Update event status
+        old_status = event.status
+        event.status = new_status
+        
+        # Update timestamps based on status
+        if new_status == EventStatus.APPROVED:
+            event.approved_at = datetime.utcnow()
+            event.approved_by_id = user_id
+        elif new_status == EventStatus.REJECTED:
+            event.rejected_at = datetime.utcnow()
+            event.rejection_reason = reason
+        
+        # Create moderation log entry
+        log_entry = EventModerationLog(
+            event_id=event.id,
+            user_id=user_id,
+            action=action,
+            from_status=old_status,
+            to_status=new_status,
+            reason=reason,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        db.session.add(log_entry)
+        
+        try:
+            db.session.commit()
+            logger.info(f"Event {event.slug} status changed from {old_status.value} to {new_status.value} by user {user_id}")
+            return True, None
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to change event status: {e}")
+            return False, str(e)
+
+    @classmethod
     def create_event(cls, data: Dict, user_id: int, creator_type: str = 'individual', organization_id: int = None) -> Tuple[Optional[Dict], Optional[str]]:
         """Create a new event with authorization checks"""
         try:
             from app.auth.helpers import has_global_role, has_org_role
             from app.identity.models.user import User
+            from app.events.models import EventStatus
             import uuid
 
             user = User.query.get(user_id)
@@ -182,14 +305,14 @@ class EventService:
             else:
                 organizer_id = user_id
 
-            # Determine status based on permissions
-            status = 'pending'
+            # All new events default to pending_approval
+            status = EventStatus.PENDING_APPROVAL
             approved_at = None
             approved_by_id = None
 
             # Auto-approve if event_manager creates
             if has_global_role(user, 'event_manager'):
-                status = 'active'
+                status = EventStatus.APPROVED
                 approved_at = datetime.utcnow()
                 approved_by_id = user_id
 
@@ -241,7 +364,7 @@ class EventService:
                         is_active=True
                     )
                     db.session.add(ticket)
-                elif event_type == "paid" and data.get("ticket_tiers"):
+                elif event_type in ("paid", "ticketed") and data.get("ticket_tiers"):
                     # Create multiple ticket types from form data
                     for tier_data in data["ticket_tiers"]:
                         ticket = TicketType(
@@ -254,7 +377,7 @@ class EventService:
                         db.session.add(ticket)
                 else:
                     db.session.rollback()
-                    return None, "Invalid ticket configuration for paid event."
+                    return None, "Invalid ticket configuration for ticketed event."
 
             db.session.commit()
 
@@ -328,7 +451,7 @@ class EventService:
         event.is_deleted = True
         event.deleted_at = func.now()
         event.deleted_by_id = user_id
-        event.status = "archived"
+        event.status = EventStatus.ARCHIVED
 
         db.session.commit()
         return True, None
@@ -341,16 +464,16 @@ class EventService:
 
     @classmethod
     def get_featured_event(cls) -> Optional[Dict]:
-        """Get the featured event (only active)"""
+        """Get the featured event (only published)"""
         # Try featured flag first
-        featured = Event.query.filter_by(featured=True, status='active').first()
+        featured = Event.query.filter_by(featured=True, status=EventStatus.PUBLISHED).first()
         if featured:
             return cls._event_to_dict(featured)
 
         # Otherwise get next upcoming event
         from datetime import date
         upcoming = Event.query.filter(
-            Event.status == 'active',
+            Event.status == EventStatus.PUBLISHED,
             Event.start_date >= date.today()
         ).order_by(Event.start_date).first()
 
@@ -358,10 +481,10 @@ class EventService:
 
     @classmethod
     def get_upcoming_events(cls, limit: int = 3, exclude_featured: bool = False) -> List[Dict]:
-        """Get upcoming events (only active ones)"""
+        """Get upcoming events (only published ones)"""
         from datetime import date
         query = Event.query.filter(
-            Event.status == 'active',
+            Event.status == EventStatus.PUBLISHED,
             Event.start_date >= date.today()
         ).order_by(Event.start_date)
 
@@ -407,7 +530,7 @@ class EventService:
         if not event:
             return False, "Event not found"
 
-        event.status = "active"
+        event.status = EventStatus.PUBLISHED
         event.approved_at = datetime.utcnow()
         event.approved_by_id = admin_id
 
@@ -426,7 +549,7 @@ class EventService:
         if not event:
             return False, "Event not found"
 
-        event.status = "rejected"
+        event.status = EventStatus.REJECTED
         event.rejected_at = datetime.utcnow()
         event.rejection_reason = reason
 
@@ -445,6 +568,11 @@ class EventService:
         website = event.website
         if website == "":
             website = None
+
+        # Apply status sanitizer at DB read boundary
+        # This ensures legacy status values are converted to valid EventStatus values
+        status_value = event.status.value if event.status else None
+        sanitized_status = cls.sanitize_status(status_value) if status_value else None
 
         return {
             # Core fields
@@ -470,8 +598,8 @@ class EventService:
             "registration_fee": float(event.registration_fee) if event.registration_fee else 0, # Still exists in model, but primary fee is on ticket_type
             "currency": event.currency,
 
-            # Status
-            "status": event.status,
+            # Status - use sanitized value
+            "status": sanitized_status,
             "featured": event.featured,
 
             # Ownership
@@ -545,7 +673,7 @@ class EventService:
 
     @classmethod
     @with_transaction(isolation_level="REPEATABLE_READ")
-    def register_for_event_optimistic(cls, event_slug: str, user_id: int, data: Dict,
+    def register_for_event_optimistic(cls, identifier: str, user_id: int, data: Dict,
                                      idempotency_key: str = None, max_retries: int = 3) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
         """
@@ -562,7 +690,7 @@ class EventService:
                 logger.warning(f"Duplicate registration attempt detected: {idempotency_key}")
                 # Try to find existing registration
                 # First get the event to get its ID
-                event = Event.query.filter_by(slug=event_slug).first()
+                event = Event.query.filter_by(slug=identifier).first()
                 if event:
                     existing_reg = EventRegistration.query.filter_by(
                         event_id=event.id,
@@ -578,12 +706,12 @@ class EventService:
         # Generate idempotency key if not provided
         if not idempotency_key:
             data_hash = hashlib.sha256(str(sorted(data.items())).encode()).hexdigest()
-            idempotency_key = IdempotencyChecker.generate_key(user_id, event_slug, data_hash)
+            idempotency_key = IdempotencyChecker.generate_key(user_id, identifier, data_hash)
 
         for attempt in range(max_retries):
             try:
                     # 1. Fetch event (no lock needed for optimistic approach)
-                    event = Event.query.filter_by(slug=event_slug).first()
+                    event = Event.query.filter_by(slug=identifier).first()
                     if not event:
                         return None, None, "Event not found"
 
@@ -611,7 +739,7 @@ class EventService:
                     discount_amount = Decimal("0.00")
                     discount_code = data.get("discount_code")
                     if discount_code:
-                        discount, error = cls.validate_discount_code(event_slug, discount_code, ticket_type_id)
+                        discount, error = cls.validate_discount_code(identifier, discount_code, ticket_type_id)
                         if error:
                             return None, None, f"Discount code error: {error}"
                         if discount:
@@ -666,12 +794,12 @@ class EventService:
                         return None, None, "You are already registered for this event"
 
                     # 6. Create registration
-                    # Get the next sequence number safely
+                    # Get the next sequence number safely using count
                     from sqlalchemy import func
-                    max_id = db.session.query(func.max(EventRegistration.id)).filter_by(
+                    count = db.session.query(func.count(EventRegistration.id)).filter_by(
                         event_id=event.id
                     ).scalar()
-                    sequence = (max_id if max_id else 0) + 1
+                    sequence = (count if count else 0) + 1
 
                     # Prepare registration data
                     registration_data = {
@@ -755,13 +883,13 @@ class EventService:
 
     @classmethod
     @with_transaction(isolation_level="REPEATABLE_READ")
-    def add_to_waitlist(cls, event_slug: str, user_id: int, data: Dict) -> Tuple[Optional[Dict], Optional[str]]:
+    def add_to_waitlist(cls, identifier: str, user_id: int, data: Dict) -> Tuple[Optional[Dict], Optional[str]]:
         """
         Add user to waitlist when event is sold out.
         Returns: (waitlist_entry_dict, error_message)
         """
         try:
-            event = Event.query.filter_by(slug=event_slug, is_deleted=False).first()
+            event = Event.query.filter_by(slug=identifier, is_deleted=False).first()
             if not event:
                 return None, "Event not found"
 
@@ -810,7 +938,7 @@ class EventService:
             db.session.add(waitlist_entry)
             db.session.flush()
 
-            logger.info(f"User {user_id} added to waitlist for event {event_slug} at position {waitlist_entry.position}")
+            logger.info(f"User {user_id} added to waitlist for event {identifier} at position {waitlist_entry.position}")
 
             return cls._waitlist_to_dict(waitlist_entry), None
 
@@ -836,7 +964,7 @@ class EventService:
         }
 
     @classmethod
-    def register_for_event_with_payment(cls, event_slug: str, user_id: int, data: Dict) -> Tuple[
+    def register_for_event_with_payment(cls, identifier: str, user_id: int, data: Dict) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
         """
         Register a user for an event with wallet payment processing.
@@ -848,7 +976,7 @@ class EventService:
             # Start transaction
             with db.session.begin_nested():
                 # Get event with lock
-                event = Event.query.with_for_update().filter_by(slug=event_slug).first()
+                event = Event.query.with_for_update().filter_by(slug=identifier).first()
                 if not event:
                     return None, None, "Event not found"
 
@@ -917,9 +1045,9 @@ class EventService:
                                 user_id=user_id,
                                 amount=Decimal(str(fee)),
                                 currency=event.currency,
-                                reference=f"EVT-REG-{event_slug}-{user_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
                                 description=f"Registration for {event.name}",
-                                metadata={"event_slug": event_slug, "event_name": event.name}
+                                metadata={"event_slug": identifier, "event_name": event.name}
                             )
                         else:
                             # Try to instantiate
@@ -928,9 +1056,9 @@ class EventService:
                                 user_id=user_id,
                                 amount=Decimal(str(fee)),
                                 currency=event.currency,
-                                reference=f"EVT-REG-{event_slug}-{user_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
                                 description=f"Registration for {event.name}",
-                                metadata={"event_slug": event_slug, "event_name": event.name}
+                                metadata={"event_slug": identifier, "event_name": event.name}
                             )
 
                         if not success:
@@ -985,7 +1113,7 @@ class EventService:
                 # Generate QR code
                 qr_code = cls._generate_qr_code(registration.qr_token, registration.registration_ref)
 
-                logger.info(f"User {user_id} registered for {event_slug} with payment {payment_status}")
+                logger.info(f"User {user_id} registered for {identifier} with payment {payment_status}")
 
                 # Send signal for loose coupling
                 if SIGNALS_AVAILABLE:
@@ -1013,12 +1141,41 @@ class EventService:
         Check in an attendee using QR token.
         Returns: (success, message, registration_dict)
         """
-        from datetime import datetime
+        from datetime import datetime, date, timedelta
+        import hmac
+        import hashlib
+        import os
 
-        registration = EventRegistration.query.filter_by(qr_token=qr_token).first()
+        # --- HMAC verification ---
+        # Parse the token: payload:signature
+        parts = qr_token.rsplit(':', 1)
+        if len(parts) != 2:
+            return False, "Invalid or tampered QR code", None
+        payload, provided_sig = parts[0], parts[1]
+
+        key = os.environ.get('QR_SECRET_KEY', 'dev-secret-change-in-production').encode()
+        expected_sig = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()[:16]
+
+        if not hmac.compare_digest(provided_sig, expected_sig):
+            return False, "Invalid or tampered QR code", None
+
+        # --- Expiry check ---
+        # Extract registration_ref from payload (format: AFCON360:reg_ref:sequence)
+        payload_parts = payload.split(':')
+        if len(payload_parts) < 2:
+            return False, "Invalid QR code format", None
+        reg_ref_from_payload = payload_parts[1]
+
+        registration = EventRegistration.query.filter_by(registration_ref=reg_ref_from_payload).first()
 
         if not registration:
             return False, "Invalid QR code", None
+
+        # Expiry check based on event end_date
+        event = Event.query.get(registration.event_id)
+        if event and event.end_date:
+            if date.today() > event.end_date + timedelta(days=1):
+                return False, "This ticket has expired", None
 
         if registration.status == "checked_in":
             return False, f"Already checked in at {registration.checked_in_at.strftime('%Y-%m-%d %H:%M')}", None
@@ -1039,8 +1196,15 @@ class EventService:
         result = {
             "name": registration.full_name,
             "ticket_type": registration.ticket_type,
+            "ticket_type_id": registration.ticket_type_id,
             "event_name": event.name if event else "Unknown",
-            "registration_ref": registration.registration_ref
+            "event_start_date": event.start_date.isoformat() if event and event.start_date else None,
+            "event_venue": event.venue if event else None,
+            "registration_ref": registration.registration_ref,
+            "photo_url": None,
+            "nationality": registration.nationality,
+            "phone": registration.phone,
+            "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
         }
 
         logger.info(f"Checked in: {registration.registration_ref} by user {checked_by_user_id}")
@@ -1050,17 +1214,15 @@ class EventService:
     @classmethod
     def _generate_qr_code(cls, qr_token: str, registration_ref: str) -> str:
         """Generate QR code as base64 string"""
-        # Create QR code data (URL to check-in endpoint)
-        # For production, use absolute URL
-        checkin_url = url_for('events.api_checkin', _external=True) + f"?token={qr_token}"
-
+        # Encode only the qr_token string itself (signed payload)
+        # This makes QR work offline and hides server structure
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
             box_size=10,
             border=4,
         )
-        qr.add_data(checkin_url)
+        qr.add_data(qr_token)
         qr.make(fit=True)
 
         img = qr.make_image(fill_color="black", back_color="white")
@@ -1076,6 +1238,15 @@ class EventService:
     def _registration_to_dict(cls, registration) -> Dict:
         """Convert Registration model to dict"""
         event = Event.query.get(registration.event_id)
+
+        # Always provide an event dict (never None) so templates can safely access .name etc.
+        event_dict = {
+            "id": event.public_id if event else None,
+            "slug": event.slug if event else None,
+            "name": event.name if event else None,
+            "start_date": event.start_date.isoformat() if event and event.start_date else None,
+            "end_date": event.end_date.isoformat() if event and event.end_date else None,
+        }
 
         result = {
             "id": registration.id,
@@ -1093,20 +1264,64 @@ class EventService:
             "registration_fee": float(registration.registration_fee),
             "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
             "created_at": registration.created_at.isoformat() if registration.created_at else None,
-            "event": {
-                "id": event.public_id if event else None,
-                "slug": event.slug if event else None,
-                "name": event.name if event else None,
-                "start_date": event.start_date.isoformat() if event and event.start_date else None,
-                "end_date": event.end_date.isoformat() if event and event.end_date else None,
-            } if event else None,
+            "event": event_dict,
         }
+
+        # Ensure ticket_number is always present (fallback to registration_ref if missing)
+        if not result.get('ticket_number'):
+            result['ticket_number'] = result['registration_ref']
+
+        # Do NOT expose full qr_token via API — show only first 8 chars for debugging
+        if result.get('qr_token'):
+            result['qr_token_hint'] = result['qr_token'][:8] + '...'
+            del result['qr_token']
+        else:
+            result['qr_token_hint'] = None
+
+        # Ensure status is always present
+        if not result.get('status'):
+            result['status'] = 'confirmed'
+
+        # Ensure payment_status is always present
+        if not result.get('payment_status'):
+            result['payment_status'] = 'free'
+
+        # Ensure registration_fee is always present
+        if not result.get('registration_fee'):
+            result['registration_fee'] = 0.0
+
+        # Ensure ticket_type is always present
+        if not result.get('ticket_type'):
+            result['ticket_type'] = 'General Admission'
+
+        # Ensure event dict is always present
+        if not result.get('event'):
+            result['event'] = {
+                "id": None,
+                "slug": None,
+                "name": "Unknown Event",
+                "start_date": None,
+                "end_date": None
+            }
 
         # Add discount fields if they exist
         if hasattr(registration, 'discount_code_applied'):
             result['discount_code_applied'] = registration.discount_code_applied
         if hasattr(registration, 'discount_amount'):
             result['discount_amount'] = float(registration.discount_amount) if registration.discount_amount else 0.0
+
+        # Add assignment data if it exists
+        try:
+            from app.events.models import EventAssignment
+            assignment = EventAssignment.query.filter_by(
+                event_id=registration.event_id,
+                attendee_id=registration.user_id
+            ).first()
+            
+            if assignment:
+                result['assignment'] = cls._assignment_to_dict(assignment)
+        except Exception as e:
+            logger.warning(f"Could not load assignment for registration {registration.id}: {e}")
 
         return result
 
@@ -1154,9 +1369,9 @@ class EventService:
         return [cls._event_to_dict(event) for event in unique_events]
 
     @classmethod
-    def add_ticket_type(cls, event_slug: str, data: Dict, user_id: int) -> Tuple[Optional[Dict], Optional[str]]:
+    def add_ticket_type(cls, identifier: str, data: Dict, user_id: int) -> Tuple[Optional[Dict], Optional[str]]:
         """Add a new ticket type to an event"""
-        event = cls.get_event_model(event_slug)
+        event = cls.get_event_model(identifier)
         if not event:
             return None, "Event not found"
 
@@ -1383,11 +1598,11 @@ class EventService:
 
         # Get events in service cities
         if service_cities:
-            all_active_events = Event.query.filter(
-                Event.status == 'active',
+            all_published_events = Event.query.filter(
+                Event.status == EventStatus.PUBLISHED,
                 Event.city.in_(list(service_cities))
             ).order_by(Event.start_date).limit(5).all()
-            dashboard_data['relevant_events'] = [cls._event_to_dict(e) for e in all_active_events]
+            dashboard_data['relevant_events'] = [cls._event_to_dict(e) for e in all_published_events]
 
         # Update counts
         dashboard_data['property_count'] = len(dashboard_data['user_properties'])
@@ -1396,7 +1611,7 @@ class EventService:
         return dashboard_data
 
     @classmethod
-    def register_for_event(cls, event_slug: str, user_id: int, data: Dict) -> Tuple[
+    def register_for_event(cls, identifier: str, user_id: int, data: Dict) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
         """
         Register a user for an event with thread-safe capacity check.
@@ -1408,13 +1623,13 @@ class EventService:
         use_optimistic = True  # Set based on configuration or event size
 
         if use_optimistic:
-            return cls.register_for_event_optimistic(event_slug, user_id, data)
+            return cls.register_for_event_optimistic(identifier, user_id, data)
         else:
             # Fall back to pessimistic locking for smaller events
-            return cls._register_for_event_pessimistic(event_slug, user_id, data)
+            return cls._register_for_event_pessimistic(identifier, user_id, data)
 
     @classmethod
-    def _register_for_event_pessimistic(cls, event_slug: str, user_id: int, data: Dict) -> Tuple[
+    def _register_for_event_pessimistic(cls, identifier: str, user_id: int, data: Dict) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
         """
         Fallback registration method using pessimistic locking.
@@ -1425,7 +1640,7 @@ class EventService:
             # Start a transaction
             with db.session.begin_nested():
                 # 1. Fetch event with lock
-                event = Event.query.with_for_update().filter_by(slug=event_slug).first()
+                event = Event.query.with_for_update().filter_by(slug=identifier).first()
                 if not event:
                     return None, None, "Event not found"
 
@@ -1475,10 +1690,12 @@ class EventService:
                     return None, None, "You are already registered for this event"
 
                 # 5. Create registration
-                last_reg = EventRegistration.query.filter_by(event_id=event.id).order_by(
-                    EventRegistration.id.desc()
-                ).first()
-                sequence = (last_reg.id if last_reg else 0) + 1
+                # Get the next sequence number safely using count
+                from sqlalchemy import func
+                count = db.session.query(func.count(EventRegistration.id)).filter_by(
+                    event_id=event.id
+                ).scalar()
+                sequence = (count if count else 0) + 1
 
                 registration = EventRegistration(
                     event_id=event.id,
@@ -1548,37 +1765,20 @@ class EventService:
             return None, None, "An unexpected error occurred during registration"
 
     @classmethod
-    def validate_discount_code(cls, event_slug: str, code: str, ticket_type_id: Optional[int] = None) -> Tuple[Optional[Decimal], Optional[str]]:
+    def validate_discount_code(cls, identifier: str, code: str, ticket_type_id: Optional[int] = None) -> Tuple[Optional[Decimal], Optional[str]]:
         """
-        Validate a discount code for an event.
+        Validate a discount code for an event using the DiscountCode model.
 
         Returns: (discount_amount, error_message)
-        - discount_amount: The amount to subtract from the ticket price (could be fixed amount or percentage)
+        - discount_amount: The amount to subtract from the ticket price
         - error_message: None if valid, otherwise error description
-
-        For now, this is a placeholder implementation that can be extended with a proper DiscountCode model.
         """
         from decimal import Decimal
-        from datetime import datetime, date
+        from datetime import datetime
 
-        # Try to import DiscountCode model if it exists
-        try:
-            from app.events.models import DiscountCode
-            discount_model = DiscountCode
-        except ImportError:
-            # Fallback to a simple in-memory or configuration-based approach
-            discount_model = None
-
-        event = cls.get_event_model(event_slug)
+        event = cls.get_event_model(identifier)
         if not event:
             return None, "Event not found"
-
-        # For now, implement a simple hardcoded validation
-        # In production, this should query the database for active discount codes
-        # Check if code is valid and applicable to the event
-
-        # Example: Check against a system setting or hardcoded codes
-        # This is a placeholder - replace with actual database queries
 
         # Get ticket type if specified
         ticket_type = None
@@ -1587,86 +1787,372 @@ class EventService:
             if not ticket_type:
                 return None, "Invalid ticket type"
 
-        # Simple hardcoded discount codes for demonstration
-        # In reality, these would come from a database table
-        valid_codes = {
-            "EARLYBIRD": {
-                "discount_amount": Decimal("10.00"),  # Fixed amount discount
-                "discount_type": "fixed",
-                "min_ticket_price": Decimal("50.00"),  # Minimum ticket price to apply
-                "max_uses": 100,
-                "valid_until": datetime(2026, 12, 31).date(),
-                "applicable_ticket_types": None,  # All ticket types
-            },
-            "SAVE20": {
-                "discount_amount": Decimal("20.00"),  # 20% discount
-                "discount_type": "percentage",
-                "percentage": 20,
-                "min_ticket_price": Decimal("0.00"),
-                "max_uses": 50,
-                "valid_until": datetime(2026, 6, 30).date(),
-                "applicable_ticket_types": [1, 2, 3],  # Specific ticket type IDs
-            },
-            "FREE": {
-                "discount_amount": Decimal("100.00"),  # 100% discount (free ticket)
-                "discount_type": "percentage",
-                "percentage": 100,
-                "min_ticket_price": Decimal("0.00"),
-                "max_uses": 10,
-                "valid_until": datetime(2026, 3, 31).date(),
-                "applicable_ticket_types": None,
-            }
-        }
+        # Look up the code in the database
+        from app.events.models import DiscountCode
+        discount = DiscountCode.query.filter_by(
+            event_id=event.id,
+            code=code.strip().upper(),
+            is_active=True
+        ).first()
 
-        code_upper = code.strip().upper()
-        if code_upper not in valid_codes:
+        if not discount:
             return None, "Invalid discount code"
 
-        discount_info = valid_codes[code_upper]
+        # Check if discount code is valid
+        if not discount.is_valid():
+            return None, "Discount code has expired or reached its usage limit"
 
-        # Check expiration
-        if discount_info["valid_until"] < date.today():
-            return None, "Discount code has expired"
-
-        # Check if applicable to ticket type
-        if (discount_info["applicable_ticket_types"] is not None and
-            ticket_type and
-            ticket_type.id not in discount_info["applicable_ticket_types"]):
-            return None, "Discount code not applicable to selected ticket type"
-
-        # Calculate discount amount based on ticket price
+        # Calculate discount amount
         if ticket_type:
             ticket_price = Decimal(str(ticket_type.price))
         else:
-            # If no specific ticket type, we'll calculate discount later when ticket is selected
             ticket_price = Decimal("0.00")
 
-        # Check minimum ticket price requirement
-        if ticket_price < discount_info["min_ticket_price"]:
-            return None, f"Discount requires minimum ticket price of {discount_info['min_ticket_price']}"
+        discount_amount = discount.calculate_discount(ticket_price)
 
-        # Calculate discount amount
-        if discount_info["discount_type"] == "fixed":
-            discount_amount = discount_info["discount_amount"]
-        elif discount_info["discount_type"] == "percentage":
-            percentage = discount_info["percentage"]
-            discount_amount = (ticket_price * Decimal(percentage) / Decimal(100)).quantize(Decimal("0.01"))
-        else:
-            return None, "Invalid discount type"
+        # Increment usage count
+        discount.used_count = (discount.used_count or 0) + 1
+        db.session.add(discount)
+        # Don't commit here — let the caller's transaction handle it
 
-        # Ensure discount doesn't exceed ticket price
-        if discount_amount > ticket_price:
-            discount_amount = ticket_price
-
-        # Ensure discount amount is not negative
-        if discount_amount < Decimal("0.00"):
-            discount_amount = Decimal("0.00")
-
-        # For now, we're not tracking usage counts - in production, you'd update usage count
-        # and check against max_uses
-
-        logger.info(f"Discount code '{code}' validated for event '{event_slug}': {discount_amount}")
+        logger.info(
+            f"Discount code '{code}' validated for event '{identifier}': "
+            f"{discount_amount}"
+        )
         return discount_amount, None
+
+    @classmethod
+    def create_participation(cls, user_id: int, identifier: str, role: str = 'attendee', 
+                           control_mode: str = 'self_managed') -> Tuple[Optional[Dict], Optional[str]]:
+        """
+        Create a new event participation record.
+        Returns: (participation_dict, error_message)
+        """
+        try:
+            from app.events.models import Event, EventParticipation, ParticipationRole, ParticipationControlMode
+            
+            event = Event.query.filter_by(slug=identifier).first()
+            if not event:
+                return None, "Event not found"
+            
+            # Check if participation already exists
+            existing = EventParticipation.query.filter_by(
+                event_id=event.id,
+                user_id=user_id
+            ).first()
+            
+            if existing:
+                return cls._participation_to_dict(existing), "Participation already exists"
+            
+            # Create new participation
+            participation = EventParticipation(
+                event_id=event.id,
+                user_id=user_id,
+                role=ParticipationRole(role),
+                control_mode=ParticipationControlMode(control_mode),
+                status='confirmed'
+            )
+            
+            db.session.add(participation)
+            db.session.commit()
+            
+            # Log audit event
+            try:
+                from app.audit.comprehensive_audit import AuditService
+                AuditService.data_change(
+                    entity_type="event_participation",
+                    entity_id=str(participation.id),
+                    operation="create",
+                    old_value=None,
+                    new_value={
+                        "event_id": event.id,
+                        "user_id": user_id,
+                        "role": role,
+                        "control_mode": control_mode
+                    },
+                    changed_by=user_id,
+                    extra_data={"event_slug": identifier}
+                )
+            except ImportError:
+                logger.warning("AuditService not available, skipping audit log")
+            
+            logger.info(f"Participation created: user {user_id} for event {identifier} as {role}")
+            return cls._participation_to_dict(participation), None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error creating participation: {e}")
+            return None, str(e)
+
+    @classmethod
+    def assign_service_to_attendee(cls, attendee_id: int, identifier: str, 
+                                 booking_type: str, booking_id: int,
+                                 managed_by: Optional[int] = None,
+                                 notes: Optional[str] = None) -> Tuple[Optional[Dict], Optional[str]]:
+        """
+        Assign a service booking to an attendee for an event.
+        booking_type can be: 'accommodation', 'transport', 'meal'
+        Returns: (assignment_dict, error_message)
+        """
+        try:
+            from app.events.models import Event, EventAssignment, EventParticipation
+            
+            event = Event.query.filter_by(slug=identifier).first()
+            if not event:
+                return None, "Event not found"
+            
+            # Check if attendee is participating in the event
+            participation = EventParticipation.query.filter_by(
+                event_id=event.id,
+                user_id=attendee_id
+            ).first()
+            
+            if not participation:
+                return None, "User is not participating in this event"
+            
+            # Check for existing assignment
+            assignment = EventAssignment.query.filter_by(
+                event_id=event.id,
+                attendee_id=attendee_id
+            ).first()
+            
+            if not assignment:
+                # Create new assignment
+                assignment = EventAssignment(
+                    event_id=event.id,
+                    attendee_id=attendee_id,
+                    managed_by=managed_by,
+                    notes=notes
+                )
+                db.session.add(assignment)
+            
+            # Update the appropriate booking field
+            if booking_type == 'accommodation':
+                assignment.accommodation_booking_id = booking_id
+                # Also update the accommodation booking with event_id
+                try:
+                    from app.accommodation.models.booking import AccommodationBooking
+                    acc_booking = AccommodationBooking.query.get(booking_id)
+                    if acc_booking:
+                        acc_booking.event_id = event.id
+                        acc_booking.event_participation_id = participation.id
+                except ImportError:
+                    logger.warning("Could not import AccommodationBooking, skipping event_id update")
+            elif booking_type == 'transport':
+                assignment.transport_booking_id = booking_id
+                # Also update the transport booking with event_id
+                try:
+                    # The Booking class is in transport.models
+                    from app.transport.models import Booking
+                    transport_booking = Booking.query.get(booking_id)
+                    if transport_booking:
+                        transport_booking.event_id = event.id
+                        transport_booking.event_participation_id = participation.id
+                except ImportError:
+                    logger.warning("Could not import Booking from transport.models, skipping event_id update")
+            elif booking_type == 'meal':
+                assignment.meal_booking_id = booking_id
+                # Meal booking would need its own model
+            else:
+                return None, f"Invalid booking type: {booking_type}"
+            
+            db.session.commit()
+            
+            # Log audit event
+            try:
+                from app.audit.comprehensive_audit import AuditService
+                AuditService.data_change(
+                    entity_type="event_assignment",
+                    entity_id=str(assignment.id),
+                    operation="update",
+                    old_value=None,
+                    new_value={
+                        "event_id": event.id,
+                        "attendee_id": attendee_id,
+                        f"{booking_type}_booking_id": booking_id,
+                        "managed_by": managed_by
+                    },
+                    changed_by=managed_by or attendee_id,
+                    extra_data={"event_slug": identifier, "booking_type": booking_type}
+                )
+            except ImportError:
+                logger.warning("AuditService not available, skipping audit log")
+            
+            logger.info(f"Service assigned: {booking_type} booking {booking_id} to attendee {attendee_id} for event {identifier}")
+            return cls._assignment_to_dict(assignment), None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error assigning service to attendee: {e}")
+            return None, str(e)
+
+    @classmethod
+    def _participation_to_dict(cls, participation) -> Dict:
+        """Convert EventParticipation model to dict"""
+        return {
+            "id": participation.id,
+            "event_id": participation.event_id,
+            "user_id": participation.user_id,
+            "role": participation.role.value if participation.role else None,
+            "control_mode": participation.control_mode.value if participation.control_mode else None,
+            "status": participation.status.value if participation.status else None,
+            "joined_at": participation.joined_at.isoformat() if participation.joined_at else None,
+            "left_at": participation.left_at.isoformat() if participation.left_at else None,
+            "notes": participation.notes,
+            "metadata": participation.metadata,
+            "created_at": participation.created_at.isoformat() if participation.created_at else None,
+            "updated_at": participation.updated_at.isoformat() if participation.updated_at else None,
+        }
+
+    @classmethod
+    def _assignment_to_dict(cls, assignment) -> Dict:
+        """Convert EventAssignment model to dict"""
+        return {
+            "id": assignment.id,
+            "event_id": assignment.event_id,
+            "attendee_id": assignment.attendee_id,
+            "accommodation_booking_id": assignment.accommodation_booking_id,
+            "transport_booking_id": assignment.transport_booking_id,
+            "meal_booking_id": assignment.meal_booking_id,
+            "managed_by": assignment.managed_by,
+            "notes": assignment.notes,
+            "schedule_json": assignment.schedule_json,
+            "created_at": assignment.created_at.isoformat() if assignment.created_at else None,
+            "updated_at": assignment.updated_at.isoformat() if assignment.updated_at else None,
+        }
+
+
+
+    @classmethod
+    def get_event_participations(cls, identifier: str, role: Optional[str] = None) -> List[Dict]:
+        """
+        Get all participations for a specific event.
+        Returns: list of participation dictionaries
+        """
+        try:
+            from app.events.models import Event, EventParticipation
+            
+            event = Event.query.filter_by(slug=identifier).first()
+            if not event:
+                return []
+            
+            query = EventParticipation.query.filter_by(event_id=event.id)
+            if role:
+                query = query.filter_by(role=role)
+            
+            participations = query.order_by(EventParticipation.created_at.desc()).all()
+            
+            return [cls._participation_to_dict(participation) for participation in participations]
+            
+        except Exception as e:
+            logger.error(f"Error getting event participations: {e}")
+            return []
+
+    @classmethod
+    def get_event_assignments(cls, identifier: str) -> List[Dict]:
+        """
+        Get all assignments for a specific event.
+        Returns: list of assignment dictionaries
+        """
+        try:
+            from app.events.models import Event, EventAssignment
+            
+            event = Event.query.filter_by(slug=identifier).first()
+            if not event:
+                return []
+            
+            assignments = EventAssignment.query.filter_by(
+                event_id=event.id
+            ).order_by(EventAssignment.created_at.desc()).all()
+            
+            return [cls._assignment_to_dict(assignment) for assignment in assignments]
+            
+        except Exception as e:
+            logger.error(f"Error getting event assignments: {e}")
+            return []
+
+    @classmethod
+    def get_attendee_assignments(cls, user_id: int) -> List[Dict]:
+        """
+        Get all assignments for a specific attendee.
+        Returns: list of assignment dictionaries
+        """
+        try:
+            from app.events.models import EventAssignment
+            
+            assignments = EventAssignment.query.filter_by(
+                attendee_id=user_id
+            ).order_by(EventAssignment.created_at.desc()).all()
+            
+            return [cls._assignment_to_dict(assignment) for assignment in assignments]
+            
+        except Exception as e:
+            logger.error(f"Error getting attendee assignments: {e}")
+            return []
+
+    @classmethod
+    def cancel_registration(cls, registration_ref: str, user_id: int) -> Tuple[bool, Optional[str]]:
+        """
+        Cancel a registration for an event.
+        Returns: (success, error_message)
+        """
+        from datetime import date
+        
+        registration = EventRegistration.query.filter_by(registration_ref=registration_ref).first()
+        if not registration:
+            return False, "Registration not found"
+        
+        if registration.user_id != user_id:
+            return False, "Unauthorized"
+        
+        if registration.status == "cancelled":
+            return False, "Already cancelled"
+        
+        if registration.status == "checked_in":
+            return False, "Cannot cancel a checked-in registration"
+        
+        event = Event.query.get(registration.event_id)
+        if event and event.start_date and event.start_date < date.today():
+            return False, "Cannot cancel past events"
+        
+        # Mark as cancelled
+        registration.status = "cancelled"
+        
+        # Release capacity back to ticket type
+        if registration.ticket_type_id:
+            ticket_type = TicketType.query.get(registration.ticket_type_id)
+            if ticket_type and ticket_type.capacity and ticket_type.capacity > 0:
+                ticket_type.available_seats = (ticket_type.available_seats or 0) + 1
+                ticket_type.version = (ticket_type.version or 0) + 1
+        
+        db.session.commit()
+        logger.info(f"Registration {registration_ref} cancelled by user {user_id}")
+        return True, None
+
+    @classmethod
+    def sanitize_status(cls, status_value):
+        """
+        Safely convert any status value to a valid EventStatus enum value.
+        Returns EventStatus.DRAFT.value for any unrecognized status.
+        This is a legacy data protection layer.
+        """
+        from app.events.constants import EventStatus
+        
+        if status_value is None:
+            return EventStatus.DRAFT.value
+        
+        # If it's already an EventStatus enum member
+        if isinstance(status_value, EventStatus):
+            return status_value.value
+        
+        # Try to match with EventStatus enum values
+        status_str = str(status_value)
+        try:
+            return EventStatus(status_str).value
+        except ValueError:
+            # Log unrecognized status for monitoring
+            logger.warning(f"Legacy status value encountered: '{status_str}', defaulting to DRAFT")
+            return EventStatus.DRAFT.value
 
     @classmethod
     def get_admin_dashboard_data(cls) -> Dict:
@@ -1679,22 +2165,29 @@ class EventService:
 
             # Count events, excluding soft-deleted ones
             total_events = Event.query.filter_by(is_deleted=False).count()
-            active_events = Event.query.filter_by(status='active', is_deleted=False).count()
-            pending_events = Event.query.filter_by(status='pending', is_deleted=False).count()
-            rejected_events = Event.query.filter_by(status='rejected', is_deleted=False).count()
-            suspended_events = Event.query.filter_by(status='suspended', is_deleted=False).count()
-            deactivated_events = Event.query.filter_by(status='deactivated', is_deleted=False).count()
-            archived_events = Event.query.filter_by(status='archived', is_deleted=False).count()
+            
+            # Use EventStatus enum values for valid statuses
+            published_events = Event.query.filter_by(status=EventStatus.PUBLISHED, is_deleted=False).count()
+            pending_events = Event.query.filter_by(status=EventStatus.PENDING_APPROVAL, is_deleted=False).count()
+            rejected_events = Event.query.filter_by(status=EventStatus.REJECTED, is_deleted=False).count()
+            suspended_events = Event.query.filter_by(status=EventStatus.SUSPENDED, is_deleted=False).count()
+            archived_events = Event.query.filter_by(status=EventStatus.ARCHIVED, is_deleted=False).count()
+            
+            # Handle legacy 'deactivated' status separately (not in EventStatus enum)
+            deactivated_events = Event.query.filter(
+                Event.status == 'deactivated',
+                Event.is_deleted == False
+            ).count()
 
             # Count registrations
             total_registrations = EventRegistration.query.count()
             checked_in_registrations = EventRegistration.query.filter_by(status='checked_in').count()
 
-            logger.info(f"Admin dashboard stats: total_events={total_events}, active={active_events}, pending={pending_events}")
+            logger.info(f"Admin dashboard stats: total_events={total_events}, published={published_events}, pending={pending_events}")
 
             return {
                 'total_events': total_events,
-                'active_events': active_events,
+                'published_events': published_events,
                 'pending_events': pending_events,
                 'rejected_events': rejected_events,
                 'suspended_events': suspended_events,
@@ -1708,7 +2201,7 @@ class EventService:
             # Return zeros to prevent template errors
             return {
                 'total_events': 0,
-                'active_events': 0,
+                'published_events': 0,
                 'pending_events': 0,
                 'rejected_events': 0,
                 'suspended_events': 0,

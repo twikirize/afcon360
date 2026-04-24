@@ -7,11 +7,8 @@ Handles System Admin, Organization Admin, and Event Organizer permissions
 from typing import Tuple
 from flask_login import current_user
 from app.extensions import db
-from app.auth.helpers import has_global_role, has_org_role
-
-
-# Import is_system_admin from auth helpers
-from app.auth.helpers import is_system_admin as auth_is_system_admin
+from app.auth.helpers import has_global_role, has_org_role, is_system_admin as auth_is_system_admin
+from app.events.constants import EventStatus
 
 def is_system_admin(user) -> bool:
     """
@@ -212,6 +209,57 @@ def can_check_in(user, event) -> Tuple[bool, str]:
 
     return False, 'Not authorized to check in attendees'
 
+
+def require_event_permission(user, event, action: str) -> Tuple[bool, str]:
+    """
+    Check if user has permission to perform an action on an event.
+    Returns: (has_permission, error_message)
+    
+    Actions: view, edit, delete, approve, reject, suspend, reactivate, pause, resume
+    """
+    if not user or not user.is_authenticated:
+        return False, 'Not authenticated'
+    
+    # System admins can do anything
+    if is_system_admin(user):
+        return True, ''
+    
+    # Define allowed state transitions
+    ALLOWED_TRANSITIONS = {
+        'approve': [EventStatus.PENDING_APPROVAL],
+        'reject': [EventStatus.PENDING_APPROVAL],
+        'suspend': [EventStatus.LIVE],
+        'reactivate': [EventStatus.SUSPENDED, EventStatus.PAUSED],
+        'pause': [EventStatus.LIVE],
+        'resume': [EventStatus.PAUSED],
+        'delete': [EventStatus.DRAFT, EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.ARCHIVED],
+    }
+    
+    # Check if action requires specific status
+    if action in ALLOWED_TRANSITIONS:
+        if event.status not in ALLOWED_TRANSITIONS[action]:
+            return False, f'Cannot {action} event with status {event.status.value}'
+    
+    # Check ownership for certain actions
+    if action in ['edit', 'delete', 'pause', 'resume']:
+        # Event organizers can edit/delete their own events
+        if event.organizer_id == user.id:
+            return True, ''
+        
+        # Organization admins can manage their organization's events
+        if event.organisation_id and is_organization_admin(user, event.organisation_id):
+            return True, ''
+        
+        return False, 'Not authorized'
+    
+    # For approve/reject/suspend/reactivate, need event_manager or higher
+    if action in ['approve', 'reject', 'suspend', 'reactivate']:
+        if has_global_role(user, 'event_manager', 'admin', 'super_admin', 'owner'):
+            return True, ''
+        return False, 'Only event managers and above can perform this action'
+    
+    # Default: check if user can manage the event
+    return can_manage_event(user, event)
 
 def can_check_in_attendees(user, event) -> bool:
     """

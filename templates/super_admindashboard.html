@@ -8,6 +8,37 @@
 
 {% extends "admin/admin.html" %}
 
+{% block module_styles %}
+  {{ super() }}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+{% endblock %}
+{% block scripts %}
+<script>
+function eventModerationAction(action, slug, extraData = {}) {
+    const url = `/events/admin/${slug}/${action}`;
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+        body: JSON.stringify(extraData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || action + ' successful');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => { 
+        console.error(err); 
+        alert('Network error'); 
+    });
+}
+</script>
+{% endblock %}
+
 {% block content %}
 
 <div class="sad-card" style="border-color:rgba(240,106,106,0.4)">
@@ -793,12 +824,50 @@
             </div>
           </div>
 
+          <!-- Pending Events List -->
+          {% if pending_events_list and pending_events_list|length > 0 %}
+          <div class="sad-card" style="border-color:rgba(245,166,35,0.25);margin-top:16px">
+            <div class="sad-card-head" style="background:rgba(245,166,35,0.06)">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(245,166,35,0.12);color:var(--sad-amber)">⏳</div>
+                Pending Events ({{ pending_events_list|length }})
+              </div>
+            </div>
+            <div class="sad-card-body">
+              {% for event in pending_events_list %}
+              <div class="sad-feature-row" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--sad-border);">
+                <div>
+                  <div class="sad-feature-name">{{ event.name|truncate(30) }}</div>
+                  <div class="sad-feature-desc" style="font-size:11px;">
+                    {{ event.city }}{% if event.country %}, {{ event.country }}{% endif %}
+                  </div>
+                </div>
+                <div class="sad-feature-right">
+                  <button class="sad-btn sm" style="background:rgba(62,207,142,0.1);color:var(--sad-green);padding:4px 8px;font-size:11px;"
+                          onclick="eventModerationAction('approve', '{{ event.slug }}')">
+                    Approve
+                  </button>
+                  <button class="sad-btn sm" style="background:rgba(240,106,106,0.1);color:var(--sad-red);padding:4px 8px;font-size:11px;"
+                          onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})">
+                    Reject
+                  </button>
+                </div>
+              </div>
+              {% endfor %}
+              <a href="{{ url_for('events.admin_events') }}?status=pending" class="sad-btn" style="width:100%;justify-content:center;margin-top:8px;font-size:11px;">
+                View All Pending →
+              </a>
+            </div>
+          </div>
+          {% endif %}
+
         </div><!-- /sad-right -->
       </div><!-- /sad-twocol -->
 
     </div><!-- /sad-content -->
   </div><!-- /sad-main -->
 </div><!-- /sad-shell -->
+
 
 <!-- ============================================================================ -->
 <!-- PHASE 1: EMERGENCY KILL SWITCH JAVASCRIPT FOR WALLET MODULE -->

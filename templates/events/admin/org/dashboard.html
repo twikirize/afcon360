@@ -58,13 +58,13 @@
                             <td>{{ event.start_date[:10] if event.start_date else 'TBD' }}</td>
                             <td>{{ event.registration_count or 0 }}</td>
                             <td>
-                                <a href="{{ url_for('events.landing', event_slug=event.slug) }}"
+                                <a href="{{ url_for('events.landing', identifier=event.slug) }}"
                                    class="btn btn-sm btn-outline-primary">View</a>
-                                <a href="{{ url_for('events.edit_event', event_slug=event.slug) }}"
+                                <a href="{{ url_for('events.edit_event', identifier=event.slug) }}"
                                    class="btn btn-sm btn-outline-secondary">Edit</a>
-                                <a href="{{ url_for('events.event_attendees', event_slug=event.slug) }}"
+                                <a href="{{ url_for('events.event_attendees', identifier=event.slug) }}"
                                    class="btn btn-sm btn-outline-info">Attendees</a>
-                                <a href="{{ url_for('events.event_staff', event_slug=event.slug) }}"
+                                <a href="{{ url_for('events.event_staff', identifier=event.slug) }}"
                                    class="btn btn-sm btn-outline-warning">Staff</a>
                             </td>
                         </tr>

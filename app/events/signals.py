@@ -1,18 +1,11 @@
 """
-Events Module Signals - Loose Coupling Bridge
-Allows other modules to react without direct imports
+Backwards-compatible re-export of signals from signal_handlers.
+Import signals from here OR signal_handlers — both are the same object.
 """
-from blinker import Namespace
-
-signals = Namespace()
-
-# Broadcast when registration is complete
-event_registered = signals.signal('event-registered')
-event_cancelled = signals.signal('event-cancelled')
-event_capacity_released = signals.signal('event-capacity-released')
-
-# Signal for requesting service provider data
-service_provider_data_requested = signals.signal('service-provider-data-requested')
-
-# Signal for offering services after event registration
-offer_services_after_registration = signals.signal('offer-services-after-registration')
+from app.events.signal_handlers import (
+    event_registered,
+    event_cancelled,
+    event_capacity_released,
+    offer_services_after_registration,
+    service_provider_data_requested,
+)

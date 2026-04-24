@@ -163,7 +163,7 @@ class EventMetricsService:
                     "event_id": event.id,
                     "event_name": event.name,
                     "slug": event.slug,
-                    "status": event.status,
+                    "status": event.status.value if event.status else None,
                     "registrations": reg_count,
                     "revenue": float(revenue),
                     "start_date": event.start_date.isoformat() if event.start_date else None
