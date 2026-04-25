@@ -1,40 +1,57 @@
 {% extends "base.html" %}
 
-{% block title %}Create Event - AFCON360{% endblock %}
+{% block title %}Create Event — AFCON360{% endblock %}
 
 {% block content %}
+<style>
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    color: #e6efed;
+}
+select option {
+    background: #181f1d;
+    color: #e6efed;
+}
+</style>
+
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-md-10">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white py-3">
-                    <h4 class="mb-0 text-primary"><i class="fas fa-calendar-plus me-2"></i>Create New Event</h4>
-                    <p class="text-muted small mb-0">Define your event details and ticket tiers</p>
+            <div class="card shadow-sm border-0" style="background:#181f1d; border:1px solid #1e2d2a; border-radius:16px;">
+                <div class="card-header py-3" style="background:#131918; border-bottom:1px solid #1e2d2a; border-radius:16px 16px 0 0;">
+                    <h4 class="mb-0" style="color:#00e5a0; font-family:'Syne',sans-serif; font-weight:700;">
+                        <i class="fas fa-calendar-plus me-2"></i>Create New Event
+                    </h4>
+                    <p class="text-muted small mb-0" style="color:#678880;">Define your event details and ticket tiers</p>
                 </div>
-                <div class="card-body">
-                    <noscript>
-                        <div class="alert alert-danger">
-                            <strong>JavaScript is required!</strong> This form requires JavaScript to function properly. Please enable JavaScript in your browser.
-                        </div>
-                    </noscript>
+                <div class="card-body" style="color:#e6efed;">
                     <form id="event-form" method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                         {# Basic Info #}
                         <div class="row">
                             <div class="col-md-12 mb-3">
-                                <label class="form-label fw-bold">Event Name *</label>
-                                <input type="text" name="name" class="form-control form-control-lg" placeholder="e.g. AFCON Final Viewing" required>
+                                <label class="form-label fw-bold">Event Name <span style="color:#00e5a0;">*</span></label>
+                                <input type="text" name="name" class="form-control form-control-lg"
+                                       placeholder="e.g. AFCON Final Viewing" required
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                             <div class="col-md-12 mb-3">
                                 <label class="form-label fw-bold">Description</label>
-                                <textarea name="description" class="form-control" rows="3" placeholder="What is your event about?"></textarea>
+                                <textarea name="description" class="form-control" rows="3"
+                                          placeholder="What is your event about?"
+                                          style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;"></textarea>
                             </div>
                         </div>
 
                         <div class="row">
                             <div class="col-md-4 mb-3">
                                 <label class="form-label fw-bold">Category</label>
-                                <select name="category" class="form-select">
+                                <select name="category" class="form-select"
+                                        style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                                     <option value="sports">Sports</option>
                                     <option value="religious">Religious</option>
                                     <option value="concert">Concert</option>
@@ -44,34 +61,36 @@
                                 </select>
                             </div>
                             <div class="col-md-4 mb-3">
-                                <label class="form-label fw-bold">City *</label>
-                                <input type="text" name="city" class="form-control" placeholder="e.g. Kampala" required>
+                                <label class="form-label fw-bold">City <span style="color:#00e5a0;">*</span></label>
+                                <input type="text" name="city" class="form-control" placeholder="e.g. Kampala" required
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                             <div class="col-md-4 mb-3">
                                 <label class="form-label fw-bold">Venue</label>
-                                <input type="text" name="venue" class="form-control" placeholder="e.g. Namboole Stadium">
+                                <input type="text" name="venue" class="form-control" placeholder="e.g. Namboole Stadium"
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                         </div>
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Start Date *</label>
-                                <input type="date" name="start_date" class="form-control" required>
+                                <label class="form-label fw-bold">Start Date <span style="color:#00e5a0;">*</span></label>
+                                <input type="date" name="start_date" id="start_date" class="form-control" required
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label fw-bold">End Date</label>
-                                <input type="date" name="end_date" class="form-control">
+                                <input type="date" name="end_date" id="end_date" class="form-control"
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                         </div>
 
-                        {# Ticketing Logic #}
-                        <hr class="my-4">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>Ticketing & Registration</h5>
-                        </div>
+                        {# Ticketing #}
+                        <hr style="border-color:#1e2d2a;">
+                        <h5 class="mb-3"><i class="fas fa-ticket-alt me-2" style="color:#00e5a0;"></i>Ticketing & Registration</h5>
 
                         <div id="ticketing-section">
-                            <div class="alert alert-light border mb-3">
+                            <div class="p-3 mb-3" style="background:#0c0f0e; border:1px solid #1e2d2a; border-radius:8px;">
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="event_type" id="type-free" value="free" checked>
                                     <label class="form-check-label" for="type-free">Free Event</label>
@@ -85,50 +104,58 @@
                             <div id="ticketed-fields" class="d-none">
                                 <label class="form-label fw-bold">Define Ticket Tiers</label>
                                 <div id="ticket-rows">
-                                    {# Initial Row #}
                                     <div class="row g-2 mb-2 ticket-row">
                                         <div class="col-md-5">
-                                            <input type="text" name="tier_name[]" class="form-control" placeholder="Tier Name (e.g. VIP)">
+                                            <input type="text" name="tier_name[]" class="form-control" placeholder="Tier Name (e.g. VIP)"
+                                                   style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                                         </div>
                                         <div class="col-md-3">
                                             <div class="input-group">
-                                                <span class="input-group-text">$</span>
-                                                <input type="number" name="tier_price[]" class="form-control" placeholder="Price" step="0.01">
+                                                <span class="input-group-text" style="background:#131918; border:1px solid #253530; color:#678880;">$</span>
+                                                <input type="number" name="tier_price[]" class="form-control" placeholder="Price" step="0.01"
+                                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                                             </div>
                                         </div>
                                         <div class="col-md-3">
-                                            <input type="number" name="tier_capacity[]" class="form-control" placeholder="Capacity">
+                                            <input type="number" name="tier_capacity[]" class="form-control" placeholder="Capacity"
+                                                   style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                                         </div>
                                         <div class="col-md-1">
                                             <button type="button" class="btn btn-outline-danger remove-tier w-100"><i class="fas fa-times"></i></button>
                                         </div>
                                     </div>
                                 </div>
-                                <button type="button" id="add-tier-btn" class="btn btn-sm btn-outline-primary mt-2">
+                                <button type="button" id="add-tier-btn" class="btn btn-sm btn-outline-light mt-2">
                                     <i class="fas fa-plus me-1"></i> Add Another Tier
                                 </button>
                             </div>
                         </div>
 
+                        {# Contact #}
                         <div class="row mt-4">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label fw-bold">Website</label>
-                                <input type="url" name="website" class="form-control" placeholder="https://...">
+                                <input type="url" name="website" class="form-control" placeholder="https://..."
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label fw-bold">Contact Email</label>
-                                <input type="email" name="contact_email" class="form-control" value="{{ current_user.email }}">
+                                <input type="email" name="contact_email" class="form-control" value="{{ current_user.email }}"
+                                       style="background:#0c0f0e; border:1px solid #253530; color:#e6efed;">
                             </div>
                         </div>
 
-                        <div class="alert alert-info small mt-3">
-                            <i class="fas fa-info-circle me-2"></i>
+                        <div class="alert mt-3 small" style="background:rgba(0,229,160,0.06); border:1px solid rgba(0,229,160,0.15); color:#678880;">
+                            <i class="fas fa-info-circle me-2" style="color:#00e5a0;"></i>
                             Your event will be submitted for review. Once approved, it will appear publicly on the platform.
                         </div>
 
                         <div class="d-flex justify-content-between mt-4">
                             <a href="{{ url_for('events.my_events') }}" class="btn btn-secondary">Cancel</a>
-                            <button type="submit" class="btn btn-primary btn-lg px-5">Create Event</button>
+                            <button type="submit" class="btn btn-lg px-5 btn-submit" id="submit-btn"
+                                    style="background:#00e5a0; color:#000; border:none; font-weight:700; min-width:180px;">
+                                Create Event
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -136,104 +163,192 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
+{{ super() }}
 <script>
-    // Toggle Visibility
-    const typeFree = document.getElementById('type-free');
-    const typeTicketed = document.getElementById('type-ticketed');
-    const ticketedFields = document.getElementById('ticketed-fields');
+document.addEventListener('DOMContentLoaded', function(){
+  'use strict';
 
-    // Initialize visibility on page load
-    ticketedFields.classList.toggle('d-none', !typeTicketed.checked);
+  /* ── CSRF ── */
+  function getCSRF(){
+    const m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+  }
 
-    const updateTicketedVisibility = () => {
-        ticketedFields.classList.toggle('d-none', !typeTicketed.checked);
-        // Enable/disable inputs inside ticketed-fields
-        const inputs = ticketedFields.querySelectorAll('input');
-        inputs.forEach(input => {
-            input.disabled = !typeTicketed.checked;
-        });
-    };
+  /* ── EVENT TYPE TOGGLE ── */
+  const radios = document.querySelectorAll('input[name="event_type"]');
+  const ticketedFields = document.getElementById('ticketed-fields');
 
-    typeFree.addEventListener('change', updateTicketedVisibility);
-    typeTicketed.addEventListener('change', updateTicketedVisibility);
+  function updateTicketingVisibility(){
+    const isTicketed = document.querySelector('input[name="event_type"]:checked').value === 'ticketed';
+    ticketedFields.style.display = isTicketed ? 'block' : 'none';
+    if(isTicketed && document.querySelectorAll('.tier-row').length === 0) addTierRow();
+  }
 
-    // Add/Remove Tiers
-    document.getElementById('add-tier-btn').addEventListener('click', () => {
-        const row = document.querySelector('.ticket-row').cloneNode(true);
-        row.querySelectorAll('input').forEach(input => input.value = '');
-        document.getElementById('ticket-rows').appendChild(row);
+  radios.forEach(r => r.addEventListener('change', updateTicketingVisibility));
+
+  /* ── TIER ROWS ── */
+  function addTierRow(name='', price='', capacity=''){
+    const row = document.createElement('div');
+    row.className = 'tier-row';
+    row.innerHTML = `
+      <input type="text"   class="tier-input" name="tier_name[]"     placeholder="e.g. VIP"  value="${name}">
+      <input type="number" class="tier-input" name="tier_price[]"    placeholder="0"          value="${price}" min="0" step="0.01">
+      <input type="number" class="tier-input" name="tier_capacity[]" placeholder="Unlimited"  value="${capacity}" min="1">
+      <button type="button" class="tier-remove" title="Remove tier"><i class="fas fa-times"></i></button>
+    `;
+    document.getElementById('ticket-rows').appendChild(row);
+  }
+
+  document.getElementById('add-tier-btn').addEventListener('click', () => addTierRow());
+
+  document.getElementById('ticket-rows').addEventListener('click', function(e){
+    const btn = e.target.closest('.tier-remove');
+    if(!btn) return;
+    const rows = this.querySelectorAll('.tier-row');
+    if(rows.length > 1){
+      btn.closest('.tier-row').remove();
+    } else {
+      btn.closest('.tier-row').querySelectorAll('input').forEach(i => i.value = '');
+    }
+  });
+
+  /* ── DATE SETUP ── */
+  const today = new Date().toISOString().split('T')[0];
+  const startInput = document.getElementById('start_date');
+  const endInput   = document.getElementById('end_date');
+  startInput.setAttribute('min', today);
+  startInput.addEventListener('change', function(){
+    if(this.value){
+      endInput.setAttribute('min', this.value);
+    } else {
+      endInput.removeAttribute('min');
+    }
+    if(endInput.value && endInput.value < this.value) endInput.value = '';
+  });
+
+  /* ── VALIDATION ── */
+  function showError(msg){
+    alert(msg);
+  }
+  function clearError(){
+    // no-op
+  }
+
+  function markInvalid(name){
+    var el = document.querySelector('[name="' + name + '"]');
+    if(el){ el.classList.add('invalid'); el.focus(); }
+  }
+
+  function validate(data){
+    if(!data.name || !data.name.trim()){
+      markInvalid('name'); return 'Event name is required.';
+    }
+    if(data.name.trim().length < 3){
+      markInvalid('name'); return 'Event name must be at least 3 characters.';
+    }
+    if(!data.city || !data.city.trim()){
+      markInvalid('city'); return 'City is required.';
+    }
+    if(!data.start_date){
+      markInvalid('start_date'); return 'Start date is required.';
+    }
+    if(data.start_date < today){
+      markInvalid('start_date'); return 'Start date cannot be in the past.';
+    }
+    if(data.end_date && data.end_date < data.start_date){
+      markInvalid('end_date'); return 'End date must be on or after the start date.';
+    }
+    if(data.event_type === 'ticketed'){
+      var tiers = data.ticket_tiers || [];
+      if(!tiers.length || !tiers[0].name){
+        return 'Please add at least one ticket tier with a name.';
+      }
+      for(var i=0; i<tiers.length; i++){
+        if(tiers[i].price < 0){ return 'Ticket price cannot be negative.'; }
+      }
+    }
+    if(data.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.contact_email)){
+      markInvalid('contact_email'); return 'Please enter a valid contact email.';
+    }
+    if(data.website && !/^https?:\/\/.+/.test(data.website)){
+      markInvalid('website'); return 'Website must start with http:// or https://';
+    }
+    return null;
+  }
+
+  /* ── SUBMIT — intercept form submission ── */
+  document.getElementById('event-form').addEventListener('submit', async function(e){
+    e.preventDefault();
+    clearError();
+
+    var form = this;
+    form.querySelectorAll('.invalid').forEach(function(el){ el.classList.remove('invalid'); });
+
+    var formData = new FormData(form);
+    var data = {};
+
+    ['name','description','category','city','venue','start_date','end_date',
+     'event_type','website','contact_email'].forEach(function(k){
+      data[k] = (formData.get(k) || '').trim();
     });
 
-    document.addEventListener('click', (e) => {
-        if (e.target.closest('.remove-tier')) {
-            const rows = document.querySelectorAll('.ticket-row');
-            if (rows.length > 1) {
-                e.target.closest('.ticket-row').remove();
-            } else {
-                alert("You must have at least one ticket tier for a paid event.");
-            }
-        }
-    });
+    data.registration_required = true;
 
-    // Form Submission
-    document.getElementById('event-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        console.log('🔥 Form submit intercepted');
+    // Ticket tiers
+    if(data.event_type === 'ticketed'){
+      var tierNames  = formData.getAll('tier_name[]');
+      var tierPrices = formData.getAll('tier_price[]');
+      var tierCaps   = formData.getAll('tier_capacity[]');
+      data.ticket_tiers = tierNames
+        .map(function(n, i){
+          return {
+            name:     n.trim(),
+            price:    parseFloat(tierPrices[i]) || 0,
+            capacity: tierCaps[i] ? parseInt(tierCaps[i]) : null
+          };
+        })
+        .filter(function(t){ return t.name; });
+    }
 
-        const formData = new FormData(this);
-        const data = Object.fromEntries(formData.entries());
+    // Validate
+    var err = validate(data);
+    if(err){ showError(err); return; }
 
-        // Handle boolean switch – always true for now (registration is always required)
-        data.registration_required = true;
+    // Submit
+    var btn = document.getElementById('submit-btn');
+    var orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating\u2026';
 
-        // Collect Ticket Tiers
-        if (data.registration_required && (data.event_type === 'paid' || data.event_type === 'ticketed')) {
-            const tierNames = formData.getAll('tier_name[]');
-            const tierPrices = formData.getAll('tier_price[]');
-            const tierCapacities = formData.getAll('tier_capacity[]');
+    try {
+      var res = await fetch("{{ url_for('events.create_event') }}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRF()
+        },
+        body: JSON.stringify(data)
+      });
 
-            data.ticket_tiers = tierNames.map((name, i) => ({
-                name: name,
-                price: parseFloat(tierPrices[i]) || 0,
-                capacity: parseInt(tierCapacities[i]) || null
-            }));
-        }
+      var result = await res.json();
 
-        console.log('🔥 Submitting data:', data);
+      if(result.success && result.redirect){
+        window.location.href = result.redirect;
+      } else {
+        showError(result.error || 'Something went wrong. Please try again.');
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    } catch(fetchErr){
+      showError('Network error — please check your connection and try again.');
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
+  });
 
-        const submitBtn = this.querySelector('button[type="submit"]');
-        const originalText = submitBtn.innerHTML;
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Creating...';
-
-        try {
-            const response = await fetch("{{ url_for('events.create_event') }}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
-            });
-
-            console.log('🔥 Response status:', response.status);
-
-            const result = await response.json();
-            console.log('🔥 Response data:', result);
-
-            if (result.success) {
-                window.location.href = result.redirect;
-            } else {
-                alert('Error: ' + result.error);
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-            }
-        } catch (error) {
-            console.error('🔥 Fetch error:', error);
-            alert('Request Failed: ' + error.message);
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
-        }
-    });
+});
 </script>
 {% endblock %}

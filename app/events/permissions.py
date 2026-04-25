@@ -14,12 +14,12 @@ def is_system_admin(user) -> bool:
     """
     Check if user is a System Admin (Super Admin)
     System Admins can manage ALL events platform-wide
-    Only owner and super_admin have full admin privileges
+    Only owner, super_admin, and admin have full admin privileges
     """
     if not user or not user.is_authenticated:
         return False
-    # Only owner and super_admin have full admin privileges
-    return has_global_role(user, 'owner', 'super_admin')
+    # Only owner, super_admin, and admin have full admin privileges
+    return has_global_role(user, 'owner', 'super_admin', 'admin')
 
 
 def is_organization_admin(user, organisation_id: int = None) -> bool:
