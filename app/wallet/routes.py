@@ -14,6 +14,7 @@ from app.wallet.middleware.kill_switch import require_wallet_enabled
 from app.wallet.middleware.wallet_activation import require_wallet_activated
 from app.auth.decorators import require_profile_completion, require_kyc_tier
 from app.auth.decorators import require_profile_completion, require_kyc_tier
+from app.core.context import RequestContext
 
 # Standardized blueprint name: wallet
 wallet_bp = Blueprint("wallet", __name__)
@@ -45,11 +46,12 @@ def wallet_dashboard():
         wallet_repo = WalletRepository()
         commission_service = CommissionService()
 
-        wallet = wallet_repo.get_or_create_by_user_id(current_user.id)
-        balance = service.get_balance(current_user.id)
-        commission = float(commission_service.get_agent_total(current_user.id))
+        effective = RequestContext.get_effective_user()
+        wallet = wallet_repo.get_or_create_by_user_id(effective.id)
+        balance = service.get_balance(effective.id)
+        commission = float(commission_service.get_agent_total(effective.id))
 
-        transactions_result = service.get_transaction_history(current_user.id, limit=5)
+        transactions_result = service.get_transaction_history(effective.id, limit=5)
         recent_transactions = transactions_result.get("transactions", [])
 
         return render_template(
@@ -82,14 +84,16 @@ def activate_wallet():
     import secrets
 
     repo = WalletRepository()
-    existing_wallet = repo.get_by_user_id(current_user.id)
+    actor = RequestContext.get_actor()
+    effective = RequestContext.get_effective_user()
+    existing_wallet = repo.get_by_user_id(effective.id)
 
     if existing_wallet and existing_wallet.verified:
         flash("Your wallet is already activated.", "info")
         return redirect(url_for("wallet.wallet_dashboard"))
 
-    # Check KYC level
-    if hasattr(current_user, 'kyc_level') and current_user.kyc_level < 3:
+    # Check KYC level against EFFECTIVE user
+    if hasattr(effective, 'kyc_level') and getattr(effective, 'kyc_level', 0) < 3:
         flash("Wallet activation requires KYC Tier 3 verification.", "warning")
         # The decorator should handle redirect, but we'll add this message anyway
 
@@ -98,12 +102,12 @@ def activate_wallet():
             existing_wallet.verified = True
             db.session.commit()
             wallet_audit.log_wallet_created(
-                user_id=current_user.id,
+                user_id=effective.id,
                 wallet_id=existing_wallet.id,
                 wallet_ref=existing_wallet.wallet_ref or str(existing_wallet.id),
                 home_currency=existing_wallet.home_currency,
                 local_currency=existing_wallet.local_currency,
-                created_by=current_user.id
+                created_by=(actor.id if actor else effective.id)
             )
             flash("Your wallet has been activated successfully!", "success")
             return redirect(url_for("wallet.wallet_dashboard"))
@@ -116,7 +120,7 @@ def activate_wallet():
         location = request.form.get("location", "UG")
 
         wallet = WalletModel(
-            user_id=current_user.id,
+            user_id=effective.id,
             home_currency=home_currency,
             local_currency=local_currency,
             nationality=nationality,
@@ -129,12 +133,12 @@ def activate_wallet():
         db.session.add(wallet)
         db.session.flush()
         wallet_audit.log_wallet_created(
-            user_id=current_user.id,
+            user_id=effective.id,
             wallet_id=wallet.id,
             wallet_ref=wallet.wallet_ref,
             home_currency=home_currency,
             local_currency=local_currency,
-            created_by=current_user.id
+            created_by=(actor.id if actor else effective.id)
         )
         db.session.commit()
         flash("Your wallet has been created and activated successfully!", "success")
@@ -193,8 +197,9 @@ def wallet_transactions():
         offset = request.args.get('offset', 0, type=int)
         transaction_type = request.args.get('type')
 
+        effective = RequestContext.get_effective_user()
         result = service.get_transaction_history(
-            user_id=current_user.id,
+            user_id=effective.id,
             limit=min(limit, 100),
             offset=offset,
             transaction_type=transaction_type
@@ -233,16 +238,17 @@ def agent_commissions():
         status = request.args.get('status')
         limit = request.args.get('limit', 50, type=int)
 
+        effective = RequestContext.get_effective_user()
         history = commission_service.get_agent_commissions(
-            agent_id=current_user.id,
+            agent_id=effective.id,
             status=status,
             limit=min(limit, 100)
         )
-        summary = commission_service.get_commission_summary(current_user.id)
+        summary = commission_service.get_commission_summary(effective.id)
 
         return render_template(
             "agent_commissions.html",
-            agent_id=current_user.id,
+            agent_id=effective.id,
             history=history,
             summary=summary,
             title="Commission History"
@@ -274,21 +280,22 @@ def agent_payout_history():
         status = request.args.get('status')
         limit = request.args.get('limit', 50, type=int)
 
+        effective = RequestContext.get_effective_user()
         payouts = payout_service.list_requests(
-            agent_id=current_user.id,
+            agent_id=effective.id,
             status=status,
             limit=min(limit, 100)
         )
         history = commission_service.get_agent_commissions(
-            agent_id=current_user.id,
+            agent_id=effective.id,
             limit=50
         )
-        summary = payout_service.get_agent_payout_summary(current_user.id)
-        total_commission = float(commission_service.get_agent_total(current_user.id))
+        summary = payout_service.get_agent_payout_summary(effective.id)
+        total_commission = float(commission_service.get_agent_total(effective.id))
 
         return render_template(
             "agent_payout_history.html",
-            agent_id=current_user.id,
+            agent_id=effective.id,
             requests=payouts,
             history=history,
             summary=summary,
@@ -313,16 +320,17 @@ def agent_payout_request_page():
     try:
         commission_service = CommissionService()
 
-        total_commission = float(commission_service.get_agent_total(current_user.id))
-        pending_total = float(commission_service.get_pending_total(current_user.id))
+        effective = RequestContext.get_effective_user()
+        total_commission = float(commission_service.get_agent_total(effective.id))
+        pending_total = float(commission_service.get_pending_total(effective.id))
         history = commission_service.get_agent_commissions(
-            agent_id=current_user.id,
+            agent_id=effective.id,
             limit=20
         )
 
         return render_template(
             "agent_payout_request.html",
-            agent_id=current_user.id,
+            agent_id=effective.id,
             total=total_commission,
             pending_total=pending_total,
             history=history,
@@ -354,8 +362,22 @@ def deposit_form():
 
         currency = request.form.get("currency", "USD")
         service = WalletService()
+
+        # Impersonation safety guard: log if actor != effective
+        actor = RequestContext.get_actor()
+        effective = RequestContext.get_effective_user()
+        if actor and effective and getattr(actor, 'id', None) != getattr(effective, 'id', None):
+            from app.audit.forensic_audit import ForensicAuditService
+            ForensicAuditService.log_attempt(
+                entity_type="wallet",
+                entity_id=str(getattr(effective, 'id', 'unknown')),
+                action="deposit_under_impersonation",
+                details={"amount": str(amount), "currency": currency}
+            )
+            flash("Warning: You are performing this action while impersonating another user.", "warning")
+
         service.deposit(
-            user_id=current_user.id,
+            user_id=effective.id,
             amount=amount,
             currency=currency,
             idempotency_key=f"form_{datetime.utcnow().timestamp()}"
@@ -395,8 +417,21 @@ def send_funds():
             return redirect(url_for("wallet.send_page"))
 
         service = WalletService()
+        # Impersonation safety guard: log if actor != effective
+        actor = RequestContext.get_actor()
+        effective = RequestContext.get_effective_user()
+        if actor and effective and getattr(actor, 'id', None) != getattr(effective, 'id', None):
+            from app.audit.forensic_audit import ForensicAuditService
+            ForensicAuditService.log_attempt(
+                entity_type="wallet",
+                entity_id=str(getattr(effective, 'id', 'unknown')),
+                action="transfer_under_impersonation",
+                details={"amount": str(amount), "currency": currency, "to_user_id": receiver_user.id}
+            )
+            flash("Warning: You are performing this action while impersonating another user.", "warning")
+
         result = service.transfer(
-            from_user_id=current_user.id,
+            from_user_id=effective.id,
             to_user_id=receiver_user.id,
             amount=amount,
             currency=currency,
@@ -410,8 +445,9 @@ def send_funds():
         if agent_fee and agent_fee > 0:
             from app.wallet.services.commission_service import CommissionService
             commission_service = CommissionService()
+            effective = RequestContext.get_effective_user()
             commission_service.record_commission(
-                agent_id=current_user.id,
+                agent_id=effective.id,
                 amount=agent_fee,
                 currency=currency,
                 source_type="peer_transfer",
@@ -450,8 +486,22 @@ def withdraw_funds():
         agent_id = request.form.get("agent_id")
 
         service = WalletService()
+
+        # Impersonation safety guard: log if actor != effective
+        actor = RequestContext.get_actor()
+        effective = RequestContext.get_effective_user()
+        if actor and effective and getattr(actor, 'id', None) != getattr(effective, 'id', None):
+            from app.audit.forensic_audit import ForensicAuditService
+            ForensicAuditService.log_attempt(
+                entity_type="wallet",
+                entity_id=str(getattr(effective, 'id', 'unknown')),
+                action="withdraw_under_impersonation",
+                details={"amount": str(amount), "currency": currency, "method": method}
+            )
+            flash("Warning: You are performing this action while impersonating another user.", "warning")
+
         service.withdraw(
-            user_id=current_user.id,
+            user_id=effective.id,
             amount=amount,
             currency=currency,
             idempotency_key=f"form_{datetime.utcnow().timestamp()}",
@@ -496,8 +546,21 @@ def payout_request_form():
         elif method == "mobile_money":
             payment_details = {"phone": account, "provider": "mtn"}
 
+        # Impersonation safety guard: log if actor != effective
+        actor = RequestContext.get_actor()
+        effective = RequestContext.get_effective_user()
+        if actor and effective and getattr(actor, 'id', None) != getattr(effective, 'id', None):
+            from app.audit.forensic_audit import ForensicAuditService
+            ForensicAuditService.log_attempt(
+                entity_type="wallet",
+                entity_id=str(getattr(effective, 'id', 'unknown')),
+                action="payout_request_under_impersonation",
+                details={"amount": str(amount), "method": method}
+            )
+            flash("Warning: You are performing this action while impersonating another user.", "warning")
+
         payout_service.create_request(
-            agent_id=current_user.id,
+            agent_id=effective.id,
             amount=amount,
             currency="UGX",
             payment_method=method,

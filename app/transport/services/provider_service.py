@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import joinedload, load_only
 
 from app.extensions import db, redis_client, cache
+from app.admin.models import ContentFlag
 from app.transport.models import (
     DriverProfile, OrganisationTransportProfile, Vehicle, ScheduledRoute,
     VerificationTier, ComplianceStatus, TransportSetting, Booking, BookingStatus,
@@ -57,6 +58,19 @@ from app.utils.audit import audit_log
 
 # Create module-level logger
 logger = logging.getLogger(__name__)
+
+
+def _assert_no_open_flags(entity_type: str, entity_id: int):
+    """Raise ValueError if the entity has any unresolved ContentFlag records."""
+    count = ContentFlag.query.filter_by(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        status="open",
+    ).count()
+    if count:
+        raise ValueError(
+            f"Cannot activate {entity_type} {entity_id}: open flags must be resolved first."
+        )
 
 
 class ProviderService:
@@ -553,6 +567,9 @@ class ProviderService:
                     )
 
                 # PHASE 4: PROCEED WITH REGISTRATION
+                # Guard: cannot activate driver if there are open ContentFlag records
+                _assert_no_open_flags("driver", user_id)
+
                 db.session.begin_nested()
 
                 # Get settings
@@ -800,6 +817,9 @@ class ProviderService:
                         code="NO_TRANSPORT_PROFILE"
                     )
 
+            # Guard: cannot register vehicle if there are open ContentFlag records
+            _assert_no_open_flags("vehicle", owner_id)
+
             # Use internal method for registration
             result = self.register_vehicle_internal(
                 owner_type=owner_type,
@@ -904,6 +924,9 @@ class ProviderService:
                         resource_id=organisation_id,
                         code="ALREADY_REGISTERED"
                     )
+
+                # Guard: cannot register organisation transport if there are open ContentFlag records
+                _assert_no_open_flags("organisation_transport", organisation_id)
 
                 # Begin registration
                 db.session.begin_nested()

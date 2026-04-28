@@ -116,3 +116,9 @@ __all__ = [
     "get_settings_service",
     "paginate"
 ]
+
+try:
+    from app.admin.moderation.registry import register_module
+    register_module("transport", "Transport", lambda eid: f"/transport/admin/{eid}")
+except Exception:
+    pass

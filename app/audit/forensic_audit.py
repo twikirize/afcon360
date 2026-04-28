@@ -52,8 +52,30 @@ class ForensicAuditService:
             session_id: Optional[str] = None,
             risk_score: Optional[int] = None
     ) -> str:
-        """Log when user INITIATES an action."""
+        """Log when user INITIATES an action, capturing actor vs effective identity."""
         audit_id = str(uuid.uuid4())
+
+        # Capture identity and request metadata
+        actor_id = None
+        effective_id = None
+        try:
+            from app.core.context import RequestContext
+            actor = RequestContext.get_actor()
+            effective = RequestContext.get_effective_user()
+            actor_id = getattr(actor, 'id', None)
+            effective_id = getattr(effective, 'id', None)
+        except Exception:
+            pass
+        try:
+            from flask import request as flask_request, session as flask_session
+            ip_address = ip_address or (flask_request.remote_addr if flask_request else None)
+            user_agent = user_agent or (flask_request.user_agent.string if flask_request and flask_request.user_agent else None)
+            session_id = session_id or flask_session.get('session_id') or flask_session.get('_id') or getattr(flask_session, 'sid', None)
+        except Exception:
+            pass
+
+        # Default changed_by to actor when available; fallback to provided user_id
+        changed_by = actor_id or user_id
 
         # Create a DataChangeLog entry with attempted_at timestamp
         DataChangeLog.log_change(
@@ -62,7 +84,7 @@ class ForensicAuditService:
             operation=f"attempt_{action}",
             old_value=None,
             new_value=details if isinstance(details, dict) else {'details': str(details)} if details else None,
-            changed_by=user_id,
+            changed_by=changed_by,
             ip_address=ip_address,
             user_agent=user_agent,
             extra_data={
@@ -72,7 +94,10 @@ class ForensicAuditService:
                 "correlation_id": correlation_id or audit_id,
                 "session_id": session_id,
                 "risk_score": risk_score,
-                "details": details
+                "details": details,
+                "actor_user_id": actor_id,
+                "effective_user_id": effective_id,
+                "action": action,
             }
         )
 
@@ -82,9 +107,9 @@ class ForensicAuditService:
                 event_type=f"high_risk_attempt_{action}",
                 severity=AuditSeverity.WARNING,
                 description=f"High risk attempt detected for {entity_type} {entity_id}",
-                user_id=user_id,
+                user_id=actor_id or user_id,
                 ip_address=ip_address,
-                extra_data={"audit_id": audit_id, "risk_score": risk_score}
+                extra_data={"audit_id": audit_id, "risk_score": risk_score, "effective_user_id": effective_id}
             )
 
         return audit_id
@@ -97,14 +122,34 @@ class ForensicAuditService:
             review_notes: Optional[str] = None,
             result_details: Optional[Dict] = None
     ) -> bool:
-        """Log when action is COMPLETED/APPLIED."""
+        """Log when action is COMPLETED/APPLIED, including identity and request metadata."""
         try:
+            # Collect identity and request context
+            actor_id = None
+            effective_id = None
+            ip_address = None
+            user_agent = None
+            try:
+                from app.core.context import RequestContext
+                actor = RequestContext.get_actor()
+                effective = RequestContext.get_effective_user()
+                actor_id = getattr(actor, 'id', None)
+                effective_id = getattr(effective, 'id', None)
+            except Exception:
+                pass
+            try:
+                from flask import request as flask_request
+                ip_address = flask_request.remote_addr if flask_request else None
+                user_agent = flask_request.user_agent.string if flask_request and flask_request.user_agent else None
+            except Exception:
+                pass
+
             # Try to get current_app if Flask context exists
             try:
                 from flask import current_app
                 if current_app:
                     current_app.logger.info(f"Logging completion for audit_id: {audit_id}, status: {status}")
-            except:
+            except Exception:
                 pass
 
             # Log completion as a separate DataChangeLog entry
@@ -114,15 +159,19 @@ class ForensicAuditService:
                 operation="completion",
                 old_value="pending",
                 new_value=status,
-                changed_by=reviewed_by,
+                changed_by=reviewed_by or actor_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
                 extra_data={
                     "audit_id": audit_id,
                     "status": status,
-                    "reviewed_by": reviewed_by,
+                    "reviewed_by": reviewed_by or actor_id,
                     "review_notes": review_notes,
                     "reviewed_at": datetime.now(timezone.utc).isoformat(),
                     "result_details": result_details,
-                    "completed_at": datetime.now(timezone.utc).isoformat()
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "actor_user_id": actor_id,
+                    "effective_user_id": effective_id,
                 }
             )
 
@@ -133,7 +182,7 @@ class ForensicAuditService:
                 from flask import current_app
                 if current_app:
                     current_app.logger.error(f"Error logging completion: {e}")
-            except:
+            except Exception:
                 pass
             return False
 
@@ -149,8 +198,26 @@ class ForensicAuditService:
             ip_address: Optional[str] = None,
             user_agent: Optional[str] = None
     ) -> str:
-        """Log when action is BLOCKED (like KYC immutability)."""
+        """Log when action is BLOCKED (like KYC immutability), capturing actor/effective identity."""
         audit_id = str(uuid.uuid4())
+
+        # Capture identity and request metadata
+        actor_id = None
+        effective_id = None
+        try:
+            from app.core.context import RequestContext
+            actor = RequestContext.get_actor()
+            effective = RequestContext.get_effective_user()
+            actor_id = getattr(actor, 'id', None)
+            effective_id = getattr(effective, 'id', None)
+        except Exception:
+            pass
+        try:
+            from flask import request as flask_request
+            ip_address = ip_address or (flask_request.remote_addr if flask_request else None)
+            user_agent = user_agent or (flask_request.user_agent.string if flask_request and flask_request.user_agent else None)
+        except Exception:
+            pass
 
         DataChangeLog.log_change(
             entity_type=entity_type,
@@ -158,7 +225,7 @@ class ForensicAuditService:
             operation=f"blocked_{action}",
             old_value=old_value,
             new_value=attempted_value,
-            changed_by=user_id,
+            changed_by=actor_id or user_id,
             ip_address=ip_address,
             user_agent=user_agent,
             extra_data={
@@ -167,7 +234,10 @@ class ForensicAuditService:
                 "attempted_at": datetime.now(timezone.utc).isoformat(),
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "review_notes": reason,
-                "blocked_reason": reason
+                "blocked_reason": reason,
+                "actor_user_id": actor_id,
+                "effective_user_id": effective_id,
+                "action": action,
             }
         )
 
@@ -176,9 +246,9 @@ class ForensicAuditService:
             event_type=f"blocked_{action}",
             severity=AuditSeverity.WARNING,
             description=f"Action blocked for {entity_type} {entity_id}: {reason}",
-            user_id=user_id,
+            user_id=actor_id or user_id,
             ip_address=ip_address,
-            extra_data={"audit_id": audit_id}
+            extra_data={"audit_id": audit_id, "effective_user_id": effective_id}
         )
 
         return audit_id

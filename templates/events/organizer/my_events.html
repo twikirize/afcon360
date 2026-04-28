@@ -28,7 +28,16 @@
             <div class="col-md-6 col-lg-4 mb-4">
                 <div class="card h-100 shadow-sm">
                     <div class="card-header bg-white">
-                        <span class="badge {% if event.status == 'active' %}bg-success{% elif event.status == 'pending' %}bg-warning{% else %}bg-danger{% endif %}">
+                        <span class="badge 
+                            {% if event.status == 'published' or event.status == 'active' %}bg-success
+                            {% elif event.status == 'pending_approval' or event.status == 'pending' %}bg-warning
+                            {% elif event.status == 'approved' %}bg-info
+                            {% elif event.status == 'draft' %}bg-secondary
+                            {% elif event.status == 'paused' %}bg-warning
+                            {% elif event.status == 'suspended' %}bg-danger
+                            {% elif event.status == 'cancelled' %}bg-danger
+                            {% elif event.status == 'rejected' %}bg-danger
+                            {% else %}bg-secondary{% endif %}">
                             {{ event.status|upper }}
                         </span>
                     </div>
@@ -61,6 +70,15 @@
                             <a href="{{ url_for('events.edit_event', identifier=event.slug) }}" class="btn btn-sm btn-outline-secondary">
                                 Edit
                             </a>
+                            {% if event.status == 'approved' %}
+                                <button onclick="moderateEvent('{{ event.slug }}', 'publish')" class="btn btn-sm btn-outline-success">Publish</button>
+                            {% endif %}
+                            {% if event.status == 'published' %}
+                                <button onclick="moderateEvent('{{ event.slug }}', 'pause')" class="btn btn-sm btn-outline-warning">Pause</button>
+                            {% endif %}
+                            {% if event.status == 'paused' %}
+                                <button onclick="moderateEvent('{{ event.slug }}', 'resume')" class="btn btn-sm btn-outline-success">Resume</button>
+                            {% endif %}
                             <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ event.slug }}">
                                 Delete
                             </button>
@@ -74,13 +92,14 @@
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <form method="POST" action="{{ url_for('events.delete_event', identifier=event.slug) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="modal-header">
                                 <h5 class="modal-title">Delete Event</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body">
                                 <p>Are you sure you want to delete <strong>{{ event.name }}</strong>?</p>
-                                <p class="text-danger small">This cannot be undone if there are no bookings. If there are bookings, the event cannot be deleted.</p>
+                                <p class="text-danger small">This cannot be undone.</p>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -106,4 +125,45 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+function moderateEvent(slug, action) {
+    console.log('moderateEvent called', {slug, action});
+    var csrf = document.querySelector('meta[name="csrf-token"]')?.content || 
+               document.querySelector('input[name="csrf_token"]')?.value || '';
+    console.log('CSRF token found:', csrf ? 'yes' : 'no');
+    
+    var url = '/events/' + slug + '/' + action;
+    console.log('Fetching URL:', url);
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrf
+        }
+    })
+    .then(function(response) {
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        return response.json().then(function(data) {
+            console.log('Response data:', data);
+            return data;
+        });
+    })
+    .then(function(data) {
+        console.log('moderateEvent result:', data);
+        if (data.success) {
+            alert(data.message || action + ' successful');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(function(err) {
+        console.error('moderateEvent network error:', err);
+        alert('Network error. Check console for details.');
+    });
+}
+</script>
 {% endblock %}

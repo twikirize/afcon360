@@ -117,22 +117,26 @@ class EventStatus(str, enum.Enum):
 ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
     EventStatus.DRAFT: {
         EventStatus.PENDING_APPROVAL,
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.PENDING_APPROVAL: {
         EventStatus.APPROVED,
         EventStatus.REJECTED,
         EventStatus.DRAFT,           # moderator sends back for revision
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.APPROVED: {
         EventStatus.PUBLISHED,
         EventStatus.REJECTED,
         EventStatus.DRAFT,
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.REJECTED: {
         EventStatus.DRAFT,           # organiser revises and resubmits
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.PUBLISHED: {
@@ -141,16 +145,19 @@ ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
         EventStatus.COMPLETED,       # triggered by scheduler
         EventStatus.CANCELLED,
         EventStatus.APPROVED,        # unpublish
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.SUSPENDED: {
         EventStatus.PUBLISHED,       # admin reactivates
         EventStatus.CANCELLED,
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.PAUSED: {
         EventStatus.PUBLISHED,       # organiser resumes
         EventStatus.CANCELLED,
+        EventStatus.ARCHIVED,        # organiser soft‑delete
         EventStatus.DELETED,
     },
     EventStatus.COMPLETED: {

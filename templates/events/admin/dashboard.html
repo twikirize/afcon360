@@ -3,7 +3,6 @@
   PURPOSE: System Admin dashboard for event oversight — Command Centre
   ACCESS: System Admin (Super Admin) only
   RELATED: events.admin_dashboard route
-  CSS: static/css/modules/events/dashboard.css
 #}
 
 {% extends "base.html" %}
@@ -16,6 +15,69 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <style>
+    /* ── Modals ── */
+    .mod-overlay {
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+      backdrop-filter:blur(4px); z-index:1000; align-items:center; justify-content:center;
+    }
+    .mod-overlay.open { display:flex; }
+    .mod-box {
+      background:var(--brand-card,#111); border:1px solid var(--brand-border2);
+      border-radius:16px; padding:32px; width:100%; max-width:480px;
+      box-shadow:0 24px 64px rgba(0,0,0,.6); animation:modSlide .2s ease;
+    }
+    @keyframes modSlide { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+    .mod-severity {
+      display:flex; align-items:center; gap:8px; font-family:var(--font-mono);
+      font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+      padding:6px 12px; border-radius:6px; margin-bottom:20px; width:fit-content;
+    }
+    .sev-warn  { background:rgba(255,200,0,.12); color:#ffc800; border:1px solid rgba(255,200,0,.2); }
+    .sev-orange{ background:rgba(255,140,0,.12); color:#ff8c00; border:1px solid rgba(255,140,0,.2); }
+    .sev-red   { background:rgba(255,60,60,.12);  color:#ff3c3c; border:1px solid rgba(255,60,60,.2); }
+    .mod-title { font-family:var(--font-display,Syne); font-size:22px; font-weight:700; color:var(--brand-text); margin-bottom:6px; }
+    .mod-sub   { font-size:13px; color:var(--brand-muted); margin-bottom:24px; line-height:1.5; }
+    .mod-field { margin-bottom:16px; }
+    .mod-field label { display:block; font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-muted); margin-bottom:6px; }
+    .mod-field textarea, .mod-field select {
+      width:100%; background:var(--brand-surface,#1a1a1a); border:1px solid var(--brand-border2);
+      border-radius:8px; color:var(--brand-text); font-family:var(--font-body); font-size:13px;
+      padding:10px 14px; outline:none; transition:border-color .2s; resize:vertical; box-sizing:border-box;
+    }
+    .mod-field textarea:focus, .mod-field select:focus { border-color:var(--brand-accent); }
+    .mod-field.danger textarea { border-color:rgba(255,60,60,.4); }
+    .mod-field.danger textarea:focus { border-color:#ff3c3c; }
+    .mod-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+    .btn-mod-cancel { padding:10px 20px; border-radius:8px; background:transparent; border:1px solid var(--brand-border2); color:var(--brand-muted); font-size:13px; cursor:pointer; transition:all .18s; }
+    .btn-mod-cancel:hover { border-color:var(--brand-text); color:var(--brand-text); }
+    .btn-mod-action { padding:10px 20px; border-radius:8px; border:none; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all .18s; }
+    .btn-mod-reject { background:#ff3c3c; color:#fff; }
+    .btn-mod-reject:hover { background:#e02020; }
+    .btn-mod-orange { background:#ff8c00; color:#fff; }
+    .btn-mod-orange:hover { background:#e07800; }
+    .btn-mod-warn   { background:#ffc800; color:#000; }
+    .btn-mod-warn:hover { background:#e0b200; }
+    .btn-mod-approve{ background:var(--brand-accent,#00e5a0); color:#000; }
+    .btn-mod-approve:hover { opacity:.85; }
+
+    .tbl-btn-publish { background:rgba(0,229,160,.15); color:#00e5a0; border:1px solid rgba(0,229,160,.3); }
+    .tbl-btn-publish:hover { background:var(--brand-accent); color:#000; }
+
+    /* Toast */
+    .toast-stack { position:fixed; bottom:24px; right:24px; z-index:2000; display:flex; flex-direction:column; gap:8px; }
+    .toast {
+      padding:12px 20px; border-radius:10px; font-size:13px; font-weight:500;
+      box-shadow:0 8px 24px rgba(0,0,0,.4); display:flex; align-items:center; gap:10px;
+      animation:toastIn .25s ease; min-width:240px; max-width:360px;
+    }
+    @keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:none} }
+    .toast-success { background:#0d2e1f; border:1px solid rgba(0,229,160,.3); color:#00e5a0; }
+    .toast-error   { background:#2e0d0d; border:1px solid rgba(255,60,60,.3); color:#ff8080; }
+    .toast-out { animation:toastOut .3s ease forwards; }
+    @keyframes toastOut { to{opacity:0;transform:translateX(20px)} }
+    @keyframes shake { 0%,100%{transform:none} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -43,6 +105,9 @@
       <a href="{{ url_for('events.list') }}" class="btn-ghost">
         <i class="fas fa-globe"></i> Public Portal
       </a>
+      <a href="{{ url_for('events.admin_settings') }}" class="btn-ghost">
+        <i class="fas fa-cog"></i> Settings
+      </a>
       <a href="{{ url_for('events.admin_events') }}" class="btn-accent">
         <i class="fas fa-list"></i> All Events
       </a>
@@ -55,49 +120,41 @@
     <div class="kpi-strip">
       <div class="kpi-card" style="--kpi-color: var(--brand-accent)">
         <div class="kpi-label">Total Events</div>
-        <div class="kpi-value" id="total-events">{{ total_events }}</div>
+        <div class="kpi-value">{{ total_events }}</div>
         <div class="kpi-sub">
-          <span class="delta delta-up" id="active-events-sub">+<span data-kpi="active_events">{{ active_events }}</span> active</span>
+          <span class="delta delta-up">+{{ published_events }} published</span>
         </div>
       </div>
       <div class="kpi-card" style="--kpi-color: var(--brand-accent)">
-        <div class="kpi-label">Active</div>
-        <div class="kpi-value" id="active-events">{{ active_events }}</div>
-        <div class="kpi-sub">
-          <span style="font-size:12px;color:var(--brand-muted)">live events</span>
-        </div>
+        <div class="kpi-label">Published</div>
+        <div class="kpi-value">{{ published_events }}</div>
+        <div class="kpi-sub"><span style="font-size:12px;color:var(--brand-muted)">live events</span></div>
       </div>
       <div class="kpi-card" style="--kpi-color: var(--brand-gold)">
         <div class="kpi-label">Pending</div>
-        <div class="kpi-value" id="pending-events">{{ pending_events }}</div>
+        <div class="kpi-value">{{ pending_events }}</div>
         <div class="kpi-sub">
           {% if pending_events > 0 %}
-          <span class="delta delta-warn">Needs review</span>
+            <span class="delta delta-warn">Needs review</span>
           {% else %}
-          <span class="delta delta-up">All clear</span>
+            <span class="delta delta-up">All clear</span>
           {% endif %}
         </div>
       </div>
       <div class="kpi-card" style="--kpi-color: var(--brand-red)">
         <div class="kpi-label">Rejected</div>
-        <div class="kpi-value" id="rejected-events">{{ rejected_events }}</div>
-        <div class="kpi-sub">
-          <span style="font-size:12px;color:var(--brand-muted)">events declined</span>
-        </div>
+        <div class="kpi-value">{{ rejected_events }}</div>
+        <div class="kpi-sub"><span style="font-size:12px;color:var(--brand-muted)">declined</span></div>
       </div>
       <div class="kpi-card" style="--kpi-color: var(--brand-orange)">
         <div class="kpi-label">Suspended</div>
-        <div class="kpi-value" id="suspended-events">0</div>
-        <div class="kpi-sub">
-          <span style="font-size:12px;color:var(--brand-muted)">temporarily hidden</span>
-        </div>
+        <div class="kpi-value" id="suspended-kpi">0</div>
+        <div class="kpi-sub"><span style="font-size:12px;color:var(--brand-muted)">temporarily hidden</span></div>
       </div>
       <div class="kpi-card" style="--kpi-color: var(--brand-blue)">
         <div class="kpi-label">Registrations</div>
-        <div class="kpi-value" id="total-registrations">{{ total_registrations }}</div>
-        <div class="kpi-sub">
-          <span class="delta delta-up" id="checked-in-sub">{{ checked_in_registrations }} checked in</span>
-        </div>
+        <div class="kpi-value">{{ total_registrations }}</div>
+        <div class="kpi-sub"><span class="delta delta-up">{{ checked_in_registrations }} checked in</span></div>
       </div>
     </div>
 
@@ -111,55 +168,38 @@
         {% if pending_approval %}
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title">
-              <i class="fas fa-clock icon"></i>
-              Awaiting Approval
-            </div>
-            <span class="panel-count warn" id="pendingBadge">{{ pending_approval|length }} pending</span>
+            <div class="panel-title"><i class="fas fa-clock icon"></i> Awaiting Approval</div>
+            <span class="panel-count warn">{{ pending_approval|length }} pending</span>
           </div>
-          <div style="overflow-x:auto; overflow-y:visible;">
+          <div style="overflow-x:auto;overflow-y:visible;">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Event</th>
-                  <th>Organizer</th>
-                  <th>Submitted</th>
-                  <th>Category</th>
-                  <th>Actions</th>
+                  <th>Event</th><th>Organizer</th><th>Submitted</th><th>Category</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {% for event in pending_approval %}
-                <tr class="urgency-row" id="row-{{ event.slug }}">
+                <tr id="row-{{ event.slug }}">
                   <td>
                     <div class="event-name">{{ event.name }}</div>
-                    <div class="event-loc">
-                      <i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:4px;"></i>
-                      {{ event.city }}{% if event.venue %}, {{ event.venue }}{% endif %}
-                    </div>
+                    <div class="event-loc"><i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:4px;"></i>{{ event.city }}{% if event.venue %}, {{ event.venue }}{% endif %}</div>
                   </td>
                   <td>
                     <div class="organizer-tag">
-                      <div class="avatar">U</div>
-                      ID {{ event.organizer_id }}
+                      <div class="avatar">{{ (event.organizer.username[0] if event.organizer else 'U')|upper }}</div>
+                      {% if event.organizer %}{{ event.organizer.username }}{% else %}ID {{ event.organizer_id }}{% endif %}
                     </div>
                   </td>
-                  <td>
-                    <div class="date-tag">{{ event.created_at.strftime('%d %b %Y') if event.created_at else 'N/A' }}</div>
-                  </td>
+                  <td><div class="date-tag">{{ event.created_at.strftime('%d %b %Y') if event.created_at else 'N/A' }}</div></td>
                   <td><span class="badge badge-cat">{{ event.category }}</span></td>
                   <td>
                     <div class="tbl-actions">
-                      <a href="{{ url_for('events.landing', identifier=event.slug) }}"
-                         class="tbl-btn tbl-btn-view" target="_blank">
-                        <i class="fas fa-eye"></i> View
-                      </a>
-                      <button class="tbl-btn tbl-btn-approve"
-                              onclick="eventModerationAction('approve', '{{ event.slug }}')">
+                      <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="tbl-btn tbl-btn-view" target="_blank"><i class="fas fa-eye"></i></a>
+                      <button class="tbl-btn tbl-btn-approve" onclick="quickAction('approve','{{ event.slug }}','{{ event.name|e }}')">
                         <i class="fas fa-check"></i> Approve
                       </button>
-                      <button class="tbl-btn tbl-btn-reject"
-                              onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})">
+                      <button class="tbl-btn tbl-btn-reject" onclick="openModal('reject','{{ event.slug }}','{{ event.name|e }}')">
                         <i class="fas fa-times"></i> Reject
                       </button>
                     </div>
@@ -173,11 +213,8 @@
         {% else %}
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title">
-              <i class="fas fa-clock icon"></i>
-              Awaiting Approval
-            </div>
-            <span class="panel-count" id="pendingBadge">0 pending</span>
+            <div class="panel-title"><i class="fas fa-clock icon"></i> Awaiting Approval</div>
+            <span class="panel-count">0 pending</span>
           </div>
           <div class="empty-state">
             <i class="fas fa-check-circle" style="color:var(--brand-accent)"></i>
@@ -189,70 +226,67 @@
         <!-- RECENT ACTIVITY -->
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title">
-              <i class="fas fa-stream icon"></i>
-              Recent Activity
-            </div>
+            <div class="panel-title"><i class="fas fa-stream icon"></i> Recent Activity</div>
             <a href="{{ url_for('events.admin_events') }}" class="panel-link">
               View all <i class="fas fa-arrow-right" style="font-size:10px;"></i>
             </a>
           </div>
 
           {% if recent_events %}
-          <div style="overflow-x:auto; overflow-y:visible;">
+          <div style="overflow-x:auto;overflow-y:visible;">
             <table class="data-table">
               <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Status</th>
-                  <th>Category</th>
-                  <th>Date</th>
-                  <th>Moderation</th>
-                </tr>
+                <tr><th>Event</th><th>Status</th><th>Category</th><th>Date</th><th>Moderation</th></tr>
               </thead>
               <tbody>
                 {% for event in recent_events %}
+                {% set st = event.status.value if event.status is not string else event.status %}
                 <tr id="row-{{ event.slug }}">
                   <td>
                     <div class="event-name">{{ event.name }}</div>
                     <div class="event-loc">{{ event.city }}, {{ event.country or 'Uganda' }}</div>
                   </td>
-                  <td>
-                    <span class="badge badge-{{ event.status }}">{{ event.status }}</span>
-                  </td>
+                  <td><span class="badge badge-{{ st }}">{{ st|upper }}</span></td>
                   <td><span class="badge badge-cat">{{ event.category }}</span></td>
+                  <td><div class="date-tag">{{ event.start_date.strftime('%d %b %Y') if event.start_date else '—' }}</div></td>
                   <td>
-                    <div class="date-tag">
-                      {{ event.start_date.strftime('%d %b %Y') if event.start_date else '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="tbl-actions">
-                      {% if event.status == 'active' %}
-                        <button class="tbl-btn tbl-btn-mod"
-                                onclick="let r=prompt('Reason:'); let d=prompt('Duration (24h,72h,7d,14d,indefinite):','7d'); if(r&&d) eventModerationAction('suspend', '{{ event.slug }}', {reason: r, duration: d})">
-                          <i class="fas fa-pause-circle"></i> Suspend
-                        </button>
-                        <button class="tbl-btn tbl-btn-reject"
-                                onclick="let c=prompt('Category (fraud,illegal_activity,hate_speech,misinformation,spam,copyright,other):'); let r=prompt('Reason:'); if(c&&r) eventModerationAction('takedown', '{{ event.slug }}', {category: c, reason: r, notify_organiser: true})">
-                          <i class="fas fa-exclamation-triangle"></i> Takedown
-                        </button>
-                      {% elif event.status == 'suspended' %}
-                        <button class="tbl-btn tbl-btn-approve"
-                                onclick="eventModerationAction('restore', '{{ event.slug }}')">
-                          <i class="fas fa-check-circle"></i> Restore
-                        </button>
-                      {% elif event.status == 'pending' %}
-                        <button class="tbl-btn tbl-btn-approve"
-                                onclick="eventModerationAction('approve', '{{ event.slug }}')">
+                    <div class="tbl-actions" style="flex-wrap:wrap;gap:4px;">
+                      {% if st == 'pending_approval' %}
+                        <button class="tbl-btn tbl-btn-approve" onclick="quickAction('approve','{{ event.slug }}','{{ event.name|e }}')">
                           <i class="fas fa-check"></i> Approve
                         </button>
-                        <button class="tbl-btn tbl-btn-reject"
-                                onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})">
+                        <button class="tbl-btn tbl-btn-reject" onclick="openModal('reject','{{ event.slug }}','{{ event.name|e }}')">
                           <i class="fas fa-times"></i> Reject
                         </button>
+
+                      {% elif st == 'approved' %}
+                        <button class="tbl-btn tbl-btn-publish" onclick="quickAction('publish','{{ event.slug }}','{{ event.name|e }}')">
+                          <i class="fas fa-rocket"></i> Publish
+                        </button>
+                        <button class="tbl-btn tbl-btn-mod" onclick="openModal('suspend','{{ event.slug }}','{{ event.name|e }}')">
+                          <i class="fas fa-pause-circle"></i> Suspend
+                        </button>
+
+                      {% elif st == 'published' %}
+                        <button class="tbl-btn tbl-btn-mod" onclick="openModal('suspend','{{ event.slug }}','{{ event.name|e }}')">
+                          <i class="fas fa-pause-circle"></i> Suspend
+                        </button>
+                        <button class="tbl-btn tbl-btn-reject" onclick="openModal('takedown','{{ event.slug }}','{{ event.name|e }}')">
+                          <i class="fas fa-exclamation-triangle"></i> Takedown
+                        </button>
+
+                      {% elif st == 'suspended' %}
+                        <button class="tbl-btn tbl-btn-approve" onclick="quickAction('restore','{{ event.slug }}','{{ event.name|e }}')">
+                          <i class="fas fa-check-circle"></i> Restore
+                        </button>
+
+                      {% elif st == 'paused' %}
+                        <button class="tbl-btn tbl-btn-approve" onclick="quickAction('resume','{{ event.slug }}','{{ event.name|e }}')">
+                          <i class="fas fa-play-circle"></i> Resume
+                        </button>
+
                       {% else %}
-                        <a href="{{ url_for('events.admin_events') }}?status={{ event.status }}" class="tbl-btn tbl-btn-manage">
+                        <a href="{{ url_for('events.admin_events', status=st) }}" class="tbl-btn tbl-btn-manage">
                           <i class="fas fa-cog"></i> Manage
                         </a>
                       {% endif %}
@@ -264,10 +298,7 @@
             </table>
           </div>
           {% else %}
-          <div class="empty-state">
-            <i class="fas fa-calendar-times"></i>
-            No events found
-          </div>
+          <div class="empty-state"><i class="fas fa-calendar-times"></i> No events found</div>
           {% endif %}
         </div>
 
@@ -278,18 +309,13 @@
 
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title">
-              <i class="fas fa-user-check icon"></i>
-              Attendance
-            </div>
+            <div class="panel-title"><i class="fas fa-user-check icon"></i> Attendance</div>
           </div>
           <div class="checkin-meter">
             <div class="meter-row">
               <div class="meter-label">Check-in rate</div>
               <div class="meter-val">
-                {% if total_registrations > 0 %}
-                  {{ ((checked_in_registrations / total_registrations) * 100)|round(1) }}%
-                {% else %}0%{% endif %}
+                {% if total_registrations > 0 %}{{ ((checked_in_registrations / total_registrations) * 100)|round(1) }}%{% else %}0%{% endif %}
               </div>
             </div>
             <div class="meter-track">
@@ -303,10 +329,7 @@
 
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title">
-              <i class="fas fa-chart-bar icon"></i>
-              Category Breakdown
-            </div>
+            <div class="panel-title"><i class="fas fa-chart-bar icon"></i> Category Breakdown</div>
           </div>
           {% if categories %}
             {% for category, count in categories %}
@@ -316,56 +339,43 @@
                 <span class="dist-count">{{ count }}</span>
               </div>
               <div class="dist-bar">
-                <div class="dist-bar-fill"
-                     style="width:{{ ((count / total_events * 100) if total_events else 0)|round(1) }}%"></div>
+                <div class="dist-bar-fill" style="width:{{ ((count / total_events * 100) if total_events else 0)|round(1) }}%"></div>
               </div>
             </div>
             {% endfor %}
           {% else %}
-          <div class="empty-state" style="padding:32px;">
-            <i class="fas fa-chart-bar"></i>No categories yet
-          </div>
+          <div class="empty-state" style="padding:32px;"><i class="fas fa-chart-bar"></i> No categories yet</div>
           {% endif %}
         </div>
 
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title">
-              <i class="fas fa-bolt icon"></i>
-              Quick Actions
-            </div>
+            <div class="panel-title"><i class="fas fa-bolt icon"></i> Quick Actions</div>
           </div>
           <div class="quick-actions">
             <a href="{{ url_for('events.admin_events') }}" class="qa-item">
               <div class="qa-icon qa-icon-green"><i class="fas fa-list"></i></div>
-              <div>
-                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">All Events</div>
-                <div style="font-size:11px;">Browse and manage every event</div>
-              </div>
+              <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">All Events</div><div style="font-size:11px;">Browse and manage every event</div></div>
               <span class="qa-arrow">›</span>
             </a>
-            <a href="{{ url_for('events.admin_events', status='pending') }}" class="qa-item">
+            <a href="{{ url_for('events.admin_events', status='pending_approval') }}" class="qa-item">
               <div class="qa-icon qa-icon-gold"><i class="fas fa-clock"></i></div>
-              <div>
-                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Pending Review</div>
-                <div style="font-size:11px;">{{ pending_events }} events awaiting decision</div>
-              </div>
+              <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Pending Review</div><div style="font-size:11px;">{{ pending_events }} events awaiting decision</div></div>
               <span class="qa-arrow">›</span>
             </a>
-            <a href="{{ url_for('events.admin_events', status='active') }}" class="qa-item">
+            <a href="{{ url_for('events.admin_events', status='published') }}" class="qa-item">
               <div class="qa-icon qa-icon-blue"><i class="fas fa-check-circle"></i></div>
-              <div>
-                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Active Events</div>
-                <div style="font-size:11px;">{{ active_events }} live on the platform</div>
-              </div>
+              <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Published Events</div><div style="font-size:11px;">{{ published_events }} live on the platform</div></div>
+              <span class="qa-arrow">›</span>
+            </a>
+            <a href="{{ url_for('events.admin_events', status='approved') }}" class="qa-item">
+              <div class="qa-icon qa-icon-purple"><i class="fas fa-rocket"></i></div>
+              <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Approved — Unpublished</div><div style="font-size:11px;">Approved but not yet live</div></div>
               <span class="qa-arrow">›</span>
             </a>
             <a href="{{ url_for('events.list') }}" class="qa-item">
-              <div class="qa-icon qa-icon-purple"><i class="fas fa-globe"></i></div>
-              <div>
-                <div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Public Portal</div>
-                <div style="font-size:11px;">See what attendees see</div>
-              </div>
+              <div class="qa-icon" style="background:rgba(128,128,128,.1)"><i class="fas fa-globe"></i></div>
+              <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Public Portal</div><div style="font-size:11px;">See what attendees see</div></div>
               <span class="qa-arrow">›</span>
             </a>
           </div>
@@ -379,28 +389,28 @@
 
 {# ════════ MODALS ════════ #}
 
-<div class="modal-overlay" id="modal-reject">
-  <div class="modal-box">
-    <div class="modal-severity sev-warn"><i class="fas fa-times-circle"></i><span>Rejecting event — organiser will be notified</span></div>
-    <div class="modal-title">Reject Event</div>
-    <div class="modal-subtitle" id="modal-reject-subtitle">Provide a clear reason. The organiser can revise and resubmit.</div>
-    <div class="modal-field danger">
-      <label>Rejection Reason <span style="color:var(--brand-red)">*</span></label>
+<div class="mod-overlay" id="mod-reject">
+  <div class="mod-box">
+    <div class="mod-severity sev-warn"><i class="fas fa-times-circle"></i><span>Rejecting event — organiser will be notified</span></div>
+    <div class="mod-title">Reject Event</div>
+    <div class="mod-sub" id="mod-reject-sub">Provide a clear reason. The organiser can revise and resubmit.</div>
+    <div class="mod-field danger">
+      <label>Rejection Reason <span style="color:#ff3c3c">*</span></label>
       <textarea id="reject-reason" rows="4" placeholder="e.g. Incomplete venue details, missing contact info…"></textarea>
     </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('reject')">Cancel</button>
-      <button class="btn-modal-reject" onclick="submitAction('reject')"><i class="fas fa-times-circle"></i> Reject Event</button>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('reject')">Cancel</button>
+      <button class="btn-mod-action btn-mod-reject" onclick="submitModal('reject')"><i class="fas fa-times-circle"></i> Reject Event</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="modal-suspend">
-  <div class="modal-box">
-    <div class="modal-severity sev-orange"><i class="fas fa-pause-circle"></i><span>Suspension — event hidden from public immediately</span></div>
-    <div class="modal-title">Suspend Event</div>
-    <div class="modal-subtitle" id="modal-suspend-subtitle">The event will be hidden. The organiser can resolve the issue and request reinstatement.</div>
-    <div class="modal-field">
+<div class="mod-overlay" id="mod-suspend">
+  <div class="mod-box">
+    <div class="mod-severity sev-orange"><i class="fas fa-pause-circle"></i><span>Suspension — event hidden from public immediately</span></div>
+    <div class="mod-title">Suspend Event</div>
+    <div class="mod-sub" id="mod-suspend-sub">The event will be hidden. The organiser can resolve the issue and request reinstatement.</div>
+    <div class="mod-field">
       <label>Duration</label>
       <select id="suspend-duration">
         <option value="24h">24 hours</option>
@@ -410,40 +420,24 @@
         <option value="indefinite">Indefinite (manual review required)</option>
       </select>
     </div>
-    <div class="modal-field">
-      <label>Reason <span style="color:var(--brand-red)">*</span></label>
-      <textarea id="suspend-reason" rows="3" placeholder="e.g. Reported for misleading ticket pricing, under investigation…"></textarea>
+    <div class="mod-field">
+      <label>Reason <span style="color:#ff3c3c">*</span></label>
+      <textarea id="suspend-reason" rows="3" placeholder="e.g. Reported for misleading ticket pricing…"></textarea>
     </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('suspend')">Cancel</button>
-      <button class="btn-modal-orange" onclick="submitAction('suspend')"><i class="fas fa-pause-circle"></i> Suspend Event</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modal-deactivate">
-  <div class="modal-box">
-    <div class="modal-severity sev-orange"><i class="fas fa-ban"></i><span>Deactivation — event disabled, data preserved</span></div>
-    <div class="modal-title">Deactivate Event</div>
-    <div class="modal-subtitle" id="modal-deactivate-subtitle">Removed from public listings. No data deleted. Organiser can request reactivation via support.</div>
-    <div class="modal-field">
-      <label>Reason <span style="color:var(--brand-red)">*</span></label>
-      <textarea id="deactivate-reason" rows="3" placeholder="e.g. Organiser requested deactivation, event moved, duplicate listing…"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('deactivate')">Cancel</button>
-      <button class="btn-modal-warn" onclick="submitAction('deactivate')"><i class="fas fa-ban"></i> Deactivate Event</button>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('suspend')">Cancel</button>
+      <button class="btn-mod-action btn-mod-orange" onclick="submitModal('suspend')"><i class="fas fa-pause-circle"></i> Suspend Event</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="modal-takedown">
-  <div class="modal-box">
-    <div class="modal-severity sev-red"><i class="fas fa-exclamation-triangle"></i><span>Policy Takedown — permanent enforcement, compliance logged</span></div>
-    <div class="modal-title">Policy Takedown</div>
-    <div class="modal-subtitle" id="modal-takedown-subtitle">This event violates platform policies. It will be immediately removed and flagged in the compliance audit log with your admin ID.</div>
-    <div class="modal-field">
-      <label>Violation Category <span style="color:var(--brand-red)">*</span></label>
+<div class="mod-overlay" id="mod-takedown">
+  <div class="mod-box">
+    <div class="mod-severity sev-red"><i class="fas fa-exclamation-triangle"></i><span>Policy Takedown — permanent enforcement, compliance logged</span></div>
+    <div class="mod-title">Policy Takedown</div>
+    <div class="mod-sub" id="mod-takedown-sub">This event will be immediately removed and flagged in the compliance audit log with your admin ID.</div>
+    <div class="mod-field">
+      <label>Violation Category <span style="color:#ff3c3c">*</span></label>
       <select id="takedown-category">
         <option value="">— Select violation type —</option>
         <option value="fraud">Fraud / Scam</option>
@@ -455,82 +449,177 @@
         <option value="other">Other Policy Violation</option>
       </select>
     </div>
-    <div class="modal-field danger">
-      <label>Detailed Reason <span style="color:var(--brand-red)">*</span></label>
-      <textarea id="takedown-reason" rows="4" placeholder="Describe the specific policy violation. This is recorded in the compliance audit log…"></textarea>
+    <div class="mod-field danger">
+      <label>Detailed Reason <span style="color:#ff3c3c">*</span></label>
+      <textarea id="takedown-reason" rows="4" placeholder="Describe the specific policy violation. Recorded in compliance audit log…"></textarea>
     </div>
-    <div class="modal-field">
+    <div class="mod-field">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;font-size:13px;letter-spacing:0;">
-        <input type="checkbox" id="takedown-notify" checked style="accent-color:var(--brand-red);width:15px;height:15px;">
+        <input type="checkbox" id="takedown-notify" checked style="accent-color:#ff3c3c;width:15px;height:15px;">
         Notify organiser via email
       </label>
     </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('takedown')">Cancel</button>
-      <button class="btn-modal-reject" onclick="submitAction('takedown')"><i class="fas fa-exclamation-triangle"></i> Execute Takedown</button>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('takedown')">Cancel</button>
+      <button class="btn-mod-action btn-mod-reject" onclick="submitModal('takedown')"><i class="fas fa-exclamation-triangle"></i> Execute Takedown</button>
     </div>
   </div>
 </div>
 
 <div class="toast-stack" id="toastStack"></div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-function eventModerationAction(action, slug, extraData = {}) {
-    const url = `/events/admin/${slug}/${action}`;
-    const csrf = document.querySelector('meta[name="csrf-token"]').content;
-    fetch(url, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-        body: JSON.stringify(extraData)
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) { 
-            alert(data.message || action + ' successful'); 
-            location.reload(); 
+/* ═══════════════════════════════════════════════════════════
+   MODAL SYSTEM — shared with events.html
+═══════════════════════════════════════════════════════════ */
+let _modalSlug = null;
+let _modalName = '';
+
+function openModal(action, slug, name) {
+  _modalSlug = slug;
+  _modalName = name;
+  const sub = document.getElementById(`mod-${action}-sub`);
+  if (sub && name) {
+    const base = sub.dataset.base || sub.textContent;
+    sub.dataset.base = base;
+    sub.innerHTML = `<strong style="color:var(--brand-text)">"${name}"</strong> — ${base}`;
+  }
+  document.querySelectorAll(`#mod-${action} textarea`).forEach(t => t.value = '');
+  document.querySelectorAll(`#mod-${action} select`).forEach(s => { if (s.id !== 'suspend-duration') s.value = ''; });
+  document.getElementById(`mod-${action}`).classList.add('open');
+}
+
+function closeModal(action) {
+  document.getElementById(`mod-${action}`).classList.remove('open');
+  _modalSlug = null;
+}
+
+document.querySelectorAll('.mod-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) { o.classList.remove('open'); _modalSlug = null; } });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { document.querySelectorAll('.mod-overlay.open').forEach(o => o.classList.remove('open')); _modalSlug = null; }
+});
+
+function submitModal(action) {
+  if (!_modalSlug) return;
+  let payload = {};
+  if (action === 'reject') {
+    const reason = document.getElementById('reject-reason').value.trim();
+    if (!reason) { shakeField('reject-reason'); return; }
+    payload = { reason };
+  } else if (action === 'suspend') {
+    const reason = document.getElementById('suspend-reason').value.trim();
+    if (!reason) { shakeField('suspend-reason'); return; }
+    payload = { reason, duration: document.getElementById('suspend-duration').value };
+  } else if (action === 'takedown') {
+    const category = document.getElementById('takedown-category').value;
+    const reason = document.getElementById('takedown-reason').value.trim();
+    if (!category) { shakeField('takedown-category'); return; }
+    if (!reason) { shakeField('takedown-reason'); return; }
+    payload = { category, reason, notify_organiser: document.getElementById('takedown-notify').checked };
+  }
+  const slug = _modalSlug;
+  closeModal(action);
+  callAPI(action, slug, payload);
+}
+
+function quickAction(action, slug, name) {
+  if (!confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} "${name}"?`)) return;
+  callAPI(action, slug, {});
+}
+
+function callAPI(action, slug, payload) {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  const csrf = meta ? meta.getAttribute('content') : '';
+  const url = `/events/admin/${slug}/${action}`;
+  fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin', // include cookies for auth/CSRF
+    headers: Object.assign(
+      { 'Content-Type': 'application/json' },
+      csrf ? { 'X-CSRFToken': csrf } : {}
+    ),
+    body: JSON.stringify(payload || {})
+  })
+  .then(async (r) => {
+    const ct = r.headers.get('content-type') || '';
+    let data = null;
+    if (ct.includes('application/json')) {
+      try { data = await r.json(); } catch (e) { /* ignore */ }
+    } else {
+      // Non-JSON (likely HTML or redirected page)
+      const text = await r.text();
+      showToast('Unexpected response. If you were logged out, please sign in again.', 'error');
+      return;
+    }
+    if (data && data.success) {
+      showToast(data.message || `${action} successful`, 'success');
+      setTimeout(() => {
+        const row = document.getElementById(`row-${slug}`);
+        if (row) {
+          row.style.transition = 'opacity .4s, transform .4s';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(20px)';
+          setTimeout(() => row.remove(), 400);
+        } else {
+          // Fallback: reload to reflect updated counts/status
+          location.reload();
         }
-        else { 
-            alert('Error: ' + (data.error || 'Unknown error')); 
-        }
-    })
-    .catch(err => { 
-        console.error(err); 
-        alert('Network error'); 
-    });
+      }, 800);
+    } else {
+      showToast((data && (data.error || data.message)) || `Failed: ${action}`, 'error');
+    }
+  })
+  .catch(() => showToast('Network error — please try again', 'error'));
+}
+
+function showToast(message, type = 'success') {
+  const stack = document.getElementById('toastStack');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
+  stack.appendChild(toast);
+  setTimeout(() => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 350); }, 4000);
+}
+
+function shakeField(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.animation = 'none';
+  el.style.borderColor = '#ff3c3c';
+  el.offsetHeight;
+  el.style.animation = 'shake .4s ease';
+  el.focus();
 }
 
 /* ── LIVE CLOCK ── */
-function tickClock(){
-  const el=document.getElementById('live-time');
-  if(el) el.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});
-  setTimeout(tickClock,1000);
+function tickClock() {
+  const el = document.getElementById('live-time');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-GB', {hour12: false});
+  setTimeout(tickClock, 1000);
 }
 
-/* ── ANIMATE ON LOAD + CLOCK ── */
-document.addEventListener('DOMContentLoaded',()=>{
+document.addEventListener('DOMContentLoaded', () => {
   tickClock();
-
-  document.querySelectorAll('.dist-bar-fill').forEach((el,i)=>{
-    const t=el.style.width; el.style.width='0%';
-    setTimeout(()=>{el.style.width=t;},300+i*80);
+  document.querySelectorAll('.dist-bar-fill').forEach((el, i) => {
+    const t = el.style.width; el.style.width = '0%';
+    setTimeout(() => { el.style.width = t; }, 300 + i * 80);
   });
-
-  const meter=document.querySelector('.meter-fill');
-  if(meter){const t=meter.style.width;meter.style.width='0%';setTimeout(()=>{meter.style.width=t;},400);}
-
-  document.querySelectorAll('.kpi-value').forEach(el=>{
-    const raw=el.textContent.trim();
-    const isPct=raw.endsWith('%');
-    const target=parseFloat(raw);
-    if(!isNaN(target)&&target>0){
-      el.textContent=isPct?'0%':'0';
-      let cur=0;const step=target/(800/16);
-      const iv=setInterval(()=>{cur=Math.min(cur+step,target);el.textContent=isPct?cur.toFixed(1)+'%':Math.floor(cur).toString();if(cur>=target)clearInterval(iv);},16);
+  const meter = document.querySelector('.meter-fill');
+  if (meter) { const t = meter.style.width; meter.style.width = '0%'; setTimeout(() => { meter.style.width = t; }, 400); }
+  document.querySelectorAll('.kpi-value').forEach(el => {
+    const raw = el.textContent.trim();
+    const target = parseFloat(raw);
+    if (!isNaN(target) && target > 0) {
+      el.textContent = '0';
+      let cur = 0; const step = target / (800 / 16);
+      const iv = setInterval(() => { cur = Math.min(cur + step, target); el.textContent = Math.floor(cur).toString(); if (cur >= target) clearInterval(iv); }, 16);
     }
   });
 });
 </script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/admin_moderation.js') }}"></script>
 {% endblock %}

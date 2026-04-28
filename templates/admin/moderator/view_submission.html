@@ -1,165 +1,442 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>{% extends "base.html" %}
-
+{% extends "base.html" %}
 {% block title %}{{ title }} - AFCON360{% endblock %}
 
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0a0f; --surface: #0f0f1a; --panel: #14141f;
+  --border: rgba(255,255,255,0.07); --gold: #d4a843; --gold-dim: rgba(212,168,67,0.15);
+  --text: #e8e8f0; --muted: #6b6b80;
+  --red: #e05252; --green: #4ade80; --amber: #fbbf24; --blue: #60a5fa; --cyan: #22d3ee;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.6; }
+
+.mod-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mod-badge { background: var(--amber); color: #000; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; }
+.mod-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); margin-left: 12px; }
+.header-actions { display: flex; gap: 8px; }
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+.mod-wrap { padding: 28px 32px; max-width: 1200px; }
+.breadcrumb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 28px; font-size: 12px; color: var(--muted); }
+.breadcrumb-row a { color: var(--muted); text-decoration: none; } .breadcrumb-row a:hover { color: var(--gold); }
+.breadcrumb-row .sep { color: var(--border); } .breadcrumb-row .active { color: var(--text); }
+
+/* PAGE HEADING */
+.review-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.review-id {
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 4px 12px;
+  border-radius: 5px;
+}
+.review-title-text {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--text);
+}
+
+/* LAYOUT */
+.review-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) { .review-layout { grid-template-columns: 1fr; } }
+
+/* PANELS */
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; animation: fadeUp 0.3s ease both; }
+.panel:last-child { margin-bottom: 0; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-icon { width: 20px; height: 20px; border-radius: 4px; background: var(--gold-dim); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--gold); }
+.panel-body { padding: 20px; }
+
+/* META TABLE */
+.meta-table { width: 100%; border-collapse: collapse; }
+.meta-table tr { border-bottom: 1px solid rgba(255,255,255,0.04); }
+.meta-table tr:last-child { border-bottom: none; }
+.meta-table th { padding: 12px 0; width: 140px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; vertical-align: top; padding-right: 20px; }
+.meta-table td { padding: 12px 0; font-size: 13px; color: var(--text); vertical-align: top; }
+
+/* CONTENT BLOCK */
+.content-block {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; letter-spacing: 0.03em; text-transform: uppercase; }
+.badge-pending { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-approved { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-rejected { background: rgba(224,82,82,0.12); color: var(--red); border: 1px solid rgba(224,82,82,0.2); }
+.badge-type { background: rgba(34,211,238,0.1); color: var(--cyan); border: 1px solid rgba(34,211,238,0.2); }
+
+/* REVIEW ACTION PANELS */
+.action-panel-approve {
+  background: rgba(74,222,128,0.05);
+  border: 1px solid rgba(74,222,128,0.2);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 14px;
+}
+.action-panel-reject {
+  background: rgba(224,82,82,0.05);
+  border: 1px solid rgba(224,82,82,0.2);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.action-heading {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.action-heading.approve { color: var(--green); }
+.action-heading.reject { color: var(--red); }
+
+.form-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 8px; font-weight: 500; }
+.form-textarea {
+  width: 100%;
+  background: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s;
+  outline: none;
+  margin-bottom: 12px;
+}
+.form-textarea:focus { border-color: var(--gold); }
+.form-textarea.reject-area:focus { border-color: var(--red); }
+
+.btn-approve {
+  width: 100%;
+  padding: 12px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: 7px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-approve:hover { background: #22c55e; transform: translateY(-1px); }
+
+.btn-reject {
+  width: 100%;
+  padding: 12px;
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-reject:hover { background: #c94040; transform: translateY(-1px); }
+
+/* DIVIDER */
+.action-divider {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 8px 0;
+  position: relative;
+  margin: 4px 0;
+}
+.action-divider::before, .action-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: var(--border);
+}
+.action-divider::before { left: 0; }
+.action-divider::after { right: 0; }
+
+/* GUIDELINES */
+.guideline-list { list-style: none; }
+.guideline-list li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.guideline-list li:last-child { border-bottom: none; }
+.guideline-list li i { color: var(--green); font-size: 11px; }
+
+/* REVIEWED PANEL */
+.reviewed-info { display: flex; flex-direction: column; gap: 14px; }
+.reviewed-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.reviewed-row:last-child { border-bottom: none; }
+.reviewed-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.reviewed-val { font-size: 13px; color: var(--text); text-align: right; max-width: 180px; word-break: break-word; }
+
+.btn-back { width: 100%; padding: 11px; background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(212,168,67,0.2); border-radius: 7px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; margin-top: 14px; }
+.btn-back:hover { background: var(--gold); color: #000; }
+
+.csrf-note { display: none; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+{% endblock %}
+
 {% block body %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mt-4">Review Content Submission #{{ submission.id }}</h1>
-            <ol class="breadcrumb mb-4">
-                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item"><a href="{{ url_for('moderator.content_moderation') }}">Content Moderation</a></li>
-                <li class="breadcrumb-item active">Review</li>
-            </ol>
+<div class="mod-header">
+  <div style="display:flex; align-items:center;">
+    <span class="mod-badge"><i class="fas fa-gavel"></i> Review</span>
+    <span class="mod-title">Submission Review</span>
+  </div>
+  <div class="header-actions">
+    <a href="{{ url_for('admin.moderator.content_moderation') }}" class="btn-ghost"><i class="fas fa-arrow-left"></i> Back to Content</a>
+    <a href="{{ url_for('admin.moderator.dashboard') }}" class="btn-ghost"><i class="fas fa-home"></i> Dashboard</a>
+  </div>
+</div>
+
+<div class="mod-wrap">
+  <div class="breadcrumb-row">
+    <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+    <span class="sep">/</span>
+    <a href="{{ url_for('admin.moderator.content_moderation') }}">Content</a>
+    <span class="sep">/</span>
+    <span class="active">Review #{{ submission.id }}</span>
+  </div>
+
+  <!-- HEADING -->
+  <div class="review-heading">
+    <span class="review-id">#{{ submission.id }}</span>
+    <h1 class="review-title-text">{{ submission.title if submission.title is defined else submission.name }}</h1>
+    <span class="badge badge-{{ submission.status }}">{{ submission.status }}</span>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="review-layout">
+
+    <!-- LEFT: SUBMISSION DETAILS -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <div class="panel-icon"><i class="fas fa-info-circle"></i></div>
+            Submission Details
+          </div>
         </div>
+        <div class="panel-body">
+          <table class="meta-table">
+            <tr>
+              <th>Submission ID</th>
+              <td><span style="font-family:'DM Mono',monospace; color:var(--muted);">#{{ submission.id }}</span></td>
+            </tr>
+            <tr>
+              <th>Category</th>
+              <td>
+                <span class="badge badge-type">{{ submission.category.slug if submission.category else '—' }}</span>
+              </td>
+            </tr>
+            <tr>
+              <th>Name / Title</th>
+              <td style="font-weight:600; font-size:15px;">{{ submission.title if submission.title is defined else submission.name }}</td>
+            </tr>
+            {% if submission.data %}
+            <tr>
+              <th>Data</th>
+              <td>
+                <div class="content-block">{{ submission.data | tojson(indent=2) }}</div>
+              </td>
+            </tr>
+            {% endif %}
+            <tr>
+              <th>Submitted By</th>
+              <td>{{ submission.submitter.username if submission.submitter else 'Unknown' }}</td>
+            </tr>
+            {% if submission.organization %}
+            <tr>
+              <th>Organisation</th>
+              <td>{{ submission.organization.name }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+              <th>Submitted At</th>
+              <td style="font-family:'DM Mono',monospace; font-size:12px; color:var(--muted);">{{ submission.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            </tr>
+            <tr>
+              <th>Status</th>
+              <td><span class="badge badge-{{ submission.status }}">{{ submission.status }}</span></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      {% if submission.status != 'pending' and submission.reviewed_at %}
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <div class="panel-icon" style="background:rgba(96,165,250,0.12);color:var(--blue);"><i class="fas fa-history"></i></div>
+            Review Record
+          </div>
+        </div>
+        <div class="panel-body">
+          <table class="meta-table">
+            <tr>
+              <th>Reviewed By</th>
+              <td>{{ submission.reviewer.username if submission.reviewer else 'Unknown' }}</td>
+            </tr>
+            <tr>
+              <th>Reviewed At</th>
+              <td style="font-family:'DM Mono',monospace; font-size:12px; color:var(--muted);">
+                {{ submission.reviewed_at.strftime('%Y-%m-%d %H:%M:%S') if submission.reviewed_at else '—' }}
+              </td>
+            </tr>
+            <tr>
+              <th>Review Notes</th>
+              <td>{{ submission.review_notes or '—' }}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
-    <div class="row">
-        <!-- Submission Details -->
-        <div class="col-lg-8">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Submission Details
-                </div>
-                <div class="card-body">
-                    <table class="table">
-                        <tr>
-                            <th style="width: 150px;">ID:</th>
-                            <td>{{ submission.id }}</td>
-                        </tr>
-                        <tr>
-                            <th>Content Type:</th>
-                            <td><span class="badge bg-secondary">{{ submission.content_type }}</span></td>
-                        </tr>
-                        <tr>
-                            <th>Title:</th>
-                            <td><h4>{{ submission.title }}</h4></td>
-                        </tr>
-                        {% if submission.description %}
-                        <tr>
-                            <th>Description:</th>
-                            <td>{{ submission.description }}</td>
-                        </tr>
-                        {% endif %}
-                        {% if submission.content %}
-                        <tr>
-                            <th>Content:</th>
-                            <td>
-                                <div class="border p-3 rounded bg-light">
-                                    {{ submission.content }}
-                                </div>
-                            </td>
-                        </tr>
-                        {% endif %}
-                        <tr>
-                            <th>Submitted By:</th>
-                            <td>{{ submission.user.username if submission.user else 'Unknown' }}</td>
-                        </tr>
-                        <tr>
-                            <th>Submitted At:</th>
-                            <td>{{ submission.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                        </tr>
-                        <tr>
-                            <th>Current Status:</th>
-                            <td>
-                                <span class="badge bg-{{ 'warning' if submission.status == 'pending' else 'success' if submission.status == 'approved' else 'danger' }}">
-                                    {{ submission.status }}
-                                </span>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
+    <!-- RIGHT: ACTIONS SIDEBAR -->
+    <div>
+      {% if submission.status == 'pending' %}
+
+      <!-- APPROVE -->
+      <form action="{{ url_for('admin.moderator.approve_submission', submission_id=submission.id) }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="action-panel-approve">
+          <div class="action-heading approve">
+            <i class="fas fa-check-circle"></i> Approve
+          </div>
+          <label class="form-label" for="approve_notes">Notes (Optional)</label>
+          <textarea name="notes" id="approve_notes" class="form-textarea"
+            placeholder="Add review notes for this approval…" rows="3"></textarea>
+          <button type="submit" class="btn-approve">
+            <i class="fas fa-check"></i> Approve Submission
+          </button>
         </div>
+      </form>
 
-        <!-- Review Actions -->
-        <div class="col-lg-4">
-            {% if submission.status == 'pending' %}
-            <div class="card mb-4">
-                <div class="card-header bg-primary text-white">
-                    <i class="fas fa-gavel me-1"></i>
-                    Review Actions
-                </div>
-                <div class="card-body">
-                    <!-- Approve Form -->
-                    <form action="{{ url_for('moderator.approve_submission', submission_id=submission.id) }}" method="POST" class="mb-3">
-                        <div class="mb-3">
-                            <label for="approve_notes" class="form-label">Review Notes (Optional)</label>
-                            <textarea name="notes" id="approve_notes" class="form-control" rows="3" placeholder="Add any notes about this approval..."></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-success w-100">
-                            <i class="fas fa-check"></i> Approve Submission
-                        </button>
-                    </form>
+      <div class="action-divider">or</div>
 
-                    <hr>
+      <!-- REJECT -->
+      <form action="{{ url_for('admin.moderator.reject_submission', submission_id=submission.id) }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="action-panel-reject">
+          <div class="action-heading reject">
+            <i class="fas fa-times-circle"></i> Reject
+          </div>
+          <label class="form-label" for="reject_notes">Rejection Reason *</label>
+          <textarea name="notes" id="reject_notes" class="form-textarea reject-area"
+            placeholder="Provide a clear reason for rejection…" rows="3" required></textarea>
+          <button type="submit" class="btn-reject">
+            <i class="fas fa-times"></i> Reject Submission
+          </button>
+        </div>
+      </form>
 
-                    <!-- Reject Form -->
-                    <form action="{{ url_for('moderator.reject_submission', submission_id=submission.id) }}" method="POST">
-                        <div class="mb-3">
-                            <label for="reject_notes" class="form-label">Rejection Reason *</label>
-                            <textarea name="notes" id="reject_notes" class="form-control" rows="3" placeholder="Please provide a reason for rejection..." required></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-danger w-100">
-                            <i class="fas fa-times"></i> Reject Submission
-                        </button>
-                    </form>
-                </div>
+      {% else %}
+
+      <!-- ALREADY REVIEWED -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <div class="panel-icon" style="background:rgba(96,165,250,0.12);color:var(--blue);"><i class="fas fa-history"></i></div>
+            Review Complete
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="reviewed-info">
+            <div class="reviewed-row">
+              <span class="reviewed-label">Decision</span>
+              <span class="badge badge-{{ submission.status }}">{{ submission.status }}</span>
             </div>
-            {% else %}
-            <div class="card mb-4">
-                <div class="card-header bg-secondary text-white">
-                    <i class="fas fa-history me-1"></i>
-                    Review Information
-                </div>
-                <div class="card-body">
-                    <table class="table">
-                        <tr>
-                            <th>Reviewed By:</th>
-                            <td>{{ submission.reviewer.username if submission.reviewer else 'Unknown' }}</td>
-                        </tr>
-                        <tr>
-                            <th>Reviewed At:</th>
-                            <td>{{ submission.reviewed_at.strftime('%Y-%m-%d %H:%M:%S') if submission.reviewed_at else 'N/A' }}</td>
-                        </tr>
-                        <tr>
-                            <th>Review Notes:</th>
-                            <td>{{ submission.review_notes or 'No notes provided' }}</td>
-                        </tr>
-                    </table>
-                    <a href="{{ url_for('moderator.content_moderation') }}" class="btn btn-primary w-100">
-                        <i class="fas fa-arrow-left"></i> Back to Content List
-                    </a>
-                </div>
+            <div class="reviewed-row">
+              <span class="reviewed-label">Reviewer</span>
+              <span class="reviewed-val">{{ submission.reviewer.username if submission.reviewer else '—' }}</span>
+            </div>
+            <div class="reviewed-row">
+              <span class="reviewed-label">Reviewed</span>
+              <span class="reviewed-val" style="font-family:'DM Mono',monospace; font-size:11px;">
+                {{ submission.reviewed_at.strftime('%Y-%m-%d %H:%M') if submission.reviewed_at else '—' }}
+              </span>
+            </div>
+            {% if submission.review_notes %}
+            <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; padding:12px; font-size:12px; color:var(--muted); line-height:1.6;">
+              {{ submission.review_notes }}
             </div>
             {% endif %}
-
-            <div class="card">
-                <div class="card-header bg-info text-white">
-                    <i class="fas fa-tips me-1"></i>
-                    Guidelines
-                </div>
-                <div class="card-body">
-                    <ul class="list-unstyled">
-                        <li><i class="fas fa-check-circle text-success"></i> Ensure content is appropriate</li>
-                        <li><i class="fas fa-check-circle text-success"></i> Verify no copyright violations</li>
-                        <li><i class="fas fa-check-circle text-success"></i> Check for offensive material</li>
-                        <li><i class="fas fa-check-circle text-success"></i> Confirm accuracy of information</li>
-                    </ul>
-                </div>
-            </div>
+          </div>
+          <a href="{{ url_for('admin.moderator.content_moderation') }}" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Back to Content List
+          </a>
         </div>
-    </div>
-</div>
-{% endblock %}</title>
-</head>
-<body>
+      </div>
+      {% endif %}
 
-</body>
-</html>
+      <!-- GUIDELINES -->
+      <div class="panel" style="margin-top:14px;">
+        <div class="panel-header">
+          <div class="panel-title">
+            <div class="panel-icon"><i class="fas fa-shield-alt"></i></div>
+            Review Guidelines
+          </div>
+        </div>
+        <div class="panel-body">
+          <ul class="guideline-list">
+            <li><i class="fas fa-check-circle"></i> Content is appropriate and relevant</li>
+            <li><i class="fas fa-check-circle"></i> No copyright violations present</li>
+            <li><i class="fas fa-check-circle"></i> No offensive or harmful material</li>
+            <li><i class="fas fa-check-circle"></i> Information is accurate and verifiable</li>
+            <li><i class="fas fa-check-circle"></i> Data fields are complete and valid</li>
+          </ul>
+        </div>
+      </div>
+
+    </div><!-- /right sidebar -->
+  </div><!-- /review-layout -->
+</div><!-- /mod-wrap -->
+{% endblock %}

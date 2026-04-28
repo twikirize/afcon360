@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Waitlist - {{ event.name }}{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Waitlist for {{ event.name }}</h1>
+        <div>
+            <span class="badge bg-info fs-5">{{ waitlist_count }} waiting</span>
+            <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary ms-2">
+                Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    {% if waitlist_entries %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>#</th>
+                    <th>Position</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Ticket Type</th>
+                    <th>Added</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in waitlist_entries %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ entry.position }}</td>
+                    <td>{{ entry.email or 'N/A' }}</td>
+                    <td>{{ entry.phone or 'N/A' }}</td>
+                    <td>{{ entry.ticket_type_id or 'Any' }}</td>
+                    <td>{{ entry.created_at[:10] if entry.created_at else 'N/A' }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success promote-btn"
+                                data-waitlist-id="{{ entry.id }}"
+                                data-event-slug="{{ event.slug }}">
+                            Promote to Registration
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> No one is currently on the waitlist for this event.
+    </div>
+    {% endif %}
+</div>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const promoteButtons = document.querySelectorAll('.promote-btn');
+    promoteButtons.forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const waitlistId = this.dataset.waitlistId;
+            const eventSlug = this.dataset.eventSlug;
+            const row = this.closest('tr');
+
+            if (!confirm('Promote this attendee from the waitlist?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `/events/${eventSlug}/waitlist/promote/${waitlistId}`,
+                    { method: 'POST' }
+                );
+                const data = await response.json();
+
+                if (data.success) {
+                    row.style.opacity = '0.5';
+                    row.querySelector('.promote-btn').disabled = true;
+                    row.querySelector('.promote-btn').textContent = 'Promoted ✓';
+                    alert('Attendee promoted successfully!');
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

@@ -22,6 +22,7 @@ from app.auth.decorators import (
     require_role
 )
 from app.profile.models import get_profile_by_user
+from app.admin.models import ContentFlag
 
 # Import event-related modules
 try:
@@ -1248,6 +1249,144 @@ def wallet_stats():
 @admin_required
 def wallet_control():
     return render_template('admin/wallet_control.html')
+
+
+# -----------------------------
+# Moderation Flags (Admin Queue)
+# -----------------------------
+@admin_bp.route('/moderation/flags')
+@login_required
+@admin_required
+@require_permission('content.moderate')
+def moderation_flags():
+    """Admin escalation queue for open content flags."""
+    sort = request.args.get('sort', 'priority')  # priority|time
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 25, type=int)
+
+    query = ContentFlag.query.filter_by(status='open')
+    if sort == 'priority':
+        # Custom ordering: critical > high > medium > normal > low
+        priority_order = db.case(
+            (
+                (ContentFlag.priority == 'critical', 1),
+                (ContentFlag.priority == 'high', 2),
+                (ContentFlag.priority == 'medium', 3),
+                (ContentFlag.priority == 'normal', 4),
+                (ContentFlag.priority == 'low', 5),
+            ),
+            else_=6
+        )
+        query = query.order_by(priority_order, ContentFlag.created_at.asc())
+    else:
+        query = query.order_by(ContentFlag.created_at.desc())
+
+    flags = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    # Build per-flag review URL via registry
+    try:
+        from app.admin.moderator.registry import get_review_url
+        flag_rows = [{
+            "flag": flag,
+            "review_url": get_review_url(flag.entity_type, flag.entity_id)
+        } for flag in flags.items]
+    except Exception:
+        flag_rows = [{"flag": flag, "review_url": None} for flag in flags.items]
+
+    return render_template('admin/moderation/flags.html', flags=flags, flag_rows=flag_rows, sort=sort, title='Moderation Flags')
+
+
+@admin_bp.route('/moderation/flags/<int:flag_id>/resolve', methods=['POST'])
+@login_required
+@admin_required
+@require_permission('content.moderate')
+def resolve_flag(flag_id: int):
+    from app.admin.owner.models import OwnerAuditLog
+    flag = ContentFlag.query.get_or_404(flag_id)
+    action = request.form.get('action')  # approve|reject|suspend|ignore|request_changes
+    notes = request.form.get('notes', '')
+
+    flag.status = 'resolved'
+    flag.resolved_by = current_user.id
+    flag.resolution_action = action
+    flag.resolution_notes = notes
+    flag.resolved_at = datetime.utcnow()
+    db.session.commit()
+
+    OwnerAuditLog.log_action(
+        current_user,
+        action='flag.resolve',
+        category='moderation',
+        details={
+            'flag_id': int(flag.id),
+            'entity_type': flag.entity_type,
+            'entity_id': int(flag.entity_id),
+            'resolution_action': action,
+            'notes': notes,
+        }
+    )
+
+    flash('Flag resolved', 'success')
+    if request.is_json:
+        return jsonify({'ok': True})
+    return redirect(url_for('admin.moderation_flags'))
+
+
+@admin_bp.route('/moderation/flags/<int:flag_id>/reject', methods=['POST'])
+@login_required
+@admin_required
+@require_permission('content.moderate')
+def reject_flag(flag_id: int):
+    from app.admin.owner.models import OwnerAuditLog
+    flag = ContentFlag.query.get_or_404(flag_id)
+    notes = request.form.get('notes', '')
+
+    flag.status = 'rejected'
+    flag.resolved_by = current_user.id
+    flag.resolution_action = 'reject_flag'
+    flag.resolution_notes = notes
+    flag.resolved_at = datetime.utcnow()
+    db.session.commit()
+
+    OwnerAuditLog.log_action(
+        current_user,
+        action='flag.reject',
+        category='moderation',
+        details={'flag_id': int(flag.id), 'notes': notes}
+    )
+
+    flash('Flag rejected', 'info')
+    if request.is_json:
+        return jsonify({'ok': True})
+    return redirect(url_for('admin.moderation_flags'))
+
+
+@admin_bp.route('/moderation/flags/<int:flag_id>/escalate', methods=['POST'])
+@login_required
+@admin_required
+@require_permission('content.moderate')
+def escalate_flag(flag_id: int):
+    from app.admin.owner.models import OwnerAuditLog
+    flag = ContentFlag.query.get_or_404(flag_id)
+    role = request.form.get('role')  # e.g., admin, super_admin, owner
+    assignee = request.form.get('assignee_id', type=int)
+
+    flag.escalated_to_role = role
+    flag.assigned_to = assignee
+    flag.status = 'in_review'
+    db.session.commit()
+
+    OwnerAuditLog.log_action(
+        current_user,
+        action='flag.escalate',
+        category='moderation',
+        details={'flag_id': int(flag.id), 'role': role, 'assignee': assignee}
+    )
+
+    flash('Flag escalated', 'warning')
+    if request.is_json:
+        return jsonify({'ok': True})
+    return redirect(url_for('admin.moderation_flags'))
 
 
 @admin_bp.route("/users/<string:user_id>/update", methods=["GET", "POST"], endpoint="update_user")

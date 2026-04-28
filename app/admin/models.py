@@ -140,3 +140,49 @@ class UserDashboardConfig(BaseModel):
 
     def __repr__(self):
         return f"<UserDashboardConfig user_id={self.user_id}>"
+
+
+class ContentFlag(BaseModel):
+    """
+    Polymorphic content flag used for moderation escalation across entities.
+    Does NOT change entity state; purely an escalation record.
+    """
+    __tablename__ = "content_flags"
+
+    # Polymorphic target
+    entity_type = Column(String(50), nullable=False, index=True)  # e.g., "event", "manageable_item"
+    entity_id = Column(Integer, nullable=False, index=True)
+
+    # Who flagged it
+    flagged_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # Reason + context
+    reason = Column(Text, nullable=False)
+    priority = Column(String(20), default="normal", index=True)  # low|normal|medium|high|critical
+    category = Column(String(50), nullable=True)
+
+    # Workflow state
+    status = Column(String(20), default="open", index=True)  # open | in_review | resolved | rejected
+
+    # Escalation routing
+    escalated_to_role = Column(String(50), nullable=True)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Resolution
+    resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    resolution_action = Column(String(50), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    flagger = relationship("User", foreign_keys=[flagged_by])
+    assignee = relationship("User", foreign_keys=[assigned_to])
+    resolver = relationship("User", foreign_keys=[resolved_by])
+
+    __table_args__ = (
+        db.Index('ix_flags_entity', 'entity_type', 'entity_id'),
+        db.Index('ix_flags_status_priority', 'status', 'priority'),
+    )
+
+    def __repr__(self):
+        return f"<ContentFlag {self.entity_type}:{self.entity_id} status={self.status}>"

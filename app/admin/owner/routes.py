@@ -254,37 +254,42 @@ def dashboard():
 @owner_login_required
 def impersonate_role(role_name):
     """
-    MASTER KEY: Instantly switch to a user with the specified role.
-    If no user exists, the system will find the best match or fail gracefully.
+    MASTER KEY: Start impersonation of a user with the specified role.
+    Persist impersonation in session without changing the logged-in actor.
     """
     try:
         # 1. Find a user that HAS this role
-        target_user = User.query.join(UserRole, User.id == UserRole.user_id).join(Role, Role.id == UserRole.role_id).filter(Role.name == role_name).first()
+        target_user = (
+            User.query
+            .join(UserRole, User.id == UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(Role.name == role_name)
+            .first()
+        )
 
         if not target_user:
             flash(f"No existing users found with role: {role_name}. Please create one first.", "warning")
             return redirect(url_for('admin.owner.dashboard'))
 
-        # 2. Store original owner ID for the 'Stop Impersonating' function
-        session['impersonated_by'] = current_user.id
-        session['impersonated_by_name'] = current_user.username
-        session['is_impersonating'] = True
+        # 2. Set standardized impersonation session keys
+        session['impersonated_user_id'] = target_user.id
+        session['impersonation_started_at'] = datetime.utcnow().isoformat()
+        session['impersonation_by'] = current_user.id
         session['impersonated_role'] = role_name
 
         # 3. Log the action
         log_owner_action(
             action='role_impersonation_started',
             category='security',
-            details={'role': role_name, 'target_user': target_user.username}
+            details={'role': role_name, 'target_user': target_user.username, 'target_user_id': target_user.id}
         )
 
-        # 4. Perform the switch
-        logout_user()
-        login_user(target_user)
+        flash(
+            f"🗝️ Master Key Activated: You are now acting as a {role_name.replace('_', ' ').title()} ({target_user.username})",
+            "success",
+        )
 
-        flash(f"🗝️ Master Key Activated: You are now acting as a {role_name.replace('_', ' ').title()} ({target_user.username})", "success")
-
-        # 5. Redirect to the appropriate dashboard based on role
+        # 4. Redirect to the appropriate dashboard based on role
         dashboard_redirects = {
             'owner': url_for('admin.owner.dashboard'),
             'super_admin': url_for('admin.super_dashboard'),
@@ -314,46 +319,61 @@ def impersonate_role(role_name):
 @owner_bp.route('/master-key/exit', methods=['POST'])
 @login_required
 def exit_impersonation():
-    """Exit impersonation and return to Owner state"""
-    original_id = session.get('impersonated_by')
-    if not original_id:
-        return redirect(url_for('index'))
+    """Exit impersonation (clear effective identity) and return to actor context."""
+    try:
+        # Prefer new standardized keys
+        cleared = False
+        if session.get('impersonated_user_id'):
+            session.pop('impersonated_user_id', None)
+            session.pop('impersonation_started_at', None)
+            session.pop('impersonation_by', None)
+            cleared = True
 
-    owner_user = User.query.get(original_id)
-    if owner_user:
-        logout_user()
-        login_user(owner_user)
+        # Backward compatibility: legacy keys
         session.pop('impersonated_by', None)
         session.pop('impersonated_by_name', None)
         session.pop('is_impersonating', None)
-        flash("✅ Returned to Owner Dashboard", "info")
-        return redirect(url_for('admin.owner.dashboard'))
+        session.pop('impersonated_role', None)
 
-    return redirect(url_for('auth_routes.login'))
+        if cleared:
+            flash("✅ Impersonation ended. You are now acting as yourself.", "info")
+            return redirect(url_for('admin.owner.dashboard'))
+
+        # Legacy flow fallback: if previous implementation swapped login
+        original_id = session.get('original_actor_user_id') or session.get('impersonated_by')
+        if original_id:
+            owner_user = User.query.get(original_id)
+            if owner_user:
+                logout_user()
+                login_user(owner_user)
+                flash("✅ Returned to Owner Dashboard", "info")
+                return redirect(url_for('admin.owner.dashboard'))
+    except Exception as e:
+        current_app.logger.warning(f"Exit impersonation error: {e}")
+
+    return redirect(url_for('index'))
 
 # Keep existing user-specific impersonation for fine-grained testing
 @owner_bp.route('/impersonate/<string:user_id>', methods=['POST'])
 @owner_login_required
 def impersonate_user(user_id):
-    """Impersonate a specific user"""
+    """Impersonate a specific user (session-based; does not swap login)."""
     try:
         target_user = User.query.get(user_id)
         if not target_user:
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
 
-        session['impersonated_by'] = current_user.id
-        session['impersonated_by_name'] = current_user.username
-        session['is_impersonating'] = True
+        # Standardized session keys
+        session['impersonated_user_id'] = target_user.id
+        session['impersonation_started_at'] = datetime.utcnow().isoformat()
+        session['impersonation_by'] = current_user.id
 
         log_owner_action(
             action='user_impersonation_started',
             category='security',
-            details={'target_user': target_user.username}
+            details={'target_user': target_user.username, 'target_user_id': target_user.id}
         )
-
-        logout_user()
-        login_user(target_user)
 
         flash(f"🎭 You are now acting as {target_user.username}", "success")
         return redirect(url_for('index'))

@@ -1,123 +1,193 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>{% extends "base.html" %}
-
+{% extends "base.html" %}
 {% block title %}{{ title }} - AFCON360{% endblock %}
 
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0a0f; --surface: #0f0f1a; --panel: #14141f;
+  --border: rgba(255,255,255,0.07); --gold: #d4a843; --gold-dim: rgba(212,168,67,0.15);
+  --text: #e8e8f0; --muted: #6b6b80;
+  --red: #e05252; --green: #4ade80; --amber: #fbbf24; --blue: #60a5fa; --cyan: #22d3ee;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.6; }
+
+.mod-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mod-badge { background: var(--blue); color: #000; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; }
+.mod-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); margin-left: 12px; }
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+.mod-wrap { padding: 28px 32px; max-width: 1500px; }
+.breadcrumb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 12px; color: var(--muted); }
+.breadcrumb-row a { color: var(--muted); text-decoration: none; } .breadcrumb-row a:hover { color: var(--gold); }
+.breadcrumb-row .sep { color: var(--border); } .breadcrumb-row .active { color: var(--text); }
+
+/* FILTER TABS */
+.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 5px; width: fit-content; }
+.tab-link { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; color: var(--muted); transition: all 0.2s; white-space: nowrap; }
+.tab-link:hover { color: var(--text); }
+.tab-link.active { background: var(--gold); color: #000; font-weight: 700; }
+
+/* PANEL */
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; animation: fadeUp 0.3s ease both; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-icon { width: 22px; height: 22px; border-radius: 5px; background: rgba(96,165,250,0.12); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--blue); }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead th { padding: 10px 20px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: 'DM Mono', monospace; border-bottom: 1px solid var(--border); font-weight: 500; background: rgba(255,255,255,0.01); }
+.data-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.15s; }
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+.data-table tbody td { padding: 14px 20px; font-size: 13px; vertical-align: middle; }
+.mono { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+
+/* USER AVATAR */
+.user-cell { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--gold-dim); border: 1px solid rgba(212,168,67,0.2); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 12px; color: var(--gold); flex-shrink: 0; text-transform: uppercase; }
+.user-name { font-weight: 500; font-size: 13px; }
+.user-email { font-size: 11px; color: var(--muted); }
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; letter-spacing: 0.03em; text-transform: uppercase; }
+.badge-verified { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-unverified { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-active { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-inactive { background: rgba(224,82,82,0.12); color: var(--red); border: 1px solid rgba(224,82,82,0.2); }
+.badge-role { background: rgba(34,211,238,0.1); color: var(--cyan); border: 1px solid rgba(34,211,238,0.2); }
+
+/* PAGINATION */
+.pagination-wrap { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+.page-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 5px; text-decoration: none; font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); transition: all 0.15s; }
+.page-btn:hover { border-color: var(--gold); color: var(--gold); }
+.page-btn.active { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 700; }
+.page-btn.disabled { opacity: 0.3; pointer-events: none; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-state .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+{% endblock %}
+
 {% block body %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mt-4">User Moderation</h1>
-            <ol class="breadcrumb mb-4">
-                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Users</li>
-            </ol>
-        </div>
-    </div>
-
-    <!-- Filter Tabs -->
-    <div class="row mb-3">
-        <div class="col-12">
-            <ul class="nav nav-tabs">
-                <li class="nav-item">
-                    <a class="nav-link {% if current_filter == 'all' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='all') }}">All Users</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if current_filter == 'recent' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='recent') }}">Recent (7 days)</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if current_filter == 'unverified' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='unverified') }}">Unverified</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if current_filter == 'inactive' %}active{% endif %}" href="{{ url_for('moderator.user_moderation', filter='inactive') }}">Inactive</a>
-                </li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- Users Table -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="fas fa-users me-1"></i>
-                    User List
-                </div>
-                <div class="card-body">
-                    {% if users.items %}
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Username</th>
-                                    <th>Email</th>
-                                    <th>Registered</th>
-                                    <th>Verified</th>
-                                    <th>Active</th>
-                                    <th>Roles</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for user in users.items %}
-                                <tr>
-                                    <td>{{ user.id }}</td>
-                                    <td>{{ user.username }}</td>
-                                    <td>{{ user.email }}</td>
-                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'success' if user.is_verified else 'warning' }}">
-                                            {{ 'Verified' if user.is_verified else 'Unverified' }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-{{ 'success' if user.is_active else 'danger' }}">
-                                            {{ 'Active' if user.is_active else 'Inactive' }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {% for role in user.roles %}
-                                            <span class="badge bg-info">{{ role.name }}</span>
-                                        {% else %}
-                                            <span class="text-muted">No roles</span>
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    {% if users.pages > 1 %}
-                    <nav>
-                        <ul class="pagination">
-                            {% for page in users.iter_pages() %}
-                                {% if page %}
-                                    <li class="page-item {% if page == users.page %}active{% endif %}">
-                                        <a class="page-link" href="{{ url_for('moderator.user_moderation', page=page, filter=current_filter) }}">{{ page }}</a>
-                                    </li>
-                                {% else %}
-                                    <li class="page-item disabled"><span class="page-link">...</span></li>
-                                {% endif %}
-                            {% endfor %}
-                        </ul>
-                    </nav>
-                    {% endif %}
-                    {% else %}
-                    <p class="text-muted">No users found.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="mod-header">
+  <div style="display:flex; align-items:center;">
+    <span class="mod-badge"><i class="fas fa-users"></i> Users</span>
+    <span class="mod-title">User Moderation</span>
+  </div>
+  <a href="{{ url_for('admin.moderator.dashboard') }}" class="btn-ghost"><i class="fas fa-home"></i> Dashboard</a>
 </div>
-{% endblock %}</title>
-</head>
-<body>
 
-</body>
-</html>
+<div class="mod-wrap">
+  <div class="breadcrumb-row">
+    <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+    <span class="sep">/</span>
+    <span class="active">Users</span>
+  </div>
+
+  <!-- FILTER TABS -->
+  <div class="tab-bar">
+    <a class="tab-link {% if current_filter == 'all' %}active{% endif %}" href="{{ url_for('admin.moderator.user_moderation', filter='all') }}">
+      <i class="fas fa-users"></i> All Users
+    </a>
+    <a class="tab-link {% if current_filter == 'recent' %}active{% endif %}" href="{{ url_for('admin.moderator.user_moderation', filter='recent') }}">
+      <i class="fas fa-user-plus"></i> Recent (7d)
+    </a>
+    <a class="tab-link {% if current_filter == 'unverified' %}active{% endif %}" href="{{ url_for('admin.moderator.user_moderation', filter='unverified') }}">
+      <i class="fas fa-user-times"></i> Unverified
+    </a>
+    <a class="tab-link {% if current_filter == 'inactive' %}active{% endif %}" href="{{ url_for('admin.moderator.user_moderation', filter='inactive') }}">
+      <i class="fas fa-ban"></i> Inactive
+    </a>
+  </div>
+
+  <!-- TABLE PANEL -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-icon"><i class="fas fa-users"></i></div>
+        User List —
+        <span style="color:var(--gold);text-transform:capitalize;font-size:13px;margin-left:4px;">{{ current_filter }}</span>
+      </div>
+      <span style="font-size:12px; color:var(--muted); font-family:'DM Mono',monospace;">{{ users.total }} total</span>
+    </div>
+
+    <div class="panel-body">
+      {% if users.items %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>User</th>
+            <th>Registered</th>
+            <th>Verified</th>
+            <th>Status</th>
+            <th>Roles</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users.items %}
+          <tr>
+            <td class="mono">#{{ user.id }}</td>
+            <td>
+              <div class="user-cell">
+                <div class="avatar">{{ user.username[0] }}</div>
+                <div>
+                  <div class="user-name">{{ user.username }}</div>
+                  <div class="user-email">{{ user.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="mono">{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+            <td>
+              <span class="badge {{ 'badge-verified' if user.is_verified else 'badge-unverified' }}">
+                {% if user.is_verified %}<i class="fas fa-check"></i> Verified{% else %}<i class="fas fa-times"></i> Unverified{% endif %}
+              </span>
+            </td>
+            <td>
+              <span class="badge {{ 'badge-active' if user.is_active else 'badge-inactive' }}">
+                {{ 'Active' if user.is_active else 'Inactive' }}
+              </span>
+            </td>
+            <td>
+              {% for role in user.roles %}
+                <span class="badge badge-role">{{ role.name }}</span>
+              {% else %}
+                <span style="color:var(--muted); font-size:12px;">—</span>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if users.pages > 1 %}
+      <div class="pagination-wrap">
+        {% for page in users.iter_pages() %}
+          {% if page %}
+            <a class="page-btn {% if page == users.page %}active{% endif %}"
+               href="{{ url_for('admin.moderator.user_moderation', page=page, filter=current_filter) }}">{{ page }}</a>
+          {% else %}
+            <span class="page-btn disabled">…</span>
+          {% endif %}
+        {% endfor %}
+        <span style="margin-left:8px; font-size:11px; color:var(--muted); font-family:'DM Mono',monospace;">
+          Page {{ users.page }} / {{ users.pages }}
+        </span>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-users"></i></div>
+        <p>No users found for this filter</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -8,8 +8,14 @@ from flask import Blueprint, current_app
 # Create single blueprint
 events_bp = Blueprint('events', __name__, url_prefix='/events')
 
-# Import routes directly - this registers them with the blueprint
+# ✅ STEP 1: Register settings routes FIRST (before importing routes)
+from app.events.settings_routes import register_settings_routes
+register_settings_routes(events_bp)
+print("✅ Settings routes registered to events blueprint")  # Debug line
+
+# ✅ STEP 2: Now import routes (which will add the rest of the routes)
 from app.events import routes
+from app.events.settings_model import EventSettings  # noqa: F401
 
 # Expose service for easier imports
 from app.events.services import EventService
@@ -18,7 +24,6 @@ from app.events.services import EventService
 try:
     from app.events.signal_handlers import connect_event_signal_handlers
 
-    # Connect signal handlers when the blueprint is registered
     @events_bp.record_once
     def on_load(state):
         """Called when the blueprint is registered with the app"""
@@ -33,3 +38,9 @@ try:
 except ImportError as e:
     current_app.logger.error(f"Failed to import event signal handlers: {e}")
     __all__ = ['events_bp', 'EventService', 'routes']
+
+try:
+    from app.admin.moderation.registry import register_module
+    register_module("event", "Events", lambda eid: f"/events/{eid}")
+except Exception:
+    pass

@@ -9,6 +9,9 @@ from app.admin.owner.utils import get_system_health
 from app.identity.services import load_user_roles
 from app.utils.transactions import transactional
 from app.profile.models import get_profile_by_user
+from app.admin.models import ContentFlag
+from app.auth.helpers import has_global_permission
+from app.extensions import db
 
 def user_to_dict(user):
     """Convert User model to dictionary to prevent lazy loading issues"""
@@ -23,7 +26,71 @@ def user_to_dict(user):
         'created_at': user.created_at
     }
 
-@transactional("Load owner dashboard data")
+@transactional("Create content flag")
+def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: str = "normal", category: str | None = None):
+    """
+    Create a ContentFlag record if the user has `content.flag` permission.
+    Does not change entity state.
+    Returns (ok: bool, result: ContentFlag|str)
+    """
+    # Permission check
+    if not has_global_permission(user, "content.flag"):
+        return False, "Not authorized"
+
+    flag = ContentFlag(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        flagged_by=user.id,
+        reason=reason,
+        priority=priority or "normal",
+        category=category,
+        status="open",
+    )
+    db.session.add(flag)
+    db.session.flush()  # get ID
+
+    # Audit log
+    OwnerAuditLog.log_action(
+        user,
+        action="flag.create",
+        category="moderation",
+        details={
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "priority": priority,
+            "category": category,
+            "reason": reason,
+            "flag_id": int(flag.id),
+        }
+    )
+
+    return True, flag
+
+
+@transactional("Resolve content flag")
+def resolve_flag(user, flag_id: int, resolution_action: str, resolution_notes: str = None):
+    from datetime import datetime
+    flag = ContentFlag.query.get(flag_id)
+    if not flag:
+        return False, "Flag not found"
+    if flag.status == "resolved":
+        return False, "Already resolved"
+
+    flag.status = "resolved"
+    flag.resolved_by = user.id
+    flag.resolution_action = resolution_action
+    flag.resolution_notes = resolution_notes
+    flag.resolved_at = datetime.utcnow()
+
+    OwnerAuditLog.log_action(user, "flag.resolve", "moderation", {
+        "flag_id": flag_id,
+        "entity_type": flag.entity_type,
+        "entity_id": flag.entity_id,
+        "resolution_action": resolution_action,
+    })
+    return True, flag
+
+
 def get_owner_dashboard_data(user_id: int):
     """
     Fetch all owner dashboard info, including platform stats,

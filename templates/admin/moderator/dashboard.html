@@ -1,193 +1,528 @@
-{% extends "base.html" %}
+{% from "base.html" import datetime %}
+{% extends "base.html" %}{% block title %}{{ title }} - AFCON360{% endblock %}
+{% set now = datetime.utcnow() %}
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0a0a0f;--surface:#0f0f1a;--panel:#14141f;--border:rgba(255,255,255,.07);--gold:#d4a843;--gold-dim:rgba(212,168,67,.15);--text:#e8e8f0;--muted:#6b6b80;--red:#e05252;--green:#4ade80;--amber:#fbbf24;--blue:#60a5fa;--cyan:#22d3ee;--purple:#a78bfa;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--ink);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;}
+.mh{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.mb{background:var(--gold);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:3px;}
+.mt{font-family:'Syne',sans-serif;font-weight:700;font-size:17px;margin-left:10px;}
+.mh-actions{display:flex;gap:8px;align-items:center;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;transition:all .15s;border:none;font-family:'DM Sans',sans-serif;}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);}.btn-ghost:hover{border-color:var(--gold);color:var(--gold);}
+.flag-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(224,82,82,.1);border:1px solid rgba(224,82,82,.25);color:var(--red);border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;}
+.pulse{width:7px;height:7px;background:var(--red);border-radius:50%;animation:pulse 2s infinite;display:inline-block;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(1.5);}}
+.mod-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;display:flex;gap:2px;overflow-x:auto;}
+.mod-nav a{display:inline-flex;align-items:center;gap:5px;padding:11px 13px;color:var(--muted);text-decoration:none;font-size:12px;font-weight:500;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;}
+.mod-nav a:hover{color:var(--text);}.mod-nav a.active{color:var(--gold);border-bottom-color:var(--gold);}
+.mw{padding:24px 28px;max-width:1600px;}
+.bc{display:flex;align-items:center;gap:6px;margin-bottom:20px;font-size:12px;color:var(--muted);}
+.bc span{opacity:.5;}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px;}
+.sc{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:18px 20px;position:relative;overflow:hidden;text-decoration:none;display:block;transition:border-color .2s,transform .2s;}
+.sc:hover{border-color:var(--gold);transform:translateY(-2px);}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--acc,var(--gold));}
+.sc.red{--acc:var(--red);}.sc.green{--acc:var(--green);}.sc.blue{--acc:var(--blue);}.sc.amber{--acc:var(--amber);}.sc.purple{--acc:var(--purple);}
+.si{width:30px;height:30px;border-radius:6px;background:var(--gold-dim);display:flex;align-items:center;justify-content:center;margin-bottom:11px;font-size:13px;color:var(--gold);}
+.sc.red .si{background:rgba(224,82,82,.12);color:var(--red);}.sc.green .si{background:rgba(74,222,128,.1);color:var(--green);}
+.sc.blue .si{background:rgba(96,165,250,.1);color:var(--blue);}.sc.amber .si{background:rgba(251,191,36,.1);color:var(--amber);}
+.sc.purple .si{background:rgba(167,139,250,.1);color:var(--purple);}
+.sv{font-family:'Syne',sans-serif;font-weight:800;font-size:26px;line-height:1;color:var(--text);margin-bottom:4px;}
+.sl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.s-link{position:absolute;bottom:10px;right:12px;font-size:10px;color:var(--muted);}
+.panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.panels-grid .full{grid-column:1/-1;}
+@media(max-width:900px){.panels-grid{grid-template-columns:1fr;}}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:9px;overflow:hidden;}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02);}
+.pt{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;display:flex;align-items:center;gap:6px;}
+.pi{width:19px;height:19px;border-radius:4px;background:var(--gold-dim);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--gold);}
+.pi.red{background:rgba(224,82,82,.12);color:var(--red);}.pi.blue{background:rgba(96,165,250,.1);color:var(--blue);}
+.tbl{width:100%;border-collapse:collapse;}
+.tbl thead th{padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-family:'DM Mono',monospace;border-bottom:1px solid var(--border);font-weight:500;}
+.tbl tbody tr{border-bottom:1px solid rgba(255,255,255,.03);transition:background .12s;}
+.tbl tbody tr:last-child{border-bottom:none;}.tbl tbody tr:hover{background:rgba(255,255,255,.025);}
+.tbl tbody td{padding:11px 14px;font-size:13px;vertical-align:middle;}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;letter-spacing:.03em;text-transform:uppercase;}
+.b-pending{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.25);}
+.b-approved{background:rgba(74,222,128,.1);color:var(--green);border:1px solid rgba(74,222,128,.2);}
+.b-rejected{background:rgba(224,82,82,.1);color:var(--red);border:1px solid rgba(224,82,82,.2);}
+.b-type{background:rgba(34,211,238,.08);color:var(--cyan);border:1px solid rgba(34,211,238,.18);}
+.b-critical{background:rgba(224,82,82,.15);color:var(--red);border:1px solid rgba(224,82,82,.25);}
+.b-high{background:rgba(251,130,100,.15);color:#fb8264;border:1px solid rgba(251,130,100,.25);}
+.b-medium{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.25);}
+.b-normal{background:rgba(96,165,250,.1);color:var(--blue);border:1px solid rgba(96,165,250,.2);}
+.b-low{background:rgba(107,107,128,.15);color:var(--muted);border:1px solid var(--border);}
+.b-active{background:rgba(74,222,128,.1);color:var(--green);border:1px solid rgba(74,222,128,.2);}
+.b-inactive{background:rgba(224,82,82,.1);color:var(--red);border:1px solid rgba(224,82,82,.2);}
+.b-verified{background:rgba(74,222,128,.1);color:var(--green);border:1px solid rgba(74,222,128,.2);}
+.b-unverified{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.25);}
+.btn-action{display:inline-flex;align-items:center;gap:3px;padding:4px 9px;background:var(--gold-dim);color:var(--gold);border:1px solid rgba(212,168,67,.2);border-radius:4px;font-size:11px;font-weight:600;text-decoration:none;transition:all .12s;}
+.btn-action:hover{background:var(--gold);color:#000;}
+.pf{padding:12px 18px;border-top:1px solid var(--border);}
+.pf a{font-size:12px;color:var(--gold);text-decoration:none;font-weight:600;}
+.empty{text-align:center;padding:36px 16px;color:var(--muted);}
+.empty i{font-size:24px;opacity:.25;margin-bottom:8px;display:block;}
+.mono{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);}
+.prow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.throughput-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:22px;}
+.tp-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;text-align:center;}
+.tp-val{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;}
+.tp-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+.tp-card.green .tp-val{color:var(--green);}.tp-card.red .tp-val{color:var(--red);}.tp-card.blue .tp-val{color:var(--blue);}
+@media(max-width:600px){.throughput-row{grid-template-columns:1fr 1fr;}.stats-grid{grid-template-columns:1fr 1fr;}}
+</style>
+<script>
+const API = {
+  queue: "/moderator/api/queue-health",
+  myQueue: "/moderator/api/my-queue",
+  approve: (id) => `/moderator/api/submissions/${id}/approve`,
+  reject: (id) => `/moderator/api/submissions/${id}/reject`,
+  resolveFlag: (id) => `/moderator/api/flags/${id}/resolve`
+};
 
-{% block title %}{{ title }} - AFCON360{% endblock %}
+async function fetchJSON(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    ...options
+  });
+  return res.json();
+}
+</script>
 
+<script>
+async function updateQueueHealth() {
+  try {
+    const data = await fetchJSON(API.queue);
+
+    document.querySelector(".flag-pill").innerHTML =
+      `<span class="pulse"></span> ${data.open_flags} Open Flags`;
+
+  } catch (e) {
+    console.warn("Queue health failed");
+  }
+}
+
+setInterval(updateQueueHealth, 10000);
+updateQueueHealth();
+</script>
+
+<script>
+function renderMyQueue(data) {
+  const container = document.getElementById("myQueueBody");
+  let html = "";
+
+  if (data.submissions.length === 0 && data.flags.length === 0) {
+    container.innerHTML = `<div class="empty"><p>No assigned work</p></div>`;
+    return;
+  }
+
+  html += `<table class="tbl"><tbody>`;
+
+  data.submissions.forEach(s => {
+    html += `
+    <tr>
+      <td>#${s.id}</td>
+      <td>${s.name}</td>
+      <td>
+        <button onclick="approve(${s.id})" class="btn-action">✔</button>
+        <button onclick="reject(${s.id})" class="btn-action">✖</button>
+      </td>
+    </tr>`;
+  });
+
+  data.flags.forEach(f => {
+    html += `
+    <tr>
+      <td>${f.entity_type} #${f.entity_id}</td>
+      <td><span class="badge b-${f.priority}">${f.priority}</span></td>
+      <td>
+        <button onclick="resolveFlag(${f.id})" class="btn-action">Resolve</button>
+      </td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+
+  document.getElementById("myQueueCount").innerText =
+    data.submissions.length + data.flags.length;
+}
+
+async function loadMyQueue() {
+  try {
+    const data = await fetchJSON(API.myQueue);
+    renderMyQueue(data);
+  } catch (e) {
+    console.warn("My queue failed");
+  }
+}
+
+setInterval(loadMyQueue, 10000);
+loadMyQueue();
+</script>
+
+<script>
+async function approve(id) {
+  await fetchJSON(API.approve(id), { method: "POST" });
+  toast("Approved", "success");
+  loadMyQueue();
+}
+
+async function reject(id) {
+  const notes = prompt("Reason for rejection?");
+  if (!notes) return;
+
+  await fetchJSON(API.reject(id), {
+    method: "POST",
+    body: JSON.stringify({ notes })
+  });
+
+  toast("Rejected", "danger");
+  loadMyQueue();
+}
+
+async function resolveFlag(id) {
+  await fetchJSON(API.resolveFlag(id), {
+    method: "POST",
+    body: JSON.stringify({ action: "resolved" })
+  });
+
+  toast("Flag resolved", "success");
+  loadMyQueue();
+}
+</script>
+
+<script>
+function toast(message, type="info") {
+  const t = document.createElement("div");
+  t.innerText = message;
+  t.style.position = "fixed";
+  t.style.bottom = "20px";
+  t.style.right = "20px";
+  t.style.padding = "10px 14px";
+  t.style.background = "#111";
+  t.style.color = "#fff";
+  t.style.border = "1px solid rgba(255,255,255,0.1)";
+  t.style.borderRadius = "6px";
+  t.style.zIndex = "9999";
+
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+</script>
+
+<!-- Phase 2: Performance, Queue, Audit JS -->
+<script>
+async function loadPerformance() {
+  try {
+    const data = await fetchJSON("/moderator/performance");
+    const container = document.getElementById("performanceBody");
+    if (data.length === 0) {
+      container.innerHTML = `<div class="empty"><p>No performance data yet</p></div>`;
+      return;
+    }
+    let html = `<table class="tbl"><thead><tr><th>Moderator</th><th>Processed</th><th>Avg Time (s)</th></tr></thead><tbody>`;
+    data.forEach(p => {
+      html += `<tr><td>${p.username}</td><td>${p.processed}</td><td>${p.avg_processing_time}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+    document.getElementById("performanceCount").innerText = data.length;
+  } catch (e) {
+    console.warn("Performance load failed");
+  }
+}
+
+async function loadQueueMetrics() {
+  try {
+    const data = await fetchJSON("/moderator/queue_metrics");
+    const container = document.getElementById("queueMetricsBody");
+    let html = `<table class="tbl"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>`;
+    html += `<tr><td>Total Pending</td><td>${data.total_pending}</td></tr>`;
+    html += `<tr><td>Unassigned</td><td>${data.unassigned_count}</td></tr>`;
+    html += `<tr><td>Oldest Item Age (sec)</td><td>${data.oldest_item_age_sec}</td></tr>`;
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+    document.getElementById("queueMetricsCount").innerText = data.total_pending;
+  } catch (e) {
+    console.warn("Queue metrics load failed");
+  }
+}
+
+async function loadAuditInsights() {
+  try {
+    const data = await fetchJSON("/moderator/audit_insights");
+    const container = document.getElementById("auditInsightsBody");
+    if (data.length === 0) {
+      container.innerHTML = `<div class="empty"><p>No audit data yet</p></div>`;
+      return;
+    }
+    let html = `<table class="tbl"><thead><tr><th>Moderator ID</th><th>Actions</th></tr></thead><tbody>`;
+    data.forEach(a => {
+      html += `<tr><td>${a.moderator_id}</td><td>${a.actions}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+    document.getElementById("auditInsightsCount").innerText = data.length;
+  } catch (e) {
+    console.warn("Audit insights load failed");
+  }
+}
+
+loadPerformance();
+loadQueueMetrics();
+loadAuditInsights();
+setInterval(loadPerformance, 30000);
+setInterval(loadQueueMetrics, 30000);
+setInterval(loadAuditInsights, 30000);
+</script>
+{% endblock %}
 {% block body %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mt-4">Moderator Dashboard</h1>
-            <ol class="breadcrumb mb-4">
-                <li class="breadcrumb-item active">Dashboard</li>
-            </ol>
-        </div>
+<div class="mh">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span class="mb">Moderator</span>
+    <span class="mt">Control Center</span>
+  </div>
+  <div class="mh-actions">
+    <a href="{{ url_for('admin.moderator.stats') }}" class="btn btn-ghost"><i class="fas fa-chart-bar"></i> Stats</a>
+    <a href="{{ url_for('admin.moderation_flags') }}" class="btn btn-ghost"><i class="fas fa-layer-group"></i> Admin Queue</a>
+    <a href="{{ url_for('admin.moderator.flagged_content') }}" class="flag-pill">
+      <span class="pulse"></span> {{ total_open_flags }} Open Flags
+    </a>
+  </div>
+</div>
+<nav class="mod-nav">
+  <a href="{{ url_for('admin.moderator.dashboard') }}" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+  <a href="{{ url_for('admin.moderator.content_moderation') }}"><i class="fas fa-file-alt"></i> Content</a>
+  <a href="{{ url_for('admin.moderator.flagged_content') }}"><i class="fas fa-flag"></i> Flags</a>
+  <a href="{{ url_for('admin.moderator.user_moderation') }}"><i class="fas fa-users"></i> Users</a>
+  <a href="{{ url_for('admin.moderator.items_list') }}"><i class="fas fa-boxes"></i> Items</a>
+  <a href="{{ url_for('admin.moderator.categories_list') }}"><i class="fas fa-tags"></i> Categories</a>
+  <a href="{{ url_for('admin.moderator.events_list') }}"><i class="fas fa-calendar-alt"></i> Events</a>
+  <a href="{{ url_for('admin.moderator.orgs_queue') }}"><i class="fas fa-building"></i> Orgs</a>
+  <a href="{{ url_for('admin.moderator.kyc_queue') }}"><i class="fas fa-id-card"></i> KYC</a>
+  <a href="{{ url_for('admin.moderator.audit_log') }}"><i class="fas fa-scroll"></i> Audit</a>
+  <a href="{{ url_for('admin.moderator.stats') }}"><i class="fas fa-chart-bar"></i> Stats</a>
+</nav>
+<div class="mw">
+  <div class="bc"><span class="cur">Dashboard</span></div>
+
+  <!-- pass now to template for urgency calculations -->
+  {% set now = now or datetime.utcnow() %}
+
+  <!-- THROUGHPUT 7D -->
+  <div class="throughput-row">
+    <div class="tp-card green"><div class="tp-val">{{ approved_7d }}</div><div class="tp-lbl">Approved (7d)</div></div>
+    <div class="tp-card red"><div class="tp-val">{{ rejected_7d }}</div><div class="tp-lbl">Rejected (7d)</div></div>
+    <div class="tp-card blue"><div class="tp-val">{{ resolved_flags_7d }}</div><div class="tp-lbl">Flags Resolved (7d)</div></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <a href="{{ url_for('admin.moderator.content_moderation', status='pending') }}" class="sc amber">
+      <div class="si"><i class="fas fa-clock"></i></div>
+      <div class="sv">{{ pending_count }}</div>
+      <div class="sl">Pending Submissions</div>
+      <div class="s-link">Review <i class="fas fa-arrow-right"></i></div>
+    </a>
+    <a href="{{ url_for('admin.moderator.content_moderation', status='changes_requested') }}" class="sc blue">
+      <div class="si"><i class="fas fa-edit"></i></div>
+      <div class="sv">{{ changes_requested_count }}</div>
+      <div class="sl">Changes Requested</div>
+      <div class="s-link">View <i class="fas fa-arrow-right"></i></div>
+    </a>
+    <a href="{{ url_for('admin.moderator.flagged_content') }}" class="sc red">
+      <div class="si"><i class="fas fa-flag"></i></div>
+      <div class="sv">{{ total_open_flags }}</div>
+      <div class="sl">Open Flags</div>
+      <div class="s-link">View All <i class="fas fa-arrow-right"></i></div>
+    </a>
+    <a href="{{ url_for('admin.moderator.flagged_content', priority='critical') }}" class="sc red">
+      <div class="si"><i class="fas fa-exclamation-circle"></i></div>
+      <div class="sv">{{ flags_by_priority.get('critical', 0) + flags_by_priority.get('high', 0) }}</div>
+      <div class="sl">Critical + High</div>
+      <div class="s-link">Escalate <i class="fas fa-arrow-right"></i></div>
+    </a>
+    <a href="{{ url_for('admin.moderator.user_moderation', filter='recent') }}" class="sc blue">
+      <div class="si"><i class="fas fa-user-plus"></i></div>
+      <div class="sv">{{ recent_users|length }}</div>
+      <div class="sl">New Users (7d)</div>
+      <div class="s-link">Review <i class="fas fa-arrow-right"></i></div>
+    </a>
+    <a href="{{ url_for('admin.moderator.stats') }}" class="sc purple">
+      <div class="si"><i class="fas fa-chart-pie"></i></div>
+      <div class="sv">{{ flags_by_type|length }}</div>
+      <div class="sl">Entity Types Flagged</div>
+      <div class="s-link">Stats <i class="fas fa-arrow-right"></i></div>
+    </a>
+  </div>
+
+  <!-- MY QUEUE -->
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="ph">
+      <div class="pt">
+        <div class="pi purple"><i class="fas fa-user-check"></i></div>
+        My Queue
+      </div>
+      <span class="badge b-normal" id="myQueueCount">0</span>
     </div>
 
-    <div class="row">
-        <!-- Stats Cards -->
-        <div class="col-xl-4 col-md-6">
-            <div class="card bg-primary text-white mb-4">
-                <div class="card-body">
-                    <h3>{{ pending_submissions|length }}</h3>
-                    <div>Pending Content Submissions</div>
-                </div>
-                <div class="card-footer d-flex align-items-center justify-content-between">
-                    <a class="small text-white stretched-link" href="{{ url_for('moderator.content_moderation', status='pending') }}">View Details</a>
-                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
-                </div>
-            </div>
-        </div>
+    <div id="myQueueBody">
+      <div class="empty">
+        <i class="fas fa-inbox"></i>
+        <p>No assigned work</p>
+      </div>
+    </div>
+  </div>
 
-        <div class="col-xl-4 col-md-6">
-            <div class="card bg-warning text-white mb-4">
-                <div class="card-body">
-                    <h3>{{ flagged_items|length }}</h3>
-                    <div>Flagged Items</div>
-                </div>
-                <div class="card-footer d-flex align-items-center justify-content-between">
-                    <a class="small text-white stretched-link" href="{{ url_for('moderator.flagged_content') }}">View Details</a>
-                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
-                </div>
-            </div>
-        </div>
+  <!-- PERFORMANCE METRICS -->
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="ph">
+      <div class="pt">
+        <div class="pi green"><i class="fas fa-chart-line"></i></div>
+        Performance Metrics
+      </div>
+      <span class="badge b-normal" id="performanceCount">0</span>
+    </div>
+    <div id="performanceBody">
+      <div class="empty">
+        <i class="fas fa-chart-bar"></i>
+        <p>Loading performance data...</p>
+      </div>
+    </div>
+  </div>
 
-        <div class="col-xl-4 col-md-6">
-            <div class="card bg-info text-white mb-4">
-                <div class="card-body">
-                    <h3>{{ recent_users|length }}</h3>
-                    <div>New Users (7 days)</div>
-                </div>
-                <div class="card-footer d-flex align-items-center justify-content-between">
-                    <a class="small text-white stretched-link" href="{{ url_for('moderator.user_moderation', filter='recent') }}">View Details</a>
-                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
-                </div>
-            </div>
-        </div>
+  <!-- QUEUE ANALYTICS -->
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="ph">
+      <div class="pt">
+        <div class="pi blue"><i class="fas fa-tachometer-alt"></i></div>
+        Queue Analytics
+      </div>
+      <span class="badge b-normal" id="queueMetricsCount">0</span>
+    </div>
+    <div id="queueMetricsBody">
+      <div class="empty">
+        <i class="fas fa-clock"></i>
+        <p>Loading queue metrics...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUDIT INSIGHTS -->
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="ph">
+      <div class="pt">
+        <div class="pi red"><i class="fas fa-search"></i></div>
+        Audit Insights
+      </div>
+      <span class="badge b-normal" id="auditInsightsCount">0</span>
+    </div>
+    <div id="auditInsightsBody">
+      <div class="empty">
+        <i class="fas fa-clipboard-list"></i>
+        <p>Loading audit data...</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panels-grid">
+    <!-- PENDING SUBMISSIONS -->
+    <div class="panel">
+      <div class="ph">
+        <div class="pt"><div class="pi"><i class="fas fa-inbox"></i></div> Pending Submissions</div>
+        <span class="badge b-pending">{{ pending_submissions|length }}</span>
+      </div>
+      {% if pending_submissions %}
+      <table class="tbl">
+        <thead><tr><th>ID</th><th>Type</th><th>Name</th><th>Date</th><th></th></tr></thead>
+        <tbody>
+          {% for s in pending_submissions %}
+          <tr>
+            <td class="mono">#{{ s.id }}</td>
+            <td><span class="badge b-type">{{ s.category.slug if s.category else '—' }}</span></td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;">{{ s.name }}</td>
+            <td class="mono">{{ s.created_at.strftime('%b %d') }}</td>
+            <td><a href="{{ url_for('admin.moderator.view_submission', submission_id=s.id) }}" class="btn-action">Review</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="pf"><a href="{{ url_for('admin.moderator.content_moderation', status='pending') }}">View All Pending →</a></div>
+      {% else %}<div class="empty"><i class="fas fa-inbox"></i><p>No pending submissions</p></div>{% endif %}
     </div>
 
-    <div class="row">
-        <!-- Pending Submissions -->
-        <div class="col-xl-6">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="fas fa-clock me-1"></i>
-                    Pending Content Submissions
-                </div>
-                <div class="card-body">
-                    {% if pending_submissions %}
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Type</th>
-                                    <th>Title</th>
-                                    <th>Submitted</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for submission in pending_submissions %}
-                                <tr>
-                                    <td>{{ submission.id }}</td>
-                                    <td>{{ submission.content_type }}</td>
-                                    <td>{{ submission.title }}</td>
-                                    <td>{{ submission.created_at.strftime('%Y-%m-%d') }}</td>
-                                    <td>
-                                        <a href="{{ url_for('moderator.view_submission', submission_id=submission.id) }}" class="btn btn-sm btn-primary">Review</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <a href="{{ url_for('moderator.content_moderation', status='pending') }}" class="btn btn-link">View All →</a>
-                    {% else %}
-                    <p class="text-muted">No pending submissions.</p>
-                    {% endif %}
-                </div>
-            </div>
+    <!-- FLAGGED CONTENT -->
+    <div class="panel">
+      <div class="ph">
+        <div class="pt"><div class="pi red"><i class="fas fa-flag"></i></div> Open Flags</div>
+        <div class="prow">
+          {% for p in ['critical','high','medium','normal','low'] %}
+            {% if flags_by_priority.get(p, 0) > 0 %}
+            <span class="badge b-{{ p }}">{{ flags_by_priority[p] }} {{ p[:4] }}</span>
+            {% endif %}
+          {% endfor %}
         </div>
-
-        <!-- Flagged Items -->
-        <div class="col-xl-6">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="fas fa-flag me-1"></i>
-                    Flagged Content
-                </div>
-                <div class="card-body">
-                    {% if flagged_items %}
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead>
-                                <tr>
-                                    <th>Item</th>
-                                    <th>Type</th>
-                                    <th>Flagged At</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in flagged_items %}
-                                <tr>
-                                    <td>{{ item.title }}</td>
-                                    <td>{{ item.item_type }}</td>
-                                    <td>{{ item.updated_at.strftime('%Y-%m-%d') }}</td>
-                                    <td>
-                                        <a href="#" class="btn btn-sm btn-warning">Review</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <a href="{{ url_for('moderator.flagged_content') }}" class="btn btn-link">View All →</a>
-                    {% else %}
-                    <p class="text-muted">No flagged items.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+      </div>
+      {% if flag_rows %}
+      <table class="tbl">
+        <thead><tr><th>Entity</th><th>Priority</th><th>Reason</th><th>Date</th><th></th></tr></thead>
+        <tbody>
+          {% for row in flag_rows %}{% set f = row.flag %}
+          {% set age_hours = ((now - f.created_at).total_seconds() / 3600) if now else 0 %}
+          <tr>
+            <td><span class="badge b-type">{{ f.entity_type }}</span> <span class="mono">#{{ f.entity_id }}</span></td>
+            <td><span class="badge b-{{ f.priority }}">{{ f.priority }}</span></td>
+            <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;">{{ (f.reason or '')[:60] }}{% if (f.reason or '')|length > 60 %}…{% endif %}</td>
+            <td class="mono">{{ f.created_at.strftime('%b %d') }}
+              {% if age_hours > 24 %}
+                <span class="badge b-critical">Overdue</span>
+              {% elif age_hours > 6 %}
+                <span class="badge b-high">Aging</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('admin.moderator.view_flag', flag_id=f.id) }}" class="btn-action" style="font-size:10px;padding:3px 7px;"><i class="fas fa-eye"></i></a>
+              {% if row.review_url %}<a href="{{ row.review_url }}" target="_blank" class="btn-action" style="font-size:10px;padding:3px 7px;background:transparent;border-color:var(--border);color:var(--muted);"><i class="fas fa-external-link-alt"></i></a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="pf"><a href="{{ url_for('admin.moderator.flagged_content') }}">View All Flags →</a></div>
+      {% else %}<div class="empty"><i class="fas fa-check-circle"></i><p>Queue clear</p></div>{% endif %}
     </div>
 
-    <div class="row">
-        <!-- Recent Users -->
-        <div class="col-12">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="fas fa-users me-1"></i>
-                    Recent User Registrations
-                </div>
-                <div class="card-body">
-                    {% if recent_users %}
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Username</th>
-                                    <th>Email</th>
-                                    <th>Registered</th>
-                                    <th>Verified</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for user in recent_users %}
-                                <tr>
-                                    <td>{{ user.id }}</td>
-                                    <td>{{ user.username }}</td>
-                                    <td>{{ user.email }}</td>
-                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
-                                    <td>{{ '✓' if user.is_verified else '✗' }}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'success' if user.is_active else 'danger' }}">
-                                            {{ 'Active' if user.is_active else 'Inactive' }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <a href="{{ url_for('moderator.user_moderation') }}" class="btn btn-link">View All Users →</a>
-                    {% else %}
-                    <p class="text-muted">No recent user registrations.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+    <!-- RECENT USERS -->
+    <div class="panel full">
+      <div class="ph">
+        <div class="pt"><div class="pi blue"><i class="fas fa-users"></i></div> Recent Registrations</div>
+        <a href="{{ url_for('admin.moderator.user_moderation') }}" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;">All Users</a>
+      </div>
+      {% if recent_users %}
+      <table class="tbl">
+        <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Registered</th><th>Verified</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for u in recent_users %}
+          <tr>
+            <td class="mono">#{{ u.id }}</td>
+            <td style="font-weight:500;">{{ u.username }}</td>
+            <td style="color:var(--muted);font-size:12px;">{{ u.email }}</td>
+            <td class="mono">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+            <td><span class="badge {{ 'b-verified' if u.is_verified else 'b-unverified' }}">{{ '✓ Verified' if u.is_verified else '✗ Unverified' }}</span></td>
+            <td><span class="badge {{ 'b-active' if u.is_active else 'b-inactive' }}">{{ 'Active' if u.is_active else 'Inactive' }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="empty"><i class="fas fa-users"></i><p>No recent registrations</p></div>{% endif %}
     </div>
+  </div>
 </div>
 {% endblock %}

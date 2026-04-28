@@ -3,7 +3,6 @@
   PURPOSE: Admin — Browse all events with status filters and per-row moderation
   ACCESS: System Admin only
   RELATED: events.admin_events route
-  CSS: static/css/modules/events/dashboard.css (shared with command centre)
 #}
 
 {% extends "base.html" %}
@@ -17,115 +16,111 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <style>
-    /* ── Page-specific additions ── */
-    .filter-bar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
+    .filter-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
     .filter-tab {
-      padding: 7px 16px;
-      border-radius: 6px;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .07em;
-      text-decoration: none;
-      color: var(--brand-muted);
-      background: var(--brand-surface);
-      border: 1px solid var(--brand-border);
-      transition: all .18s;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      padding:7px 16px; border-radius:6px; font-family:var(--font-mono);
+      font-size:11px; text-transform:uppercase; letter-spacing:.07em;
+      text-decoration:none; color:var(--brand-muted);
+      background:var(--brand-surface); border:1px solid var(--brand-border);
+      transition:all .18s; display:inline-flex; align-items:center; gap:6px;
+      cursor:pointer;
     }
-    .filter-tab:hover {
-      border-color: var(--brand-border2);
-      color: var(--brand-text);
-    }
-    .filter-tab.active {
-      background: var(--brand-accent);
-      color: #000;
-      border-color: var(--brand-accent);
-    }
-    .filter-tab .tab-count {
-      font-size: 10px;
-      opacity: .7;
-    }
-    .filter-tab.active .tab-count { opacity: .6; }
+    .filter-tab:hover { border-color:var(--brand-border2); color:var(--brand-text); }
+    .filter-tab.active { background:var(--brand-accent); color:#000; border-color:var(--brand-accent); }
+    .filter-tab .tab-count { font-size:10px; opacity:.7; }
+    .filter-tab.active .tab-count { opacity:.6; }
 
-    .search-wrap {
-      margin-left: auto;
-      position: relative;
-    }
-    .search-wrap i {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--brand-muted);
-      font-size: 12px;
-      pointer-events: none;
-    }
+    .search-wrap { margin-left:auto; position:relative; }
+    .search-wrap i { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--brand-muted); font-size:12px; pointer-events:none; }
     .search-input {
-      background: var(--brand-surface);
-      border: 1px solid var(--brand-border2);
-      border-radius: 6px;
-      color: var(--brand-text);
-      font-family: var(--font-body);
-      font-size: 13px;
-      padding: 8px 14px 8px 34px;
-      width: 220px;
-      outline: none;
-      transition: border-color .2s;
+      background:var(--brand-surface); border:1px solid var(--brand-border2);
+      border-radius:6px; color:var(--brand-text); font-family:var(--font-body);
+      font-size:13px; padding:8px 14px 8px 34px; width:220px; outline:none; transition:border-color .2s;
     }
-    .search-input:focus { border-color: var(--brand-accent); }
-    .search-input::placeholder { color: var(--brand-muted); }
+    .search-input:focus { border-color:var(--brand-accent); }
+    .search-input::placeholder { color:var(--brand-muted); }
 
-    .events-count {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--brand-muted);
-      padding: 12px 24px 6px;
+    .events-count { font-family:var(--font-mono); font-size:11px; color:var(--brand-muted); padding:12px 24px 6px; }
+    .table-wrap { overflow-x:auto; overflow-y:visible; }
+    .data-table .col-name { min-width:220px; }
+    .data-table .col-org  { min-width:130px; }
+    .data-table .col-dates { min-width:130px; white-space:nowrap; }
+    .data-table .col-reg  { min-width:80px; text-align:right; }
+    .data-table .col-acts { min-width:240px; }
+    .reg-count { font-family:var(--font-mono); font-size:12px; color:var(--brand-text); text-align:right; }
+    .empty-filter { padding:72px 32px; text-align:center; color:var(--brand-sub); }
+    .empty-filter i { font-size:32px; color:var(--brand-border2); margin-bottom:14px; display:block; }
+    .empty-filter h3 { font-family:var(--font-display); font-size:18px; color:var(--brand-muted); margin-bottom:6px; }
+    tr.hidden-by-search { display:none; }
+    .tbl-btn-restore { background:rgba(0,229,160,.12); color:var(--brand-accent); }
+    .tbl-btn-restore:hover { background:var(--brand-accent); color:#000; }
+    .tbl-btn-publish { background:rgba(0,229,160,.15); color:#00e5a0; border:1px solid rgba(0,229,160,.3); }
+    .tbl-btn-publish:hover { background:var(--brand-accent); color:#000; }
+
+    /* ── MODALS ── */
+    .mod-overlay {
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+      backdrop-filter:blur(4px); z-index:1000; align-items:center; justify-content:center;
     }
-
-    .table-wrap {
-      overflow-x: auto;
-      overflow-y: visible;
+    .mod-overlay.open { display:flex; }
+    .mod-box {
+      background:var(--brand-card,#111); border:1px solid var(--brand-border2);
+      border-radius:16px; padding:32px; width:100%; max-width:480px;
+      box-shadow:0 24px 64px rgba(0,0,0,.6); position:relative;
+      animation:modSlide .2s ease;
     }
-
-    .data-table .col-name  { min-width: 220px; }
-    .data-table .col-org   { min-width: 130px; }
-    .data-table .col-dates { min-width: 130px; white-space: nowrap; }
-    .data-table .col-reg   { min-width: 80px; text-align: right; }
-    .data-table .col-acts  { min-width: 200px; }
-
-    .reg-count {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      color: var(--brand-text);
-      text-align: right;
+    @keyframes modSlide { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+    .mod-severity {
+      display:flex; align-items:center; gap:8px; font-family:var(--font-mono);
+      font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+      padding:6px 12px; border-radius:6px; margin-bottom:20px; width:fit-content;
     }
-
-    .empty-filter {
-      padding: 72px 32px;
-      text-align: center;
-      color: var(--brand-sub);
+    .sev-warn  { background:rgba(255,200,0,.12); color:#ffc800; border:1px solid rgba(255,200,0,.2); }
+    .sev-orange{ background:rgba(255,140,0,.12); color:#ff8c00; border:1px solid rgba(255,140,0,.2); }
+    .sev-red   { background:rgba(255,60,60,.12);  color:#ff3c3c; border:1px solid rgba(255,60,60,.2); }
+    .sev-green { background:rgba(0,229,160,.12);  color:#00e5a0; border:1px solid rgba(0,229,160,.2); }
+    .mod-title { font-family:var(--font-display,Syne); font-size:22px; font-weight:700; color:var(--brand-text); margin-bottom:6px; }
+    .mod-sub   { font-size:13px; color:var(--brand-muted); margin-bottom:24px; line-height:1.5; }
+    .mod-field { margin-bottom:16px; }
+    .mod-field label { display:block; font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-muted); margin-bottom:6px; }
+    .mod-field textarea, .mod-field select {
+      width:100%; background:var(--brand-surface,#1a1a1a); border:1px solid var(--brand-border2);
+      border-radius:8px; color:var(--brand-text); font-family:var(--font-body); font-size:13px;
+      padding:10px 14px; outline:none; transition:border-color .2s; resize:vertical; box-sizing:border-box;
     }
-    .empty-filter i { font-size: 32px; color: var(--brand-border2); margin-bottom: 14px; display: block; }
-    .empty-filter h3 { font-family: var(--font-display); font-size: 18px; color: var(--brand-muted); margin-bottom: 6px; }
+    .mod-field textarea:focus, .mod-field select:focus { border-color:var(--brand-accent); }
+    .mod-field.danger textarea { border-color:rgba(255,60,60,.4); }
+    .mod-field.danger textarea:focus { border-color:#ff3c3c; }
+    .mod-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+    .btn-mod-cancel { padding:10px 20px; border-radius:8px; background:transparent; border:1px solid var(--brand-border2); color:var(--brand-muted); font-size:13px; cursor:pointer; transition:all .18s; }
+    .btn-mod-cancel:hover { border-color:var(--brand-text); color:var(--brand-text); }
+    .btn-mod-action { padding:10px 20px; border-radius:8px; border:none; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all .18s; }
+    .btn-mod-reject  { background:#ff3c3c; color:#fff; }
+    .btn-mod-reject:hover  { background:#e02020; }
+    .btn-mod-orange  { background:#ff8c00; color:#fff; }
+    .btn-mod-orange:hover  { background:#e07800; }
+    .btn-mod-warn    { background:#ffc800; color:#000; }
+    .btn-mod-warn:hover    { background:#e0b200; }
+    .btn-mod-approve { background:var(--brand-accent,#00e5a0); color:#000; }
+    .btn-mod-approve:hover { opacity:.85; }
 
-    tr.hidden-by-search { display: none; }
-
-    /* Restore button variant in table */
-    .tbl-btn-restore { background: rgba(0,229,160,.12); color: var(--brand-accent); }
-    .tbl-btn-restore:hover { background: var(--brand-accent); color: #000; }
+    /* Toast */
+    .toast-stack { position:fixed; bottom:24px; right:24px; z-index:2000; display:flex; flex-direction:column; gap:8px; }
+    .toast {
+      padding:12px 20px; border-radius:10px; font-size:13px; font-weight:500;
+      box-shadow:0 8px 24px rgba(0,0,0,.4); display:flex; align-items:center; gap:10px;
+      animation:toastIn .25s ease; min-width:240px; max-width:360px;
+    }
+    @keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:none} }
+    .toast-success { background:#0d2e1f; border:1px solid rgba(0,229,160,.3); color:#00e5a0; }
+    .toast-error   { background:#2e0d0d; border:1px solid rgba(255,60,60,.3); color:#ff8080; }
+    .toast-out { animation:toastOut .3s ease forwards; }
+    @keyframes toastOut { to{opacity:0;transform:translateX(20px)} }
 
     @media (max-width:640px) {
-      .filter-bar { gap: 4px; }
-      .search-wrap { margin-left: 0; width: 100%; }
-      .search-input { width: 100%; }
+      .filter-bar { gap:4px; }
+      .search-wrap { margin-left:0; width:100%; }
+      .search-input { width:100%; }
     }
   </style>
 {% endblock %}
@@ -166,14 +161,20 @@
     <!-- ─── FILTER BAR ─── -->
     <div class="panel" style="border-radius:12px 12px 0 0;border-bottom:none;padding:16px 24px;">
       <div class="filter-bar">
+        {# Compute count for taken down within the currently loaded list #}
+        {% set taken_down_count = (events|selectattr('status','equalto','archived')|selectattr('takedown_category')|list|length) %}
         {% set status_tabs = [
-          ('all',        'All',         events|length),
-          ('active',     'Active',      events|selectattr('status','equalto','active')|list|length),
-          ('pending',    'Pending',     events|selectattr('status','equalto','pending')|list|length),
-          ('suspended',  'Suspended',   events|selectattr('status','equalto','suspended')|list|length),
-          ('rejected',   'Rejected',    events|selectattr('status','equalto','rejected')|list|length),
-          ('deactivated','Deactivated', events|selectattr('status','equalto','deactivated')|list|length),
-          ('archived',   'Archived',    events|selectattr('status','equalto','archived')|list|length),
+          ('all',              'All',         events|length),
+          ('published',        'Published',   events|selectattr('status','equalto','published')|list|length),
+          ('approved',         'Approved',    events|selectattr('status','equalto','approved')|list|length),
+          ('pending_approval', 'Pending',     events|selectattr('status','equalto','pending_approval')|list|length),
+          ('suspended',        'Suspended',   events|selectattr('status','equalto','suspended')|list|length),
+          ('paused',           'Paused',      events|selectattr('status','equalto','paused')|list|length),
+          ('rejected',         'Rejected',    events|selectattr('status','equalto','rejected')|list|length),
+          ('completed',        'Completed',   events|selectattr('status','equalto','completed')|list|length),
+          ('cancelled',        'Cancelled',   events|selectattr('status','equalto','cancelled')|list|length),
+          ('archived',         'Archived',    events|selectattr('status','equalto','archived')|list|length),
+          ('taken_down',       'Taken Down',  taken_down_count),
         ] %}
         {% for val, label, count in status_tabs %}
         <a href="{{ url_for('events.admin_events', status=val) }}"
@@ -214,7 +215,8 @@
           </thead>
           <tbody>
             {% for event in events %}
-            <tr id="row-{{ event.slug }}" data-name="{{ event.name|lower }}" data-city="{{ event.city|lower }}">
+            {% set st = event.status.value %}
+            <tr id="row-{{ event.slug }}" data-name="{{ event.name|lower }}" data-city="{{ (event.city or '')|lower }}">
               <td class="col-name">
                 <div class="event-name">{{ event.name }}</div>
                 <div class="event-loc">
@@ -226,17 +228,22 @@
                 </div>
               </td>
               <td>
-                <span class="badge badge-{{ event.status }}">{{ event.status }}</span>
-                {% if event.status == 'suspended' and event.suspension_reason %}
+                <span class="badge badge-{{ st }}">{{ st|upper }}</span>
+                {% if st == 'suspended' and event.suspension_reason %}
                 <div style="font-size:11px;color:var(--brand-orange);margin-top:3px;" title="{{ event.suspension_reason }}">
                   <i class="fas fa-info-circle"></i>
                   {{ event.suspension_reason|truncate(30, true, '…') }}
+                </div>
+                {% elif st == 'archived' and event.takedown_category %}
+                <div style="font-size:11px;color:#ff8080;margin-top:3px;" title="Takedown: {{ event.takedown_category }}{% if event.takedown_reason %} — {{ event.takedown_reason }}{% endif %}">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  Taken down: {{ event.takedown_category }}
                 </div>
                 {% endif %}
               </td>
               <td class="col-org">
                 <div class="organizer-tag">
-                  <div class="avatar">U</div>
+                  <div class="avatar">{{ (event.organizer.username[0] if event.organizer else 'U')|upper }}</div>
                   <div>
                     <div style="font-size:12px;color:var(--brand-text);">
                       {% if event.organizer %}{{ event.organizer.username }}{% else %}ID {{ event.organizer_id }}{% endif %}
@@ -261,23 +268,19 @@
                 </div>
               </td>
               <td class="col-reg">
-                <div class="reg-count">
-                  {% set reg_count = event.registrations|length if event.registrations else 0 %}
-                  {{ reg_count }}
-                </div>
-                <div style="font-size:10px;color:var(--brand-sub);text-align:right;font-family:var(--font-mono);">
-                  regs
-                </div>
+                <div class="reg-count">{{ event.registrations|length if event.registrations else 0 }}</div>
+                <div style="font-size:10px;color:var(--brand-sub);text-align:right;font-family:var(--font-mono);">regs</div>
               </td>
-              <td class="col-acts" style="overflow: visible !important; position: relative;">
-                <div class="tbl-actions" style="overflow: visible !important;">
-                  <!-- View public page -->
+              <td class="col-acts" style="overflow:visible;position:relative;">
+                <div class="tbl-actions" style="overflow:visible;flex-wrap:wrap;gap:4px;">
+
+                  {# ── View button always shown ── #}
                   <a href="{{ url_for('events.landing', identifier=event.slug) }}"
                      class="tbl-btn tbl-btn-view" target="_blank" title="View public page">
                     <i class="fas fa-eye"></i>
                   </a>
 
-                  <!-- Attendees (if there are registrations) -->
+                  {# ── Attendees link if registrations exist ── #}
                   {% if event.registrations %}
                   <a href="{{ url_for('events.event_attendees', identifier=event.slug) }}"
                      class="tbl-btn tbl-btn-manage" title="View attendees">
@@ -285,52 +288,77 @@
                   </a>
                   {% endif %}
 
-                  <!-- Status-specific primary actions -->
-                  {% if event.status == 'pending' %}
+                  {# ── Status-specific moderation actions ── #}
+                  {% if st == 'pending_approval' %}
                     <button class="tbl-btn tbl-btn-approve"
-                            onclick="eventModerationAction('approve', '{{ event.slug }}')">
+                            onclick="quickAction('approve','{{ event.slug }}','{{ event.name|e }}')">
                       <i class="fas fa-check"></i> Approve
                     </button>
                     <button class="tbl-btn tbl-btn-reject"
-                            onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})">
+                            onclick="openModal('reject','{{ event.slug }}','{{ event.name|e }}')">
                       <i class="fas fa-times"></i> Reject
                     </button>
 
-                  {% elif event.status == 'suspended' %}
-                    <button class="tbl-btn tbl-btn-approve"
-                            onclick="eventModerationAction('restore', '{{ event.slug }}')">
-                      <i class="fas fa-check-circle"></i> Restore
+                  {% elif st == 'approved' %}
+                    <button class="tbl-btn tbl-btn-publish"
+                            onclick="quickAction('publish','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-rocket"></i> Publish
                     </button>
-                    <button class="tbl-btn tbl-btn-reject"
-                            onclick="let c=prompt('Category (fraud,illegal_activity,hate_speech,misinformation,spam,copyright,other):'); let r=prompt('Reason:'); if(c&&r) eventModerationAction('takedown', '{{ event.slug }}', {category: c, reason: r, notify_organiser: true})">
-                      <i class="fas fa-exclamation-triangle"></i> Takedown
-                    </button>
-                    <button class="tbl-btn tbl-btn-manage"
-                            onclick="let r=prompt('Deactivation reason:'); if(r) eventModerationAction('deactivate', '{{ event.slug }}', {reason: r})">
-                      <i class="fas fa-ban"></i> Deactivate
-                    </button>
-
-                  {% elif event.status == 'active' %}
                     <button class="tbl-btn tbl-btn-mod"
-                            onclick="let r=prompt('Reason:'); let d=prompt('Duration (24h,72h,7d,14d,indefinite):','7d'); if(r&&d) eventModerationAction('suspend', '{{ event.slug }}', {reason: r, duration: d})">
+                            onclick="openModal('suspend','{{ event.slug }}','{{ event.name|e }}')">
                       <i class="fas fa-pause-circle"></i> Suspend
                     </button>
                     <button class="tbl-btn tbl-btn-reject"
-                            onclick="let c=prompt('Category (fraud,illegal_activity,hate_speech,misinformation,spam,copyright,other):'); let r=prompt('Reason:'); if(c&&r) eventModerationAction('takedown', '{{ event.slug }}', {category: c, reason: r, notify_organiser: true})">
+                            onclick="openModal('reject','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-times"></i> Reject
+                    </button>
+
+                  {% elif st == 'published' %}
+                    <button class="tbl-btn tbl-btn-mod"
+                            onclick="openModal('suspend','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-pause-circle"></i> Suspend
+                    </button>
+                    <button class="tbl-btn tbl-btn-reject"
+                            onclick="openModal('takedown','{{ event.slug }}','{{ event.name|e }}')">
                       <i class="fas fa-exclamation-triangle"></i> Takedown
                     </button>
                     <button class="tbl-btn tbl-btn-manage"
-                            onclick="let r=prompt('Deactivation reason:'); if(r) eventModerationAction('deactivate', '{{ event.slug }}', {reason: r})">
+                            onclick="openModal('deactivate','{{ event.slug }}','{{ event.name|e }}')">
                       <i class="fas fa-ban"></i> Deactivate
                     </button>
 
+                  {% elif st == 'suspended' %}
+                    <button class="tbl-btn tbl-btn-restore"
+                            onclick="quickAction('restore','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-check-circle"></i> Restore
+                    </button>
+                    <button class="tbl-btn tbl-btn-reject"
+                            onclick="openModal('takedown','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-exclamation-triangle"></i> Takedown
+                    </button>
+                    <button class="tbl-btn tbl-btn-manage"
+                            onclick="openModal('deactivate','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-ban"></i> Deactivate
+                    </button>
+
+                  {% elif st == 'paused' %}
+                    <button class="tbl-btn tbl-btn-restore"
+                            onclick="quickAction('resume','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-play-circle"></i> Resume
+                    </button>
+                    <button class="tbl-btn tbl-btn-mod"
+                            onclick="openModal('suspend','{{ event.slug }}','{{ event.name|e }}')">
+                      <i class="fas fa-pause-circle"></i> Suspend
+                    </button>
+
                   {% else %}
-                    <!-- archived / rejected / deactivated — read-only link -->
+                    {# archived / rejected / deactivated / completed / cancelled — read-only #}
                     <a href="{{ url_for('events.landing', identifier=event.slug) }}"
                        class="tbl-btn tbl-btn-manage" target="_blank">
                       <i class="fas fa-external-link-alt"></i> View
                     </a>
                   {% endif %}
+
                 </div>
               </td>
             </tr>
@@ -360,77 +388,88 @@
       {% endif %}
     </div>
 
-  </div><!-- /main-content -->
-</div><!-- /afcon-admin -->
+  </div>
+</div>
 
+{# ════════════════════════════════════════════════════════════
+   MODALS — all rendered once, reused by openModal() JS
+════════════════════════════════════════════════════════════ #}
 
-{# ════════ MODALS (same as command centre — needed for moderation actions) ════════ #}
-
-<div class="modal-overlay" id="modal-reject">
-  <div class="modal-box">
-    <div class="modal-severity sev-warn"><i class="fas fa-times-circle"></i><span>Rejecting event — organiser will be notified</span></div>
-    <div class="modal-title">Reject Event</div>
-    <div class="modal-subtitle" id="modal-reject-subtitle">Provide a clear reason.</div>
-    <div class="modal-field danger">
-      <label>Rejection Reason <span style="color:var(--brand-red)">*</span></label>
+<!-- REJECT -->
+<div class="mod-overlay" id="mod-reject">
+  <div class="mod-box">
+    <div class="mod-severity sev-warn"><i class="fas fa-times-circle"></i><span>Rejecting event — organiser will be notified</span></div>
+    <div class="mod-title">Reject Event</div>
+    <div class="mod-sub" id="mod-reject-sub">Provide a clear reason. The organiser can revise and resubmit.</div>
+    <div class="mod-field danger">
+      <label>Rejection Reason <span style="color:var(--brand-red,#ff3c3c)">*</span></label>
       <textarea id="reject-reason" rows="4" placeholder="e.g. Incomplete venue details, missing contact info…"></textarea>
     </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('reject')">Cancel</button>
-      <button class="btn-modal-reject" onclick="submitAction('reject')"><i class="fas fa-times-circle"></i> Reject Event</button>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('reject')">Cancel</button>
+      <button class="btn-mod-action btn-mod-reject" onclick="submitModal('reject')">
+        <i class="fas fa-times-circle"></i> Reject Event
+      </button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="modal-suspend">
-  <div class="modal-box">
-    <div class="modal-severity sev-orange"><i class="fas fa-pause-circle"></i><span>Suspension — event hidden from public immediately</span></div>
-    <div class="modal-title">Suspend Event</div>
-    <div class="modal-subtitle" id="modal-suspend-subtitle">The event will be hidden until reinstated.</div>
-    <div class="modal-field">
+<!-- SUSPEND -->
+<div class="mod-overlay" id="mod-suspend">
+  <div class="mod-box">
+    <div class="mod-severity sev-orange"><i class="fas fa-pause-circle"></i><span>Suspension — event hidden from public immediately</span></div>
+    <div class="mod-title">Suspend Event</div>
+    <div class="mod-sub" id="mod-suspend-sub">The event will be hidden. The organiser can resolve the issue and request reinstatement.</div>
+    <div class="mod-field">
       <label>Duration</label>
       <select id="suspend-duration">
         <option value="24h">24 hours</option>
         <option value="72h">72 hours</option>
         <option value="7d" selected>7 days</option>
         <option value="14d">14 days</option>
-        <option value="indefinite">Indefinite</option>
+        <option value="indefinite">Indefinite (manual review required)</option>
       </select>
     </div>
-    <div class="modal-field">
-      <label>Reason <span style="color:var(--brand-red)">*</span></label>
-      <textarea id="suspend-reason" rows="3" placeholder="e.g. Reported for misleading ticket pricing…"></textarea>
+    <div class="mod-field">
+      <label>Reason <span style="color:var(--brand-red,#ff3c3c)">*</span></label>
+      <textarea id="suspend-reason" rows="3" placeholder="e.g. Reported for misleading ticket pricing, under investigation…"></textarea>
     </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('suspend')">Cancel</button>
-      <button class="btn-modal-orange" onclick="submitAction('suspend')"><i class="fas fa-pause-circle"></i> Suspend Event</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modal-deactivate">
-  <div class="modal-box">
-    <div class="modal-severity sev-orange"><i class="fas fa-ban"></i><span>Deactivation — event disabled, data preserved</span></div>
-    <div class="modal-title">Deactivate Event</div>
-    <div class="modal-subtitle" id="modal-deactivate-subtitle">Removed from public listings. Reactivation via support.</div>
-    <div class="modal-field">
-      <label>Reason <span style="color:var(--brand-red)">*</span></label>
-      <textarea id="deactivate-reason" rows="3" placeholder="e.g. Organiser requested, event moved, duplicate…"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('deactivate')">Cancel</button>
-      <button class="btn-modal-warn" onclick="submitAction('deactivate')"><i class="fas fa-ban"></i> Deactivate Event</button>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('suspend')">Cancel</button>
+      <button class="btn-mod-action btn-mod-orange" onclick="submitModal('suspend')">
+        <i class="fas fa-pause-circle"></i> Suspend Event
+      </button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="modal-takedown">
-  <div class="modal-box">
-    <div class="modal-severity sev-red"><i class="fas fa-exclamation-triangle"></i><span>Policy Takedown — permanent, compliance logged</span></div>
-    <div class="modal-title">Policy Takedown</div>
-    <div class="modal-subtitle" id="modal-takedown-subtitle">Immediately removed. Logged to compliance audit with your admin ID.</div>
-    <div class="modal-field">
-      <label>Violation Category <span style="color:var(--brand-red)">*</span></label>
+<!-- DEACTIVATE -->
+<div class="mod-overlay" id="mod-deactivate">
+  <div class="mod-box">
+    <div class="mod-severity sev-orange"><i class="fas fa-ban"></i><span>Deactivation — event disabled, data preserved</span></div>
+    <div class="mod-title">Deactivate Event</div>
+    <div class="mod-sub" id="mod-deactivate-sub">Removed from public listings. No data deleted. Organiser can request reactivation via support.</div>
+    <div class="mod-field">
+      <label>Reason <span style="color:var(--brand-red,#ff3c3c)">*</span></label>
+      <textarea id="deactivate-reason" rows="3" placeholder="e.g. Organiser requested deactivation, event moved, duplicate listing…"></textarea>
+    </div>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('deactivate')">Cancel</button>
+      <button class="btn-mod-action btn-mod-warn" onclick="submitModal('deactivate')">
+        <i class="fas fa-ban"></i> Deactivate Event
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TAKEDOWN -->
+<div class="mod-overlay" id="mod-takedown">
+  <div class="mod-box">
+    <div class="mod-severity sev-red"><i class="fas fa-exclamation-triangle"></i><span>Policy Takedown — permanent enforcement, compliance logged</span></div>
+    <div class="mod-title">Policy Takedown</div>
+    <div class="mod-sub" id="mod-takedown-sub">This event will be immediately removed and flagged in the compliance audit log with your admin ID.</div>
+    <div class="mod-field">
+      <label>Violation Category <span style="color:var(--brand-red,#ff3c3c)">*</span></label>
       <select id="takedown-category">
         <option value="">— Select violation type —</option>
         <option value="fraud">Fraud / Scam</option>
@@ -442,89 +481,263 @@
         <option value="other">Other Policy Violation</option>
       </select>
     </div>
-    <div class="modal-field danger">
-      <label>Detailed Reason <span style="color:var(--brand-red)">*</span></label>
-      <textarea id="takedown-reason" rows="4" placeholder="Describe the specific policy violation…"></textarea>
+    <div class="mod-field danger">
+      <label>Detailed Reason <span style="color:var(--brand-red,#ff3c3c)">*</span></label>
+      <textarea id="takedown-reason" rows="4" placeholder="Describe the specific policy violation. This is recorded in the compliance audit log…"></textarea>
     </div>
-    <div class="modal-field">
+    <div class="mod-field">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;font-size:13px;letter-spacing:0;">
-        <input type="checkbox" id="takedown-notify" checked style="accent-color:var(--brand-red);width:15px;height:15px;">
+        <input type="checkbox" id="takedown-notify" checked style="accent-color:#ff3c3c;width:15px;height:15px;">
         Notify organiser via email
       </label>
     </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeModal('takedown')">Cancel</button>
-      <button class="btn-modal-reject" onclick="submitAction('takedown')"><i class="fas fa-exclamation-triangle"></i> Execute Takedown</button>
+    <div class="mod-actions">
+      <button class="btn-mod-cancel" onclick="closeModal('takedown')">Cancel</button>
+      <button class="btn-mod-action btn-mod-reject" onclick="submitModal('takedown')">
+        <i class="fas fa-exclamation-triangle"></i> Execute Takedown
+      </button>
     </div>
   </div>
 </div>
 
-<div class="mod-overlay" id="modOverlay"></div>
 <div class="toast-stack" id="toastStack"></div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-function eventModerationAction(action, slug, extraData = {}) {
-    const url = `/events/admin/${slug}/${action}`;
-    const csrf = document.querySelector('meta[name="csrf-token"]').content;
-    fetch(url, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-        body: JSON.stringify(extraData)
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) { 
-            alert(data.message || action + ' successful'); 
-            location.reload(); 
-        }
-        else { 
-            alert('Error: ' + (data.error || 'Unknown error')); 
-        }
-    })
-    .catch(err => { 
-        console.error(err); 
-        alert('Network error'); 
-    });
+/* ═══════════════════════════════════════════════════════════════
+   STATE — which event is the current modal targeting
+═══════════════════════════════════════════════════════════════ */
+let _modalSlug = null;
+let _modalName = '';
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL OPEN / CLOSE
+═══════════════════════════════════════════════════════════════ */
+function openModal(action, slug, name) {
+  _modalSlug = slug;
+  _modalName = name;
+
+  // Update subtitle with event name
+  const sub = document.getElementById(`mod-${action}-sub`);
+  if (sub && name) {
+    const base = sub.dataset.base || sub.textContent;
+    sub.dataset.base = base;
+    sub.innerHTML = `<strong style="color:var(--brand-text)">"${name}"</strong> — ${base}`;
+  }
+
+  // Clear previous inputs
+  const textareas = document.querySelectorAll(`#mod-${action} textarea`);
+  textareas.forEach(t => t.value = '');
+  const selects = document.querySelectorAll(`#mod-${action} select`);
+  selects.forEach(s => { if (s.id !== 'suspend-duration') s.value = ''; });
+
+  document.getElementById(`mod-${action}`).classList.add('open');
 }
 
-/* ── LIVE CLOCK ── */
-function tickClock(){
-  const el=document.getElementById('live-time');
-  if(el) el.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});
-  setTimeout(tickClock,1000);
+function closeModal(action) {
+  document.getElementById(`mod-${action}`).classList.remove('open');
+  _modalSlug = null;
 }
 
-/* ── CLIENT-SIDE SEARCH ── */
-function filterRows(q){
+// Close on overlay click
+document.querySelectorAll('.mod-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) {
+      overlay.classList.remove('open');
+      _modalSlug = null;
+    }
+  });
+});
+
+// Close on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.mod-overlay.open').forEach(o => o.classList.remove('open'));
+    _modalSlug = null;
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL SUBMIT — build payload and call API
+═══════════════════════════════════════════════════════════════ */
+function submitModal(action) {
+  if (!_modalSlug) return;
+
+  let payload = {};
+  let valid = true;
+
+  if (action === 'reject') {
+    const reason = document.getElementById('reject-reason').value.trim();
+    if (!reason) { shakeField('reject-reason'); return; }
+    payload = { reason };
+
+  } else if (action === 'suspend') {
+    const reason = document.getElementById('suspend-reason').value.trim();
+    if (!reason) { shakeField('suspend-reason'); return; }
+    const duration = document.getElementById('suspend-duration').value;
+    payload = { reason, duration };
+
+  } else if (action === 'deactivate') {
+    const reason = document.getElementById('deactivate-reason').value.trim();
+    if (!reason) { shakeField('deactivate-reason'); return; }
+    payload = { reason };
+
+  } else if (action === 'takedown') {
+    const category = document.getElementById('takedown-category').value;
+    const reason   = document.getElementById('takedown-reason').value.trim();
+    const notify   = document.getElementById('takedown-notify').checked;
+    if (!category) { shakeField('takedown-category'); return; }
+    if (!reason)   { shakeField('takedown-reason');   return; }
+    payload = { category, reason, notify_organiser: notify };
+  }
+
+  closeModal(action);
+  callModerationAPI(action, _modalSlug, payload);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   QUICK ACTIONS (no modal needed — approve, restore, resume, publish)
+═══════════════════════════════════════════════════════════════ */
+function quickAction(action, slug, name) {
+  const labels = {
+    approve: 'approve',
+    restore: 'restore',
+    resume:  'resume',
+    publish: 'publish',
+  };
+  const label = labels[action] || action;
+  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} "${name}"?`)) return;
+  callModerationAPI(action, slug, {});
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CORE API CALL
+═══════════════════════════════════════════════════════════════ */
+function callModerationAPI(action, slug, payload) {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  const csrf = meta ? meta.getAttribute('content') : '';
+  const url  = `/events/admin/${slug}/${action}`;
+
+  fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin', // include cookies for auth/CSRF
+    headers: Object.assign(
+      { 'Content-Type': 'application/json' },
+      csrf ? { 'X-CSRFToken': csrf } : {}
+    ),
+    body: JSON.stringify(payload || {})
+  })
+  .then(async (r) => {
+    const ct = r.headers.get('content-type') || '';
+    let data = null;
+    if (ct.includes('application/json')) {
+      try { data = await r.json(); } catch (e) { /* fallthrough */ }
+    } else {
+      // Non-JSON (likely a redirect to login or HTML error page)
+      const text = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status} — ${text.slice(0, 200)}`);
+      throw new Error('Unexpected non-JSON response from server');
+    }
+    return { ok: r.ok, status: r.status, data };
+  })
+  .then(({ ok, status, data }) => {
+    if (ok && data && data.success) {
+      showToast(data.message || `${action} successful`, 'success');
+      // Remove or update the row
+      setTimeout(() => {
+        const row = document.getElementById(`row-${slug}`);
+        if (row) {
+          row.style.transition = 'opacity .4s, transform .4s';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(20px)';
+          setTimeout(() => row.remove(), 400);
+        }
+      }, 800);
+    } else {
+      const msg = (data && (data.error || data.message)) || `Request failed (HTTP ${status})`;
+      showToast(msg, 'error');
+    }
+  })
+  .catch(err => {
+    console.error('Moderation API error:', err);
+    showToast(err && err.message ? err.message : 'Network error — please try again', 'error');
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TOAST NOTIFICATIONS
+═══════════════════════════════════════════════════════════════ */
+function showToast(message, type = 'success') {
+  const stack = document.getElementById('toastStack');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
+  stack.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 350);
+  }, 4000);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FIELD VALIDATION SHAKE
+═══════════════════════════════════════════════════════════════ */
+function shakeField(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.animation = 'none';
+  el.style.borderColor = '#ff3c3c';
+  el.offsetHeight; // reflow
+  el.style.animation = 'shake .4s ease';
+  el.focus();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CLIENT-SIDE SEARCH
+═══════════════════════════════════════════════════════════════ */
+function filterRows(q) {
   q = q.toLowerCase().trim();
   const rows = document.querySelectorAll('#eventsTable tbody tr');
   let visible = 0;
-  rows.forEach(row=>{
-    const name = row.dataset.name || '';
-    const city = row.dataset.city || '';
-    const match = !q || name.includes(q) || city.includes(q);
+  rows.forEach(row => {
+    const match = !q || (row.dataset.name||'').includes(q) || (row.dataset.city||'').includes(q);
     row.classList.toggle('hidden-by-search', !match);
-    if(match) visible++;
+    if (match) visible++;
   });
   const noResults = document.getElementById('noResults');
   const countEl   = document.getElementById('eventsCount');
-  if(noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
-  if(countEl){
+  if (noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
+  if (countEl) {
     countEl.textContent = q
       ? `${visible} of ${rows.length} events match "${q}"`
-      : `${rows.length} event${rows.length!==1?'s':''}`;
+      : `${rows.length} event${rows.length !== 1 ? 's' : ''}`;
   }
 }
 
-document.addEventListener('DOMContentLoaded',()=>{
+/* ═══════════════════════════════════════════════════════════════
+   LIVE CLOCK
+═══════════════════════════════════════════════════════════════ */
+function tickClock() {
+  const el = document.getElementById('live-time');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-GB', {hour12: false});
+  setTimeout(tickClock, 1000);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
   tickClock();
-  /* preserve search query on filter tab navigation */
-  const q=new URLSearchParams(location.search).get('q')||'';
-  const si=document.getElementById('eventSearch');
-  if(si&&q){si.value=q;filterRows(q);}
+  const q = new URLSearchParams(location.search).get('q') || '';
+  const si = document.getElementById('eventSearch');
+  if (si && q) { si.value = q; filterRows(q); }
 });
+
+/* Shake keyframe */
+const style = document.createElement('style');
+style.textContent = '@keyframes shake { 0%,100%{transform:none} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }';
+document.head.appendChild(style);
 </script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/admin_moderation.js') }}"></script>
 {% endblock %}

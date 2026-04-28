@@ -1,129 +1,231 @@
 {% extends "base.html" %}
-
 {% block title %}{{ title }} - AFCON360{% endblock %}
 
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0a0f; --surface: #0f0f1a; --panel: #14141f;
+  --border: rgba(255,255,255,0.07); --gold: #d4a843; --gold-dim: rgba(212,168,67,0.15);
+  --text: #e8e8f0; --muted: #6b6b80;
+  --red: #e05252; --green: #4ade80; --amber: #fbbf24; --blue: #60a5fa; --cyan: #22d3ee;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.6; }
+
+.mod-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mod-badge { background: var(--red); color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; }
+.mod-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); margin-left: 12px; }
+.header-actions { display: flex; gap: 8px; }
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+.btn-danger-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid rgba(224,82,82,0.3); background: rgba(224,82,82,0.08); color: var(--red); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-danger-ghost:hover { background: rgba(224,82,82,0.15); color: var(--red); }
+
+.mod-wrap { padding: 28px 32px; max-width: 1500px; }
+.breadcrumb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 12px; color: var(--muted); }
+.breadcrumb-row a { color: var(--muted); text-decoration: none; } .breadcrumb-row a:hover { color: var(--gold); }
+.breadcrumb-row .sep { color: var(--border); } .breadcrumb-row .active { color: var(--text); }
+
+/* ALERT BAR */
+.alert-bar {
+  background: rgba(224,82,82,0.08);
+  border: 1px solid rgba(224,82,82,0.2);
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.alert-bar .alert-icon { color: var(--red); font-size: 16px; }
+.alert-bar .alert-count { font-family: 'Syne', sans-serif; font-weight: 800; color: var(--red); font-size: 20px; }
+
+/* PRIORITY SUMMARY */
+.priority-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.priority-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.priority-card .pval { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; line-height: 1; margin-bottom: 4px; }
+.priority-card .plabel { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.priority-card.critical { border-color: rgba(224,82,82,0.3); } .priority-card.critical .pval { color: var(--red); }
+.priority-card.high { border-color: rgba(251,130,100,0.3); } .priority-card.high .pval { color: #fb8264; }
+.priority-card.medium { border-color: rgba(251,191,36,0.3); } .priority-card.medium .pval { color: var(--amber); }
+.priority-card.normal { border-color: rgba(96,165,250,0.3); } .priority-card.normal .pval { color: var(--blue); }
+.priority-card.low { } .priority-card.low .pval { color: var(--muted); }
+
+/* PANEL */
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; animation: fadeUp 0.3s ease both; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-icon { width: 22px; height: 22px; border-radius: 5px; background: rgba(224,82,82,0.12); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--red); }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead th { padding: 10px 20px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: 'DM Mono', monospace; border-bottom: 1px solid var(--border); font-weight: 500; background: rgba(255,255,255,0.01); }
+.data-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.15s; }
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+.data-table tbody td { padding: 14px 20px; font-size: 13px; vertical-align: middle; }
+.mono { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+
+/* PRIORITY ROW COLORS */
+tr.row-critical { border-left: 3px solid var(--red) !important; }
+tr.row-high { border-left: 3px solid #fb8264 !important; }
+tr.row-medium { border-left: 3px solid var(--amber) !important; }
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; letter-spacing: 0.03em; text-transform: uppercase; }
+.badge-open { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-in_review { background: rgba(96,165,250,0.12); color: var(--blue); border: 1px solid rgba(96,165,250,0.2); }
+.badge-resolved { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-critical { background: rgba(224,82,82,0.15); color: var(--red); border: 1px solid rgba(224,82,82,0.25); }
+.badge-high { background: rgba(251,130,100,0.15); color: #fb8264; border: 1px solid rgba(251,130,100,0.25); }
+.badge-medium { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-normal { background: rgba(96,165,250,0.12); color: var(--blue); border: 1px solid rgba(96,165,250,0.2); }
+.badge-low { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid var(--border); }
+.badge-type { background: rgba(34,211,238,0.1); color: var(--cyan); border: 1px solid rgba(34,211,238,0.2); }
+
+.btn-action-sm { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1px solid var(--border); background: transparent; color: var(--muted); border-radius: 4px; font-size: 11px; text-decoration: none; transition: all 0.15s; }
+.btn-action-sm:hover { border-color: var(--text); color: var(--text); }
+
+.pagination-wrap { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+.page-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 5px; text-decoration: none; font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); transition: all 0.15s; }
+.page-btn:hover { border-color: var(--gold); color: var(--gold); }
+.page-btn.active { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 700; }
+.page-btn.disabled { opacity: 0.3; pointer-events: none; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-state .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
+
+.reason-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 900px) { .priority-summary { grid-template-columns: repeat(3, 1fr); } }
+</style>
+{% endblock %}
+
 {% block body %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mt-4">Flagged Content</h1>
-            <ol class="breadcrumb mb-4">
-                <li class="breadcrumb-item"><a href="{{ url_for('moderator.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Flagged Items</li>
-            </ol>
-        </div>
-    </div>
-
-    <!-- Flagged Items Table -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="fas fa-flag me-1"></i>
-                    Flagged Content Items
-                </div>
-                <div class="card-body">
-                    {% if flagged_items.items %}
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Type</th>
-                                    <th>Title</th>
-                                    <th>Description</th>
-                                    <th>Status</th>
-                                    <th>Flagged At</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in flagged_items.items %}
-                                <tr>
-                                    <td>{{ item.id }}</td>
-                                    <td><span class="badge bg-warning">{{ item.item_type }}</span></td>
-                                    <td>{{ item.title }}</td>
-                                    <td>{{ item.description[:100] }}{% if item.description|length > 100 %}...{% endif %}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'danger' if item.is_flagged else 'success' }}">
-                                            {{ 'Flagged' if item.is_flagged else 'Normal' }}
-                                        </span>
-                                    </td>
-                                    <td>{{ item.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-success" onclick="clearFlag({{ item.id }})">
-                                            <i class="fas fa-check"></i> Clear Flag
-                                        </button>
-                                        <button class="btn btn-sm btn-danger" onclick="removeItem({{ item.id }})">
-                                            <i class="fas fa-trash"></i> Remove
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    {% if flagged_items.pages > 1 %}
-                    <nav>
-                        <ul class="pagination">
-                            {% for page in flagged_items.iter_pages() %}
-                                {% if page %}
-                                    <li class="page-item {% if page == flagged_items.page %}active{% endif %}">
-                                        <a class="page-link" href="{{ url_for('moderator.flagged_content', page=page) }}">{{ page }}</a>
-                                    </li>
-                                {% else %}
-                                    <li class="page-item disabled"><span class="page-link">...</span></li>
-                                {% endif %}
-                            {% endfor %}
-                        </ul>
-                    </nav>
-                    {% endif %}
-                    {% else %}
-                    <p class="text-muted">No flagged items found.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="mod-header">
+  <div style="display:flex; align-items:center;">
+    <span class="mod-badge"><i class="fas fa-flag"></i> Flags</span>
+    <span class="mod-title">Flagged Content</span>
+  </div>
+  <div class="header-actions">
+    <a href="{{ url_for('admin.moderator.dashboard') }}" class="btn-ghost"><i class="fas fa-home"></i> Dashboard</a>
+    <a href="{{ url_for('admin.moderation_flags') }}" class="btn-danger-ghost"><i class="fas fa-share-square"></i> Admin Queue</a>
+  </div>
 </div>
 
-<script>
-function clearFlag(itemId) {
-    if (confirm('Are you sure you want to clear the flag on this item?')) {
-        // Implement AJAX call to clear flag
-        fetch(`/api/admin/items/${itemId}/clear-flag`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        }).then(response => {
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('Failed to clear flag');
-            }
-        });
-    }
-}
+<div class="mod-wrap">
+  <div class="breadcrumb-row">
+    <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+    <span class="sep">/</span>
+    <span class="active">Flagged Items</span>
+  </div>
 
-function removeItem(itemId) {
-    if (confirm('Are you sure you want to remove this item? This action cannot be undone.')) {
-        // Implement AJAX call to remove item
-        fetch(`/api/admin/items/${itemId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        }).then(response => {
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('Failed to remove item');
-            }
-        });
-    }
-}
-</script>
+  <!-- ALERT -->
+  {% if flags.total > 0 %}
+  <div class="alert-bar">
+    <i class="fas fa-exclamation-triangle alert-icon"></i>
+    <span class="alert-count">{{ flags.total }}</span>
+    <span>open flag{{ 's' if flags.total != 1 else '' }} requiring review</span>
+    {% if flags.total > 10 %}
+    <span style="margin-left:auto; color:var(--red); font-size:12px; font-weight:600;">
+      <i class="fas fa-arrow-up"></i> High volume — prioritise critical items
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- PANEL -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-icon"><i class="fas fa-flag"></i></div>
+        Open Flags
+      </div>
+      <span style="font-size:12px; color:var(--muted); font-family:'DM Mono',monospace;">{{ flags.total }} total</span>
+    </div>
+
+    <div class="panel-body">
+      {% if flags.items %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Flag ID</th>
+            <th>Entity</th>
+            <th>Priority</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Flagged At</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in flag_rows %}
+          {% set flag = row.flag %}
+          <tr class="{% if flag.priority in ['critical'] %}row-critical{% elif flag.priority == 'high' %}row-high{% elif flag.priority == 'medium' %}row-medium{% endif %}">
+            <td class="mono">#{{ flag.id }}</td>
+            <td>
+              <span class="badge badge-type">{{ flag.entity_type }}</span>
+              <span style="color:var(--muted); font-family:'DM Mono',monospace; font-size:12px; margin-left:4px;">#{{ flag.entity_id }}</span>
+            </td>
+            <td>
+              <span class="badge badge-{{ flag.priority }}">{{ flag.priority|capitalize }}</span>
+            </td>
+            <td>
+              <div class="reason-text" title="{{ flag.reason or '' }}">{{ (flag.reason or '')[:120] }}{% if (flag.reason or '')|length > 120 %}…{% endif %}</div>
+            </td>
+            <td><span class="badge badge-{{ flag.status }}">{{ flag.status|replace('_',' ')|capitalize }}</span></td>
+            <td class="mono">{{ flag.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+              {% if row.review_url %}
+              <a href="{{ row.review_url }}" class="btn-action-sm" target="_blank">
+                <i class="fas fa-external-link-alt"></i> View
+              </a>
+              {% else %}
+              <span style="color:var(--muted); font-size:11px;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if flags.pages > 1 %}
+      <div class="pagination-wrap">
+        {% for page in flags.iter_pages() %}
+          {% if page %}
+            <a class="page-btn {% if page == flags.page %}active{% endif %}"
+               href="{{ url_for('admin.moderator.flagged_content', page=page) }}">{{ page }}</a>
+          {% else %}
+            <span class="page-btn disabled">…</span>
+          {% endif %}
+        {% endfor %}
+        <span style="margin-left:8px; font-size:11px; color:var(--muted); font-family:'DM Mono',monospace;">
+          Page {{ flags.page }} / {{ flags.pages }}
+        </span>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+        <p>No open flags — queue is clear</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 {% endblock %}

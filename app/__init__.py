@@ -280,6 +280,48 @@ def create_app(config_object=None) -> Flask:
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
     # ------------------------------------------------------------------
+    # Global Identity Context Loader
+    # ------------------------------------------------------------------
+    @app.before_request
+    def load_identity_context():
+        """Inject real actor and effective user into request context for every request."""
+        try:
+            from flask_login import current_user
+            from flask import session as flask_session, request as flask_request
+            from app.core.context import RequestContext
+            from app.identity.models.user import User
+            from app.extensions import db
+
+            # Real actor is the authenticated Flask-Login user
+            actor_user = current_user if getattr(current_user, "is_authenticated", False) else None
+            RequestContext.set_actor(actor_user)
+
+            # Effective user is impersonated user if set, else the actor
+            effective_user = actor_user
+            impersonated_id = flask_session.get("impersonated_user_id")
+            if impersonated_id:
+                try:
+                    # Prefer session.get via SQLAlchemy 2 if available
+                    user = db.session.get(User, impersonated_id) if hasattr(db.session, 'get') else None
+                except Exception:
+                    db.session.rollback()
+                    user = None
+                if not user:
+                    try:
+                        user = User.query.get(impersonated_id)
+                    except Exception:
+                        db.session.rollback()
+                        user = None
+                if user:
+                    effective_user = user
+            RequestContext.set_effective_user(effective_user)
+        except Exception as e:
+            try:
+                current_app.logger.warning(f"Identity context load failed: {e}")
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
     # Database Transaction Lifecycle
     # ------------------------------------------------------------------
     @app.before_request
@@ -493,28 +535,21 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     @app.context_processor
     def inject_impersonation_status():
-        is_impersonating = bool(session.get('impersonated_by') or session.get('owner_impersonating'))
-        # Get values from session, ensuring they are strings and not None
-        impersonated_role = session.get('impersonated_role')
-        impersonated_by = session.get('impersonated_by_name')
-
-        # Convert to empty string if None
-        if impersonated_role is None:
-            impersonated_role = ''
-        else:
-            # Ensure it's a string
-            impersonated_role = str(impersonated_role)
-
-        if impersonated_by is None:
-            impersonated_by = ''
-        else:
-            # Ensure it's a string
-            impersonated_by = str(impersonated_by)
+        from flask import session as flask_session
+        from app.core.context import RequestContext
+        is_impersonating = bool(flask_session.get('impersonated_user_id'))
+        impersonated_by = flask_session.get('impersonation_by')
+        impersonation_started_at = flask_session.get('impersonation_started_at')
+        effective_user = RequestContext.get_effective_user()
+        actor_user = RequestContext.get_actor()
 
         return {
             'is_impersonating': is_impersonating,
-            'impersonated_role': impersonated_role,
-            'impersonated_by': impersonated_by
+            'impersonated_user_id': flask_session.get('impersonated_user_id'),
+            'impersonation_by': impersonated_by,
+            'impersonation_started_at': impersonation_started_at,
+            'effective_user': effective_user,
+            'actor_user': actor_user,
         }
 
     @app.context_processor
@@ -786,18 +821,89 @@ def create_app(config_object=None) -> Flask:
         flash("Your session has expired. Please log in again.", "warning")
         return redirect(url_for("auth.login"))
 
+    @app.before_request
+    def set_csp_nonce():
+        # Generate a per-request CSP nonce
+        import secrets
+        from flask import g
+        g.csp_nonce = secrets.token_urlsafe(16)
+
+    @app.context_processor
+    def inject_csp_nonce():
+        from flask import g
+        return {"csp_nonce": getattr(g, "csp_nonce", None)}
+
     @app.after_request
     def apply_security_headers(response):
-        csp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: *; font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';"
-        response.headers["Content-Security-Policy"] = csp
+        from flask import g
+        nonce = getattr(g, "csp_nonce", "")
+        # Strict CSP for scripts using per-request nonce. We still allow inline styles for now to
+        # avoid regressions; a Report-Only header below shows violations for a future no-inline style policy.
+        csp_enforce = (
+            "default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "upgrade-insecure-requests;"
+        )
+        response.headers["Content-Security-Policy"] = csp_enforce
+
+        # Report-Only header to monitor a stricter style policy (no inline styles)
+        csp_report_only = (
+            "default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}'; "
+            "style-src 'self' https://fonts.googleapis.com; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "upgrade-insecure-requests; "
+            "report-to csp-endpoint; report-uri /csp-report"
+        )
+        response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
+
+        # Reporting endpoints (Report-To / Reporting-Endpoints for broader browser support)
+        response.headers["Report-To"] = (
+            '{"group":"csp-endpoint","max_age":10886400,'
+            '"endpoints":[{"url":"/csp-report"}],"include_subdomains":true}'
+        )
+        response.headers["Reporting-Endpoints"] = "csp-endpoint=\"/csp-report\""
+
         if request.is_secure:
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Additional modern security headers
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         if session.get("user_id"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         return response
+
+    @app.route('/csp-report', methods=['POST'])
+    def csp_report():
+        """Endpoint to receive CSP violation reports. Logs payload for analysis."""
+        try:
+            report = request.get_json(force=True, silent=True) or {}
+        except Exception:
+            report = {}
+        try:
+            current_app.logger.warning(f"CSP REPORT: {report}")
+        except Exception:
+            pass
+        return ("", 204)
 
     with app.app_context():
         # Validate Dual ID System
@@ -823,9 +929,9 @@ def create_app(config_object=None) -> Flask:
     @login_required
     @require_role('owner')
     def where_am_i():
-        if current_app.config['FLASK_ENV'] == 'production':
-            abort(404)
         from flask import current_app
+        if current_app.config.get('FLASK_ENV') == 'production':
+            abort(404)
         from app.extensions import db
         from sqlalchemy import inspect, text
         import os

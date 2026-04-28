@@ -116,6 +116,9 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
             ["owner", "super_admin", "admin", "moderator"]),
     PermDef("content.moderate", "Review and action flagged content",
             ["owner", "super_admin", "admin", "moderator"]),
+    # NEW: Flagging escalation permission
+    PermDef("content.flag", "Create escalation flags on content (does not change state)",
+            ["owner", "super_admin", "admin", "moderator", "event_manager", "org_admin"]),
 
     # Submissions
     PermDef("submissions.view", "View submission queue",

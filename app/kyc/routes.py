@@ -11,6 +11,7 @@ Endpoints:
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required, current_user
+from app.core.context import RequestContext
 from datetime import datetime
 
 from app.extensions import db
@@ -56,7 +57,8 @@ TIER_INFO = {
 @login_required
 def index():
     """Main KYC dashboard."""
-    user_id = current_user.id
+    effective = RequestContext.get_effective_user()
+    user_id = effective.id if effective else None
     kyc_info = calculate_kyc_tier(user_id)
     records = KycService.get_user_kyc(user_id)
 
@@ -69,7 +71,8 @@ def index():
 @kyc_bp.route("/upgrade", methods=["GET"])
 @login_required
 def upgrade():
-    current_tier = getattr(current_user, "kyc_level", TIER_0_UNREGISTERED)
+    effective = RequestContext.get_effective_user()
+    current_tier = getattr(effective, "kyc_level", TIER_0_UNREGISTERED)
     available_upgrades = {
         k: v for k, v in TIER_INFO.items() if k > current_tier
     }

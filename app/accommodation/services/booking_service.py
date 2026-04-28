@@ -11,6 +11,7 @@ import enum
 import logging
 
 from app.extensions import db
+from app.admin.models import ContentFlag
 from app.accommodation.models.booking import (
     AccommodationBooking,
     AccommodationBookingStatus,
@@ -23,6 +24,19 @@ from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
 
 logger = logging.getLogger(__name__)
+
+
+def _assert_no_open_flags(entity_type: str, entity_id: int):
+    """Raise ValueError if the entity has any unresolved ContentFlag records."""
+    count = ContentFlag.query.filter_by(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        status="open",
+    ).count()
+    if count:
+        raise ValueError(
+            f"Cannot activate {entity_type} {entity_id}: open flags must be resolved first."
+        )
 
 def enum_value(val):
     """
@@ -231,6 +245,9 @@ class BookingService:
             )
             if not is_available:
                 return False, error or "Dates are no longer available. Please contact support."
+
+            # Guard: cannot confirm booking if there are open ContentFlag records
+            _assert_no_open_flags("accommodation_booking", booking.id)
 
             # 2. CONVERT TEMPORARY HOLD → PERMANENT BOOKED
             from app.accommodation.models.availability import BlockedDate

@@ -52,16 +52,39 @@ class WalletAudit:
 
     @staticmethod
     def _get_request_context() -> Dict[str, Any]:
-        """Get current request context for audit."""
+        """Get current request and identity context for audit (actor vs effective)."""
         try:
+            # Identity
+            actor_id = None
+            effective_id = None
+            try:
+                from app.core.context import RequestContext
+                actor = RequestContext.get_actor()
+                effective = RequestContext.get_effective_user()
+                actor_id = getattr(actor, 'id', None)
+                effective_id = getattr(effective, 'id', None)
+            except Exception:
+                pass
+
+            # Request/session
+            session_id = None
+            try:
+                from flask import session as flask_session
+                session_id = flask_session.get('session_id') or flask_session.get('_id') or getattr(flask_session, 'sid', None)
+            except Exception:
+                session_id = None
+
             return {
                 "ip_address": request.remote_addr if request else None,
                 "user_agent": request.user_agent.string if request and request.user_agent else None,
                 "endpoint": request.endpoint if request else None,
                 "method": request.method if request else None,
+                "actor_user_id": actor_id,
+                "effective_user_id": effective_id,
+                "session_id": session_id,
             }
-        except:
-            return {"ip_address": None, "user_agent": None, "endpoint": None, "method": None}
+        except Exception:
+            return {"ip_address": None, "user_agent": None, "endpoint": None, "method": None, "actor_user_id": None, "effective_user_id": None, "session_id": None}
 
     @staticmethod
     def _generate_audit_id() -> str:

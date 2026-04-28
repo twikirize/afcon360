@@ -74,3 +74,9 @@ def legacy_detail(identifier):
 
 
 __all__ = ['accommodation_bp', 'module_enabled', 'require_accommodation_permission']
+
+try:
+    from app.admin.moderation.registry import register_module
+    register_module("accommodation", "Accommodation", lambda eid: f"/accommodation/admin/{eid}")
+except Exception:
+    pass

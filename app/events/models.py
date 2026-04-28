@@ -688,19 +688,19 @@ class EventRegistration(BaseModel):
 
     # ── Ref generation ─────────────────────────────────────────────────────
 
-    def generate_refs(self, event_slug: str = None):
+    def generate_refs(self, event_slug: str = None, sequence: int = None):
         """
         Generate registration_ref, ticket_number, and QR token.
 
-        Uses the DB-backed `seq_number` (sourced from a PostgreSQL SEQUENCE)
-        so this is safe under concurrent registrations with no race condition.
-        The caller must ensure seq_number is populated (i.e. the row has been
-        flushed) before calling this method, or pass it explicitly.
+        Prefers self.seq_number (PostgreSQL SEQUENCE, populated after flush).
+        Falls back to the manually passed sequence argument for callers that
+        compute it before flushing — safe inside a REPEATABLE READ transaction.
         """
-        seq = self.seq_number
+        seq = self.seq_number if self.seq_number is not None else sequence
         if seq is None:
             raise RuntimeError(
-                "seq_number is None — flush the session before calling generate_refs()."
+                "generate_refs requires either a flushed seq_number or "
+                "an explicit sequence argument."
             )
 
         slug = event_slug
