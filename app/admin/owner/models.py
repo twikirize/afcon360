@@ -6,7 +6,7 @@ REFACTORED: Use BIGINT IDs for database relations, UUID for display/API.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import validates
 from sqlalchemy import event
 from app.extensions import db
@@ -216,7 +216,7 @@ class SystemSetting(ProtectedModel):
         setting.is_public = is_public
         setting.requires_restart = requires_restart
         setting.updated_by = updated_by
-        setting.updated_at = datetime.utcnow()
+        setting.updated_at = datetime.now(timezone.utc)
 
         # Commit the transaction if requested
         if commit:

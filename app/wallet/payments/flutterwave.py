@@ -3,7 +3,7 @@
 import requests
 import uuid
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import current_app, request
 
 from app.audit.comprehensive_audit import AuditService, TransactionType, APICallStatus, AuditSeverity
@@ -73,7 +73,7 @@ class FlutterwaveService:
         provider_success = False
         provider_error = None
         provider_reference = None
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             url = f"{current_app.config['FLUTTERWAVE_BASE_URL']}/payments"
@@ -92,7 +92,7 @@ class FlutterwaveService:
 
             response = requests.post(url, json=payload, headers=headers)
             provider_response = response.json()
-            response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
             # Check if successful
             if response.status_code in [200, 201] and provider_response.get('status') == 'success':
@@ -103,7 +103,7 @@ class FlutterwaveService:
 
         except Exception as e:
             provider_error = str(e)
-            response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             current_app.logger.error(f"Flutterwave API call failed: {e}")
 
         # STEP 5: Log API call for audit

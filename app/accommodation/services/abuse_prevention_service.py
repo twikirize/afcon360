@@ -2,7 +2,7 @@
 Abuse Prevention Service - Anti-fraud and rate limiting
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Tuple
 import logging
 
@@ -20,7 +20,7 @@ class AbusePreventionService:
         """Check if user has too many pending holds"""
         from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         pending_holds = AccommodationBooking.query.filter(
             AccommodationBooking.guest_user_id == user_id,
@@ -38,7 +38,7 @@ class AbusePreventionService:
         """Check if property has too many pending holds"""
         from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         pending_holds = AccommodationBooking.query.filter(
             AccommodationBooking.property_id == property_id,
@@ -56,7 +56,7 @@ class AbusePreventionService:
         """Check if user is creating bookings too quickly"""
         from app.accommodation.models.booking import AccommodationBooking
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Burst limit (per minute)
         one_minute_ago = now - timedelta(minutes=1)

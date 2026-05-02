@@ -21,7 +21,7 @@ Sections:
 
 import logging
 logger = logging.getLogger(__name__)
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from flask import (
     Blueprint, render_template, request, jsonify,
@@ -177,7 +177,7 @@ def _build_moderation_stats():
 def _build_my_stats():
     """Build moderator's personal statistics from ModerationLog."""
     try:
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
         my_logs = ModerationLog.query.filter(
             ModerationLog.moderator_id == current_user.id,
             ModerationLog.created_at >= week_ago
@@ -202,7 +202,7 @@ def _build_my_stats():
 @login_required
 @require_role(*_MOD)
 def dashboard():
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
     pending_submissions = (ContentSubmission.query
                            .filter_by(status='pending')
@@ -366,7 +366,7 @@ def claim_submission(submission_id):
     if submission.assigned_to_id is not None:
         return jsonify({'ok': False, 'error': 'Already claimed'}), 409
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     submission.assigned_to_id = current_user.id
     submission.claimed_at = now
 
@@ -388,7 +388,7 @@ def claim_submission(submission_id):
 @require_role(*_MOD)
 def approve_submission(submission_id):
     s = ContentSubmission.query.get_or_404(submission_id)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     s.status      = 'approved'
     s.reviewed_by = current_user.id
     s.reviewed_at = now
@@ -417,7 +417,7 @@ def reject_submission(submission_id):
     if not notes:
         flash('Rejection reason is required.', 'danger')
         return redirect(url_for('admin.moderator.view_submission', submission_id=submission_id))
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     s.status      = 'rejected'
     s.reviewed_by = current_user.id
     s.reviewed_at = now
@@ -448,7 +448,7 @@ def request_changes(submission_id):
         return redirect(url_for('admin.moderator.view_submission', submission_id=submission_id))
     s.status      = 'changes_requested'
     s.reviewed_by = current_user.id
-    s.reviewed_at = datetime.utcnow()
+    s.reviewed_at = datetime.now(timezone.utc)
     s.review_notes = notes
     db.session.commit()
     _audit('submission.request_changes', 'content', {'id': submission_id, 'notes': notes})
@@ -518,7 +518,7 @@ def bulk_submission_action():
         if s and s.status == 'pending':
             s.status      = valid_actions[action]
             s.reviewed_by = current_user.id
-            s.reviewed_at = datetime.utcnow()
+            s.reviewed_at = datetime.now(timezone.utc)
             s.review_notes = notes
             count += 1
     db.session.commit()
@@ -680,7 +680,7 @@ def close_flag(flag_id):
     flag.resolved_by        = current_user.id
     flag.resolution_action  = 'closed'
     flag.resolution_notes   = notes
-    flag.resolved_at        = datetime.utcnow()
+    flag.resolved_at        = datetime.now(timezone.utc)
     db.session.commit()
     _audit('flag.close', 'moderation', {'flag_id': flag_id, 'notes': notes})
     flash('Flag closed.', 'info')
@@ -799,7 +799,7 @@ def user_moderation():
     per_page     = request.args.get('per_page', 20, type=int)
     filter_      = request.args.get('filter', 'all')
     search       = request.args.get('q', '').strip()
-    week_ago     = datetime.utcnow() - timedelta(days=7)
+    week_ago     = datetime.now(timezone.utc) - timedelta(days=7)
 
     q = User.query
     if filter_ == 'recent':
@@ -895,7 +895,7 @@ def unsuspend_user(user_id):
         entity_type='user', entity_id=user_id, status='open'
     ).update({
         'status': 'resolved', 'resolved_by': current_user.id,
-        'resolution_action': 'unsuspended', 'resolved_at': datetime.utcnow()
+        'resolution_action': 'unsuspended', 'resolved_at': datetime.now(timezone.utc)
     })
     db.session.commit()
     _audit('user.unsuspend', 'user_management', {
@@ -948,7 +948,7 @@ def reject_user_verification(user_id):
         flash('Rejection reason is required.', 'danger')
         return redirect(url_for('admin.moderator.view_user', user_id=user_id))
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Try to find and reject the most recent KYC/verification record
     try:
@@ -1570,7 +1570,7 @@ def escalate_to_compliance(flag_id):
         # Update flag with compliance case reference
         flag.compliance_case_id = compliance_case.id
         flag.referred_to_compliance = True
-        flag.referred_at = datetime.utcnow()
+        flag.referred_at = datetime.now(timezone.utc)
         flag.referred_by = current_user.id
         flag.escalated_to_role = 'compliance_officer'
         flag.status = 'in_review'
@@ -1672,7 +1672,7 @@ def refer_kyc_compliance(doc_id):
             result.status = 'in_review'
             result.compliance_case_id = compliance_case.id
             result.referred_to_compliance = True
-            result.referred_at = datetime.utcnow()
+            result.referred_at = datetime.now(timezone.utc)
             result.referred_by = current_user.id
             db.session.commit()
 
@@ -1744,7 +1744,7 @@ def audit_log():
 @login_required
 @require_role(*_MOD)
 def stats():
-    now     = datetime.utcnow()
+    now     = datetime.now(timezone.utc)
     week_ago  = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
@@ -1874,7 +1874,7 @@ def api_close_flag(flag_id):
     flag.resolved_by       = current_user.id
     flag.resolution_action = 'closed'
     flag.resolution_notes  = data.get('notes', 'Closed via API')
-    flag.resolved_at       = datetime.utcnow()
+    flag.resolved_at       = datetime.now(timezone.utc)
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -1884,7 +1884,7 @@ def api_close_flag(flag_id):
 @require_role(*_MOD)
 def api_approve_submission(submission_id):
     s = ContentSubmission.query.get_or_404(submission_id)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     s.status      = 'approved'
     s.reviewed_by = current_user.id
     s.reviewed_at = now
@@ -1911,7 +1911,7 @@ def api_reject_submission(submission_id):
     if not notes:
         return jsonify({"ok": False, "error": "notes required"}), 400
     s = ContentSubmission.query.get_or_404(submission_id)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     s.status      = 'rejected'
     s.reviewed_by = current_user.id
     s.reviewed_at = now
@@ -1950,7 +1950,7 @@ def moderate_submission(submission_id):
     if s.status != 'pending':
         return jsonify({"ok": False, "error": "Submission already resolved"}), 400
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     s.status = 'approved' if action == 'approve' else 'rejected'
     s.reviewed_by = current_user.id
     s.reviewed_at = now
@@ -2028,7 +2028,7 @@ def performance():
 @login_required
 @require_role(*_MOD)
 def queue_metrics():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     pending = ContentSubmission.query.filter_by(status='pending')
     total = pending.count()
     unassigned = pending.filter(ContentSubmission.assigned_to_id == None).count()
@@ -2069,7 +2069,7 @@ def audit_insights():
 @login_required
 @require_role(*_MOD)
 def api_auto_priority():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     flags = ContentFlag.query.filter(
         ContentFlag.resolved_at == None,
         ContentFlag.auto_priority == True
@@ -2209,7 +2209,7 @@ def moderate_action(entity_type, entity_id, action):
         flag.resolution_action = 'approved'
         flag.resolution_notes = notes
         flag.resolved_by = current_user.id
-        flag.resolved_at = datetime.utcnow()
+        flag.resolved_at = datetime.now(timezone.utc)
         db.session.commit()
         
         _audit('moderate.approve', entity_type, {'entity_id': entity_id, 'notes': notes})
@@ -2219,7 +2219,7 @@ def moderate_action(entity_type, entity_id, action):
         flag.resolution_action = 'rejected'
         flag.resolution_notes = notes
         flag.resolved_by = current_user.id
-        flag.resolved_at = datetime.utcnow()
+        flag.resolved_at = datetime.now(timezone.utc)
         db.session.commit()
         
         _audit('moderate.reject', entity_type, {'entity_id': entity_id, 'notes': notes})
@@ -2239,7 +2239,7 @@ def audit_log_export():
     from io import StringIO, BytesIO
     from flask import Response, request
     from app.admin.owner.models import OwnerAuditLog
-    from datetime import datetime, timedelta
+    from datetime import datetime, timezone, timedelta
 
     # Get format from query parameter (default: csv)
     export_format = request.args.get('format', 'csv').lower()
@@ -2260,7 +2260,7 @@ def audit_log_export():
     # Date filter
     if days != 'all':
         days_int = int(days)
-        cutoff = datetime.utcnow() - timedelta(days=days_int)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days_int)
         q = q.filter(OwnerAuditLog.created_at >= cutoff)
 
     logs = q.order_by(OwnerAuditLog.created_at.desc()).limit(5000).all()
@@ -2282,7 +2282,7 @@ def audit_log_export():
             getattr(log, 'status', 'success')
         ])
 
-    filename_base = f"moderator_audit_{current_user.username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    filename_base = f"moderator_audit_{current_user.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
     # ========== CSV Export ==========
     if export_format == 'csv':

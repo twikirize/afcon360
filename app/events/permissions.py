@@ -39,7 +39,7 @@ MODERATION MATRIX
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Tuple
 
 from flask_login import current_user
@@ -433,7 +433,7 @@ def can_delete_event(user, event) -> Tuple[bool, str]:
         original_creator_id = getattr(event, 'original_creator_id', None)
         if original_creator_id and original_creator_id == user.id:
             created_at = getattr(event, 'created_at', None)
-            if created_at and datetime.utcnow() - created_at < timedelta(hours=24):
+            if created_at and datetime.now(timezone.utc) - created_at < timedelta(hours=24):
                 return True, ''
 
     return False, 'Not authorized to delete this event'

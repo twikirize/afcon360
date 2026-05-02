@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+﻿from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, DateTime, JSON, Text
 from app.models.base import ProtectedModel
 
@@ -13,7 +13,7 @@ class ReconciliationRun(ProtectedModel):
     notes = Column(Text, nullable=True)
 
     def mark_completed(self, summary: dict, session=None):
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
         self.summary = summary
         self.status = "completed"
         if session:

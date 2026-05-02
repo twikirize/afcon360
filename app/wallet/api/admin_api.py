@@ -6,7 +6,7 @@ Role-based access: regulators, aggregators, auditors, compliance officers
 from functools import wraps
 from flask import Blueprint, request, jsonify, g
 from flask_login import current_user, login_required
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
 from app.wallet.models.transaction import TransactionModel, TransactionStatus, TransactionType
@@ -56,7 +56,7 @@ def regulator_dashboard():
     ).scalar()
     
     # Transaction statistics (last 30 days)
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     
     txn_stats = db.session.query(
         db.func.count(TransactionModel.id).label('total'),
@@ -167,7 +167,7 @@ def generate_str():
         "report_type": "STR",
         "country": country_code,
         "period_days": days,
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "data": report
     })
 
@@ -196,7 +196,7 @@ def auditor_reconciliation():
         "total_debits": float(debit_total),
         "total_credits": float(credit_total),
         "difference": float(debit_total) - float(credit_total),
-        "checked_at": datetime.utcnow().isoformat()
+        "checked_at": datetime.now(timezone.utc).isoformat()
     })
 
 
@@ -221,7 +221,7 @@ def compliance_freeze_account():
         
         account.is_frozen = True
         account.frozen_reason = reason
-        account.frozen_at = datetime.utcnow()
+        account.frozen_at = datetime.now(timezone.utc)
         account.frozen_by = current_user.id
         
         db.session.commit()
@@ -264,7 +264,7 @@ def system_health():
     
     return jsonify({
         "status": "healthy" if db_healthy else "unhealthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 

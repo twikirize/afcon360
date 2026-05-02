@@ -19,7 +19,7 @@ from app.kyc.services import KycService
 # from app.wallet.models import PayoutRequest  # DELETED - will be rebuilt in new architecture
 from app.identity.models.organisation import Organisation
 from app.admin.models import ContentFlag
-from datetime import datetime
+from datetime import datetime, timezone
 
 compliance_bp = Blueprint('compliance', __name__, url_prefix='/compliance')
 
@@ -260,13 +260,13 @@ def org_action(org_id):
     
     if action == 'approve':
         org.compliance_status = 'approved'
-        org.compliance_reviewed_at = datetime.utcnow()
+        org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = current_user.id
         org.compliance_notes = notes
         flash(f'Organisation {org_id} approved from compliance.', 'success')
     elif action == 'reject':
         org.compliance_status = 'rejected'
-        org.compliance_reviewed_at = datetime.utcnow()
+        org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = current_user.id
         org.rejection_reason = request.form.get('rejection_reason', notes)
         flash(f'Organisation {org_id} rejected from compliance.', 'warning')

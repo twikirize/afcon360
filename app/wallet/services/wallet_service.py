@@ -287,7 +287,13 @@ class WalletService:
 
         # Transaction committed here
         final_balance = self.ledger_repo.get_balance(account.id, currency)
-        
+        # Fire-and-forget notification (must not break transaction)
+        try:
+            from app.wallet.services.wallet_notifications import notify_deposit
+            notify_deposit(user_id, amount, currency, final_balance)
+        except Exception:
+            current_app.logger.exception('Failed to send deposit notification')
+
         return {
             "status": "success",
             "transaction_id": str(tx.id),
@@ -454,7 +460,13 @@ class WalletService:
             self.tx_repo.update_status(tx.id, TransactionStatus.COMPLETED)
 
         final_balance = self.ledger_repo.get_balance(account.id, currency)
-        
+        # Fire-and-forget notification for withdrawal initiation
+        try:
+            from app.wallet.services.wallet_notifications import notify_withdrawal_initiated
+            notify_withdrawal_initiated(user_id, amount, currency, reference=str(tx.id))
+        except Exception:
+            current_app.logger.exception('Failed to send withdrawal notification')
+
         return {
             "status": "success",
             "transaction_id": str(tx.id),
@@ -462,6 +474,25 @@ class WalletService:
             "currency": currency,
             "new_balance": str(final_balance)
         }
+
+    def ensure_account_exists(self, user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
+        """
+        Ensure a user has a wallet account, creating one if necessary.
+        
+        Args:
+            user_id: User ID
+            currency: Currency code
+            
+        Returns:
+            AccountModel or None if user not found
+        """
+        from app.identity.models.user import User
+        
+        user = User.query.get(user_id)
+        if not user:
+            return None
+        
+        return self.account_repo.get_or_create(user_id, currency)
 
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def transfer(
@@ -515,29 +546,46 @@ class WalletService:
         self._validate_currency(currency)
         self._check_transaction_limit(amount, "transfer")
 
-        # Verify transaction PIN if user has one configured
-        try:
-            from app.identity.models.user import User
-            from app.wallet.exceptions import TransactionPINError
-
-            sender_user = User.get_by_private_id(from_user_id)
-            if sender_user and sender_user.transaction_pin_hash:
-                if not pin:
-                    raise TransactionPINError("Transaction PIN is required")
-                # verify using DB session so failed-attempts are persisted
-                ok = sender_user.verify_transaction_pin(pin, session=self.db)
-                if not ok:
-                    raise TransactionPINError("Invalid or locked PIN")
-        except TransactionPINError:
-            # bubble up to caller
-            raise
-        except Exception:
-            # non-fatal: if verification infrastructure missing, continue
-            pass
+        # NOTE: PIN verification moved into the DB transaction below to ensure atomicity
 
         # SINGLE TRANSACTION
         with self.db.begin():
-            # 1. Lock both accounts in consistent ID order (prevents deadlock)
+            # 0. PIN verification inside the transaction to avoid TOCTOU
+            try:
+                from app.identity.models.user import User
+                from app.wallet.exceptions import TransactionPINError
+
+                sender_user = User.get_by_private_id(from_user_id)
+                if sender_user and sender_user.transaction_pin_hash:
+                    if not pin:
+                        raise TransactionPINError("Transaction PIN is required")
+                    # SELECT FOR UPDATE on the user row to prevent concurrent state changes
+                    try:
+                        locked_user = self.db.query(User).filter_by(id=sender_user.id).with_for_update().one()
+                    except Exception:
+                        # Fallback to the already loaded sender_user if locking failed for any reason
+                        locked_user = sender_user
+
+                    ok = locked_user.verify_transaction_pin(pin, session=self.db)
+                    if not ok:
+                        raise TransactionPINError("Invalid or locked PIN")
+            except TransactionPINError:
+                # Bubble up to caller (will rollback transaction)
+                raise
+            except Exception:
+                # Non-fatal: if verification infrastructure missing, continue without enforcing PIN
+                current_app.logger.debug("Transaction PIN verification infrastructure unavailable; skipping PIN enforcement")
+
+            # 1. Ensure both users have accounts (create if missing)
+            from_account = self.ensure_account_exists(from_user_id, currency)
+            if not from_account:
+                raise WalletNotFoundError(user_id=from_user_id)
+            
+            to_account = self.ensure_account_exists(to_user_id, currency)
+            if not to_account:
+                raise WalletNotFoundError(user_id=to_user_id)
+            
+            # Lock both accounts in consistent ID order (prevents deadlock)
             ids = sorted([from_user_id, to_user_id])
             wallets = {w.user_id: w for w in self.account_repo.get_wallets_for_update(ids)}
             
@@ -688,7 +736,34 @@ class WalletService:
 
         from_balance = self.ledger_repo.get_balance(from_account.id, currency)
         to_balance = self.ledger_repo.get_balance(to_account.id, currency)
-        
+        # Notifications: notify sender and recipient (best-effort)
+        try:
+            from app.wallet.services.wallet_notifications import (
+                notify_transfer_sent,
+                notify_transfer_received
+            )
+            from app.identity.models.user import User
+            try:
+                recipient_user = User.get_by_private_id(to_user_id)
+                sender_user = User.get_by_private_id(from_user_id)
+                recipient_name = getattr(recipient_user, 'username', None) or getattr(recipient_user, 'email', None) or str(to_user_id)
+                sender_name = getattr(sender_user, 'username', None) or getattr(sender_user, 'email', None) or str(from_user_id)
+            except Exception:
+                recipient_name = str(to_user_id)
+                sender_name = str(from_user_id)
+
+            try:
+                notify_transfer_sent(from_user_id, amount, currency, recipient_name, from_balance, reference=str(tx.id))
+            except Exception:
+                current_app.logger.exception('Failed to send transfer-sent notification')
+
+            try:
+                notify_transfer_received(to_user_id, amount, currency, sender_name, to_balance)
+            except Exception:
+                current_app.logger.exception('Failed to send transfer-received notification')
+        except Exception:
+            current_app.logger.exception('Transfer notification setup failed')
+
         return {
             "status": "success",
             "transaction_id": str(tx.id),
@@ -715,7 +790,17 @@ class WalletService:
             ValueError: If user_id is not a valid internal ID
         """
         internal_user_id = assert_internal_id(user_id)
-        return self.wallet_repo.get_balance(internal_user_id)
+        balance_data = self.wallet_repo.get_balance(internal_user_id)
+        # Ensure balance is Decimal, not string, to avoid rounding errors
+        if isinstance(balance_data, dict):
+            raw_balance = balance_data.get('balance', Decimal('0'))
+            if isinstance(raw_balance, str):
+                try:
+                    raw_balance = Decimal(raw_balance)
+                except Exception:
+                    raw_balance = Decimal('0')
+            balance_data['balance'] = raw_balance
+        return balance_data
 
     def get_transaction_history(
         self,

@@ -1,7 +1,7 @@
 # app/auth/sessions.py
 # Note: This file doesn't contain "KYC data injection error" or "Audit summary injection error"
 # This file doesn't contain "KYC data injection error" or "Audit summary injection error"
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import uuid
 from app.extensions import db
 from app.models.base import BaseModel
@@ -22,7 +22,7 @@ def start_server_session(public_user_id: str, ip: str | None, ua: str | None, tt
         user_id=public_user_id,
         ip_address=ip,
         user_agent=ua,
-        expires_at=datetime.utcnow() + timedelta(hours=ttl_hours),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=ttl_hours),
     )
     try:
         db.session.add(ss)

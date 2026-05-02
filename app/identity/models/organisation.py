@@ -1,5 +1,5 @@
 # app/identity/models/organisation.py
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime, Date, BigInteger, ForeignKey, Enum,
     UniqueConstraint, Index, JSON,select, event
@@ -181,7 +181,7 @@ class Organisation(BaseModel):
     def soft_delete(self):
         self.is_deleted = True
         self.is_active = False
-        self.deleted_at = datetime.utcnow()
+        self.deleted_at = datetime.now(timezone.utc)
 
     def restore(self):
         self.is_deleted = False
@@ -197,7 +197,7 @@ class Organisation(BaseModel):
     def is_fully_verified(self):
         latest = max(self.verifications, key=lambda v: v.requested_at, default=None)
         return latest and latest.status == "verified" and (
-            not latest.expires_at or latest.expires_at >= datetime.utcnow()
+            not latest.expires_at or latest.expires_at >= datetime.now(timezone.utc)
         )
 
     def has_partial_verification(self):

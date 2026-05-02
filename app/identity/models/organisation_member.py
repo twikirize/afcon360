@@ -18,7 +18,7 @@ helpers.has_org_role →  walks this chain to check membership
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import cached_property
 
 from sqlalchemy import (
@@ -150,7 +150,7 @@ class OrganisationMember(BaseModel):
 
     def soft_delete(self) -> None:
         self.is_deleted = True
-        self.deleted_at = datetime.utcnow()
+        self.deleted_at = datetime.now(timezone.utc)
 
     def restore(self) -> None:
         self.is_deleted = False

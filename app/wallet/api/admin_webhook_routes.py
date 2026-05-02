@@ -12,10 +12,11 @@ Endpoints:
 
 from flask import jsonify, request
 from flask_login import login_required, current_user
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
 from app.wallet.models.webhook_event import WebhookEvent
+from app.wallet.models.transaction import TransactionModel, TransactionStatus
 
 # Import the existing blueprint from admin_api.py
 from app.wallet.api.admin_api import admin_api_bp, require_any_role
@@ -93,10 +94,32 @@ def retry_webhook(event_id):
                      f"Only dead_letter and failed events can be retried."
         }), 400
 
+    # Additional safety: ensure we won't double-credit by reprocessing an
+    # event whose provider reference already maps to a COMPLETED transaction.
+    # Extract provider reference from common payload shapes.
+    payload = event.payload or {}
+    data = payload.get("data", {}) if isinstance(payload, dict) else {}
+    provider_ref = (
+        data.get("txRef") or data.get("tx_ref") or data.get("reference")
+        or payload.get("reference") or payload.get("txRef")
+    )
+
+    if provider_ref:
+        existing_tx = TransactionModel.query.filter_by(
+            client_request_id=provider_ref
+        ).first()
+        if existing_tx and existing_tx.status == TransactionStatus.COMPLETED:
+            return jsonify({
+                "error": (
+                    f"A completed transaction already exists for this webhook reference: {existing_tx.id}. "
+                    "Reprocessing would double-credit the user."
+                )
+            }), 400
+
     event.status = "queued"
     event.retry_count = 0
     event.next_retry_at = None
-    event.last_error = f"Manual retry by admin {current_user.id} at {datetime.utcnow().isoformat()}"
+    event.last_error = f"Manual retry by admin {current_user.id} at {datetime.now(timezone.utc).isoformat()}"
 
     try:
         db.session.commit()
@@ -136,7 +159,7 @@ def webhook_stats():
     ).group_by(WebhookEvent.provider).all()
 
     # Recent processing rate (last 24h)
-    yesterday = datetime.utcnow() - timedelta(hours=24)
+    yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
     processed_24h = WebhookEvent.query.filter(
         WebhookEvent.status == "processed",
         WebhookEvent.processed_at >= yesterday
@@ -159,7 +182,7 @@ def webhook_stats():
                 )
             }
         },
-        "checked_at": datetime.utcnow().isoformat()
+        "checked_at": datetime.now(timezone.utc).isoformat()
     })
 
 

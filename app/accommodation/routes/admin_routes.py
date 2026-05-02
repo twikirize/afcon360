@@ -59,7 +59,7 @@ from app.extensions import db
 from app.accommodation.models.property import Property, AccommodationPropertyStatus
 from app.accommodation.models.booking import AccommodationBooking
 from app.accommodation.models.review import Review, AccommodationReviewStatus
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ============================================================================
@@ -132,16 +132,16 @@ def moderate_action(entity_type, id, action):
         if entity_type == 'property':
             item.status = AccommodationPropertyStatus.ACTIVE
             item.is_verified = True
-            item.verified_at = datetime.utcnow()
+            item.verified_at = datetime.now(timezone.utc)
             item.verified_by = current_user.id
         elif entity_type == 'booking':
             item.status = 'confirmed'
         elif entity_type == 'review':
             item.status = AccommodationReviewStatus.APPROVED
             item.is_published = True
-            item.published_at = datetime.utcnow()
+            item.published_at = datetime.now(timezone.utc)
             item.moderated_by = current_user.id
-            item.moderated_at = datetime.utcnow()
+            item.moderated_at = datetime.now(timezone.utc)
 
         db.session.commit()
         flash(f'{entity_type.capitalize()} approved successfully.', 'success')
@@ -162,7 +162,7 @@ def moderate_action(entity_type, id, action):
             item.status = AccommodationReviewStatus.REJECTED
             item.moderation_reason = reason
             item.moderated_by = current_user.id
-            item.moderated_at = datetime.utcnow()
+            item.moderated_at = datetime.now(timezone.utc)
 
         db.session.commit()
         flash(f'{entity_type.capitalize()} rejected successfully.', 'success')

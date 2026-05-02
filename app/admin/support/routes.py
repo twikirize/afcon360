@@ -8,7 +8,7 @@ from app.extensions import db
 from app.identity.models.user import User
 from app.identity.individuals.individual_verification import IndividualVerification
 from app.profile.models import get_profile_by_user
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 support_bp = Blueprint('support', __name__, url_prefix='/support')
 
@@ -28,7 +28,7 @@ def dashboard():
     ).order_by(User.last_login.desc()).limit(10).all()
 
     # Get users needing assistance (unverified for more than 3 days)
-    three_days_ago = datetime.utcnow() - timedelta(days=3)
+    three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)
     unverified_users = User.query.filter(
         User.is_verified == False,
         User.created_at <= three_days_ago

@@ -18,7 +18,7 @@ Violations can cause:
 - Debugging nightmares
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, DateTime, Boolean, event
 from sqlalchemy.sql import func
 from app.extensions import db
@@ -62,7 +62,7 @@ class BaseModel(TimestampMixin, db.Model):
     def soft_delete(self):
         """Mark record as deleted without removing from DB"""
         self.is_deleted = True
-        self.deleted_at = datetime.utcnow()
+        self.deleted_at = datetime.now(timezone.utc)
         db.session.add(self)
         db.session.commit()
 
@@ -150,4 +150,4 @@ def fix_sqlite_autoincrement(mapper, connection, target):
 @event.listens_for(BaseModel, 'before_update', propagate=True)
 def _set_updated_at(mapper, connection, target):
     if hasattr(target, 'updated_at'):
-        target.updated_at = datetime.utcnow()
+        target.updated_at = datetime.now(timezone.utc)

@@ -8,7 +8,7 @@ Fixed vulnerabilities:
 - Commission recording moved inside transaction boundary
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from functools import wraps
 from flask import Blueprint, request, jsonify, current_app
@@ -29,7 +29,8 @@ from app.wallet.exceptions import (
     LimitExceededError,
     DuplicateTransactionError,
     WalletFrozenError,
-    ConversionError
+    ConversionError,
+    TransactionPINError
 )
 from app.wallet.exceptions import TransactionPINError
 from app.wallet.services.commission_service import CommissionService
@@ -487,6 +488,16 @@ def transfer():
         internal_user_id = assert_internal_id(current_user.id)
 
         service = WalletService()
+        
+        # Verify receiver has an account before proceeding
+        receiver_account = service.ensure_account_exists(validated['to_user_id'], validated['currency'])
+        if not receiver_account:
+            return jsonify({
+                "status": "error",
+                "code": "RECEIVER_NO_WALLET",
+                "message": "Recipient does not have a wallet account. Please ask them to create one first."
+            }), 404
+        
         result = service.transfer(
             from_user_id=internal_user_id,
             to_user_id=validated['to_user_id'],
@@ -825,7 +836,7 @@ def get_supported_currencies():
                 "home_currency": home,
                 "local_currency": local,
                 "rates": rates,
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
         })
 
@@ -961,7 +972,7 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "wallet_enabled": wallet_enabled(),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "3.0.0"  # New version for ledger rebuild
     }), 200
 

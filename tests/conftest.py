@@ -11,32 +11,45 @@ os.environ['FLASK_ENV'] = 'testing'
 
 from app.config import TestingConfig
 
+def pytest_configure(config):
+    """Register custom markers"""
+    config.addinivalue_line(
+        "markers", "skip_db_check: skip database table check for unit tests"
+    )
+
 @pytest.fixture(scope='session')
 def app():
     """Create application for testing - assumes test database is ready"""
     from app import create_app
-    
+
     app = create_app(config_object=TestingConfig)
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['RATELIMIT_ENABLED'] = False
-    
-    # Verify test database has tables
-    with app.app_context():
-        from app.extensions import db
-        from sqlalchemy import inspect
-        
-        inspector = inspect(db.engine)
-        tables = inspector.get_table_names()
-        
-        if not tables:
-            raise RuntimeError(
-                "Test database has no tables! "
-                "Run: python scripts/setup_test_db_schema.py"
-            )
-        
-        print(f"✅ Test database ready with {len(tables)} tables")
+
+    # Optionally skip the DB table check for lightweight unit tests
+    skip_db_check = os.getenv('SKIP_TEST_DB_CHECK', '') == '1'
+
+    if skip_db_check:
+        print("⚠️ SKIPPING test DB table check due to SKIP_TEST_DB_CHECK=1")
         yield app
+    else:
+        # Verify test database has tables
+        with app.app_context():
+            from app.extensions import db
+            from sqlalchemy import inspect
+
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+
+            if not tables:
+                raise RuntimeError(
+                    "Test database has no tables! "
+                    "Run: python scripts/setup_test_db_schema.py"
+                )
+
+            print(f"✅ Test database ready with {len(tables)} tables")
+            yield app
 
 @pytest.fixture(scope='session')
 def client(app):
@@ -57,7 +70,7 @@ def clean_db(db_session):
 # Skip problematic test modules
 collect_ignore = [
     "test_event_workflow.py",
-    "test_payment_flow.py", 
+    "test_payment_flow.py",
     "test_registration_flow.py",
     "test_loose_coupling.py",
     "test_kyc_compliance.py",

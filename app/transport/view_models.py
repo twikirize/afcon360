@@ -5,7 +5,7 @@ View models for transport dashboard
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -69,5 +69,5 @@ class AdminDashboardViewModel:
             recent_bookings=booking_service.get_recent_bookings(10),
             booking_report=booking_service.generate_booking_report(7),
             module_enabled=check_module_enabled("transport"),
-            last_updated=datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+            last_updated=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
         )

@@ -3,7 +3,7 @@ Compliance services for business logic layer
 """
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from flask import current_app
 
@@ -23,8 +23,8 @@ class ComplianceCaseService:
     @staticmethod
     def generate_case_number() -> str:
         """Generate a unique case number"""
-        year = datetime.utcnow().year
-        month = datetime.utcnow().month
+        year = datetime.now(timezone.utc).year
+        month = datetime.now(timezone.utc).month
         # Get count of cases this month
         count = ComplianceCase.query.filter(
             db.extract('year', ComplianceCase.created_at) == year,
@@ -69,16 +69,16 @@ class ComplianceCaseService:
         # Set SLA based on priority
         case.sla_priority = priority
         if priority == ComplianceCasePriority.CRITICAL:
-            case.sla_due_at = datetime.utcnow() + timedelta(hours=4)
+            case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=4)
         elif priority == ComplianceCasePriority.HIGH:
-            case.sla_due_at = datetime.utcnow() + timedelta(hours=12)
+            case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=12)
         elif priority == ComplianceCasePriority.MEDIUM:
-            case.sla_due_at = datetime.utcnow() + timedelta(hours=24)
+            case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=24)
         else:
-            case.sla_due_at = datetime.utcnow() + timedelta(hours=72)
+            case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=72)
         
         if escalated_from:
-            case.escalated_at = datetime.utcnow()
+            case.escalated_at = datetime.now(timezone.utc)
         
         db.session.add(case)
         db.session.commit()
@@ -106,9 +106,9 @@ class ComplianceCaseService:
             return None
         
         case.assigned_to = assigned_to
-        case.assigned_at = datetime.utcnow()
+        case.assigned_at = datetime.now(timezone.utc)
         case.status = ComplianceCaseStatus.IN_REVIEW
-        case.updated_at = datetime.utcnow()
+        case.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -139,13 +139,13 @@ class ComplianceCaseService:
             return None
         
         case.status = status
-        case.updated_at = datetime.utcnow()
+        case.updated_at = datetime.now(timezone.utc)
         
         if resolution:
             case.resolution = resolution
         
         if status in [ComplianceCaseStatus.APPROVED, ComplianceCaseStatus.REJECTED, ComplianceCaseStatus.CLOSED]:
-            case.resolved_at = datetime.utcnow()
+            case.resolved_at = datetime.now(timezone.utc)
             case.resolved_by = updated_by
         
         db.session.commit()
@@ -179,22 +179,22 @@ class ComplianceCaseService:
         
         case.status = ComplianceCaseStatus.ESCALATED
         case.escalated_from = escalated_by
-        case.escalated_at = datetime.utcnow()
+        case.escalated_at = datetime.now(timezone.utc)
         case.escalation_reason = escalation_reason
-        case.updated_at = datetime.utcnow()
+        case.updated_at = datetime.now(timezone.utc)
         
         if new_priority:
             case.priority = new_priority
             case.sla_priority = new_priority
             # Update SLA based on new priority
             if new_priority == ComplianceCasePriority.CRITICAL:
-                case.sla_due_at = datetime.utcnow() + timedelta(hours=4)
+                case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=4)
             elif new_priority == ComplianceCasePriority.HIGH:
-                case.sla_due_at = datetime.utcnow() + timedelta(hours=12)
+                case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=12)
             elif new_priority == ComplianceCasePriority.MEDIUM:
-                case.sla_due_at = datetime.utcnow() + timedelta(hours=24)
+                case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=24)
             else:
-                case.sla_due_at = datetime.utcnow() + timedelta(hours=72)
+                case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=72)
         
         db.session.commit()
         
@@ -232,7 +232,7 @@ class ComplianceCaseService:
     def get_overdue_cases() -> List[ComplianceCase]:
         """Get cases past SLA due time"""
         return ComplianceCase.query.filter(
-            ComplianceCase.sla_due_at < datetime.utcnow(),
+            ComplianceCase.sla_due_at < datetime.now(timezone.utc),
             ComplianceCase.status.in_([
                 ComplianceCaseStatus.OPEN,
                 ComplianceCaseStatus.IN_REVIEW,
@@ -272,8 +272,8 @@ class DataSubjectRequestService:
     @staticmethod
     def generate_request_number() -> str:
         """Generate a unique request number"""
-        year = datetime.utcnow().year
-        month = datetime.utcnow().month
+        year = datetime.now(timezone.utc).year
+        month = datetime.now(timezone.utc).month
         count = DataSubjectRequest.query.filter(
             db.extract('year', DataSubjectRequest.created_at) == year,
             db.extract('month', DataSubjectRequest.created_at) == month
@@ -307,7 +307,7 @@ class DataSubjectRequestService:
         )
         
         # Set SLA (30 days for most requests, can be extended)
-        request.sla_due_at = datetime.utcnow() + timedelta(days=30)
+        request.sla_due_at = datetime.now(timezone.utc) + timedelta(days=30)
         
         db.session.add(request)
         db.session.commit()
@@ -339,10 +339,10 @@ class DataSubjectRequestService:
         
         request.identity_verified = True
         request.verification_method = verification_method
-        request.verified_at = datetime.utcnow()
+        request.verified_at = datetime.now(timezone.utc)
         request.verified_by = verified_by
         request.status = DataSubjectRequestStatus.VERIFIED
-        request.updated_at = datetime.utcnow()
+        request.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -372,9 +372,9 @@ class DataSubjectRequestService:
             return None
         
         request.assigned_to = assigned_to
-        request.assigned_at = datetime.utcnow()
+        request.assigned_at = datetime.now(timezone.utc)
         request.status = DataSubjectRequestStatus.PROCESSING
-        request.updated_at = datetime.utcnow()
+        request.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -407,8 +407,8 @@ class DataSubjectRequestService:
         request.status = DataSubjectRequestStatus.COMPLETED
         request.response = response
         request.response_data = response_data
-        request.completed_at = datetime.utcnow()
-        request.updated_at = datetime.utcnow()
+        request.completed_at = datetime.now(timezone.utc)
+        request.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -439,7 +439,7 @@ class DataSubjectRequestService:
         
         request.status = DataSubjectRequestStatus.REJECTED
         request.rejection_reason = rejection_reason
-        request.updated_at = datetime.utcnow()
+        request.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -468,7 +468,7 @@ class DataSubjectRequestService:
     def get_overdue_requests() -> List[DataSubjectRequest]:
         """Get requests past SLA due time"""
         return DataSubjectRequest.query.filter(
-            DataSubjectRequest.sla_due_at < datetime.utcnow(),
+            DataSubjectRequest.sla_due_at < datetime.now(timezone.utc),
             DataSubjectRequest.status.in_([
                 DataSubjectRequestStatus.PENDING,
                 DataSubjectRequestStatus.VERIFIED,
@@ -483,8 +483,8 @@ class ComplianceReportService:
     @staticmethod
     def generate_report_number() -> str:
         """Generate a unique report number"""
-        year = datetime.utcnow().year
-        month = datetime.utcnow().month
+        year = datetime.now(timezone.utc).year
+        month = datetime.now(timezone.utc).month
         count = ComplianceReport.query.filter(
             db.extract('year', ComplianceReport.created_at) == year,
             db.extract('month', ComplianceReport.created_at) == month
@@ -550,7 +550,7 @@ class ComplianceReportService:
         report.findings = findings
         report.recommendations = recommendations
         report.status = 'generated'
-        report.updated_at = datetime.utcnow()
+        report.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -568,8 +568,8 @@ class ComplianceReportService:
         
         report.status = 'approved'
         report.approved_by = approved_by
-        report.approved_at = datetime.utcnow()
-        report.updated_at = datetime.utcnow()
+        report.approved_at = datetime.now(timezone.utc)
+        report.updated_at = datetime.now(timezone.utc)
         
         db.session.commit()
         

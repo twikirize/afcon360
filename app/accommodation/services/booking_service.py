@@ -4,7 +4,7 @@ Booking Service - Production-grade booking creation, confirmation, and cancellat
 Includes: Idempotency, anti-abuse, temporary holds, state management, and audit logging
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from typing import Union, Optional, List, Tuple
 import enum
@@ -175,7 +175,7 @@ class BookingService:
                 idempotency_key=idempotency_key,
                 status=AccommodationBookingStatus.PENDING.value,
                 payment_status=AccommodationPaymentStatus.PENDING.value,
-                expires_at=datetime.utcnow() + timedelta(minutes=15)  # 15 min hold
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15)  # 15 min hold
             )
 
             booking.generate_reference()
@@ -232,7 +232,7 @@ class BookingService:
         if booking.status != AccommodationBookingStatus.PENDING.value:
             return False, f"Cannot confirm booking in {booking.status.value} state"
 
-        if booking.expires_at and booking.expires_at < datetime.utcnow():
+        if booking.expires_at and booking.expires_at < datetime.now(timezone.utc):
             return False, "Booking has expired. Please create a new booking."
 
         try:
@@ -258,7 +258,7 @@ class BookingService:
             # 3. UPDATE PAYMENT STATUS
             booking.payment_status = AccommodationPaymentStatus.PAID
             booking.wallet_txn_id = wallet_transaction_id
-            booking.paid_at = datetime.utcnow()
+            booking.paid_at = datetime.now(timezone.utc)
 
             # 4. STATE TRANSITION (PENDING → CONFIRMED)
             BookingStateMachine.transition(
@@ -328,7 +328,7 @@ class BookingService:
                 user_agent=user_agent
             )
 
-            booking.cancelled_at = datetime.utcnow()
+            booking.cancelled_at = datetime.now(timezone.utc)
             booking.cancelled_by_user_id = cancelled_by_user_id
             booking.cancellation_reason = reason
 
@@ -336,7 +336,7 @@ class BookingService:
             if refund and refund > 0:
                 booking.refund_amount = refund
                 booking.payment_status = AccommodationPaymentStatus.REFUNDED
-                booking.refunded_at = datetime.utcnow()
+                booking.refunded_at = datetime.now(timezone.utc)
                 BookingStateMachine.transition(
                     booking,
                     AccommodationBookingStatus.REFUNDED,
@@ -406,7 +406,7 @@ class BookingService:
     def get_pending_expired_bookings() -> list:
         return AccommodationBooking.query.filter(
             AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
-            AccommodationBooking.expires_at < datetime.utcnow()
+            AccommodationBooking.expires_at < datetime.now(timezone.utc)
         ).all()
 
     @staticmethod

@@ -3,7 +3,7 @@
 Dynamic Content Management Models
 Allows frontend management of cities, vehicles, hotels, etc.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, Integer, String, Boolean, DateTime, JSON, ForeignKey, Text
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
@@ -130,9 +130,9 @@ class ContentSubmission(BaseModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set SLA due time on creation (72 hours for standard submissions)
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         if not self.sla_due_at:
-            self.sla_due_at = datetime.utcnow() + timedelta(hours=72)
+            self.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=72)
 
     def __repr__(self):
         return f"<ContentSubmission {self.name}>"

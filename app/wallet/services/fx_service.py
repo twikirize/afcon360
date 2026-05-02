@@ -10,7 +10,7 @@ Features:
 """
 
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List
 from uuid import uuid4
 import requests
@@ -71,7 +71,7 @@ class FXService:
         cached_rate = FXRateModel.query.filter(
             FXRateModel.base_currency == base_currency,
             FXRateModel.quote_currency == quote_currency,
-            FXRateModel.expires_at > datetime.utcnow()
+            FXRateModel.expires_at > datetime.now(timezone.utc)
         ).first()
 
         if cached_rate:
@@ -86,7 +86,7 @@ class FXService:
             quote_currency=quote_currency,
             rate=rate,
             source=self.default_source,
-            expires_at=datetime.utcnow() + self.default_ttl,
+            expires_at=datetime.now(timezone.utc) + self.default_ttl,
             spread=self.default_spread
         )
         db.session.add(cached_rate)
@@ -251,6 +251,34 @@ class FXService:
     def get_supported_currencies(self) -> List[str]:
         """Get list of supported currencies."""
         return self.SUPPORTED_CURRENCIES.copy()
+
+    def get_all_rates(self, base_currency: str = "USD") -> List[Dict]:
+        """Get all exchange rates for a base currency.
+
+        Args:
+            base_currency: Base currency to get rates for
+
+        Returns:
+            List of rate dictionaries for all supported currencies
+        """
+        rates = []
+        for currency in self.SUPPORTED_CURRENCIES:
+            if currency == base_currency:
+                continue
+            try:
+                rate_model = self.get_rate(base_currency, currency)
+                rates.append({
+                    "currency": currency,
+                    "rate": str(rate_model.rate),
+                    "bid_rate": str(rate_model.bid_rate),
+                    "ask_rate": str(rate_model.ask_rate),
+                    "source": rate_model.source,
+                    "expires_at": rate_model.expires_at.isoformat()
+                })
+            except Exception as e:
+                current_app.logger.warning(f"Failed to get rate for {currency}: {e}")
+
+        return rates
 
     def get_user_fx_history(self, user_id: int, limit: int = 50) -> List[FXTransactionModel]:
         """

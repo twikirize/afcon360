@@ -5,7 +5,7 @@ Transaction repository with atomic idempotency (DB-enforced).
 
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import select, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -65,7 +65,7 @@ class TransactionRepository:
             user_id=user_id,
             recipient_user_id=recipient_user_id,
             tx_metadata=metadata or {},
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         ).on_conflict_do_nothing(
             index_elements=['client_request_id']
         ).returning(TransactionModel)
@@ -165,9 +165,9 @@ class TransactionRepository:
         tx.status = status
         
         if status == TransactionStatus.COMPLETED:
-            tx.completed_at = datetime.utcnow()
+            tx.completed_at = datetime.now(timezone.utc)
         elif status == TransactionStatus.FAILED:
-            tx.failed_at = datetime.utcnow()
+            tx.failed_at = datetime.now(timezone.utc)
             tx.failure_reason = failure_reason
         
         return True

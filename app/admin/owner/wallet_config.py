@@ -6,7 +6,7 @@ Secure interface for configuring payment providers and wallet settings
 from functools import wraps
 from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify, current_app
 from flask_login import login_required, current_user
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.extensions import db
 from app.wallet.models.config import PaymentProviderConfig, WalletSystemConfig
@@ -114,7 +114,7 @@ def edit_provider(config_id):
             flash('Invalid JSON in additional configuration', 'danger')
             return redirect(url_for('wallet_config.edit_provider', config_id=config_id))
         
-        config.updated_at = datetime.utcnow()
+        config.updated_at = datetime.now(timezone.utc)
         config.updated_by = current_user.id
         
         db.session.commit()
@@ -146,7 +146,7 @@ def test_provider(config_id):
     # Test the connection
     success, message = config.test_connection()
     
-    config.last_tested_at = datetime.utcnow()
+    config.last_tested_at = datetime.now(timezone.utc)
     config.last_test_result = 'success' if success else 'failed'
     config.last_error_message = None if success else message
     
@@ -207,7 +207,7 @@ def system_config():
             flash('Invalid threshold value', 'danger')
             return redirect(url_for('wallet_config.system_config'))
         
-        config.updated_at = datetime.utcnow()
+        config.updated_at = datetime.now(timezone.utc)
         config.updated_by = current_user.id
         
         db.session.commit()
@@ -284,7 +284,7 @@ def api_update_provider(config_id):
     if 'config_json' in data:
         config.config_json = data['config_json']
     
-    config.updated_at = datetime.utcnow()
+    config.updated_at = datetime.now(timezone.utc)
     config.updated_by = current_user.id
     
     db.session.commit()
@@ -332,7 +332,7 @@ def api_system_config():
             except ValueError:
                 return jsonify({'success': False, 'error': f'Invalid value for {field}'}), 400
     
-    config.updated_at = datetime.utcnow()
+    config.updated_at = datetime.now(timezone.utc)
     config.updated_by = current_user.id
     
     db.session.commit()

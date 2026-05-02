@@ -3,7 +3,7 @@
 Audit logging utilities for AFCON360
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from flask import request, has_request_context, g
 import json
@@ -39,7 +39,7 @@ class AuditLog:
                 user_id = user_id or getattr(g, 'user_id', None)
 
             audit_record = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "action": action,
                 "user_id": user_id,
                 "resource_type": resource_type,
@@ -111,7 +111,7 @@ class AuditContext:
         self.resource_id = resource_id
         self.user_id = user_id
         self.kwargs = kwargs
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
         self.success = True
         self.error = None
 
@@ -125,7 +125,7 @@ class AuditContext:
             self.error = str(exc_val)
 
         # Calculate duration
-        duration = (datetime.utcnow() - self.start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - self.start_time).total_seconds()
 
         # Log the audit event
         AuditLog.log(

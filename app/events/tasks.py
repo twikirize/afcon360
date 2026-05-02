@@ -1,7 +1,7 @@
 # app/events/tasks.py
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from celery import Celery
 from flask import Flask, current_app
 from app.extensions import db # Assuming db is initialized in app.extensions
@@ -109,7 +109,7 @@ def process_event_registration(self, registration_id: int, event_slug: str, task
                 # For now, we'll store in metadata
                 if not registration.notes:
                     registration.notes = ""
-                registration.notes += f"\nQR generated at: {datetime.utcnow().isoformat()}"
+                registration.notes += f"\nQR generated at: {datetime.now(timezone.utc).isoformat()}"
 
                 # 2. Send Confirmation Email
                 logger.info(f"Sending confirmation email for registration {registration.registration_ref} to {registration.email}")
@@ -194,9 +194,9 @@ def expire_pending_registrations(self):
         from app.extensions import db
         from app.events.models import EventRegistration, TicketType
         from sqlalchemy import and_
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
 
-        cutoff_time = datetime.utcnow() - timedelta(hours=2)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
 
         # Find expired pending registrations with FOR UPDATE lock to prevent race conditions
         # Use constants from the model
@@ -220,7 +220,7 @@ def expire_pending_registrations(self):
                 # Mark as expired using model constants
                 registration.payment_status = EventRegistration.PAYMENT_STATUS_EXPIRED
                 registration.status = EventRegistration.STATUS_EXPIRED
-                registration.notes = f"Auto-expired by Reaper at {datetime.utcnow().isoformat()}"
+                registration.notes = f"Auto-expired by Reaper at {datetime.now(timezone.utc).isoformat()}"
 
                 db.session.add(registration)
 
@@ -272,7 +272,7 @@ def expire_pending_registrations(self):
             return {
                 'expired_count': expired_count,
                 'capacity_released': capacity_released,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
 

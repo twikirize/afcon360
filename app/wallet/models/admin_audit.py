@@ -72,3 +72,15 @@ class AdminAuditLog(db.Model):
     
     def __repr__(self):
         return f"<AdminAuditLog {self.id}: {self.admin_name} - {self.action_type} on {self.target_type}>"
+
+    # Backwards compatibility: some code/tests expect an `action` attribute
+    # (older schema/name). Provide a read-only alias to the current column.
+    @property
+    def action(self):
+        return self.action_type
+    
+    @property
+    def user_id(self):
+        """Backward-compatible alias: some code expects `user_id` column."""
+        return self.admin_id
+

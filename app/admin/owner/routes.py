@@ -4,7 +4,7 @@ Owner routes - Highest privilege level
 Includes Master Key Impersonation by Role and Security Dashboard
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta, timezone
 import logging
 from flask import (
     render_template, redirect, url_for, flash,
@@ -402,7 +402,7 @@ def impersonate_role(role_name):
 
         # 2. Set standardized impersonation session keys
         session['impersonated_user_id'] = target_user.id
-        session['impersonation_started_at'] = datetime.utcnow().isoformat()
+        session['impersonation_started_at'] = datetime.now(timezone.utc).isoformat()
         session['impersonation_by'] = current_user.id
         session['impersonated_role'] = role_name
 
@@ -495,7 +495,7 @@ def impersonate_user(user_id):
 
         # Standardized session keys
         session['impersonated_user_id'] = target_user.id
-        session['impersonation_started_at'] = datetime.utcnow().isoformat()
+        session['impersonation_started_at'] = datetime.now(timezone.utc).isoformat()
         session['impersonation_by'] = current_user.id
 
         log_owner_action(
@@ -1096,7 +1096,7 @@ def suspicious_activity():
     """View suspicious activity reports for AML/CFT compliance."""
     try:
         from app.audit.comprehensive_audit import SecurityEventLog
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
 
         # Get filter parameters
         days = int(request.args.get('days', 7))
@@ -1136,7 +1136,7 @@ def suspicious_activity():
 def kyc_compliance_reports():
     """Generate KYC compliance reports for regulatory authorities."""
     try:
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         from app.auth.kyc_compliance import calculate_kyc_tier
         from app.identity.models.user import User
 
@@ -1299,7 +1299,7 @@ def user_audit_profile(user_id):
 def compliance_reports_page():
     """Compliance report generator"""
     try:
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
 
         report_type = request.args.get('type', 'daily')
 

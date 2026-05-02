@@ -3,7 +3,7 @@ Admin Audit Service
 Manages system-level audit logging for admin actions
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from flask import request
 from sqlalchemy import func
@@ -63,7 +63,7 @@ class AdminAuditService:
                 reason=reason,
                 ip_address=request.remote_addr if request else None,
                 user_agent=request.user_agent.string if request and request.user_agent else None,
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             
             db.session.add(audit_log)
@@ -111,7 +111,7 @@ class AdminAuditService:
                 query = query.filter(AdminAuditLog.target_type == target_type)
             
             # Date filter
-            date_threshold = datetime.utcnow() - timedelta(days=days)
+            date_threshold = datetime.now(timezone.utc) - timedelta(days=days)
             query = query.filter(AdminAuditLog.created_at >= date_threshold)
             
             # Order by most recent
@@ -137,7 +137,7 @@ class AdminAuditService:
             Dictionary with summary statistics
         """
         try:
-            date_threshold = datetime.utcnow() - timedelta(days=days)
+            date_threshold = datetime.now(timezone.utc) - timedelta(days=days)
             
             total_actions = AdminAuditLog.query.filter(
                 AdminAuditLog.created_at >= date_threshold

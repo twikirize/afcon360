@@ -6,7 +6,7 @@ import json
 import logging
 from functools import lru_cache
 from typing import Any, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from app.extensions import db, cache
 from app.admin.owner.models import SystemSetting
@@ -176,7 +176,7 @@ class SecuritySettingsService:
             'audit_logging': SecuritySettingsService.is_feature_enabled('AUDIT_LOGGING_ENABLED', True),
             'wallet_enabled': SecuritySettingsService.is_feature_enabled('ENABLE_WALLET', True),
             'payment_processing': SecuritySettingsService.is_feature_enabled('PAYMENT_PROCESSING_ENABLED', False),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     @staticmethod

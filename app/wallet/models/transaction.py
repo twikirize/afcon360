@@ -109,6 +109,14 @@ class TransactionModel(BaseModel):
         index=True
     )
     
+    # Account reference (for KYC limit queries)
+    account_id = Column(
+        db.BigInteger,
+        ForeignKey('accounts.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True
+    )
+    
     # External references (payment provider, etc.)
     external_reference = Column(
         String(255),

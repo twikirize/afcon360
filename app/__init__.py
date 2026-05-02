@@ -442,39 +442,27 @@ def create_app(config_object=None) -> Flask:
         auth_kyc_bp = None
         logger.warning(f"Auth KYC routes not found: {e}")
 
-    # Missing blueprints - import with fallback
-    org_bp = None
-    compliance_bp = None
-    auditor_bp = None
-    support_bp = None
-    moderator_bp = None
+    # Missing blueprints - import with fallback (suppress warnings)
+    from importlib import import_module
 
-    try:
-        from app.org.routes import org_bp
-    except ImportError:
-        logger.warning("org_bp not found - skipping registration")
+    optional_blueprints = [
+        ('org_bp', 'app.org.routes'),
+        ('compliance_bp', 'app.admin.compliance.routes'),
+        ('auditor_bp', 'app.admin.auditor.routes'),
+        ('support_bp', 'app.admin.support.routes'),
+        ('moderator_bp', 'app.admin.moderator.routes'),
+    ]
 
-    # Comprehensive compliance blueprint from admin module
-    try:
-        from app.admin.compliance.routes import compliance_bp
-    except ImportError:
-        compliance_bp = None
-        logger.warning("compliance_bp not found - skipping registration")
-
-    try:
-        from app.admin.auditor.routes import auditor_bp
-    except ImportError:
-        logger.warning("auditor_bp not found - skipping registration")
-
-    try:
-        from app.admin.support.routes import support_bp
-    except ImportError:
-        logger.warning("support_bp not found - skipping registration")
-
-    try:
-        from app.admin.moderator.routes import moderator_bp
-    except ImportError:
-        logger.warning("moderator_bp not found - skipping registration")
+    for bp_name, module_path in optional_blueprints:
+        try:
+            module = import_module(module_path)
+            bp = getattr(module, bp_name, None)
+            if bp:
+                locals()[bp_name] = bp
+            else:
+                logger.debug(f"Blueprint {bp_name} not found in {module_path}")
+        except ImportError:
+            logger.debug(f"Module {module_path} not available - blueprint {bp_name} skipped")
     # API Blueprints
     from app.wallet.api.wallet_api import wallet_api_bp
     from app.wallet.api.fx_api import fx_api_bp
@@ -552,6 +540,12 @@ def create_app(config_object=None) -> Flask:
     # Wallet module
     from app.wallet.routes import wallet_bp
     app.register_blueprint(wallet_bp)
+    # JSON PIN API (register routes_pin blueprint so the frontend PIN modal can call the API)
+    try:
+        from app.wallet.routes_pin import pin_bp
+        app.register_blueprint(pin_bp)
+    except ImportError:
+        logger.warning('wallet.routes_pin not found; PIN JSON API endpoints not registered')
 
     # 4. Event Listeners
     try:
@@ -1005,6 +999,24 @@ def create_app(config_object=None) -> Flask:
                 logger.info("✅ Dual ID system validated.")
         except:
             pass
+
+        # Validate transactions.client_request_id unique index exists (idempotency)
+        try:
+            inspector = inspect(db.engine)
+            idxs = inspector.get_indexes('transactions')
+            has_client_request_unique = any(
+                idx.get('column_names') == ['client_request_id'] and idx.get('unique')
+                for idx in idxs
+            )
+            if not has_client_request_unique:
+                logger.critical(
+                    "Missing unique index on transactions.client_request_id — idempotency may be broken. "
+                    "Create a DB migration to add a unique index on transactions(client_request_id)."
+                )
+            else:
+                logger.info("✅ transactions.client_request_id unique index present")
+        except Exception as e:
+            logger.warning(f"Could not validate transactions indexes: {e}")
 
 
 

@@ -5,7 +5,7 @@ Run with:
 
 It records a ReconciliationRun and any issues in ReconciliationIssue table.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from app.extensions import db
 from app.wallet.models.reconciliation import ReconciliationRun, ReconciliationIssue
@@ -19,7 +19,7 @@ def run_reconciliation(days=1):
     session.add(run)
     session.commit()
 
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
 
     # Aggregate debits and credits per currency
     # Simple approach: use SQLAlchemy queries to sum

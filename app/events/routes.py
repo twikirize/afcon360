@@ -49,7 +49,7 @@ except ImportError:
 from app.extensions import db, redis_client
 from app.events.tasks import process_event_registration
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import logging
 import html
 
@@ -895,7 +895,7 @@ def approve_event(identifier):
 
     try:
         event_model.status = 'published'
-        event_model.approved_at = datetime.utcnow()
+        event_model.approved_at = datetime.now(timezone.utc)
         event_model.approved_by_id = current_user.id
 
         db.session.commit()
@@ -1159,7 +1159,7 @@ def admin_approve(identifier):
     previous_status = event.status
     # Approve moves the event to APPROVED (publishing is a separate action)
     event.status = EventStatus.APPROVED
-    event.approved_at = datetime.utcnow()
+    event.approved_at = datetime.now(timezone.utc)
     event.approved_by_id = current_user.id
     # Clear any rejection fields if they exist
     event.rejected_at = None
@@ -1194,7 +1194,7 @@ def admin_reject(identifier):
 
     previous_status = event.status
     event.status = EventStatus.REJECTED
-    event.rejected_at = datetime.utcnow()
+    event.rejected_at = datetime.now(timezone.utc)
     event.rejection_reason = reason
     # Clear any approval fields if they exist
     event.approved_at = None
@@ -1241,7 +1241,7 @@ def admin_suspend(identifier):
     event.status = EventStatus.SUSPENDED
     event.suspension_reason = reason
     event.suspension_duration = duration
-    event.suspended_at = datetime.utcnow()
+    event.suspended_at = datetime.now(timezone.utc)
     event.suspended_by_id = current_user.id
 
     try:
@@ -1283,7 +1283,7 @@ def admin_deactivate(identifier):
     # Represent deactivation using PAUSED state, with separate audit fields
     event.status = EventStatus.PAUSED
     event.deactivation_reason = reason
-    event.deactivated_at = datetime.utcnow()
+    event.deactivated_at = datetime.now(timezone.utc)
     event.deactivated_by_id = current_user.id
 
     try:
@@ -1331,12 +1331,12 @@ def admin_takedown(identifier):
 
     event.takedown_reason = reason
     event.takedown_category = category
-    event.taken_down_at = datetime.utcnow()
+    event.taken_down_at = datetime.now(timezone.utc)
     event.taken_down_by_id = current_user.id
     event.status = EventStatus.ARCHIVED
     event.rejection_reason = f"[POLICY TAKEDOWN – {category.upper()}] {reason}"
     event.is_deleted = True
-    event.deleted_at = datetime.utcnow()
+    event.deleted_at = datetime.now(timezone.utc)
     event.deleted_by_id = current_user.id
 
     try:
@@ -1372,7 +1372,7 @@ def admin_publish(identifier):
 
     previous_status = event.status
     event.status = EventStatus.PUBLISHED
-    event.approved_at = event.approved_at or datetime.utcnow()
+    event.approved_at = event.approved_at or datetime.now(timezone.utc)
     event.approved_by_id = event.approved_by_id or current_user.id
 
     try:
@@ -1986,7 +1986,7 @@ def moderate_action(id, action):
     if action == 'approve':
         if can_approve_event(current_user, event):
             event.status = EventStatus.PUBLISHED
-            event.approved_at = datetime.utcnow()
+            event.approved_at = datetime.now(timezone.utc)
             event.approved_by_id = current_user.id
             db.session.commit()
             flash('Event approved successfully.', 'success')
@@ -2001,7 +2001,7 @@ def moderate_action(id, action):
                 return redirect(url_for('events.moderate_detail', id=id))
             
             event.status = EventStatus.REJECTED
-            event.rejected_at = datetime.utcnow()
+            event.rejected_at = datetime.now(timezone.utc)
             event.rejection_reason = reason
             db.session.commit()
             flash('Event rejected successfully.', 'success')

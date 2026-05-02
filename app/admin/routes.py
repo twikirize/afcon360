@@ -4,7 +4,7 @@ Admin Routes for AFCON360 - Production Ready.
 All decorators imported from app.auth.decorators.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import logging
 from flask import (
@@ -1348,7 +1348,7 @@ def resolve_flag(flag_id: int):
     flag.resolved_by = current_user.id
     flag.resolution_action = action
     flag.resolution_notes = notes
-    flag.resolved_at = datetime.utcnow()
+    flag.resolved_at = datetime.now(timezone.utc)
     db.session.commit()
 
     OwnerAuditLog.log_action(
@@ -1383,7 +1383,7 @@ def reject_flag(flag_id: int):
     flag.resolved_by = current_user.id
     flag.resolution_action = 'reject_flag'
     flag.resolution_notes = notes
-    flag.resolved_at = datetime.utcnow()
+    flag.resolved_at = datetime.now(timezone.utc)
     db.session.commit()
 
     OwnerAuditLog.log_action(
@@ -1889,7 +1889,7 @@ def approve_kyc_document(user_id, doc_id):
         old_status = document.status
         document.status = "approved"
         document.reviewed_by = current_user.id
-        document.reviewed_at = datetime.utcnow()
+        document.reviewed_at = datetime.now(timezone.utc)
         document.review_notes = reason
 
         db.session.commit()
@@ -1943,7 +1943,7 @@ def reject_kyc_document(user_id, doc_id):
         old_status = document.status
         document.status = "rejected"
         document.reviewed_by = current_user.id
-        document.reviewed_at = datetime.utcnow()
+        document.reviewed_at = datetime.now(timezone.utc)
         document.review_notes = reason
 
         db.session.commit()

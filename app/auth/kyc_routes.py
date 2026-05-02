@@ -14,6 +14,9 @@ from app.audit.forensic_audit import ForensicAuditService
 from app.utils.id_guard import IDGuard
 
 auth_kyc_bp = Blueprint('auth_kyc', __name__, url_prefix='/auth/kyc')
+# Backwards compatible alias used by some scripts/tests that expect `kyc_bp`
+# to be exported from this module.
+kyc_bp = auth_kyc_bp
 
 @auth_kyc_bp.route('/')
 @login_required

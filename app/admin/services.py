@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
 from app.extensions import db
 from app.identity.models import User, UserRole
@@ -38,7 +38,7 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
         return False, "Not authorized"
 
     # Calculate SLA due time based on priority
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     sla_hours = {
         'critical': 4,
         'high': 12,
@@ -83,7 +83,7 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
 
 @transactional("Resolve content flag")
 def resolve_flag(user, flag_id: int, resolution_action: str, resolution_notes: str = None):
-    from datetime import datetime
+    from datetime import datetime, timezone
     flag = ContentFlag.query.get(flag_id)
     if not flag:
         return False, "Flag not found"
@@ -94,7 +94,7 @@ def resolve_flag(user, flag_id: int, resolution_action: str, resolution_notes: s
     flag.resolved_by = user.id
     flag.resolution_action = resolution_action
     flag.resolution_notes = resolution_notes
-    flag.resolved_at = datetime.utcnow()
+    flag.resolved_at = datetime.now(timezone.utc)
 
     OwnerAuditLog.log_action(user, "flag.resolve", "moderation", {
         "flag_id": flag_id,
@@ -119,7 +119,7 @@ def get_owner_dashboard_data(user_id: int):
     verified_users = User.query.filter_by(is_verified=True).count()
     active_users = User.query.filter_by(is_active=True).count()
     new_users_today = User.query.filter(
-        User.created_at >= datetime.utcnow().date()
+        User.created_at >= datetime.now(timezone.utc).date()
     ).count()
 
     # Organisation stats
@@ -181,7 +181,7 @@ def get_owner_dashboard_data(user_id: int):
     dates = []
     counts = []
     for i in range(6, -1, -1):
-        date = (datetime.utcnow() - timedelta(days=i)).date()
+        date = (datetime.now(timezone.utc) - timedelta(days=i)).date()
         count = User.query.filter(
             func.date(User.created_at) == date
         ).count()

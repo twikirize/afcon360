@@ -8,7 +8,7 @@ from functools import wraps
 from flask import session, redirect, url_for, flash, request, abort, current_app
 from flask_login import current_user
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from app.extensions import db
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ def owner_password_confirm_required(f):
         # Check if confirmation is recent (<5 minutes)
         try:
             confirmed_at = datetime.fromisoformat(session['owner_password_confirmed_at'])
-            if datetime.utcnow() - confirmed_at > timedelta(minutes=5):
+            if datetime.now(timezone.utc) - confirmed_at > timedelta(minutes=5):
                 session.pop('owner_password_confirmed_at', None)
                 flash('Password confirmation expired', 'warning')
                 return redirect(url_for('admin.owner.confirm_password', next=request.url))

@@ -6,7 +6,7 @@ AML/KYC per country, sanctions screening, regulatory reporting
 from enum import Enum
 from typing import Optional, Dict, List, Any, Tuple
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import hashlib
 import json
 from flask import current_app
@@ -197,7 +197,7 @@ class AMLTransactionMonitor:
     
     @classmethod
     def calculate_user_volume(cls, user_id: int, days: int = 1) -> Dict:
-        from_date = datetime.utcnow() - timedelta(days=days)
+        from_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         transactions = TransactionModel.query.filter(
             TransactionModel.user_id == user_id,
@@ -231,7 +231,7 @@ class AMLTransactionMonitor:
                 })
         
         recent_txns = [tx for tx in volume_data["transactions"]
-                      if (datetime.utcnow() - tx.created_at).total_seconds() < 300]
+                      if (datetime.now(timezone.utc) - tx.created_at).total_seconds() < 300]
         if len(recent_txns) >= 5:
             alerts.append({
                 "pattern": "rapid_succession",

@@ -462,9 +462,13 @@ def test_imports():
     try:
         from app.auth.kyc_routes import kyc_bp
         print("✓ KYC routes imported")
-    except ImportError as e:
-        print(f"✗ Failed to import KYC routes: {e}")
-        return False
+    except ImportError:
+        try:
+            from app.kyc.routes import kyc_bp
+            print("✓ KYC routes imported (from app.kyc.routes)")
+        except ImportError as e:
+            print(f"✗ Failed to import KYC routes: {e}")
+            return False
 
     try:
         from app.auth.kyc_compliance import calculate_kyc_tier

@@ -5,7 +5,7 @@ Handles wallet payments, events, and organizational accounts with AML/CFT compli
 
 from functools import wraps
 from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 from flask import session, current_app, request, abort
 from flask_login import current_user
 
@@ -265,16 +265,15 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
     try:
         # Try to import Transaction model
         from app.wallet.models.transaction import TransactionModel
+        from app.wallet.models.ledger import AccountModel
         today = date.today()
 
-        # Check if TransactionModel has account_id field
-        if hasattr(TransactionModel, 'account_id'):
-            # Calculate daily usage
-            # RULE: TransactionModel.account_id references AccountModel
+        # Get user's account first
+        account = AccountModel.query.filter_by(user_id=user.id).first()
+        if account:
+            # Calculate daily usage via account.id
             daily_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
-                TransactionModel.account_id.in_(
-                    db.session.query(AccountModel.id).filter_by(user_id=user.id)
-                ),
+                TransactionModel.account_id == account.id,
                 db.func.date(TransactionModel.created_at) == today,
                 TransactionModel.status == "completed"
             ).scalar() or 0
@@ -282,33 +281,19 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
             # Calculate monthly usage
             month_start = date(today.year, today.month, 1)
             monthly_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
-                TransactionModel.account_id.in_(
-                    db.session.query(AccountModel.id).filter_by(user_id=user.id)
-                ),
+                TransactionModel.account_id == account.id,
                 TransactionModel.created_at >= month_start,
                 TransactionModel.status == "completed"
             ).scalar() or 0
         else:
-            # Try to get account first, then transactions
-            from app.wallet.models.ledger import AccountModel
-            account = AccountModel.query.filter_by(user_id=user.id).first()
-            if account:
-                # Calculate daily usage via account
-                daily_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
-                    TransactionModel.account_id == account.id,
-                    db.func.date(TransactionModel.created_at) == today,
-                    TransactionModel.status == "completed"
-                ).scalar() or 0
-
-                # Calculate monthly usage
-                month_start = date(today.year, today.month, 1)
-                monthly_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
-                    TransactionModel.account_id == account.id,
-                    TransactionModel.created_at >= month_start,
-                    TransactionModel.status == "completed"
-                ).scalar() or 0
-    except Exception as e:
+            daily_total = 0
+            monthly_total = 0
+    except AttributeError as e:
         # Log error but continue without usage tracking
+        current_app.logger.warning(f"Could not calculate transaction usage for user {user_identifier}: {e}")
+        daily_total = 0
+        monthly_total = 0
+    except Exception as e:
         current_app.logger.warning(f"Could not calculate transaction usage for user {user_identifier}: {e}")
         daily_total = 0
         monthly_total = 0
@@ -523,7 +508,7 @@ def report_to_fia(user_id: int, amount: float, transaction_type: str):
             "amount": amount,
             "transaction_type": transaction_type,
             "threshold": 20000000,
-            "report_time": datetime.utcnow().isoformat()
+            "report_time": datetime.now(timezone.utc).isoformat()
         }
     )
 

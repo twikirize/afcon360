@@ -195,8 +195,8 @@ class User(UserMixin, ProtectedModel):
         old_hash = self.password_hash
 
         self.password_hash = generate_password_hash(password)
-        self.password_changed_at = datetime.utcnow()
-        self.password_expires_at = datetime.utcnow() + timedelta(days=90)
+        self.password_changed_at = datetime.now(timezone.utc)
+        self.password_expires_at = datetime.now(timezone.utc) + timedelta(days=90)
 
         # Log the password change
         try:
@@ -216,7 +216,7 @@ class User(UserMixin, ProtectedModel):
                 entity_id=entity_id,
                 operation="password_change",
                 old_value={"password_changed_at": str(self.password_changed_at)},
-                new_value={"password_changed_at": str(datetime.utcnow())},
+                new_value={"password_changed_at": str(datetime.now(timezone.utc))},
                 changed_by=changed_by,
                 ip_address=request.remote_addr if request else None,
                 user_agent=request.user_agent.string if request and request.user_agent else None,
@@ -258,12 +258,13 @@ class User(UserMixin, ProtectedModel):
         may lock the PIN for a configurable window.
         """
         from flask import current_app
+        from datetime import timezone
         if not self.transaction_pin_hash:
             # No PIN set — caller may decide to allow or disallow
             return False
 
         # If locked, prevent verification
-        if self.transaction_pin_locked_until and datetime.utcnow() < self.transaction_pin_locked_until:
+        if self.transaction_pin_locked_until and datetime.now(timezone.utc) < self.transaction_pin_locked_until:
             return False
 
         if check_password_hash(self.transaction_pin_hash, pin):
@@ -280,7 +281,7 @@ class User(UserMixin, ProtectedModel):
         lock_minutes = current_app.config.get('TRANSACTION_PIN_LOCK_MINUTES', 15)
 
         if self.transaction_pin_failed_attempts >= max_attempts:
-            self.transaction_pin_locked_until = datetime.utcnow() + timedelta(minutes=lock_minutes)
+            self.transaction_pin_locked_until = datetime.now(timezone.utc) + timedelta(minutes=lock_minutes)
 
         if session:
             session.add(self)
@@ -305,7 +306,7 @@ class User(UserMixin, ProtectedModel):
     def record_failed_login(self, session):
         self.failed_logins += 1
         if self.failed_logins >= 5:
-            self.locked_until = datetime.utcnow() + timedelta(minutes=15)
+            self.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
         session.add(self)
 
     def reset_failed_login(self, session):
@@ -314,7 +315,7 @@ class User(UserMixin, ProtectedModel):
         session.add(self)
 
     def is_locked(self):
-        return self.locked_until and datetime.utcnow() < self.locked_until
+        return self.locked_until and datetime.now(timezone.utc) < self.locked_until
 
     def requires_mfa(self):
         return current_app.config.get("ENABLE_MFA", False) and self.mfa_enabled
@@ -325,7 +326,7 @@ class User(UserMixin, ProtectedModel):
     def is_fully_verified(self):
         latest = max(self.verifications, key=lambda v: v.requested_at, default=None)
         return latest and latest.status == "verified" and (
-            not latest.expires_at or latest.expires_at >= datetime.utcnow()
+            not latest.expires_at or latest.expires_at >= datetime.now(timezone.utc)
         )
 
     def has_partial_verification(self):
@@ -518,7 +519,7 @@ class User(UserMixin, ProtectedModel):
                 extra_data={
                     "target_user_id": target_user_id,
                     "reason": reason,
-                    "impersonation_started_at": datetime.utcnow().isoformat()
+                    "impersonation_started_at": datetime.now(timezone.utc).isoformat()
                 }
             )
         except Exception as e:
@@ -542,7 +543,7 @@ class User(UserMixin, ProtectedModel):
                 extra_data={
                     "target_user_id": target_user_id,
                     "duration_seconds": duration_seconds,
-                    "impersonation_ended_at": datetime.utcnow().isoformat()
+                    "impersonation_ended_at": datetime.now(timezone.utc).isoformat()
                 }
             )
         except Exception as e:
@@ -873,7 +874,7 @@ class APIKey(ProtectedModel):
         from flask import request
 
         old_revoked_at = self.revoked_at
-        self.revoked_at = datetime.utcnow()
+        self.revoked_at = datetime.now(timezone.utc)
 
         # Log API key revocation
         try:

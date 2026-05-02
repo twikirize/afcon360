@@ -12,7 +12,7 @@ Endpoints:
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required, current_user
 from app.core.context import RequestContext
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.extensions import db
 from app.kyc.nira_verification import verify_national_id, check_id_against_watchlist, generate_nira_report
@@ -119,7 +119,7 @@ def verify_address():
             record = KycService.submit_kyc(
                 user_id=current_user.id,
                 id_type='address_proof',
-                id_number=f'ADDR_{current_user.id}_{datetime.utcnow().timestamp()}',
+                id_number=f'ADDR_{current_user.id}_{datetime.now(timezone.utc).timestamp()}',
                 document_url=document_url,
                 address_line1=address_line1,
                 address_line2=address_line2,

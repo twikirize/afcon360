@@ -3,7 +3,7 @@
 Booking models - High-standard, using Python Enums with String DB storage
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Date,
@@ -213,7 +213,7 @@ class AccommodationBooking(BaseModel):
     # Core Methods
     # -------------------------------
     def generate_reference(self):
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
         random_part = secrets.token_hex(4).upper()
         self.booking_reference = f"ACC-{timestamp}-{random_part}"
 
@@ -228,7 +228,7 @@ class AccommodationBooking(BaseModel):
 
     def mark_paid(self, transaction_id=None):
         self.payment_status = AccommodationPaymentStatus.PAID.value
-        self.paid_at = datetime.utcnow()
+        self.paid_at = datetime.now(timezone.utc)
         self.wallet_txn_id = transaction_id
 
     def confirm(self):
@@ -240,14 +240,14 @@ class AccommodationBooking(BaseModel):
             return False, msg, 0
 
         self.status = AccommodationBookingStatus.CANCELLED.value
-        self.cancelled_at = datetime.utcnow()
+        self.cancelled_at = datetime.now(timezone.utc)
         self.cancelled_by_user_id = user_id
         self.cancellation_reason = reason
 
         if refund > 0:
             self.refund_amount = refund
             self.payment_status = AccommodationPaymentStatus.REFUNDED.value
-            self.refunded_at = datetime.utcnow()
+            self.refunded_at = datetime.now(timezone.utc)
 
         return True, msg, refund
 
@@ -259,7 +259,7 @@ class AccommodationBooking(BaseModel):
         if current_status not in [AccommodationBookingStatus.PENDING, AccommodationBookingStatus.CONFIRMED]:
             return False, "Cannot cancel at this stage", 0
 
-        days_until = (self.check_in - datetime.utcnow().date()).days
+        days_until = (self.check_in - datetime.now(timezone.utc).date()).days
         policy = self.accommodation_property.cancellation_policy
 
         if policy == AccommodationCancellationPolicy.FLEXIBLE:

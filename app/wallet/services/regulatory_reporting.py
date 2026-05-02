@@ -4,7 +4,7 @@ Generates Suspicious Transaction Reports (STR) and Currency Transaction Reports 
 """
 
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from flask import current_app
 
@@ -61,7 +61,7 @@ class RegulatoryReportingService:
         Identifies transactions with suspicious patterns
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
         if start_date is None:
             start_date = end_date - timedelta(days=30)
         
@@ -72,7 +72,7 @@ class RegulatoryReportingService:
         
         report = STRReport(
             report_id=cls._generate_report_id("STR"),
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             period_start=start_date,
             period_end=end_date,
             suspicious_transactions=suspicious_txns,
@@ -99,7 +99,7 @@ class RegulatoryReportingService:
         Reports large transactions above threshold
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
         if start_date is None:
             start_date = end_date - timedelta(days=30)
         
@@ -112,7 +112,7 @@ class RegulatoryReportingService:
         
         report = CTRReport(
             report_id=cls._generate_report_id("CTR"),
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             period_start=start_date,
             period_end=end_date,
             large_transactions=large_txns,
@@ -260,7 +260,7 @@ class RegulatoryReportingService:
     @classmethod
     def _generate_report_id(cls, report_type: str) -> str:
         """Generate unique report ID"""
-        timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
         return f"{report_type}_{timestamp}"
     
     @classmethod

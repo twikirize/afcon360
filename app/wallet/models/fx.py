@@ -3,7 +3,7 @@ app/wallet/models/fx.py
 Foreign exchange models for multi-currency support.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, Index, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
@@ -37,7 +37,7 @@ class FXRateModel(db.Model):
     @property
     def is_expired(self):
         """Check if rate is expired."""
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(timezone.utc) > self.expires_at
 
     @property
     def bid_rate(self):

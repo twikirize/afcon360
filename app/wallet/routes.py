@@ -20,6 +20,17 @@ from uuid import uuid4
 wallet_bp = Blueprint('wallet', __name__, url_prefix='/wallet')
 
 
+def calculate_transaction_usage(user_id):
+    """Calculate transaction usage for a user using correct model fields."""
+    from app.wallet.models.transaction import TransactionModel
+    return TransactionModel.query.filter(
+        db.or_(
+            TransactionModel.user_id == user_id,
+            TransactionModel.recipient_user_id == user_id
+        )
+    ).count()
+
+
 def get_or_create_account(user_id, currency='UGX'):
     """Helper to get or create user account.
     
@@ -75,7 +86,9 @@ def wallet_dashboard():
         
         # Get balance using WalletService (pass user_id, not account.id)
         service = WalletService()
-        balance = service.get_balance(account.user_id)
+        balance_data = service.get_balance(account.user_id)
+        # get_balance returns dict with 'balance' key
+        balance = balance_data.get('balance', Decimal('0'))
         
         # Get recent transactions where current user is sender or recipient
         recent_transactions = TransactionModel.query.filter(
@@ -85,6 +98,9 @@ def wallet_dashboard():
             )
         ).order_by(TransactionModel.created_at.desc()).limit(10).all()
         
+        # Calculate transaction usage count using correct fields
+        transaction_count = calculate_transaction_usage(current_user.id)
+        
         # Mock commission for agent users (implement properly later)
         commission = Decimal('0')
         
@@ -93,7 +109,8 @@ def wallet_dashboard():
             account=account,
             balance=balance,
             recent_transactions=recent_transactions,
-            commission=commission
+            commission=commission,
+            transaction_count=transaction_count
         )
     except Exception as e:
         current_app.logger.error(f"Wallet dashboard error: {e}")
@@ -140,7 +157,7 @@ def overview():
 def deposit_page():
     """GET: Show deposit form"""
     account = get_or_create_account(current_user.id)
-    return render_template('wallet/deposit.html', account=account)
+    return render_template('wallet/deposit.html', account=account, balance=Decimal('0'))
 
 
 @wallet_bp.route('/deposit', methods=['POST'])
@@ -199,7 +216,7 @@ def deposit_form():
 def send_page():
     """GET: Show send funds form"""
     account = get_or_create_account(current_user.id)
-    return render_template('wallet/send.html', account=account)
+    return render_template('wallet/send.html', account=account, balance=Decimal('0'))
 
 
 @wallet_bp.route('/send', methods=['POST'])
@@ -240,7 +257,15 @@ def send_funds():
             flash('Receiver not found', 'error')
             return redirect(url_for('wallet.send_page'))
         
+        # Ensure receiver has an account
         receiver_account = get_or_create_account(receiver.id, currency)
+        if not receiver_account:
+            flash('Receiver does not have a wallet account. Please ask them to create one first.', 'error')
+            current_app.logger.warning(
+                f"Transfer attempt to user {receiver_id} without wallet account "
+                f"by sender {current_user.id}"
+            )
+            return redirect(url_for('wallet.send_page'))
         
         # Get pin from form (optional) and call service.transfer using internal user ids
         pin = request.form.get('pin')
@@ -281,7 +306,7 @@ def send_funds():
 def withdraw_page():
     """GET: Show withdraw form"""
     account = get_or_create_account(current_user.id)
-    return render_template('wallet/withdraw.html', account=account)
+    return render_template('wallet/withdraw.html', account=account, balance=Decimal('0'))
 
 
 @wallet_bp.route('/withdraw', methods=['POST'])
@@ -373,12 +398,13 @@ def wallet_transactions():
         return render_template(
             'wallet/transactions.html',
             transactions=formatted_transactions,
-            account=account
+            account=account,
+            balance=Decimal('0')
         )
     except Exception as e:
         current_app.logger.error(f"Transactions error: {e}")
         flash('Error loading transactions', 'error')
-        return render_template('wallet/transactions.html', transactions=[], account=None)
+        return render_template('wallet/transactions.html', transactions=[], account=None, balance=Decimal('0'))
 
 
 # =============================================================================
@@ -525,7 +551,8 @@ def wallet_settings():
     try:
         account = get_or_create_account(current_user.id)
         service = WalletService()
-        balance = service.get_balance(account.user_id)
+        balance_data = service.get_balance(account.user_id)
+        balance = balance_data.get('balance', Decimal('0'))
         
         # Get supported currencies
         from app.wallet.services.currency_service import CurrencyService
@@ -629,7 +656,7 @@ def fx_rates():
         # Get all available rates
         rates = fx_service.get_all_rates()
         
-        return render_template('wallet/fx_rates.html', rates=rates)
+        return render_template('wallet/fx_rates.html', rates=rates, balance=Decimal('0'))
     except Exception as e:
         current_app.logger.error(f"FX rates error: {e}")
         flash('Error loading FX rates', 'error')
@@ -643,7 +670,7 @@ def compliance_status():
     try:
         account = get_or_create_account(current_user.id)
         
-        return render_template('wallet/compliance.html', account=account)
+        return render_template('wallet/compliance.html', account=account, balance=Decimal('0'))
     except Exception as e:
         current_app.logger.error(f"Compliance status error: {e}")
         flash('Error loading compliance status', 'error')

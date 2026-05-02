@@ -11,7 +11,7 @@ Design principles:
 - Granular exception handling (NotFoundError, ValidationError, ServiceUnavailableError)
 - Single responsibility: routing only — business logic lives in services
 """
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from flask import render_template, jsonify, request, url_for, flash, redirect, session, abort
@@ -95,7 +95,7 @@ def api_status():
     return jsonify({
         "module": "transport",
         "enabled": check_module_enabled("transport"),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
 
@@ -108,7 +108,7 @@ def health():
         "services_available": True,
         "provider_service": get_provider_service() is not None,
         "booking_service": get_booking_service() is not None,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
 
@@ -1152,7 +1152,7 @@ def bookings_report():
 def dashboard():
     """Transport Admin Dashboard - accessible by admins and super admins"""
     try:
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         # DEBUG - See what's happening with roles
         print(f"\n🔍 DASHBOARD ACCESS ATTEMPT")
@@ -1182,7 +1182,7 @@ def dashboard():
 
             # Basic info
             'module_enabled': check_module_enabled('transport'),
-            'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M'),
+            'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M'),
 
             # Admin dashboard stats (with defaults)
             'total_bookings': 0,
@@ -1207,7 +1207,7 @@ def dashboard():
             ctx['pending_vehicles'] = get_provider_service().count_pending_vehicles()
 
             # Today's stats
-            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             ctx['today_bookings'] = get_booking_service().count_bookings_since(today_start)
 
             # Recent bookings
@@ -1319,10 +1319,10 @@ def moderate_action(entity_type, id, action):
     if action == 'approve':
         if entity_type == 'vehicle':
             item.verification_status = 'verified'
-            item.verified_at = datetime.utcnow()
+            item.verified_at = datetime.now(timezone.utc)
         elif entity_type == 'driver':
             item.verification_status = 'verified'
-            item.verified_at = datetime.utcnow()
+            item.verified_at = datetime.now(timezone.utc)
         elif entity_type == 'booking':
             item.status = 'confirmed'
         

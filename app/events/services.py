@@ -4,7 +4,7 @@
 Event Service - DB-backed event management
 Now using SQLAlchemy models instead of in-memory dict
 """
-from datetime import datetime, timedelta, date
+from datetime import datetime, timezone, timedelta, date
 from typing import List, Dict, Optional, Tuple
 import logging
 import re
@@ -323,10 +323,10 @@ class EventService:
 
         # Update timestamps based on status
         if new_status == EventStatus.APPROVED:
-            event.approved_at = datetime.utcnow()
+            event.approved_at = datetime.now(timezone.utc)
             event.approved_by_id = user_id
         elif new_status == EventStatus.REJECTED:
-            event.rejected_at = datetime.utcnow()
+            event.rejected_at = datetime.now(timezone.utc)
             event.rejection_reason = reason
 
         # Create moderation log entry
@@ -407,19 +407,19 @@ class EventService:
             # Setting 1: auto_publish — skip moderation entirely
             if evt_settings.auto_publish:
                 status = EventStatus.PUBLISHED
-                approved_at = datetime.utcnow()
+                approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
             # Setting 2: event_manager_auto_approve — approve but not publish
             elif evt_settings.event_manager_auto_approve and has_global_role(user, 'event_manager'):
                 status = EventStatus.APPROVED
-                approved_at = datetime.utcnow()
+                approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
             # Setting 3: require_approval is OFF — auto-approve for everyone
             elif not evt_settings.require_approval:
                 status = EventStatus.APPROVED
-                approved_at = datetime.utcnow()
+                approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
             event = Event(
@@ -545,7 +545,7 @@ class EventService:
                 elif key == "contact_phone":
                     event.contact_phone = value
 
-            event.updated_at = datetime.utcnow()
+            event.updated_at = datetime.now(timezone.utc)
             db.session.commit()
             return True, None
 
@@ -659,7 +659,7 @@ class EventService:
         _assert_no_open_flags(event.id)
 
         event.status = EventStatus.PUBLISHED
-        event.approved_at = datetime.utcnow()
+        event.approved_at = datetime.now(timezone.utc)
         event.approved_by_id = admin_id
 
         # Clear any rejection fields if they exist
@@ -678,7 +678,7 @@ class EventService:
             return False, "Event not found"
 
         event.status = EventStatus.REJECTED
-        event.rejected_at = datetime.utcnow()
+        event.rejected_at = datetime.now(timezone.utc)
         event.rejection_reason = reason
 
         # Clear any approval fields if they exist
@@ -1139,7 +1139,7 @@ class EventService:
                                 user_id=user_id,
                                 amount=Decimal(str(fee)),
                                 currency=event.currency,
-                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
                                 description=f"Registration for {event.name}",
                                 metadata={"event_slug": identifier, "event_name": event.name}
                             )
@@ -1150,7 +1150,7 @@ class EventService:
                                 user_id=user_id,
                                 amount=Decimal(str(fee)),
                                 currency=event.currency,
-                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
                                 description=f"Registration for {event.name}",
                                 metadata={"event_slug": identifier, "event_name": event.name}
                             )
@@ -1235,7 +1235,7 @@ class EventService:
         Check in an attendee using QR token.
         Returns: (success, message, registration_dict)
         """
-        from datetime import datetime, date, timedelta
+        from datetime import datetime, timezone, date, timedelta
         import hmac
         import hashlib
         import os
@@ -1279,7 +1279,7 @@ class EventService:
 
         # Check in
         registration.status = "checked_in"
-        registration.checked_in_at = datetime.utcnow()
+        registration.checked_in_at = datetime.now(timezone.utc)
         registration.checked_in_by_id = checked_by_user_id
 
         db.session.commit()
@@ -1834,7 +1834,7 @@ class EventService:
         - error_message: None if valid, otherwise error description
         """
         from decimal import Decimal
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         event = cls.get_event_model(identifier)
         if not event:

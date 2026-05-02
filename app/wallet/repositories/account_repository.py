@@ -5,7 +5,7 @@ Account repository with atomic operations and proper locking.
 
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -133,8 +133,8 @@ class AccountRepository:
             is_frozen=False,
             daily_volume=0,
             monthly_volume=0,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         ).on_conflict_do_nothing(
             index_elements=['user_id', 'currency']
         ).returning(AccountModel)
@@ -171,7 +171,7 @@ class AccountRepository:
         
         account.is_frozen = True
         account.frozen_reason = reason
-        account.frozen_at = datetime.utcnow()
+        account.frozen_at = datetime.now(timezone.utc)
         
         return True
 
@@ -210,7 +210,7 @@ class AccountRepository:
             return False
         
         account.daily_volume = 0
-        account.daily_volume_reset_at = datetime.utcnow()
+        account.daily_volume_reset_at = datetime.now(timezone.utc)
         
         return True
 
@@ -229,7 +229,7 @@ class AccountRepository:
             return False
         
         account.monthly_volume = 0
-        account.monthly_volume_reset_at = datetime.utcnow()
+        account.monthly_volume_reset_at = datetime.now(timezone.utc)
         
         return True
 

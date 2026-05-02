@@ -3,7 +3,7 @@
 Review models - Guest reviews for properties
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime,
     ForeignKey, Integer, Text,
@@ -103,16 +103,16 @@ class Review(BaseModel):
     def publish(self, moderator_id):
         self.status = AccommodationReviewStatus.APPROVED
         self.is_published = True
-        self.published_at = datetime.utcnow()
+        self.published_at = datetime.now(timezone.utc)
         self.moderated_by = moderator_id
-        self.moderated_at = datetime.utcnow()
+        self.moderated_at = datetime.now(timezone.utc)
 
     def reject(self, moderator_id, reason):
         self.status = AccommodationReviewStatus.REJECTED
         self.moderation_reason = reason
         self.moderated_by = moderator_id
-        self.moderated_at = datetime.utcnow()
+        self.moderated_at = datetime.now(timezone.utc)
 
     def respond(self, response_text):
         self.host_response = response_text
-        self.responded_at = datetime.utcnow()
+        self.responded_at = datetime.now(timezone.utc)

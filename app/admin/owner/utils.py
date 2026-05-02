@@ -7,7 +7,7 @@ FIXED: Now uses internal BIGINT ID (user.id) for database relations
 import logging
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import request, g
 from flask_login import current_user
@@ -66,7 +66,7 @@ def log_owner_action(
         enhanced_details = {
             **(details or {}),
             '_log_source': log_source,
-            '_timestamp': datetime.utcnow().isoformat()
+            '_timestamp': datetime.now(timezone.utc).isoformat()
         }
 
         # Extract request info safely
@@ -114,7 +114,7 @@ def get_system_health() -> dict:
     health = {
         'database': {'status': 'unknown', 'latency': 0},
         'redis': {'status': 'unknown', 'latency': 0},
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
     # Database connectivity check using raw connection (bypasses session)

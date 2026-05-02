@@ -250,3 +250,32 @@ class AfricaTalkingProvider(BaseSMSProvider):
                 'error': str(e),
                 'phone_number': phone_number
             }
+
+
+# Add this at the bottom of sms_service.py, after all the classes
+
+def send_sms(phone_number: str, message: str) -> Dict[str, Any]:
+    """
+    Convenience function to send an SMS using the configured provider.
+
+    This is the function that _alert_owner_dead_letter expects to import.
+
+    Args:
+        phone_number: Recipient's phone number in E.164 format
+        message: The SMS message text
+
+    Returns:
+        Dictionary with provider response details
+    """
+    from flask import current_app
+
+    provider = current_app.config.get('SMS_PROVIDER', 'console')
+
+    if provider == 'twilio':
+        provider_instance = TwilioProvider()
+    elif provider == 'africas_talking':
+        provider_instance = AfricaTalkingProvider()
+    else:
+        provider_instance = ConsoleProvider()
+
+    return provider_instance.send_sms(phone_number, message)

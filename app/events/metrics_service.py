@@ -2,7 +2,7 @@
 Event metrics service for analytics and reporting.
 """
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta, date
+from datetime import datetime, timezone, timedelta, date
 from app.extensions import db
 from app.events.models import Event, EventRegistration, TicketType, Waitlist
 from sqlalchemy import func, and_, case
@@ -22,7 +22,7 @@ class EventMetricsService:
                 return {"error": "Event not found"}
 
             # Calculate date range
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
             # Registration trends
@@ -112,7 +112,7 @@ class EventMetricsService:
                 "payment_breakdown": payment_breakdown,
                 "ticket_breakdown": ticket_breakdown,
                 "geographic_distribution": geo_data,
-                "calculated_at": datetime.utcnow().isoformat()
+                "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:
@@ -134,7 +134,7 @@ class EventMetricsService:
                     "metrics": {}
                 }
 
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
             # Overall registration stats
@@ -180,7 +180,7 @@ class EventMetricsService:
                 "total_revenue": float(total_stats.revenue or 0),
                 "total_checked_in": total_stats.checked_in or 0,
                 "event_breakdown": event_breakdown[:10],  # Top 10 events
-                "calculated_at": datetime.utcnow().isoformat()
+                "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:
@@ -191,7 +191,7 @@ class EventMetricsService:
     def get_system_wide_metrics(days: int = 30) -> Dict:
         """Get system-wide metrics across all events"""
         try:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
             # Overall system stats
@@ -256,7 +256,7 @@ class EventMetricsService:
                 "status_breakdown": status_data,
                 "category_breakdown": category_data,
                 "daily_event_creation": daily_trend,
-                "calculated_at": datetime.utcnow().isoformat()
+                "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:
@@ -267,7 +267,7 @@ class EventMetricsService:
     def get_revenue_metrics(days: int = 30) -> Dict:
         """Get revenue-specific metrics"""
         try:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
             # Daily revenue
@@ -324,7 +324,7 @@ class EventMetricsService:
                 "average_transaction_value": total_revenue / total_transactions if total_transactions > 0 else 0,
                 "daily_revenue": daily_data,
                 "revenue_by_category": category_data,
-                "calculated_at": datetime.utcnow().isoformat()
+                "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:

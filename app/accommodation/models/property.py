@@ -3,7 +3,7 @@
 Property models - High-standard, using namespaced enums and fully aligned with DB.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Date,
@@ -234,7 +234,7 @@ class Property(BaseModel):
 
     def soft_delete(self):
         self.is_deleted = True
-        self.deleted_at = datetime.utcnow()
+        self.deleted_at = datetime.now(timezone.utc)
         self.status = AccommodationPropertyStatus.ARCHIVED
         self.is_active = False
 

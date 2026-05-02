@@ -13,13 +13,14 @@ Routes:
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.wallet.exceptions import TransactionPINError
 
 pin_bp = Blueprint("wallet_pin", __name__, url_prefix="/wallet/pin")
 
 
 @pin_bp.route("/set", methods=["POST"])
+@limiter.limit("10/minute")
 @login_required
 def set_pin():
     """
@@ -84,6 +85,7 @@ def set_pin():
 
 
 @pin_bp.route("/verify", methods=["POST"])
+@limiter.limit("10/minute")
 @login_required
 def verify_pin():
     """
@@ -118,10 +120,10 @@ def verify_pin():
         }), 200
 
     # Check if locked before calling verify (to give a cleaner message)
-    from datetime import datetime
-    if user.transaction_pin_locked_until and datetime.utcnow() < user.transaction_pin_locked_until:
+    from datetime import datetime, timezone
+    if user.transaction_pin_locked_until and datetime.now(timezone.utc) < user.transaction_pin_locked_until:
         seconds_remaining = int(
-            (user.transaction_pin_locked_until - datetime.utcnow()).total_seconds()
+            (user.transaction_pin_locked_until - datetime.now(timezone.utc)).total_seconds()
         )
         return jsonify({
             "valid": False,
@@ -151,6 +153,7 @@ def verify_pin():
 
 
 @pin_bp.route("/reset", methods=["POST"])
+@limiter.limit("10/minute")
 @login_required
 def reset_pin():
     """
@@ -193,6 +196,7 @@ def reset_pin():
 
 
 @pin_bp.route("/reset/confirm", methods=["POST"])
+@limiter.limit("10/minute")
 @login_required
 def reset_pin_confirm():
     """

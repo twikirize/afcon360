@@ -8,7 +8,7 @@ from app.auth.decorators import require_role
 from app.audit.forensic_audit import ForensicAuditService
 from app.auth.kyc_compliance import calculate_kyc_tier
 from app.extensions import db
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Attach routes to the tourism blueprint
 @tourism_bp.route("/", endpoint="home")
@@ -111,7 +111,7 @@ def moderate_action(entity_type, id, action):
     
     if action == 'approve':
         item.status = 'published'
-        item.published_at = datetime.utcnow()
+        item.published_at = datetime.now(timezone.utc)
         db.session.commit()
         flash('Listing approved successfully.', 'success')
     

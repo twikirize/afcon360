@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, Dict, Any, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
@@ -130,8 +130,8 @@ class BasePaymentGateway(ABC):
     
     def _generate_reference(self, prefix: str = "TXN") -> str:
         """Generate unique transaction reference"""
-        timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-        random_hash = hashlib.md5(str(datetime.utcnow()).encode()).hexdigest()[:6]
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        random_hash = hashlib.md5(str(datetime.now(timezone.utc)).encode()).hexdigest()[:6]
         return f"{prefix}_{timestamp}_{random_hash}"
     
     def _get_cache_key(self, key: str) -> str:

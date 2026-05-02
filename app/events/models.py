@@ -20,7 +20,7 @@ import warnings
 import hmac
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, BigInteger, Integer, String, Boolean, DateTime, Date,
@@ -444,7 +444,7 @@ class Event(BaseModel):
         )
 
         # Side-effects per target status
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if new_status == EventStatus.APPROVED:
             self.approved_at    = now
             self.approved_by_id = actor_id
@@ -772,11 +772,11 @@ class Waitlist(BaseModel):
     ticket_type = relationship("TicketType", foreign_keys=[ticket_type_id])
 
     def mark_notified(self):
-        self.notified_at       = datetime.utcnow()
+        self.notified_at       = datetime.now(timezone.utc)
         self.notification_sent = True
 
     def mark_converted(self):
-        self.converted_at = datetime.utcnow()
+        self.converted_at = datetime.now(timezone.utc)
         self.status       = "converted"
 
     def __repr__(self):
@@ -843,7 +843,7 @@ class DiscountCode(BaseModel):
     creator = relationship("User",  foreign_keys=[created_by])
 
     def is_valid(self) -> bool:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return (
             self.is_active
             and now >= self.valid_from
@@ -896,7 +896,7 @@ class EventTransferRequest(BaseModel):
     def approve(self, approver_id: int):
         self.status         = TransferStatus.APPROVED
         self.approved_by_id = approver_id
-        self.approved_at    = datetime.utcnow()
+        self.approved_at    = datetime.now(timezone.utc)
 
     def __repr__(self):
         return f"<EventTransferRequest {self.id}: event {self.event_id} [{self.status.value}]>"

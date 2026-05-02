@@ -14,7 +14,7 @@ FLOW:
 import requests
 import uuid
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict
 from flask import current_app, request
 
@@ -110,7 +110,7 @@ class PaystackService:
         provider_reference = None
         authorization_url = None
         access_code = None
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             url = f"{current_app.config['PAYSTACK_BASE_URL']}/transaction/initialize"
@@ -134,7 +134,7 @@ class PaystackService:
 
             response = requests.post(url, json=payload, headers=headers)
             provider_response = response.json()
-            response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
             # Check if successful
             if response.status_code == 200 and provider_response.get('status'):
@@ -147,7 +147,7 @@ class PaystackService:
 
         except Exception as e:
             provider_error = str(e)
-            response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             current_app.logger.error(f"Paystack API call failed: {e}")
 
         # STEP 5: Log API call for audit
@@ -253,7 +253,7 @@ class PaystackService:
         # Find the pending transaction by reference
 
         # STEP 2: Call Paystack to verify
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             url = f"{current_app.config['PAYSTACK_BASE_URL']}/transaction/verify/{reference}"
@@ -261,7 +261,7 @@ class PaystackService:
 
             response = requests.get(url, headers=headers)
             verification_response = response.json()
-            response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
             # Log verification API call
             AuditService.api_call(

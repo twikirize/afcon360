@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, fla
 from flask_login import login_required, current_user
 from app.auth.decorators import require_role
 from app.audit.comprehensive_audit import AuditService, FinancialAuditLog, SecurityEventLog, DataAccessLog, APIAuditLog
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 auditor_bp = Blueprint('auditor', __name__, url_prefix='/auditor')
 
@@ -15,7 +15,7 @@ auditor_bp = Blueprint('auditor', __name__, url_prefix='/auditor')
 def dashboard():
     """Auditor main dashboard"""
     # Get statistics for the last 30 days
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
 
     # Financial audit stats
     financial_count = FinancialAuditLog.query.filter(

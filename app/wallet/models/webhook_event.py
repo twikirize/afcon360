@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+﻿from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, DateTime, JSON, Integer, Text
 from app.models.base import ProtectedModel
 
@@ -9,6 +9,10 @@ class WebhookEvent(ProtectedModel):
     provider = Column(String(64), nullable=False, index=True)
     event_type = Column(String(128), nullable=True)
     payload = Column(JSON, nullable=False)
+    # Store the original raw request body as received (TEXT). This preserves
+    # the exact byte ordering used by providers for HMAC signatures so the
+    # worker can re-verify signatures reliably.
+    raw_body = Column(Text, nullable=True)
     signature = Column(String(512), nullable=True)
     status = Column(String(32), nullable=False, default="queued", index=True)
     retry_count = Column(Integer, default=0, nullable=False)
@@ -18,7 +22,7 @@ class WebhookEvent(ProtectedModel):
 
     def mark_processed(self, session=None):
         self.status = "processed"
-        self.processed_at = datetime.utcnow()
+        self.processed_at = datetime.now(timezone.utc)
         if session:
             session.add(self)
 

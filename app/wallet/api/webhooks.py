@@ -20,6 +20,25 @@ from app.wallet.models.webhook_event import WebhookEvent
 webhooks_bp = Blueprint('webhooks', __name__, url_prefix='/webhooks')
 
 
+def _scrub_sensitive(obj):
+    """Recursively redact obvious PII (card numbers, CVVs, PANs, long numeric account numbers).
+    Replace sensitive values with a marker so DB-stored payloads don't contain PAN/CVV data.
+    """
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            lk = k.lower()
+            if any(sub in lk for sub in ("card", "cvv", "pan")):
+                out[k] = "[REDACTED]"
+            elif "number" in lk and isinstance(v, str) and sum(c.isdigit() for c in v) >= 8:
+                out[k] = "[REDACTED]"
+            else:
+                out[k] = _scrub_sensitive(v)
+        return out
+    if isinstance(obj, list):
+        return [_scrub_sensitive(i) for i in obj]
+    return obj
+
 def verify_flutterwave_signature(payload: bytes, signature: str) -> bool:
     """Verify Flutterwave webhook signature"""
     secret = current_app.config.get('FLUTTERWAVE_SECRET_KEY', '')
@@ -64,12 +83,15 @@ def flutterwave_webhook():
     try:
         data = request.get_json() or {}
         event = data.get('event')
+        raw_body = payload.decode('utf-8', errors='replace') if payload else None
+        data_scrubbed = _scrub_sensitive(data)
 
-        # Enqueue webhook for background processing
+        # Enqueue webhook for background processing (store scrubbed JSON and raw body)
         we = WebhookEvent(
             provider='flutterwave',
             event_type=event,
-            payload=data,
+            payload=data_scrubbed,
+            raw_body=raw_body,
             signature=signature,
             status='queued'
         )
@@ -97,11 +119,14 @@ def paystack_webhook():
     try:
         data = request.get_json() or {}
         event = data.get('event')
+        raw_body = payload.decode('utf-8', errors='replace') if payload else None
+        data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(
             provider='paystack',
             event_type=event,
-            payload=data,
+            payload=data_scrubbed,
+            raw_body=raw_body,
             signature=signature,
             status='queued'
         )
@@ -128,11 +153,14 @@ def mtn_momo_webhook():
     try:
         data = request.get_json() or {}
         event = data.get('event') or data.get('status')
+        raw_body = request.get_data().decode('utf-8', errors='replace')
+        data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(
             provider='mtn_momo',
             event_type=event,
-            payload=data,
+            payload=data_scrubbed,
+            raw_body=raw_body,
             signature=api_key,
             status='queued'
         )
@@ -158,11 +186,14 @@ def airtel_money_webhook():
     try:
         data = request.get_json() or {}
         event = data.get('status') or data.get('event')
+        raw_body = request.get_data().decode('utf-8', errors='replace')
+        data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(
             provider='airtel_money',
             event_type=event,
-            payload=data,
+            payload=data_scrubbed,
+            raw_body=raw_body,
             signature=api_key,
             status='queued'
         )
@@ -187,11 +218,14 @@ def generic_webhook():
     
     try:
         data = request.get_json() or {}
+        raw_body = request.get_data().decode('utf-8', errors='replace')
+        data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(
             provider='generic',
             event_type=data.get('event_type'),
-            payload=data,
+            payload=data_scrubbed,
+            raw_body=raw_body,
             signature=api_key,
             status='queued'
         )

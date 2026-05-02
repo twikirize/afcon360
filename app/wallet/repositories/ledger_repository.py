@@ -5,7 +5,7 @@ Double-entry ledger repository - the source of truth for all balances.
 
 from decimal import Decimal
 from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from sqlalchemy import select, func, and_, desc
 from sqlalchemy.orm import Session
@@ -130,7 +130,7 @@ class LedgerRepository:
             Decimal volume amount
         """
         if since is None:
-            since = datetime.utcnow() - timedelta(days=1)
+            since = datetime.now(timezone.utc) - timedelta(days=1)
 
         query = select(
             func.coalesce(func.sum(LedgerEntryModel.amount), Decimal('0'))
@@ -164,7 +164,7 @@ class LedgerRepository:
             Decimal volume amount
         """
         if since is None:
-            since = datetime.utcnow() - timedelta(days=30)
+            since = datetime.now(timezone.utc) - timedelta(days=30)
 
         query = select(
             func.coalesce(func.sum(LedgerEntryModel.amount), Decimal('0'))

@@ -4,7 +4,7 @@ Currency conversion service with caching and audit.
 """
 
 from decimal import Decimal, ROUND_DOWN, getcontext
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Tuple
 import threading
 from flask import current_app
@@ -91,7 +91,7 @@ class CurrencyService:
                 entry = self._cache.get(cache_key)
                 if entry:
                     rate, timestamp = entry
-                    if datetime.utcnow() - timestamp < timedelta(seconds=ttl):
+                    if datetime.now(timezone.utc) - timestamp < timedelta(seconds=ttl):
                         return rate
 
         # Get from provider
@@ -100,7 +100,7 @@ class CurrencyService:
         if rate is not None:
             # Cache the rate
             with self._cache_lock:
-                self._cache[cache_key] = (rate, datetime.utcnow())
+                self._cache[cache_key] = (rate, datetime.now(timezone.utc))
 
         return rate
 

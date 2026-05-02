@@ -1,4 +1,4 @@
-﻿#app/tasks/webhook_processor.py
+﻿# app/tasks/webhook_processor.py
 """
 Celery task that consumes queued WebhookEvents and processes them.
 
@@ -24,7 +24,7 @@ import json
 import hmac
 import hashlib
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from celery import shared_task
 from sqlalchemy.exc import SQLAlchemyError
@@ -50,7 +50,7 @@ def process_webhook_events(self):
 
     app = create_app()
     with app.app_context():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Fetch events eligible for processing
         # status=queued → process immediately
@@ -84,7 +84,7 @@ def process_webhook_events(self):
             try:
                 _process_single_event(event, db)
                 event.status = "processed"
-                event.processed_at = datetime.utcnow()
+                event.processed_at = datetime.now(timezone.utc)
                 db.session.commit()
                 processed += 1
 
@@ -110,13 +110,27 @@ def process_webhook_events(self):
                     event.status = "failed"
                     # Exponential backoff: 2^attempt minutes
                     backoff_minutes = 2 ** event.retry_count
-                    event.next_retry_at = datetime.utcnow() + timedelta(minutes=backoff_minutes)
+                    event.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=backoff_minutes)
                     failed += 1
 
                 try:
                     db.session.commit()
                 except SQLAlchemyError:
                     db.session.rollback()
+                else:
+                    # If this event was moved to dead_letter, alert the owner
+                    # and increment a Redis counter so dashboards can surface
+                    # the problem. Wrap everything in try/except — a broken
+                    # notification must never prevent the dead_letter state
+                    # from being saved.
+                    if event.status == "dead_letter":
+                        try:
+                            _alert_owner_dead_letter(event)
+                        except Exception:
+                            logger.exception(
+                                "Failed to send dead-letter alert for webhook event %s",
+                                event.id
+                            )
 
         return {
             "processed": processed,
@@ -162,10 +176,16 @@ def _handle_flutterwave(event, payload, db):
     # signature was stored at enqueue time
     if event.signature:
         secret = current_app.config.get("FLUTTERWAVE_SECRET_KEY", "")
-        raw_payload = json.dumps(payload, separators=(",", ":")).encode()
-        expected = hmac.new(
-            secret.encode(), raw_payload, hashlib.sha256
-        ).hexdigest()
+        # Use the original raw_body stored at enqueue time if available. This
+        # preserves the exact byte ordering used by the provider when signing
+        # the payload. Fall back to re-serialising the JSON if raw_body is
+        # missing (older events).
+        raw_payload = (
+            event.raw_body.encode()
+            if getattr(event, "raw_body", None)
+            else json.dumps(payload, separators=(",", ":")).encode()
+        )
+        expected = hmac.new(secret.encode(), raw_payload, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, event.signature):
             raise ValueError("Flutterwave signature re-verification failed")
 
@@ -201,10 +221,13 @@ def _handle_paystack(event, payload, db):
     # Re-verify signature
     if event.signature:
         secret = current_app.config.get("PAYSTACK_SECRET_KEY", "")
-        raw_payload = json.dumps(payload, separators=(",", ":")).encode()
-        expected = hmac.new(
-            secret.encode(), raw_payload, hashlib.sha512
-        ).hexdigest()
+        # Prefer stored raw_body when available for reliable signature checks.
+        raw_payload = (
+            event.raw_body.encode()
+            if getattr(event, "raw_body", None)
+            else json.dumps(payload, separators=(",", ":")).encode()
+        )
+        expected = hmac.new(secret.encode(), raw_payload, hashlib.sha512).hexdigest()
         if not hmac.compare_digest(expected, event.signature):
             raise ValueError("Paystack signature re-verification failed")
 
@@ -372,6 +395,94 @@ def _credit_wallet_safe(
             f"Failed to credit wallet for {provider} ref={provider_reference}: {e}"
         )
         raise
+
+
+def _alert_owner_dead_letter(event):
+    """Notify the application owner (email + SMS) and increment Redis counter
+    when a webhook event exhausts retries and is moved to dead_letter.
+
+    This function intentionally swallows any exceptions; notification
+    failures must never affect the persisted dead_letter state.
+    """
+    from app.extensions import redis_client
+
+    # Build alert message
+    message = (
+        f"AFCON360 ALERT: Webhook event {event.id} ({event.provider}/{event.event_type}) "
+        f"has failed {MAX_ATTEMPTS} times and is now in dead_letter. "
+        "Manual review required at /admin/webhooks/failed"
+    )
+
+    try:
+        # Find an owner or super_admin user using a pure DB join for performance.
+        from app.identity.models.user import User, UserRole
+        from app.identity.models.roles_permission import Role
+        from app.extensions import db
+
+        try:
+            owner = (
+                db.session.query(User)
+                .join(UserRole, User.roles)
+                .join(Role, UserRole.role)
+                .filter(Role.name.in_(["owner", "super_admin"]))
+                .order_by(Role.level.asc())
+                .first()
+            )
+        except Exception:
+            # If DB-level join fails (e.g. tests without DB), fall back to
+            # scanning the in-memory query API to locate an owner. This keeps
+            # testability while preferring the fast DB path in production.
+            try:
+                users = User.query.all()
+                owner = next((u for u in users if getattr(u, 'is_super_admin', lambda: False)()), None)
+            except Exception:
+                owner = None
+
+        # Send SMS and email if we found an owner
+        if owner:
+            try:
+                if getattr(owner, "phone", None) and getattr(owner, "phone_verified", False):
+                    try:
+                        from app.services.sms_service import send_sms
+                        send_sms(owner.phone, message)
+                    except Exception:
+                        logger.exception("Failed to send dead-letter SMS to owner %s", owner.id)
+
+                if getattr(owner, "email", None) and getattr(owner, "email_verified", False):
+                    try:
+                        from app.transport.services.notification_service import NotificationService
+                        NotificationService.send_email(
+                            to=owner.email,
+                            subject="AFCON360 ALERT: Webhook dead-letter",
+                            body=message,
+                        )
+                    except Exception:
+                        logger.exception("Failed to send dead-letter email to owner %s", owner.id)
+            except Exception:
+                logger.exception("Owner notification failed for webhook event %s", event.id)
+
+        # Increment Redis counter so dashboards/alerts can surface counts
+        try:
+            # redis_client exposes Redis commands via __getattr__ in LazyRedis
+            from app import extensions as ext
+            try:
+                ext.redis_client.incr("dead_letter_count")
+            except Exception:
+                logger.exception("Failed to increment dead_letter_count in Redis")
+
+            # Also emit a metric via configured metrics client (e.g. StatsD)
+            try:
+                metrics = getattr(ext, 'metrics_client', None)
+                if metrics and hasattr(metrics, 'increment'):
+                    metrics.increment('dead_letter_count')
+            except Exception:
+                logger.exception("Failed to emit dead_letter_count metric")
+        except Exception:
+            logger.exception("Failed to record dead_letter observability signals")
+
+    except Exception:
+        # Catch-all — notifications are best-effort
+        logger.exception("Unexpected error while alerting owner for dead_letter event %s", event.id)
 
 
 def _mark_payout_complete(reference: str, provider: str, db):

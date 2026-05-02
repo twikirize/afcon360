@@ -3,7 +3,7 @@
 Service dedicated to collecting dashboard metrics
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 import logging
 from flask import current_app
@@ -56,7 +56,7 @@ class DashboardService:
 
                 # System status
                 'module_enabled': self._check_module_enabled(),
-                'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M'),
+                'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M'),
             }
         except Exception as e:
             logger.error(f"Error building dashboard context: {e}", exc_info=True)
@@ -98,7 +98,7 @@ class DashboardService:
                 'is_online': self._get_driver_online_status(driver_id),
                 'is_available': self._get_driver_availability(driver_id),
 
-                'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+                'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
             }
         except Exception as e:
             logger.error(f"Error building driver dashboard: {e}", exc_info=True)
@@ -127,7 +127,7 @@ class DashboardService:
                 'fleet_vehicles': self._get_org_vehicles(org_id, 10),
                 'recent_bookings': self._get_org_recent_bookings(org_id, 10),
 
-                'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+                'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
             }
         except Exception as e:
             logger.error(f"Error building org dashboard: {e}", exc_info=True)
@@ -290,7 +290,7 @@ class DashboardService:
             'booking_report': {}, 'pending_drivers': 0, 'active_drivers': 0,
             'pending_vehicles': 0, 'available_vehicles': 0,
             'total_drivers': 0, 'total_vehicles': 0,
-            'module_enabled': False, 'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+            'module_enabled': False, 'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
         }
 
     def _get_driver_fallback_context(self) -> Dict[str, Any]:
@@ -299,7 +299,7 @@ class DashboardService:
             'my_total_earnings': 0, 'my_rating': 0, 'my_vehicle': None,
             'recent_trips': [], 'next_booking': None,
             'is_online': False, 'is_available': False,
-            'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+            'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
         }
 
     def _get_org_fallback_context(self) -> Dict[str, Any]:
@@ -307,7 +307,7 @@ class DashboardService:
             'total_fleet': 0, 'available_vehicles': 0, 'total_drivers': 0,
             'active_drivers': 0, 'total_bookings': 0, 'today_bookings': 0,
             'total_revenue': 0, 'fleet_vehicles': [], 'recent_bookings': [],
-            'now': datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+            'now': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
         }
 
 

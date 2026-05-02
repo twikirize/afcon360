@@ -12,7 +12,7 @@ import json
 import hashlib
 from functools import wraps
 from flask import request, jsonify, current_app
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from app.extensions import db, redis_client
 from app.wallet.models.audit import IdempotencyKeyModel
 
@@ -57,7 +57,7 @@ class IdempotencyMiddleware:
             # Check if key exists and not expired
             query = select(IdempotencyKeyModel).where(
                 IdempotencyKeyModel.key_value == idempotency_key,
-                IdempotencyKeyModel.expires_at > datetime.utcnow()
+                IdempotencyKeyModel.expires_at > datetime.now(timezone.utc)
             )
             
             result = db.session.execute(query).scalar_one_or_none()
@@ -96,7 +96,7 @@ class IdempotencyMiddleware:
             from app.wallet.models.audit import IdempotencyKeyModel
             from sqlalchemy.dialects.postgresql import insert as pg_insert
             
-            expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
             
             # Use ON CONFLICT to handle duplicate keys
             stmt = pg_insert(IdempotencyKeyModel).values(
@@ -106,7 +106,7 @@ class IdempotencyMiddleware:
                 response_status=response_status,
                 response_body=response_body,
                 expires_at=expires_at,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
                 client_ip=self._get_ip_address()
             ).on_conflict_do_nothing(
                 index_elements=['key_value']

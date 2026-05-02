@@ -5,7 +5,7 @@ Provides National ID verification for KYC compliance.
 
 import re
 from typing import Dict, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from flask import current_app
 
 from app.audit.comprehensive_audit import AuditService, AuditSeverity
@@ -82,7 +82,7 @@ def verify_national_id(
             'format_error': format_error,
             'requires_review_by': None,
             'verification_id': None,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     # Log verification attempt for compliance audit
@@ -111,8 +111,8 @@ def verify_national_id(
         'names_match': None,  # API would verify this
         'is_valid_format': True,
         'requires_review_by': 'compliance_officer',
-        'verification_id': f"NIRA_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{id_number[:4]}",
-        'timestamp': datetime.utcnow().isoformat(),
+        'verification_id': f"NIRA_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{id_number[:4]}",
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'notes': 'Manual review required - NIRA API integration pending'
     }
 
@@ -170,7 +170,7 @@ def check_id_against_watchlist(id_number: str) -> Dict[str, any]:
         'risk_score': risk_score,
         'match_reason': 'Pattern match' if on_watchlist else None,
         'recommended_action': recommended_action,
-        'checked_at': datetime.utcnow().isoformat()
+        'checked_at': datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -181,13 +181,13 @@ def generate_nira_report(user_id: int, verification_data: Dict) -> Dict[str, any
     This would be stored in the database for audit purposes.
     """
     report = {
-        'report_id': f"NIRA_REPORT_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{user_id}",
+        'report_id': f"NIRA_REPORT_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{user_id}",
         'user_id': user_id,
         'verification_data': verification_data,
-        'generated_at': datetime.utcnow().isoformat(),
+        'generated_at': datetime.now(timezone.utc).isoformat(),
         'report_type': 'nira_verification',
         'compliance_level': 'tier_2',  # NIRA verification enables Tier 2
-        'valid_until': (datetime.utcnow() + timedelta(days=365)).isoformat(),  # 1 year validity
+        'valid_until': (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),  # 1 year validity
         'status': 'pending_review' if verification_data.get('manual_review_required') else 'completed'
     }
 
