@@ -163,7 +163,7 @@
               <div style="font-weight: 600; font-size: 13px;">{{ user.username }}</div>
               <div style="font-size: 11px; color: var(--muted);">{{ user.risk_score }} risk score</div>
             </div>
-            <a href="{{ url_for('compliance.user_audit', user_id=user.id) }}" class="btn btn-sm btn-secondary">View</a>
+            <a href="{{ url_for('compliance.user_audit', user_id=user.public_id) }}" class="btn btn-sm btn-secondary">View</a>
           </div>
           {% endfor %}
         </div>

@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, jsonify
 from flask_login import login_required, current_user
+from sqlalchemy import or_
 from app.extensions import db
 from app.wallet.models.ledger import AccountModel, LedgerEntryModel
 from app.wallet.models.transaction import TransactionModel, TransactionType, TransactionStatus
@@ -14,6 +15,7 @@ from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.currency_service import CurrencyService
 from app.wallet.exceptions import InsufficientBalanceError, WalletNotFoundError, LimitExceededError
 from uuid import UUID
+from uuid import uuid4
 
 wallet_bp = Blueprint('wallet', __name__, url_prefix='/wallet')
 
@@ -71,13 +73,16 @@ def wallet_dashboard():
         # Get or create account
         account = get_or_create_account(current_user.id)
         
-        # Get balance using WalletService
+        # Get balance using WalletService (pass user_id, not account.id)
         service = WalletService()
-        balance = service.get_balance(account.id)
+        balance = service.get_balance(account.user_id)
         
-        # Get recent transactions
-        recent_transactions = TransactionModel.query.filter_by(
-            account_id=account.id
+        # Get recent transactions where current user is sender or recipient
+        recent_transactions = TransactionModel.query.filter(
+            or_(
+                TransactionModel.user_id == current_user.id,
+                TransactionModel.recipient_user_id == current_user.id
+            )
         ).order_by(TransactionModel.created_at.desc()).limit(10).all()
         
         # Mock commission for agent users (implement properly later)
@@ -103,7 +108,7 @@ def overview():
     try:
         account = get_or_create_account(current_user.id)
         service = WalletService()
-        balance = service.get_balance(account.id)
+        balance = service.get_balance(account.user_id)
         
         # Mock data for template compatibility
         wallet = {
@@ -237,15 +242,21 @@ def send_funds():
         
         receiver_account = get_or_create_account(receiver.id, currency)
         
-        # Process transfer using WalletService
+        # Get pin from form (optional) and call service.transfer using internal user ids
+        pin = request.form.get('pin')
+
         service = WalletService()
+        # Use from_user_id / to_user_id (internal BIGINT ids) and generate a client_request_id
+        client_request_id = str(uuid4())
         transaction = service.transfer(
-            from_account_id=sender_account.id,
-            to_account_id=receiver_account.id,
+            from_user_id=sender_account.user_id,
+            to_user_id=receiver.id,
             amount=amount,
             currency=currency,
-            description=f"Transfer to user {receiver_id}",
-            metadata={'agent_fee': str(agent_fee)} if agent_fee > 0 else {}
+            client_request_id=client_request_id,
+            note=f"Transfer to user {receiver_id}",
+            metadata={'agent_fee': str(agent_fee)} if agent_fee > 0 else {},
+            pin=pin
         )
         
         flash(f'Successfully sent {amount} {currency} to {receiver_id}', 'success')
@@ -255,8 +266,9 @@ def send_funds():
         flash('Insufficient balance', 'error')
         return redirect(url_for('wallet.send_page'))
     except Exception as e:
+        # Wallet PIN or other wallet errors
         current_app.logger.error(f"Send funds error: {e}")
-        flash('Error sending funds', 'error')
+        flash(str(e), 'error')
         return redirect(url_for('wallet.send_page'))
 
 
@@ -335,9 +347,12 @@ def wallet_transactions():
     try:
         account = get_or_create_account(current_user.id)
         
-        # Get all transactions for this account
-        transactions = TransactionModel.query.filter_by(
-            account_id=account.id
+        # Get all transactions where current user is sender or recipient
+        transactions = TransactionModel.query.filter(
+            or_(
+                TransactionModel.user_id == current_user.id,
+                TransactionModel.recipient_user_id == current_user.id
+            )
         ).order_by(TransactionModel.created_at.desc()).all()
         
         # Format for template compatibility
@@ -345,14 +360,14 @@ def wallet_transactions():
         for tx in transactions:
             formatted_transactions.append({
                 'id': tx.id,
-                'type': tx.transaction_type.value if hasattr(tx.transaction_type, 'value') else str(tx.transaction_type),
+                'type': tx.tx_type.value if hasattr(tx.tx_type, 'value') else str(tx.tx_type),
                 'amount': float(tx.amount),
                 'currency': tx.currency,
                 'status': tx.status.value if hasattr(tx.status, 'value') else str(tx.status),
                 'timestamp': tx.created_at.isoformat() if tx.created_at else None,
-                'to': tx.to_account_id,
-                'from': tx.from_account_id,
-                'description': tx.description
+                'to': tx.recipient_user_id,
+                'from': tx.user_id,
+                'description': tx.tx_metadata.get('description') if tx.tx_metadata else ''
             })
         
         return render_template(
@@ -376,20 +391,84 @@ def agent_payout_history():
     """View agent payout history"""
     try:
         account = get_or_create_account(current_user.id)
-        return render_template('wallet/agent_payout_history.html', account=account)
+        # Fetch commission summary & payouts
+        from app.wallet.services.commission_service import CommissionService
+        from app.wallet.services.payout_service import PayoutService
+
+        commission_service = CommissionService()
+        payout_service = PayoutService()
+
+        summary = commission_service.get_commission_summary(current_user.id)
+        payouts = payout_service.list_requests(current_user.id)
+
+        return render_template('wallet/agent_payout_history.html', account=account, summary=summary, payouts=payouts)
     except Exception as e:
         current_app.logger.error(f"Agent payout history error: {e}")
         flash('Error loading payout history', 'error')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 
-@wallet_bp.route('/agent/payout/request')
+@wallet_bp.route('/agent/payout/request', methods=['GET'])
 @login_required
 def agent_payout_request_page():
-    """Request agent payout page"""
-    # Placeholder - implement agent functionality later
-    flash('Agent payout request - Feature coming soon', 'info')
-    return redirect(url_for('wallet.wallet_dashboard'))
+    """Show agent payout request form"""
+    try:
+        account = get_or_create_account(current_user.id)
+        # Commission summary and history
+        from app.wallet.services.commission_service import CommissionService
+        from app.wallet.services.payout_service import PayoutService
+
+        commission_service = CommissionService()
+        payout_service = PayoutService()
+
+        summary = commission_service.get_commission_summary(current_user.id)
+        history = commission_service.get_agent_commissions(current_user.id)
+        total = summary.get('total_pending') if isinstance(summary, dict) else 0
+
+        return render_template('agent_payout_request.html', agent_id=current_user.id, total=total, history=history)
+    except Exception as e:
+        current_app.logger.error(f"Agent payout request page error: {e}")
+        flash('Error loading payout request page', 'error')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+
+@wallet_bp.route('/agent/payout/request', methods=['POST'])
+@login_required
+def payout_request_form():
+    """Handle payout request submission from agent"""
+    try:
+        amount = request.form.get('amount')
+        method = request.form.get('method', 'bank')
+        account_info = request.form.get('account') or {}
+
+        if not amount:
+            flash('Amount is required', 'error')
+            return redirect(url_for('wallet.agent_payout_request_page'))
+
+        from decimal import Decimal
+        try:
+            amount = Decimal(amount)
+        except:
+            flash('Invalid amount', 'error')
+            return redirect(url_for('wallet.agent_payout_request_page'))
+
+        from app.wallet.services.payout_service import PayoutService
+        payout_service = PayoutService()
+        # Create payout request (persisted)
+        pr = payout_service.create_request(
+            agent_id=current_user.id,
+            amount=amount,
+            currency='UGX',
+            payment_method=method,
+            payment_details={'account': account_info}
+        )
+
+        flash('Payout request submitted', 'success')
+        return redirect(url_for('wallet.agent_payout_history'))
+    except Exception as e:
+        current_app.logger.error(f"Payout request submission error: {e}")
+        flash('Error submitting payout request', 'error')
+        return redirect(url_for('wallet.agent_payout_request_page'))
 
 
 # =============================================================================
@@ -446,7 +525,7 @@ def wallet_settings():
     try:
         account = get_or_create_account(current_user.id)
         service = WalletService()
-        balance = service.get_balance(account.id)
+        balance = service.get_balance(account.user_id)
         
         # Get supported currencies
         from app.wallet.services.currency_service import CurrencyService
@@ -488,6 +567,55 @@ def wallet_settings_update():
         current_app.logger.error(f"Wallet settings update error: {e}")
         flash('Error updating settings', 'error')
         return redirect(url_for('wallet.wallet_settings'))
+
+
+# -----------------------------------------------------------------------------
+# Transaction PIN endpoints
+# -----------------------------------------------------------------------------
+@wallet_bp.route('/pin', methods=['GET'])
+@login_required
+def pin_page():
+    """Show PIN management page — forward to template if available."""
+    try:
+        account = get_or_create_account(current_user.id)
+        has_pin = bool(getattr(current_user, 'transaction_pin_hash', None))
+        return render_template('wallet/pin.html', account=account, has_pin=has_pin)
+    except Exception as e:
+        current_app.logger.error(f"PIN page error: {e}")
+        flash('Error loading PIN page', 'error')
+        return redirect(url_for('wallet.wallet_settings'))
+
+
+@wallet_bp.route('/pin/set', methods=['POST'])
+@login_required
+def set_pin():
+    """Set or update user's transaction PIN."""
+    try:
+        pin = request.form.get('pin')
+        confirm = request.form.get('confirm_pin')
+
+        if not pin or not confirm:
+            flash('PIN and confirmation are required', 'error')
+            return redirect(url_for('wallet.pin_page'))
+
+        if pin != confirm:
+            flash('PINs do not match', 'error')
+            return redirect(url_for('wallet.pin_page'))
+
+        # Persist via current_user and DB session
+        from app.extensions import db
+        current_user.set_transaction_pin(pin, session=db.session)
+        db.session.commit()
+
+        flash('Transaction PIN set successfully', 'success')
+        return redirect(url_for('wallet.wallet_settings'))
+    except ValueError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('wallet.pin_page'))
+    except Exception as e:
+        current_app.logger.error(f"Set PIN error: {e}")
+        flash('Error setting PIN', 'error')
+        return redirect(url_for('wallet.pin_page'))
 
 
 @wallet_bp.route('/fx-rates')
@@ -535,7 +663,7 @@ def transaction_history():
         limit = request.args.get('limit', 50, type=int)
         
         history = service.get_transaction_history(
-            user_id=account.id,
+            user_id=account.user_id,
             limit=limit,
             transaction_type=transaction_type
         )
@@ -563,7 +691,7 @@ def api_balance():
     try:
         account = get_or_create_account(current_user.id)
         service = WalletService()
-        balance = service.get_balance(account.id)
+        balance = service.get_balance(account.user_id)
         
         return jsonify({
             'success': True,
@@ -583,8 +711,11 @@ def api_transactions():
         account = get_or_create_account(current_user.id)
         limit = request.args.get('limit', 50, type=int)
         
-        transactions = TransactionModel.query.filter_by(
-            account_id=account.id
+        transactions = TransactionModel.query.filter(
+            or_(
+                TransactionModel.user_id == current_user.id,
+                TransactionModel.recipient_user_id == current_user.id
+            )
         ).order_by(TransactionModel.created_at.desc()).limit(limit).all()
         
         return jsonify({
@@ -592,12 +723,12 @@ def api_transactions():
             'transactions': [
                 {
                     'id': str(tx.id),
-                    'type': tx.transaction_type.value if hasattr(tx.transaction_type, 'value') else str(tx.transaction_type),
+                    'type': tx.tx_type.value if hasattr(tx.tx_type, 'value') else str(tx.tx_type),
                     'amount': str(tx.amount),
                     'currency': tx.currency,
                     'status': tx.status.value if hasattr(tx.status, 'value') else str(tx.status),
                     'created_at': tx.created_at.isoformat() if tx.created_at else None,
-                    'description': tx.description
+                    'description': tx.tx_metadata.get('description') if tx.tx_metadata else ''
                 }
                 for tx in transactions
             ]

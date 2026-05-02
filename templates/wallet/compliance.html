@@ -1,233 +1,159 @@
-{% extends "base.html" %}
+templates/wallet/compliance.html
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Compliance Status — AFCON360{% endblock %}
+
+{% block topbar_title %}Compliance Status{% endblock %}
+
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-  <!-- Page Header -->
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900">Compliance Status</h1>
-    <p class="text-gray-600 mt-2">Your account's regulatory compliance information</p>
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Compliance Status</h1>
+    <p class="page-subheading">Your account's regulatory compliance information</p>
   </div>
+</div>
 
-  <!-- Overall Compliance Status -->
-  <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg mb-6">
-    <div class="flex justify-between items-start">
-      <div>
-        <p class="text-green-100 text-sm font-medium">Overall Compliance Status</p>
-        <h2 class="text-3xl font-bold mt-2">Compliant</h2>
-        <p class="text-green-100 text-sm mt-1">
-          <i class="fas fa-check-circle mr-1"></i> All checks passed
-        </p>
-      </div>
-      <div class="bg-white/20 rounded-full p-4">
-        <i class="fas fa-shield-alt text-3xl"></i>
-      </div>
+<!-- Overall Status -->
+<div style="background:linear-gradient(135deg,var(--green),var(--accent-dk));border-radius:var(--radius-lg);padding:20px 24px;color:#fff;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <p style="opacity:0.85;font-size:13px;">Overall Compliance Status</p>
+    <h2 style="font-family:var(--font-display);font-weight:800;font-size:24px;">Compliant</h2>
+    <p style="opacity:0.85;font-size:13px;margin-top:4px;"><i class="fas fa-check-circle"></i> All checks passed</p>
+  </div>
+  <div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">
+    <i class="fas fa-shield-alt"></i>
+  </div>
+</div>
+
+<!-- KYC Verification -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-id-card panel-title-icon green"></i>
+      KYC Verification
     </div>
   </div>
-
-  <!-- KYC Status -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">KYC Verification</h3>
-    <div class="space-y-4">
-      <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
-            <i class="fas fa-user text-green-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">Identity Verification</h4>
-            <p class="text-sm text-gray-600">Verified on Jan 15, 2026</p>
-          </div>
-        </div>
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          <i class="fas fa-check mr-1"></i> Verified
-        </span>
-      </div>
-      <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
-            <i class="fas fa-id-card text-green-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">Document Verification</h4>
-            <p class="text-sm text-gray-600">National ID verified</p>
-          </div>
-        </div>
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          <i class="fas fa-check mr-1"></i> Verified
-        </span>
-      </div>
-      <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
-            <i class="fas fa-phone text-green-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">Phone Verification</h4>
-            <p class="text-sm text-gray-600">+256 700 XXX XXX</p>
-          </div>
-        </div>
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          <i class="fas fa-check mr-1"></i> Verified
-        </span>
-      </div>
-    </div>
-  </div>
-
-  <!-- AML/CFT Status -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">AML/CFT Monitoring</h3>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-      <div class="p-4 bg-blue-50 rounded-lg">
-        <div class="text-sm text-blue-600 mb-1">Risk Level</div>
-        <div class="text-2xl font-bold text-blue-900">Low</div>
-      </div>
-      <div class="p-4 bg-green-50 rounded-lg">
-        <div class="text-sm text-green-600 mb-1">Sanctions Check</div>
-        <div class="text-2xl font-bold text-green-900">Clear</div>
-      </div>
-      <div class="p-4 bg-purple-50 rounded-lg">
-        <div class="text-sm text-purple-600 mb-1">Last Scan</div>
-        <div class="text-2xl font-bold text-purple-900">Today</div>
-      </div>
-    </div>
-    <div class="space-y-3">
-      <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-        <span class="text-sm text-gray-700">Sanctions Screening (OFAC)</span>
-        <span class="text-green-600 text-sm font-medium"><i class="fas fa-check-circle mr-1"></i> Passed</span>
-      </div>
-      <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-        <span class="text-sm text-gray-700">Sanctions Screening (UN)</span>
-        <span class="text-green-600 text-sm font-medium"><i class="fas fa-check-circle mr-1"></i> Passed</span>
-      </div>
-      <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-        <span class="text-sm text-gray-700">Sanctions Screening (EU)</span>
-        <span class="text-green-600 text-sm font-medium"><i class="fas fa-check-circle mr-1"></i> Passed</span>
-      </div>
-      <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-        <span class="text-sm text-gray-700">PEP Screening</span>
-        <span class="text-green-600 text-sm font-medium"><i class="fas fa-check-circle mr-1"></i> No Match</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Transaction Limits -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Transaction Limits</h3>
-    <div class="space-y-4">
-      <div>
-        <div class="flex justify-between text-sm mb-2">
-          <span class="text-gray-600">Daily Limit</span>
-          <span class="font-medium text-gray-900">UGX 5,000,000</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-2">
-          <div class="bg-blue-600 h-2 rounded-full" style="width: 35%"></div>
-        </div>
-        <div class="text-xs text-gray-500 mt-1">UGX 1,750,000 used today</div>
-      </div>
-      <div>
-        <div class="flex justify-between text-sm mb-2">
-          <span class="text-gray-600">Monthly Limit</span>
-          <span class="font-medium text-gray-900">UGX 50,000,000</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-2">
-          <div class="bg-green-600 h-2 rounded-full" style="width: 20%"></div>
-        </div>
-        <div class="text-xs text-gray-500 mt-1">UGX 10,000,000 used this month</div>
-      </div>
-      <div>
-        <div class="flex justify-between text-sm mb-2">
-          <span class="text-gray-600">Single Transaction Limit</span>
-          <span class="font-medium text-gray-900">UGX 2,000,000</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-2">
-          <div class="bg-yellow-600 h-2 rounded-full" style="width: 50%"></div>
-        </div>
-        <div class="text-xs text-gray-500 mt-1">Max single transfer</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Regulatory Documents -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Regulatory Documents</h3>
-    <div class="space-y-3">
-      <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-3">
-            <i class="fas fa-file-pdf text-red-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">Terms of Service</h4>
-            <p class="text-sm text-gray-500">Last updated: Jan 1, 2026</p>
-          </div>
-        </div>
-        <a href="{{ url_for('wallet.wallet_terms') }}" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
-          View
-        </a>
-      </div>
-      <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-            <i class="fas fa-file-alt text-blue-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">Privacy Policy</h4>
-            <p class="text-sm text-gray-500">Last updated: Jan 1, 2026</p>
-          </div>
-        </div>
-        <a href="#" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
-          View
-        </a>
-      </div>
-      <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-            <i class="fas fa-shield-alt text-green-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">AML/CFT Policy</h4>
-            <p class="text-sm text-gray-500">Last updated: Jan 1, 2026</p>
-          </div>
-        </div>
-        <a href="#" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
-          View
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <!-- Compliance History -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Compliance Activity</h3>
-    <div class="space-y-4">
-      <div class="flex items-start">
-        <div class="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3"></div>
+  <div style="padding:20px;display:grid;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--green-lt);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-user"></i></div>
         <div>
-          <p class="text-sm text-gray-900">Identity verification completed</p>
-          <p class="text-xs text-gray-500">Jan 15, 2026 at 10:30 AM</p>
+          <div style="font-weight:600;">Identity Verification</div>
+          <div style="font-size:12px;color:var(--muted);">Verified on Jan 15, 2026</div>
         </div>
       </div>
-      <div class="flex items-start">
-        <div class="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3"></div>
+      <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--green-lt);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-id-card"></i></div>
         <div>
-          <p class="text-sm text-gray-900">Sanctions screening passed</p>
-          <p class="text-xs text-gray-500">Jan 15, 2026 at 10:31 AM</p>
+          <div style="font-weight:600;">Document Verification</div>
+          <div style="font-size:12px;color:var(--muted);">National ID verified</div>
         </div>
       </div>
-      <div class="flex items-start">
-        <div class="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3"></div>
+      <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--green-lt);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-phone"></i></div>
         <div>
-          <p class="text-sm text-gray-900">Account activated</p>
-          <p class="text-xs text-gray-500">Jan 15, 2026 at 10:32 AM</p>
+          <div style="font-weight:600;">Phone Verification</div>
+          <div style="font-size:12px;color:var(--muted);">+256 700 XXX XXX</div>
         </div>
       </div>
-      <div class="flex items-start">
-        <div class="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3"></div>
-        <div>
-          <p class="text-sm text-gray-900">Daily limit review completed</p>
-          <p class="text-xs text-gray-500">Jan 14, 2026 at 11:45 PM</p>
-        </div>
+      <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+    </div>
+  </div>
+</div>
+
+<!-- AML/CFT Monitoring -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-shield-halved panel-title-icon blue"></i>
+      AML/CFT Monitoring
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <div class="col-layout-3" style="margin-bottom:16px;">
+      <div style="padding:16px;background:var(--blue-lt);border-radius:var(--radius);text-align:center;">
+        <div style="font-size:12px;color:var(--blue);margin-bottom:4px;">Risk Level</div>
+        <div style="font-family:var(--font-display);font-weight:800;font-size:24px;color:var(--blue);">Low</div>
+      </div>
+      <div style="padding:16px;background:var(--green-lt);border-radius:var(--radius);text-align:center;">
+        <div style="font-size:12px;color:var(--green);margin-bottom:4px;">Sanctions Check</div>
+        <div style="font-family:var(--font-display);font-weight:800;font-size:24px;color:var(--green);">Clear</div>
+      </div>
+      <div style="padding:16px;background:var(--purple-lt);border-radius:var(--radius);text-align:center;">
+        <div style="font-size:12px;color:var(--purple);margin-bottom:4px;">Last Scan</div>
+        <div style="font-family:var(--font-display);font-weight:800;font-size:24px;color:var(--purple);">Today</div>
       </div>
     </div>
+    <div style="display:grid;gap:8px;">
+      {% for check in ['Sanctions Screening (OFAC)', 'Sanctions Screening (UN)', 'Sanctions Screening (EU)', 'PEP Screening'] %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg);border-radius:var(--radius);">
+        <span style="font-size:13px;">{{ check }}</span>
+        <span style="color:var(--green);font-weight:600;font-size:12px;"><i class="fas fa-check-circle"></i> {{ 'Passed' if 'PEP' not in check else 'No Match' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Transaction Limits -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-gauge-high panel-title-icon amber"></i>
+      Transaction Limits
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:16px;">
+    {% set limits = [
+      {'name': 'Daily Limit', 'max': 5000000, 'used': 1750000, 'color': 'blue'},
+      {'name': 'Monthly Limit', 'max': 50000000, 'used': 10000000, 'color': 'green'},
+      {'name': 'Single Transaction', 'max': 2000000, 'used': 1000000, 'color': 'orange'}
+    ] %}
+    {% for limit in limits %}
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:13px;color:var(--ink-2);">{{ limit.name }}</span>
+        <span style="font-weight:600;font-size:13px;">UGX {{ limit.max | format_number }}</span>
+      </div>
+      <div style="width:100%;height:6px;background:var(--bg-2);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:{{ (limit.used / limit.max * 100) | round }}%;background:var(--{{ limit.color }});border-radius:3px;"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">UGX {{ limit.used | format_number }} used</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Compliance Activity -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-scroll panel-title-icon purple"></i>
+      Compliance Activity
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:16px;">
+    {% set activities = [
+      {'text': 'Identity verification completed', 'time': 'Jan 15, 2026 at 10:30 AM', 'color': 'green'},
+      {'text': 'Sanctions screening passed', 'time': 'Jan 15, 2026 at 10:31 AM', 'color': 'green'},
+      {'text': 'Account activated', 'time': 'Jan 15, 2026 at 10:32 AM', 'color': 'green'},
+      {'text': 'Daily limit review completed', 'time': 'Jan 14, 2026 at 11:45 PM', 'color': 'blue'}
+    ] %}
+    {% for activity in activities %}
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+      <div style="width:8px;height:8px;background:var(--{{ activity.color }});border-radius:50%;margin-top:5px;flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:13px;font-weight:500;">{{ activity.text }}</div>
+        <div style="font-size:11px;color:var(--muted);">{{ activity.time }}</div>
+      </div>
+    </div>
+    {% endfor %}
   </div>
 </div>
 {% endblock %}

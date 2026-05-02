@@ -1,18 +1,25 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="container mx-auto px-4 py-8">
-  <!-- Page Header -->
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900">Transaction History</h1>
-    <p class="text-gray-600 mt-2">View all your wallet transactions</p>
-  </div>
+{#transaction_history.html#}
+{% extends "wallet/base_wallet.html" %}
 
-  <!-- Filters -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div class="flex-1">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Transaction Type</label>
-        <select class="w-full md:w-48 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" onchange="location.href='/wallet/history?type=' + this.value">
+{% block title %}Transaction History — AFCON360{% endblock %}
+
+{% block topbar_title %}Transaction History{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Transaction History</h1>
+    <p class="page-subheading">View all your wallet transactions</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body" style="padding:16px 20px;">
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+      <div>
+        <label class="form-label" style="margin-bottom:4px;">Transaction Type</label>
+        <select class="form-control" style="width:auto;min-width:160px;" onchange="location.href='{{ url_for('wallet.wallet_transactions') }}?type=' + this.value">
           <option value="">All Transactions</option>
           <option value="DEPOSIT" {% if request.args.get('type') == 'DEPOSIT' %}selected{% endif %}>Deposits</option>
           <option value="WITHDRAWAL" {% if request.args.get('type') == 'WITHDRAWAL' %}selected{% endif %}>Withdrawals</option>
@@ -20,9 +27,9 @@
           <option value="COMMISSION" {% if request.args.get('type') == 'COMMISSION' %}selected{% endif %}>Commissions</option>
         </select>
       </div>
-      <div class="flex-1">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-        <select class="w-full md:w-48 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+      <div>
+        <label class="form-label" style="margin-bottom:4px;">Date Range</label>
+        <select class="form-control" style="width:auto;min-width:140px;">
           <option>Last 7 days</option>
           <option>Last 30 days</option>
           <option>Last 90 days</option>
@@ -30,162 +37,144 @@
           <option>All time</option>
         </select>
       </div>
-      <div class="flex-1">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Export</label>
-        <button class="w-full md:w-48 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">
-          <i class="fas fa-download mr-2"></i> Export CSV
+      <div>
+        <label class="form-label" style="margin-bottom:4px;">&nbsp;</label>
+        <button class="btn btn-ghost btn-sm">
+          <i class="fas fa-download mr-1"></i> Export CSV
         </button>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Summary Stats -->
-  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl p-4 shadow-md border border-gray-100">
-      <div class="text-sm text-gray-500 mb-1">Total Transactions</div>
-      <div class="text-2xl font-bold text-gray-900">{{ transactions | length }}</div>
-    </div>
-    <div class="bg-white rounded-xl p-4 shadow-md border border-gray-100">
-      <div class="text-sm text-gray-500 mb-1">Total Deposits</div>
-      <div class="text-2xl font-bold text-green-600">UGX 0</div>
-    </div>
-    <div class="bg-white rounded-xl p-4 shadow-md border border-gray-100">
-      <div class="text-sm text-gray-500 mb-1">Total Withdrawals</div>
-      <div class="text-2xl font-bold text-red-600">UGX 0</div>
-    </div>
-    <div class="bg-white rounded-xl p-4 shadow-md border border-gray-100">
-      <div class="text-sm text-gray-500 mb-1">Net Balance</div>
-      <div class="text-2xl font-bold text-blue-600">UGX 0</div>
-    </div>
+<!-- Summary Stats -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Transactions</div>
+    <div class="stat-value">{{ transactions | length if transactions else 0 }}</div>
   </div>
+  <div class="stat-card success">
+    <div class="stat-label">Total Deposits</div>
+    <div class="stat-value">UGX 0</div>
+  </div>
+  <div class="stat-card danger">
+    <div class="stat-label">Total Withdrawals</div>
+    <div class="stat-value">UGX 0</div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-label">Net Balance</div>
+    <div class="stat-value">{{ balance | round(2) if balance else 'UGX 0' }}</div>
+  </div>
+</div>
 
-  <!-- Transactions Table -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-    <div class="p-6 border-b border-gray-100">
-      <div class="flex justify-between items-center">
-        <h3 class="text-lg font-semibold text-gray-900">All Transactions</h3>
-        {% if pagination and pagination.get('total_pages', 1) > 1 %}
-          <div class="flex items-center gap-2">
-            <button class="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
-              <i class="fas fa-chevron-left"></i>
-            </button>
-            <span class="text-sm text-gray-600">Page 1 of {{ pagination.get('total_pages', 1) }}</span>
-            <button class="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
-              <i class="fas fa-chevron-right"></i>
-            </button>
-          </div>
-        {% endif %}
-      </div>
+<!-- Transactions Table -->
+<div class="panel">
+  <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="panel-title">
+      <i class="fas fa-list panel-title-icon blue"></i>
+      All Transactions
     </div>
-    
-    {% if transactions %}
-      <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transaction</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
-            {% for tx in transactions %}
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center">
-                  <div class="w-10 h-10 rounded-full flex items-center justify-center mr-3
-                    {% if tx.transaction_type.value == 'DEPOSIT' %}bg-green-100
-                    {% elif tx.transaction_type.value == 'WITHDRAWAL' %}bg-red-100
-                    {% elif tx.transaction_type.value == 'TRANSFER' %}bg-yellow-100
-                    {% elif tx.transaction_type.value == 'COMMISSION' %}bg-purple-100
-                    {% else %}bg-gray-100{% endif %}">
-                    <i class="fas 
-                      {% if tx.transaction_type.value == 'DEPOSIT' %}fa-arrow-down text-green-600
-                      {% elif tx.transaction_type.value == 'WITHDRAWAL' %}fa-arrow-up text-red-600
-                      {% elif tx.transaction_type.value == 'TRANSFER' %}fa-exchange-alt text-yellow-600
-                      {% elif tx.transaction_type.value == 'COMMISSION' %}fa-coins text-purple-600
-                      {% else %}fa-receipt text-gray-600{% endif %}"></i>
-                  </div>
-                  <div>
-                    <p class="font-medium text-gray-900">{{ tx.description or tx.transaction_type.value | capitalize }}</p>
-                    <p class="text-xs text-gray-500">ID: {{ tx.id | slice(0, 8) }}...</p>
-                  </div>
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                  {% if tx.transaction_type.value == 'DEPOSIT' %}bg-green-100 text-green-800
-                  {% elif tx.transaction_type.value == 'WITHDRAWAL' %}bg-red-100 text-red-800
-                  {% elif tx.transaction_type.value == 'TRANSFER' %}bg-yellow-100 text-yellow-800
-                  {% elif tx.transaction_type.value == 'COMMISSION' %}bg-purple-100 text-purple-800
-                  {% else %}bg-gray-100 text-gray-800{% endif %}">
-                  {{ tx.transaction_type.value | capitalize }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <p class="font-semibold 
-                  {% if tx.transaction_type.value == 'DEPOSIT' or tx.transaction_type.value == 'COMMISSION' %}text-green-600
-                  {% elif tx.transaction_type.value == 'WITHDRAWAL' %}text-red-600
-                  {% else %}text-gray-900{% endif %}">
-                  {% if tx.transaction_type.value == 'DEPOSIT' or tx.transaction_type.value == 'COMMISSION' %}+{% endif %}
-                  {{ tx.amount | round(2) }} {{ tx.currency }}
-                </p>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                  {% if tx.status.value == 'COMPLETED' %}bg-green-100 text-green-800
-                  {% elif tx.status.value == 'PENDING' %}bg-yellow-100 text-yellow-800
-                  {% elif tx.status.value == 'FAILED' %}bg-red-100 text-red-800
-                  {% elif tx.status.value == 'CANCELLED' %}bg-gray-100 text-gray-800
-                  {% else %}bg-blue-100 text-blue-800{% endif %}">
-                  {{ tx.status.value | capitalize }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                {{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else 'N/A' }}
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <button class="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                  View Details
-                </button>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="p-12 text-center">
-        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <i class="fas fa-receipt text-3xl text-gray-400"></i>
-        </div>
-        <p class="text-gray-600 mb-2">No transactions found</p>
-        <p class="text-gray-400 text-sm">Start by depositing funds or making a transfer</p>
-        <a href="{{ url_for('wallet.deposit_page') }}" class="inline-block mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">
-          Make a Deposit
-        </a>
+    {% if pagination and pagination.get('total_pages', 1) > 1 %}
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="btn btn-ghost btn-xs"><i class="fas fa-chevron-left"></i></button>
+        <span class="mono">Page {{ pagination.get('page', 1) }} of {{ pagination.get('total_pages', 1) }}</span>
+        <button class="btn btn-ghost btn-xs"><i class="fas fa-chevron-right"></i></button>
       </div>
     {% endif %}
   </div>
 
-  <!-- Pagination (Bottom) -->
-  {% if pagination and pagination.get('total_pages', 1) > 1 %}
-  <div class="flex justify-center mt-6">
-    <div class="flex items-center gap-2">
-      <button class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-        Previous
-      </button>
-      <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">1</button>
-      <button class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">2</button>
-      <button class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">3</button>
-      <button class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-        Next
-      </button>
+  {% if transactions %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Transaction</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in transactions %}
+        <tr class="animate-up">
+          <td>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+                {% if tx.transaction_type.value == 'DEPOSIT' %}background:var(--green-lt);color:var(--green);
+                {% elif tx.transaction_type.value == 'WITHDRAWAL' %}background:var(--red-lt);color:var(--red);
+                {% elif tx.transaction_type.value == 'TRANSFER' %}background:var(--accent-lt);color:var(--accent);
+                {% elif tx.transaction_type.value == 'COMMISSION' %}background:var(--purple-lt);color:var(--purple);
+                {% else %}background:var(--bg-2);color:var(--muted);{% endif %}">
+                <i class="fas
+                  {% if tx.transaction_type.value == 'DEPOSIT' %}fa-arrow-down
+                  {% elif tx.transaction_type.value == 'WITHDRAWAL' %}fa-arrow-up
+                  {% elif tx.transaction_type.value == 'TRANSFER' %}fa-exchange-alt
+                  {% elif tx.transaction_type.value == 'COMMISSION' %}fa-coins
+                  {% else %}fa-receipt{% endif %}"></i>
+              </div>
+              <div>
+                <div style="font-weight:500;">{{ tx.description or tx.transaction_type.value | capitalize }}</div>
+                <div class="mono" style="font-size:10px;">ID: {{ tx.id | string | truncate(12, true, '...') }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge
+              {% if tx.transaction_type.value == 'DEPOSIT' %}badge-approved
+              {% elif tx.transaction_type.value == 'WITHDRAWAL' %}badge-rejected
+              {% elif tx.transaction_type.value == 'TRANSFER' %}badge-pending
+              {% elif tx.transaction_type.value == 'COMMISSION' %}badge-active
+              {% else %}badge-type{% endif %}">
+              {{ tx.transaction_type.value | capitalize }}
+            </span>
+          </td>
+          <td>
+            <span style="font-weight:600;{% if tx.transaction_type.value == 'DEPOSIT' or tx.transaction_type.value == 'COMMISSION' %}color:var(--green);{% elif tx.transaction_type.value == 'WITHDRAWAL' %}color:var(--red);{% endif %}">
+              {% if tx.transaction_type.value == 'DEPOSIT' or tx.transaction_type.value == 'COMMISSION' %}+{% endif %}
+              {{ tx.amount | round(2) }} {{ tx.currency }}
+            </span>
+          </td>
+          <td>
+            <span class="badge
+              {% if tx.status.value == 'COMPLETED' %}badge-approved
+              {% elif tx.status.value == 'PENDING' %}badge-pending
+              {% elif tx.status.value == 'FAILED' %}badge-rejected
+              {% elif tx.status.value == 'CANCELLED' %}badge-inactive
+              {% else %}badge-type{% endif %}">
+              {{ tx.status.value | capitalize }}
+            </span>
+          </td>
+          <td class="mono">{{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else 'N/A' }}</td>
+          <td>
+            <button class="btn btn-ghost btn-xs">View Details</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-receipt"></i></div>
+      <p>No transactions found</p>
+      <p style="font-size:12px;color:var(--muted-2);margin-top:4px;">Start by depositing funds or making a transfer</p>
+      <a href="{{ url_for('wallet.deposit_page') }}" class="btn btn-primary" style="margin-top:16px;">
+        <i class="fas fa-plus-circle"></i> Make a Deposit
+      </a>
     </div>
-  </div>
   {% endif %}
 </div>
+
+<!-- Pagination -->
+{% if pagination and pagination.get('total_pages', 1) > 1 %}
+<div style="display:flex;justify-content:center;margin-top:24px;">
+  <div class="pagination">
+    <button class="pg-btn">Previous</button>
+    <button class="pg-btn active">1</button>
+    <button class="pg-btn">2</button>
+    <button class="pg-btn">3</button>
+    <button class="pg-btn">Next</button>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

@@ -181,13 +181,13 @@
                     <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
                     <td>
                         <div class="btn-group">
-                            <a href="{{ url_for('admin.view_user', user_id=user.id) }}" class="btn btn-action btn-view">
+                            <a href="{{ url_for('admin.view_user', user_id=user.public_id) }}" class="btn btn-action btn-view">
                                 <i class="bi bi-eye"></i> View
                             </a>
                             {% if role.name not in ['owner', 'user'] %}
                             <form method="POST" action="{{ url_for('admin.owner.revoke_role') }}" style="display: inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <input type="hidden" name="user_id" value="{{ user.id }}">
+                                <input type="hidden" name="user_id" value="{{ user.public_id }}">
                                 <input type="hidden" name="role_id" value="{{ role.id }}">
                                 <button type="submit" class="btn btn-action btn-revoke" onclick="return confirm('Are you sure you want to revoke the {{ role.name }} role from {{ user.username }}?');">
                                     <i class="bi bi-person-x"></i> Revoke

@@ -10,6 +10,7 @@ from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.extensions import db
+from app.utils.id_validator import assert_internal_id
 from app.wallet.models.ledger import AccountModel
 
 
@@ -55,17 +56,22 @@ class AccountRepository:
         Get account by user ID and currency.
         
         Args:
-            user_id: User ID
+            user_id: User ID (must be BIGINT internal ID)
             currency: Currency code
             for_update: If True, locks row with SELECT FOR UPDATE
             
         Returns:
             AccountModel or None
+            
+        Raises:
+            ValueError: If user_id is not a valid internal ID
         """
+        validated_user_id = assert_internal_id(user_id)
+        
         query = (
             select(AccountModel)
             .where(
-                AccountModel.user_id == user_id,
+                AccountModel.user_id == validated_user_id,
                 AccountModel.currency == currency
             )
         )

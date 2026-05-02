@@ -11,6 +11,8 @@ from .ledger import LedgerEntryModel, AccountModel
 from .transaction import TransactionModel
 from .audit import AuditLogModel
 from .fx import FXRateModel, FXTransactionModel
+from .commission import AgentCommission
+from .payout import PayoutRequest
 
 __all__ = [
     'LedgerEntryModel',
@@ -19,4 +21,6 @@ __all__ = [
     'AuditLogModel',
     'FXRateModel',
     'FXTransactionModel',
+    'AgentCommission',
+    'PayoutRequest',
 ]

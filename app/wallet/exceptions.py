@@ -98,6 +98,14 @@ class PaymentError(WalletError):
         super().__init__(message)
 
 
+class TransactionPINError(WalletError):
+    """Raised when a transaction PIN is required, invalid, or locked."""
+
+    def __init__(self, message: str = "Transaction PIN error"):
+        self.message = message
+        super().__init__(message)
+
+
 class InsufficientFundsError(WalletError):
     """Raised when the payment source has insufficient funds."""
 

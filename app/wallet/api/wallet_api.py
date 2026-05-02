@@ -20,6 +20,7 @@ from app.extensions import limiter
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.currency_service import CurrencyService
 from app.wallet.validators import DepositRequest, WithdrawRequest, TransferRequest, extract_idempotency_key
+from app.utils.id_validator import assert_internal_id
 # from app.wallet.middleware.kill_switch import require_wallet_enabled  # DELETED
 from app.wallet.exceptions import (
     InsufficientBalanceError,
@@ -30,6 +31,11 @@ from app.wallet.exceptions import (
     WalletFrozenError,
     ConversionError
 )
+from app.wallet.exceptions import TransactionPINError
+from app.wallet.services.commission_service import CommissionService
+from app.wallet.services.payout_service import PayoutService
+from app.wallet.services.commission_service import CommissionService
+from app.wallet.services.payout_service import PayoutService
 
 # Create blueprint
 wallet_api_bp = Blueprint('wallet_api', __name__, url_prefix='/api/wallet')
@@ -134,8 +140,9 @@ def get_my_wallet():
     }
     """
     try:
+        internal_user_id = assert_internal_id(current_user.id)
         service = WalletService()
-        balance = service.get_balance(current_user.id)
+        balance = service.get_balance(internal_user_id)
 
         return jsonify({
             "status": "success",
@@ -215,10 +222,13 @@ def deposit():
                 "message": "X-Idempotency-Key header is required"
             }), 400
 
+        # Validate internal ID
+        internal_user_id = assert_internal_id(current_user.id)
+
         # Process deposit
         service = WalletService()
         result = service.deposit(
-            user_id=current_user.id,
+            user_id=internal_user_id,
             amount=validated['amount'],
             currency=validated['currency'],
             client_request_id=idempotency_key,
@@ -347,9 +357,11 @@ def withdraw():
                 "message": "X-Idempotency-Key header is required"
             }), 400
 
+        internal_user_id = assert_internal_id(current_user.id)
+
         service = WalletService()
         result = service.withdraw(
-            user_id=current_user.id,
+            user_id=internal_user_id,
             amount=validated['amount'],
             currency=validated['currency'],
             client_request_id=idempotency_key,
@@ -472,9 +484,11 @@ def transfer():
             except:
                 pass
 
+        internal_user_id = assert_internal_id(current_user.id)
+
         service = WalletService()
         result = service.transfer(
-            from_user_id=current_user.id,
+            from_user_id=internal_user_id,
             to_user_id=validated['to_user_id'],
             amount=validated['amount'],
             currency=validated['currency'],
@@ -482,7 +496,8 @@ def transfer():
             note=validated.get('note'),
             metadata=validated.get('metadata', {}),
             platform_fee=platform_fee,
-            fee_currency=fee_currency
+            fee_currency=fee_currency,
+            pin=data.get('pin')
         )
 
         # Commission recording is now INSIDE the transfer transaction
@@ -518,6 +533,12 @@ def transfer():
             "message": str(e)
         }), 400
 
+    except TransactionPINError as e:
+        return jsonify({
+            "status": "error",
+            "code": "INVALID_PIN",
+            "message": str(e)
+        }), 403
     except Exception as e:
         current_app.logger.error(f"Transfer error from user {current_user.id}: {e}")
         return jsonify({
@@ -560,9 +581,11 @@ def get_transactions():
         # Cap limit
         limit = min(limit, 100)
 
+        internal_user_id = assert_internal_id(current_user.id)
+
         service = WalletService()
         result = service.get_transaction_history(
-            user_id=current_user.id,
+            user_id=internal_user_id,
             limit=limit,
             offset=offset,
             transaction_type=transaction_type
@@ -600,14 +623,16 @@ def get_commissions():
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
 
+        internal_user_id = assert_internal_id(current_user.id)
+
         commission_service = CommissionService()
 
         # Get summary
-        summary = commission_service.get_commission_summary(current_user.id)
+        summary = commission_service.get_commission_summary(internal_user_id)
 
         # Get list
         commissions = commission_service.get_agent_commissions(
-            agent_id=current_user.id,
+            agent_id=internal_user_id,
             status=status,
             limit=limit,
             offset=offset
@@ -688,9 +713,11 @@ def create_payout():
                 "message": "Invalid amount format"
             }), 400
 
+        internal_user_id = assert_internal_id(current_user.id)
+
         payout_service = PayoutService()
         result = payout_service.create_request(
-            agent_id=current_user.id,
+            agent_id=internal_user_id,
             amount=amount_dec,
             currency=currency,
             payment_method=payment_method,
@@ -732,15 +759,17 @@ def list_payouts():
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
 
+        internal_user_id = assert_internal_id(current_user.id)
+
         payout_service = PayoutService()
         payouts = payout_service.list_requests(
-            agent_id=current_user.id,
+            agent_id=internal_user_id,
             status=status,
             limit=limit,
             offset=offset
         )
 
-        summary = payout_service.get_agent_payout_summary(current_user.id)
+        summary = payout_service.get_agent_payout_summary(internal_user_id)
 
         return jsonify({
             "status": "success",

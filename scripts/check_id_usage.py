@@ -14,15 +14,15 @@ FORBIDDEN_PATTERNS = [
     (r"session\.get\('user_id'\)", "Use get_current_internal_id() or get_current_public_id() instead"),
 
     # Using UUID for foreign key assignment
-    (r"\.owner_id\s*=\s*.*\.user_id", "Foreign keys must use .id (BIGINT), not .user_id (UUID)"),
-    (r"\.user_id\s*=\s*.*\.user_id", "Foreign keys must use .id (BIGINT), not .user_id (UUID)"),
+    (r"\.owner_id\s*=\s*.*\.public_id", "Foreign keys must use .id (BIGINT), not .public_id (UUID)"),
+    (r"\.user_id\s*=\s*.*\.public_id", "Foreign keys must use .id (BIGINT), not .public_id (UUID)"),
 
     # Direct UUID to FK assignment
     (r"\.owner_id\s*=\s*.*\.uuid", "Foreign keys must use .id (BIGINT)"),
     (r"\.user_id\s*=\s*.*\.uuid", "Foreign keys must use .id (BIGINT)"),
 
     # Using internal ID in URLs
-    (r"url_for\(.*,\s*.*_id\s*=\s*.*\.id\)", "URLs must use .user_id (UUID), not .id"),
+    (r"url_for\(.*,\s*.*_id\s*=\s*.*\.id\)", "URLs must use .public_id (UUID), not .id"),
 
     # Wrong FK type hints
     (r"db\.ForeignKey\(['\"]users\.user_id['\"]\)", "Foreign keys must reference users.id, not users.user_id"),

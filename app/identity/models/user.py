@@ -61,6 +61,11 @@ class User(UserMixin, ProtectedModel):
     last_login = Column(DateTime, nullable=True)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
 
+    # Transaction PIN (hashed) + anti-brute-force fields
+    transaction_pin_hash = Column(String(512), nullable=True)
+    transaction_pin_failed_attempts = Column(BigInteger, default=0, nullable=False)
+    transaction_pin_locked_until = Column(DateTime, nullable=True, index=True)
+
     # KYC / login state
     kyc_level = Column(BigInteger, default=0, nullable=False)
     failed_logins = Column(BigInteger, default=0, nullable=False)
@@ -224,6 +229,63 @@ class User(UserMixin, ProtectedModel):
             # Don't fail password change if audit fails
             import logging
             logging.error(f"Failed to audit password change: {e}")
+
+    # ---------------------------
+    # Transaction PIN helpers
+    # ---------------------------
+    def set_transaction_pin(self, pin: str, session=None):
+        """Set (or reset) the user's 4-6 digit transaction PIN.
+
+        Stores a secure hash and resets failure counters.
+        """
+        if not pin or not isinstance(pin, str) or not pin.isdigit() or len(pin) not in (4, 5, 6):
+            raise ValueError("PIN must be a 4-6 digit numeric string")
+
+        # reuse werkzeug password hashing for PINs
+        self.transaction_pin_hash = generate_password_hash(pin)
+        self.transaction_pin_failed_attempts = 0
+        self.transaction_pin_locked_until = None
+
+        # Persist if session provided
+        if session:
+            session.add(self)
+        return True
+
+    def verify_transaction_pin(self, pin: str, session=None) -> bool:
+        """Verify the provided transaction PIN.
+
+        Returns True when correct. On incorrect attempts increments counter and
+        may lock the PIN for a configurable window.
+        """
+        from flask import current_app
+        if not self.transaction_pin_hash:
+            # No PIN set — caller may decide to allow or disallow
+            return False
+
+        # If locked, prevent verification
+        if self.transaction_pin_locked_until and datetime.utcnow() < self.transaction_pin_locked_until:
+            return False
+
+        if check_password_hash(self.transaction_pin_hash, pin):
+            # Successful verification — reset counters
+            self.transaction_pin_failed_attempts = 0
+            self.transaction_pin_locked_until = None
+            if session:
+                session.add(self)
+            return True
+
+        # Failed attempt
+        self.transaction_pin_failed_attempts = (self.transaction_pin_failed_attempts or 0) + 1
+        max_attempts = current_app.config.get('TRANSACTION_PIN_MAX_ATTEMPTS', 5)
+        lock_minutes = current_app.config.get('TRANSACTION_PIN_LOCK_MINUTES', 15)
+
+        if self.transaction_pin_failed_attempts >= max_attempts:
+            self.transaction_pin_locked_until = datetime.utcnow() + timedelta(minutes=lock_minutes)
+
+        if session:
+            session.add(self)
+
+        return False
 
     def verify_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)

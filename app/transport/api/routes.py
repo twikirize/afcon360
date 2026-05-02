@@ -131,3 +131,5 @@ def register_api_resources(api):
     safe_add_resource(DashboardOverviewResource, "/dashboard/overview", endpoint="dashboard_overview")
 
     logger.info(f"✅ Transport API resources registered ({len(registered_endpoints)} endpoints)")
+
+

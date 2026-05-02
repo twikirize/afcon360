@@ -1,0 +1,43 @@
+﻿{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Webhook Stats — AFCON360{% endblock %}
+
+{% block topbar_title %}Webhook Queue Health{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Webhook Queue Health</h1>
+    <p class="page-subheading">Real-time webhook queue statistics</p>
+  </div>
+  <a href="/admin/wallet/webhooks" class="btn btn-ghost">
+    <i class="fas fa-arrow-left"></i> Back to Events
+  </a>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-chart-bar panel-title-icon purple"></i>
+      Queue Stats
+    </div>
+  </div>
+  <div class="panel-body" style="padding:24px;">
+    <pre id="stats" style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:16px;border-radius:var(--radius);overflow-x:auto;">Loading...</pre>
+  </div>
+</div>
+
+<script>
+async function loadStats(){
+    const res = await fetch('/api/admin/wallet/webhooks/stats');
+    if(!res.ok){
+        document.getElementById('stats').innerText = 'Failed to load stats';
+        return;
+    }
+    const d = await res.json();
+    document.getElementById('stats').innerHTML = JSON.stringify(d, null, 2);
+}
+
+document.addEventListener('DOMContentLoaded', loadStats);
+</script>
+{% endblock %}

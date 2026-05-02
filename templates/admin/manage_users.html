@@ -271,9 +271,9 @@
             </thead>
             <tbody>
                 {% for user in users %}
-                <tr class="user-row" data-username="{{ user.username|lower }}" data-email="{{ (user.email or '')|lower }}" data-id="{{ user.id }}">
+                <tr class="user-row" data-username="{{ user.username|lower }}" data-email="{{ (user.email or '')|lower }}" data-id="{{ user.public_id }}">
                     <td><input type="checkbox" name="user_ids" value="{{ user.public_id }}" class="user-checkbox"></td>
-                    <td>{{ user.id }}</td>
+                    <td>{{ user.public_id }}</td>
                     <td><a href="{{ url_for('admin.view_user_by_username', username=user.username) }}">{{ user.username }}</a></td>
                     <td>{{ user.email or '-' }}</td>
                     <td class="role-cell">

@@ -1,0 +1,143 @@
+﻿{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Webhook Events — AFCON360{% endblock %}
+
+{% block topbar_title %}Webhook Events{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Webhook Events</h1>
+    <p class="page-subheading">Dead letter and failed webhook events</p>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body" style="padding:16px 20px;">
+    <form id="filters" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div>
+        <label for="status" class="form-label">Status</label>
+        <select id="status" class="form-control">
+          <option value="dead_letter">Dead Letter</option>
+          <option value="failed">Failed</option>
+          <option value="queued">Queued</option>
+          <option value="processing">Processing</option>
+        </select>
+      </div>
+      <div>
+        <label for="provider" class="form-label">Provider</label>
+        <input id="provider" class="form-control" placeholder="provider name" />
+      </div>
+      <button id="apply-filters" class="btn btn-primary">Apply</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <table id="events-table" class="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Provider</th>
+        <th>Type</th>
+        <th>Status</th>
+        <th>Retries</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<nav>
+  <ul class="pagination" id="pagination"></ul>
+</nav>
+
+<div id="loading" style="display:none;text-align:center;padding:20px;">Loading...</div>
+
+<script>
+let currentPage = 1;
+let perPage = 20;
+
+async function loadEvents(page = 1){
+    currentPage = page;
+    document.getElementById('loading').style.display='block';
+    const status = document.getElementById('status').value || 'dead_letter';
+    const provider = document.getElementById('provider').value || '';
+    const params = new URLSearchParams({status, page, per_page: perPage});
+    if(provider) params.set('provider', provider);
+
+    const res = await fetch('/api/admin/wallet/webhooks/failed?'+params.toString(), {credentials: 'same-origin'});
+    document.getElementById('loading').style.display='none';
+    if(!res.ok){
+        alert('Failed to load events');
+        return;
+    }
+    const data = await res.json();
+    const tbody = document.querySelector('#events-table tbody');
+    tbody.innerHTML = '';
+    for(const e of data.events || []){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="mono">${e.id}</td>
+            <td>${e.provider || ''}</td>
+            <td>${e.event_type || ''}</td>
+            <td><span class="badge badge-${e.status === 'dead_letter' ? 'rejected' : e.status === 'failed' ? 'rejected' : e.status === 'queued' ? 'pending' : 'active'}">${e.status || ''}</span></td>
+            <td>${e.retry_count || 0}</td>
+            <td class="mono">${e.created_at || ''}</td>
+            <td>
+                <div class="action-group">
+                    <a href="/admin/wallet/webhooks/${e.id}" class="btn btn-ghost btn-xs">View</a>
+                    <button class="btn btn-warning btn-xs" onclick="retryEvent('${e.id}')">Retry</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    const pagination = document.getElementById('pagination');
+    pagination.innerHTML = '';
+    const totalPages = data.pagination && data.pagination.pages ? data.pagination.pages : 1;
+    for(let p=1;p<=Math.max(1,totalPages);p++){
+        const li = document.createElement('li');
+        li.innerHTML = `<a class="pg-btn ${p===currentPage? 'active':''}" href="#" data-page="${p}">${p}</a>`;
+        pagination.appendChild(li);
+    }
+}
+
+async function retryEvent(id){
+    if(!confirm('Retry event '+id+'?')) return;
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(`/api/admin/wallet/webhooks/${id}/retry`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrf
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({csrf_token: csrf})
+    });
+    if(res.ok){
+        alert('Retry queued');
+        loadEvents();
+    } else {
+        const body = await res.json().catch(()=>({}));
+        alert('Error: '+(body.error||res.statusText));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+    loadEvents();
+    document.getElementById('apply-filters').addEventListener('click', function(e){
+        e.preventDefault();
+        loadEvents(1);
+    });
+    document.getElementById('pagination').addEventListener('click', function(e){
+        e.preventDefault();
+        const a = e.target.closest('a[data-page]');
+        if(a){ loadEvents(parseInt(a.getAttribute('data-page'))); }
+    });
+});
+</script>
+{% endblock %}

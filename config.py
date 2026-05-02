@@ -1,4 +1,4 @@
-# afcon 360_1pp/config.py
+﻿# afcon 360_app/config.py
 APP_NAME = "AFCON 360"
 TOURNAMENT_NAME = "AFCON 360"
 YEAR = 2025
@@ -26,3 +26,6 @@ TWILIO_PHONE_NUMBER = ""
 AFRICAS_TALKING_USERNAME = ""
 AFRICAS_TALKING_API_KEY = ""
 AFRICAS_TALKING_SENDER_ID = ""
+
+# Note: TestingConfig is defined in app/config.py, not here
+# The main Flask configuration is in app/config.py

@@ -171,7 +171,7 @@ def upgrade_to_tier(tier):
         AuditService.security(
             event_type="kyc_upgrade_requested",
             severity="low",
-            description=f"User {current_user.id} requested KYC upgrade to tier {tier} ({tier_info['name']})",
+            description=f"User {current_user.public_id} requested KYC upgrade to tier {tier} ({tier_info['name']})",
             user_id=current_user.id,
             ip_address=request.remote_addr,
             extra_data={

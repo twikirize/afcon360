@@ -36,7 +36,7 @@ def dashboard():
     account = AccountModel.query.filter_by(user_id=internal_id).first()
     if account:
         service = WalletService()
-        wallet_balance = service.get_balance(account.id)
+        wallet_balance = service.get_balance(internal_id)
     else:
         wallet_balance = Decimal('0')
     
@@ -165,7 +165,7 @@ def wallet():
     transactions = []
     if account:
         transactions = TransactionModel.query.filter_by(
-            account_id=account.id
+            user_id=internal_id
         ).order_by(TransactionModel.created_at.desc()).limit(20).all()
     
     # For template compatibility

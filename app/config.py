@@ -1,4 +1,4 @@
-# app/config.py
+# afcon 360_app/app/config.py
 # ============================================================================
 #  FLASK CONFIGURATION — Security-hardened production settings
 # ============================================================================
@@ -182,3 +182,34 @@ class Config:
                 missing.append("SECRET_KEY")
             if missing:
                 raise RuntimeError(f"Missing required production environment variables: {', '.join(missing)}")
+
+class TestingConfig(Config):
+    """Testing configuration using PostgreSQL"""
+    TESTING = True
+    DEBUG = True
+    # Use test database
+    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or \
+                              (os.environ.get('DATABASE_URL', 'postgresql://localhost:5432/afcon360') + '_test')
+    WTF_CSRF_ENABLED = False
+    SERVER_NAME = 'localhost.localdomain'
+    PREFERRED_URL_SCHEME = 'http'
+    APPLICATION_ROOT = '/'
+    
+    # Disable expensive features for tests
+    SESSION_TYPE = 'simple'
+    SESSION_REDIS_URL = None
+    RATELIMIT_ENABLED = False
+    
+    # Use faster hashing for tests
+    SECURITY_PASSWORD_SALT = 'test-salt'
+    
+    # Module toggles for testing
+    MODULE_FLAGS = {
+        "wallet": True,
+        "tourism": False,
+        "transport": True,
+        "accommodation": True,
+        "tournament": True,
+        "agents": False,
+        "admin": True,
+    }

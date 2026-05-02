@@ -1,208 +1,192 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="container mx-auto px-4 py-8">
-  <!-- Page Header -->
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900">Wallet Settings</h1>
-    <p class="text-gray-600 mt-2">Manage your wallet preferences and security</p>
-  </div>
+templates/wallet/settings.html
+{% extends "wallet/base_wallet.html" %}
 
-  <!-- Account Information Card -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Account Information</h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+{% block title %}Wallet Settings — AFCON360{% endblock %}
+
+{% block topbar_title %}Wallet Settings{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Wallet Settings</h1>
+    <p class="page-subheading">Manage your wallet preferences and security</p>
+  </div>
+</div>
+
+<!-- Account Info -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-circle-info panel-title-icon green"></i>
+      Account Information
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <div class="col-layout-2">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Account ID</label>
-        <div class="px-4 py-2 bg-gray-50 rounded-lg text-gray-600 font-mono text-sm">
-          {% if account %}{{ account.id }}{% else %}N/A{% endif %}
-        </div>
+        <div class="form-label">Account ID</div>
+        <div class="mono" style="padding:8px 12px;background:var(--bg);border-radius:var(--radius);">{{ account.id if account else 'N/A' }}</div>
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Current Balance</label>
-        <div class="px-4 py-2 bg-green-50 rounded-lg text-green-700 font-semibold">
-          {{ balance | round(2) }} {{ account.currency if account else 'UGX' }}
-        </div>
+        <div class="form-label">Current Balance</div>
+        <div style="padding:8px 12px;background:var(--green-lt);border-radius:var(--radius);font-weight:700;color:var(--green);">{{ balance | round(2) }} {{ account.currency if account else 'UGX' }}</div>
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Account Currency</label>
-        <div class="px-4 py-2 bg-gray-50 rounded-lg text-gray-600">
-          {{ account.currency if account else 'UGX' }}
-        </div>
+        <div class="form-label">Account Currency</div>
+        <div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius);">{{ account.currency if account else 'UGX' }}</div>
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Account Status</label>
-        <div class="px-4 py-2 bg-green-50 rounded-lg">
-          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-            <i class="fas fa-check-circle mr-1"></i> Active
-          </span>
+        <div class="form-label">Account Status</div>
+        <div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius);">
+          <span class="badge badge-verified"><i class="fas fa-check-circle"></i> Active</span>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Currency Settings -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Currency Preferences</h3>
+<!-- Currency Preferences -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-coins panel-title-icon amber"></i>
+      Currency Preferences
+    </div>
+  </div>
+  <div style="padding:20px;">
     <form method="POST" action="{{ url_for('wallet.wallet_settings_update') }}">
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Preferred Currency</label>
-        <select name="currency" class="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-          {% if supported_currencies %}
-            {% for currency in supported_currencies %}
-              <option value="{{ currency }}" {% if account and account.currency == currency %}selected{% endif %}>
-                {{ currency }}
-              </option>
-            {% endfor %}
-          {% else %}
-            <option value="UGX" {% if account and account.currency == 'UGX' %}selected{% endif %}>UGX - Ugandan Shilling</option>
-            <option value="USD" {% if account and account.currency == 'USD' %}selected{% endif %}>USD - US Dollar</option>
-            <option value="EUR" {% if account and account.currency == 'EUR' %}selected{% endif %}>EUR - Euro</option>
-            <option value="KES" {% if account and account.currency == 'KES' %}selected{% endif %}>KES - Kenyan Shilling</option>
-            <option value="NGN" {% if account and account.currency == 'NGN' %}selected{% endif %}>NGN - Nigerian Naira</option>
-          {% endif %}
+      <div class="form-group">
+        <label class="form-label">Preferred Currency</label>
+        <select name="currency" class="form-control" style="max-width:300px;">
+          {% for currency in (supported_currencies or ['UGX', 'USD', 'EUR', 'KES', 'NGN']) %}
+            <option value="{{ currency }}" {% if account and account.currency == currency %}selected{% endif %}>{{ currency }}</option>
+          {% endfor %}
         </select>
-        <p class="text-xs text-gray-500 mt-1">Note: Changing currency requires creating a new wallet account</p>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">Note: Changing currency requires creating a new wallet account</p>
       </div>
-      <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">
-        <i class="fas fa-save mr-2"></i> Save Changes
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-save"></i> Save Changes
       </button>
     </form>
   </div>
+</div>
 
-  <!-- Security Settings -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Security Settings</h3>
-    <div class="space-y-4">
-      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div>
-          <h4 class="font-medium text-gray-900">Two-Factor Authentication</h4>
-          <p class="text-sm text-gray-600">Add an extra layer of security to your account</p>
-        </div>
-        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition text-sm">
-          Enable
-        </button>
-      </div>
-      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div>
-          <h4 class="font-medium text-gray-900">Transaction PIN</h4>
-          <p class="text-sm text-gray-600">Require PIN for all transactions</p>
-        </div>
-        <button class="px-4 py-2 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition text-sm">
-          Set PIN
-        </button>
-      </div>
-      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div>
-          <h4 class="font-medium text-gray-900">Login Notifications</h4>
-          <p class="text-sm text-gray-600">Get notified when someone logs into your account</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" checked class="sr-only peer">
-          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-        </label>
-      </div>
+<!-- Security Settings -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-lock panel-title-icon red"></i>
+      Security Settings
     </div>
   </div>
-
-  <!-- Notification Settings -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Notification Preferences</h3>
-    <div class="space-y-4">
-      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div>
-          <h4 class="font-medium text-gray-900">Email Notifications</h4>
-          <p class="text-sm text-gray-600">Receive transaction updates via email</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" checked class="sr-only peer">
-          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-        </label>
+  <div style="padding:20px;display:grid;gap:12px;">
+    {% set security_items = [
+      {'title': 'Two-Factor Authentication', 'desc': 'Add an extra layer of security', 'btn': 'Enable', 'btn_class': 'btn-primary'},
+      {'title': 'Transaction PIN', 'desc': 'Require PIN for all transactions', 'btn': 'Set PIN', 'btn_class': 'btn-outline'},
+      {'title': 'Login Notifications', 'desc': 'Get notified on account login', 'toggle': True, 'checked': True}
+    ] %}
+    {% for item in security_items %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg);border-radius:var(--radius);">
+      <div>
+        <div style="font-weight:600;">{{ item.title }}</div>
+        <div style="font-size:12px;color:var(--muted);">{{ item.desc }}</div>
       </div>
-      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div>
-          <h4 class="font-medium text-gray-900">SMS Notifications</h4>
-          <p class="text-sm text-gray-600">Receive important alerts via SMS</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" class="sr-only peer">
-          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-        </label>
-      </div>
-      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div>
-          <h4 class="font-medium text-gray-900">Push Notifications</h4>
-          <p class="text-sm text-gray-600">Receive real-time push notifications</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" checked class="sr-only peer">
-          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-        </label>
-      </div>
-    </div>
-  </div>
-
-  <!-- Payment Methods -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="text-lg font-semibold text-gray-900">Payment Methods</h3>
-      <button class="inline-flex items-center text-blue-600 font-medium hover:text-blue-700 text-sm">
-        <i class="fas fa-plus mr-1"></i> Add New
-      </button>
-    </div>
-    <div class="space-y-3">
-      <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-            <i class="fas fa-credit-card text-blue-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">Card ending in 4242</h4>
-            <p class="text-sm text-gray-500">Expires 12/26</p>
-          </div>
-        </div>
-        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          Primary
+      {% if item.toggle %}
+      <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;">
+        <input type="checkbox" {% if item.checked %}checked{% endif %} style="opacity:0;width:0;height:0;">
+        <span style="width:44px;height:24px;background:var(--accent);border-radius:12px;position:relative;transition:all 0.15s;">
+          <span style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:all 0.15s;"></span>
         </span>
-      </div>
-      <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-            <i class="fas fa-mobile-alt text-green-600"></i>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900">MTN Mobile Money</h4>
-            <p class="text-sm text-gray-500">+256 700 XXX XXX</p>
-          </div>
-        </div>
-        <button class="text-gray-400 hover:text-gray-600">
-          <i class="fas fa-ellipsis-v"></i>
-        </button>
-      </div>
+      </label>
+      {% else %}
+      <button class="btn {{ item.btn_class }} btn-sm">{{ item.btn }}</button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Notification Preferences -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-bell panel-title-icon blue"></i>
+      Notification Preferences
     </div>
   </div>
+  <div style="padding:20px;display:grid;gap:12px;">
+    {% set notifications = [
+      {'title': 'Email Notifications', 'desc': 'Receive transaction updates via email', 'checked': True},
+      {'title': 'SMS Notifications', 'desc': 'Receive important alerts via SMS', 'checked': False},
+      {'title': 'Push Notifications', 'desc': 'Receive real-time push notifications', 'checked': True}
+    ] %}
+    {% for notif in notifications %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg);border-radius:var(--radius);">
+      <div>
+        <div style="font-weight:600;">{{ notif.title }}</div>
+        <div style="font-size:12px;color:var(--muted);">{{ notif.desc }}</div>
+      </div>
+      <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;">
+        <input type="checkbox" {% if notif.checked %}checked{% endif %} style="opacity:0;width:0;height:0;">
+        <span style="width:44px;height:24px;background:{% if notif.checked %}var(--accent){% else %}var(--bg-2){% endif %};border-radius:12px;position:relative;transition:all 0.15s;">
+          <span style="position:absolute;top:2px;left:{% if notif.checked %}22px{% else %}2px{% endif %};width:20px;height:20px;background:#fff;border-radius:50%;transition:all 0.15s;"></span>
+        </span>
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+</div>
 
-  <!-- Danger Zone -->
-  <div class="bg-red-50 rounded-2xl border border-red-200 p-6">
-    <h3 class="text-lg font-semibold text-red-900 mb-4">Danger Zone</h3>
-    <div class="space-y-4">
-      <div class="flex items-center justify-between">
+<!-- Payment Methods -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="panel-title">
+      <i class="fas fa-credit-card panel-title-icon purple"></i>
+      Payment Methods
+    </div>
+    <button class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add New</button>
+  </div>
+  <div style="padding:20px;display:grid;gap:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--blue-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--blue);"><i class="fas fa-credit-card"></i></div>
         <div>
-          <h4 class="font-medium text-red-900">Freeze Account</h4>
-          <p class="text-sm text-red-700">Temporarily freeze your account for security</p>
+          <div style="font-weight:600;">Card ending in 4242</div>
+          <div style="font-size:12px;color:var(--muted);">Expires 12/26</div>
         </div>
-        <button class="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition text-sm">
-          Freeze
-        </button>
       </div>
-      <div class="flex items-center justify-between pt-4 border-t border-red-200">
+      <span class="badge badge-verified">Primary</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--green);"><i class="fas fa-mobile-alt"></i></div>
         <div>
-          <h4 class="font-medium text-red-900">Close Account</h4>
-          <p class="text-sm text-red-700">Permanently close your wallet account</p>
+          <div style="font-weight:600;">MTN Mobile Money</div>
+          <div style="font-size:12px;color:var(--muted);">+256 700 XXX XXX</div>
         </div>
-        <button class="px-4 py-2 bg-red-800 text-white rounded-lg font-medium hover:bg-red-900 transition text-sm">
-          Close Account
-        </button>
       </div>
+      <button class="btn btn-ghost btn-xs"><i class="fas fa-ellipsis-v"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- Danger Zone -->
+<div style="background:var(--red-lt);border:1px solid #fca5a5;border-radius:var(--radius-lg);padding:20px;">
+  <h3 style="color:var(--red);font-family:var(--font-display);font-weight:700;margin-bottom:16px;">Danger Zone</h3>
+  <div style="display:grid;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:600;color:#991b1b;">Freeze Account</div>
+        <div style="font-size:12px;color:#b91c1c;">Temporarily freeze your account</div>
+      </div>
+      <button class="btn btn-danger btn-sm">Freeze</button>
+    </div>
+    <div style="border-top:1px solid #fca5a5;padding-top:12px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:600;color:#991b1b;">Close Account</div>
+        <div style="font-size:12px;color:#b91c1c;">Permanently close your wallet</div>
+      </div>
+      <button class="btn btn-danger btn-sm" style="background:#991b1b;">Close Account</button>
     </div>
   </div>
 </div>

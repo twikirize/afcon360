@@ -35,7 +35,9 @@ from app.wallet.exceptions import (
     ComplianceBlockError
 )
 from app.utils.db_retry import retry_on_deadlock
+from app.utils.id_validator import assert_internal_id
 from app.wallet.services.currency_service import CurrencyService
+from app.wallet.services.commission_service import CommissionService
 
 # Money precision
 getcontext().prec = 28
@@ -239,6 +241,28 @@ class WalletService:
             # 6. Update daily volume
             self.account_repo.update_volume(account.id, float(amount), 'daily')
 
+            # 6b. Optional: record commission if metadata contains agent info
+            try:
+                agent_id = None
+                if metadata and isinstance(metadata, dict):
+                    agent_id = metadata.get('agent_id') or metadata.get('agent')
+
+                if agent_id:
+                    commission_service = CommissionService(self.db)
+                    commission_amount = commission_service.calculate_commission(amount, 'deposit')
+                    if commission_amount and commission_amount > 0:
+                        commission_service.record_commission(
+                            agent_id=agent_id,
+                            amount=commission_amount,
+                            currency=currency,
+                            source_type='deposit',
+                            source_id=str(tx.id),
+                            recipient_id=user_id,
+                            extra_data={'client_metadata': metadata}
+                        )
+            except Exception:
+                current_app.logger.exception('Failed to record commission for deposit')
+
             # 7. Audit log (INSIDE transaction - no silent failures)
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
@@ -383,6 +407,31 @@ class WalletService:
             # 7. Update daily volume
             self.account_repo.update_volume(account.id, float(amount), 'daily')
 
+            # 7b. Optional: record commission if agent facilitated this withdrawal
+            try:
+                agent_id = None
+                # check destination_details first, then metadata
+                if destination_details and isinstance(destination_details, dict):
+                    agent_id = destination_details.get('agent_id')
+                if not agent_id and metadata and isinstance(metadata, dict):
+                    agent_id = metadata.get('agent_id') or metadata.get('agent')
+
+                if agent_id:
+                    commission_service = CommissionService(self.db)
+                    commission_amount = commission_service.calculate_commission(amount, 'withdraw')
+                    if commission_amount and commission_amount > 0:
+                        commission_service.record_commission(
+                            agent_id=agent_id,
+                            amount=commission_amount,
+                            currency=currency,
+                            source_type='withdraw',
+                            source_id=str(tx.id),
+                            recipient_id=user_id,
+                            extra_data={'destination_details': destination_details or {}, 'client_metadata': metadata or {}}
+                        )
+            except Exception:
+                current_app.logger.exception('Failed to record commission for withdraw')
+
             # 8. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
@@ -425,7 +474,8 @@ class WalletService:
         note: Optional[str] = None,
         metadata: Optional[Dict] = None,
         platform_fee: Optional[Decimal] = None,
-        fee_currency: Optional[str] = None
+        fee_currency: Optional[str] = None,
+        pin: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Transfer funds with full atomicity.
@@ -464,6 +514,26 @@ class WalletService:
 
         self._validate_currency(currency)
         self._check_transaction_limit(amount, "transfer")
+
+        # Verify transaction PIN if user has one configured
+        try:
+            from app.identity.models.user import User
+            from app.wallet.exceptions import TransactionPINError
+
+            sender_user = User.get_by_private_id(from_user_id)
+            if sender_user and sender_user.transaction_pin_hash:
+                if not pin:
+                    raise TransactionPINError("Transaction PIN is required")
+                # verify using DB session so failed-attempts are persisted
+                ok = sender_user.verify_transaction_pin(pin, session=self.db)
+                if not ok:
+                    raise TransactionPINError("Invalid or locked PIN")
+        except TransactionPINError:
+            # bubble up to caller
+            raise
+        except Exception:
+            # non-fatal: if verification infrastructure missing, continue
+            pass
 
         # SINGLE TRANSACTION
         with self.db.begin():
@@ -563,6 +633,28 @@ class WalletService:
             
             self.ledger_repo.post_entries(ledger_entries)
 
+            # 6b. Optional: record commission for this transfer if agent info present
+            try:
+                agent_id = None
+                if metadata and isinstance(metadata, dict):
+                    agent_id = metadata.get('agent_id') or metadata.get('agent')
+
+                if agent_id:
+                    commission_service = CommissionService(self.db)
+                    commission_amount = commission_service.calculate_commission(amount, 'transfer', platform_fee)
+                    if commission_amount and commission_amount > 0:
+                        commission_service.record_commission(
+                            agent_id=agent_id,
+                            amount=commission_amount,
+                            currency=fee_currency or currency,
+                            source_type='transfer',
+                            source_id=str(tx.id),
+                            recipient_id=to_user_id,
+                            extra_data={'platform_fee': str(platform_fee) if platform_fee else None, 'client_metadata': metadata or {}}
+                        )
+            except Exception:
+                current_app.logger.exception('Failed to record commission for transfer')
+
             # 7. Update daily volume
             self.account_repo.update_volume(from_account.id, float(amount), 'daily')
 
@@ -614,12 +706,16 @@ class WalletService:
         Balance is derived from ledger entries, not stored.
         
         Args:
-            user_id: User ID
+            user_id: User ID (must be BIGINT internal ID)
             
         Returns:
             Dict with balance information
+            
+        Raises:
+            ValueError: If user_id is not a valid internal ID
         """
-        return self.wallet_repo.get_balance(user_id)
+        internal_user_id = assert_internal_id(user_id)
+        return self.wallet_repo.get_balance(internal_user_id)
 
     def get_transaction_history(
         self,

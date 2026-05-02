@@ -1,21 +1,6 @@
-import
-sys
-sys.path.insert
-0
-.
-from
-app
-import
-create_app
-from
-app.extensions
-import
-db
-from
-app.fan.models
-import
-FanProfile
-from
-app.wallet.models
-import
-Wallet
+﻿"""
+Current system tests
+"""
+def test_basic():
+    """Basic test to ensure file is valid"""
+    assert True

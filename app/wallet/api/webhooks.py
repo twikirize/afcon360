@@ -15,6 +15,7 @@ from app.wallet.services.payment_gateway import (
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.exceptions import PaymentError
 from app.extensions import db
+from app.wallet.models.webhook_event import WebhookEvent
 
 webhooks_bp = Blueprint('webhooks', __name__, url_prefix='/webhooks')
 
@@ -61,52 +62,24 @@ def flutterwave_webhook():
         return jsonify({"status": "error", "message": "Invalid signature"}), 401
     
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         event = data.get('event')
-        event_data = data.get('data', {})
-        
-        current_app.logger.info(f"Flutterwave webhook: {event}")
-        
-        # Handle different event types
-        if event == 'charge.completed':
-            tx_ref = event_data.get('txRef')
-            status = event_data.get('status')
-            
-            if status == 'successful':
-                # Verify the transaction
-                result = verify_payment(PaymentProvider.FLUTTERWAVE, tx_ref)
-                
-                if result.success:
-                    # Transaction is verified, deposit processed in service
-                    current_app.logger.info(f"Deposit confirmed: {tx_ref}")
-                    return jsonify({"status": "success"}), 200
-            else:
-                # Failed or cancelled
-                current_app.logger.warning(f"Payment failed: {tx_ref}, status: {status}")
-        
-        elif event == 'transfer.completed':
-            transfer_ref = event_data.get('reference')
-            transfer_status = event_data.get('status')
-            
-            current_app.logger.info(f"Transfer webhook: {transfer_ref} - {transfer_status}")
-            
-            # Verify the transfer
-            result = verify_payout(PaymentProvider.FLUTTERWAVE, transfer_ref)
-            
-            if result.success:
-                return jsonify({"status": "success"}), 200
-        
-        elif event == 'transfer.failed':
-            transfer_ref = event_data.get('reference')
-            reason = event_data.get('complete_message', 'Transfer failed')
-            
-            current_app.logger.error(f"Transfer failed: {transfer_ref}, reason: {reason}")
-            # TODO: Implement reversal logic
-            
-        return jsonify({"status": "received"}), 200
-        
+
+        # Enqueue webhook for background processing
+        we = WebhookEvent(
+            provider='flutterwave',
+            event_type=event,
+            payload=data,
+            signature=signature,
+            status='queued'
+        )
+        db.session.add(we)
+        db.session.commit()
+
+        current_app.logger.info(f"Enqueued Flutterwave webhook: {event} id={we.id}")
+        return jsonify({"status": "accepted", "id": we.id}), 202
     except Exception as e:
-        current_app.logger.error(f"Flutterwave webhook error: {str(e)}")
+        current_app.logger.error(f"Flutterwave webhook enqueue error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -122,40 +95,23 @@ def paystack_webhook():
         return jsonify({"status": "error", "message": "Invalid signature"}), 401
     
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         event = data.get('event')
-        event_data = data.get('data', {})
-        
-        current_app.logger.info(f"Paystack webhook: {event}")
-        
-        if event == 'charge.success':
-            reference = event_data.get('reference')
-            
-            # Verify the transaction
-            result = verify_payment(PaymentProvider.PAYSTACK, reference)
-            
-            if result.success:
-                current_app.logger.info(f"Payment confirmed: {reference}")
-                return jsonify({"status": "success"}), 200
-        
-        elif event == 'transfer.success':
-            reference = event_data.get('reference')
-            current_app.logger.info(f"Transfer successful: {reference}")
-            
-            result = verify_payout(PaymentProvider.PAYSTACK, reference)
-            if result.success:
-                return jsonify({"status": "success"}), 200
-        
-        elif event == 'transfer.failed':
-            reference = event_data.get('reference')
-            reason = event_data.get('complete_message', 'Transfer failed')
-            current_app.logger.error(f"Transfer failed: {reference}, reason: {reason}")
-            # TODO: Implement reversal
-        
-        return jsonify({"status": "received"}), 200
-        
+
+        we = WebhookEvent(
+            provider='paystack',
+            event_type=event,
+            payload=data,
+            signature=signature,
+            status='queued'
+        )
+        db.session.add(we)
+        db.session.commit()
+
+        current_app.logger.info(f"Enqueued Paystack webhook: {event} id={we.id}")
+        return jsonify({"status": "accepted", "id": we.id}), 202
     except Exception as e:
-        current_app.logger.error(f"Paystack webhook error: {str(e)}")
+        current_app.logger.error(f"Paystack webhook enqueue error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -170,42 +126,23 @@ def mtn_momo_webhook():
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
     
     try:
-        data = request.get_json()
-        
-        # MTN MOMO webhook structure
-        reference = data.get('reference')
-        status = data.get('status')
-        amount = data.get('amount')
-        currency = data.get('currency')
-        phone = data.get('payer', {}).get('partyId')
-        
-        current_app.logger.info(f"MTN MOMO webhook: {reference} - {status}")
-        
-        if status == 'SUCCESSFUL':
-            # Process successful mobile money payment
-            # Find user by phone number and credit wallet
-            from app.identity.models.user import User
-            user = User.query.filter_by(phone=phone).first()
-            
-            if user:
-                wallet_service = WalletService()
-                wallet_service.deposit(
-                    user_id=user.id,
-                    amount=float(amount),
-                    currency=currency,
-                    client_request_id=reference,
-                    metadata={
-                        "source": "mtn_momo",
-                        "phone": phone,
-                        "reference": reference
-                    }
-                )
-                return jsonify({"status": "success"}), 200
-        
-        return jsonify({"status": "received"}), 200
-        
+        data = request.get_json() or {}
+        event = data.get('event') or data.get('status')
+
+        we = WebhookEvent(
+            provider='mtn_momo',
+            event_type=event,
+            payload=data,
+            signature=api_key,
+            status='queued'
+        )
+        db.session.add(we)
+        db.session.commit()
+
+        current_app.logger.info(f"Enqueued MTN MOMO webhook id={we.id}")
+        return jsonify({"status": "accepted", "id": we.id}), 202
     except Exception as e:
-        current_app.logger.error(f"MTN MOMO webhook error: {str(e)}")
+        current_app.logger.error(f"MTN MOMO webhook enqueue error: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 
@@ -219,17 +156,23 @@ def airtel_money_webhook():
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
     
     try:
-        data = request.get_json()
-        reference = data.get('transactionId')
-        status = data.get('status')
-        
-        current_app.logger.info(f"Airtel Money webhook: {reference} - {status}")
-        
-        # Similar to MTN MOMO handling
-        return jsonify({"status": "received"}), 200
-        
+        data = request.get_json() or {}
+        event = data.get('status') or data.get('event')
+
+        we = WebhookEvent(
+            provider='airtel_money',
+            event_type=event,
+            payload=data,
+            signature=api_key,
+            status='queued'
+        )
+        db.session.add(we)
+        db.session.commit()
+
+        current_app.logger.info(f"Enqueued Airtel Money webhook id={we.id}")
+        return jsonify({"status": "accepted", "id": we.id}), 202
     except Exception as e:
-        current_app.logger.error(f"Airtel Money webhook error: {str(e)}")
+        current_app.logger.error(f"Airtel webhook enqueue error: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 
@@ -243,28 +186,23 @@ def generic_webhook():
     # This would check against partner API keys
     
     try:
-        data = request.get_json()
-        
-        current_app.logger.info(f"Generic webhook received: {data}")
-        
-        # Process based on event type
-        event_type = data.get('event_type')
-        
-        if event_type == 'deposit':
-            # Handle aggregator deposit
-            pass
-        elif event_type == 'withdrawal':
-            # Handle aggregator withdrawal
-            pass
-        elif event_type == 'reconciliation':
-            # Handle reconciliation request
-            pass
-        
-        return jsonify({"status": "received"}), 200
-        
+        data = request.get_json() or {}
+
+        we = WebhookEvent(
+            provider='generic',
+            event_type=data.get('event_type'),
+            payload=data,
+            signature=api_key,
+            status='queued'
+        )
+        db.session.add(we)
+        db.session.commit()
+
+        current_app.logger.info(f"Enqueued generic webhook id={we.id}")
+        return jsonify({"status": "accepted", "id": we.id}), 202
     except Exception as e:
-        current_app.logger.error(f"Generic webhook error: {str(e)}")
-        return jsonify({"status": "error"}), 500
+        current_app.logger.error(f"Generic webhook enqueue error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @webhooks_bp.route('/health', methods=['GET'])

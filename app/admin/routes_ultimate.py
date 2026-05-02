@@ -433,3 +433,29 @@ def suspend_user(user_id):
 def register_admin_routes(app):
     """Register the ultimate admin routes"""
     app.register_blueprint(admin_bp)
+
+
+# Wallet webhooks UI routes (admin pages rendering templates under templates/wallet)
+@admin_bp.route('/wallet/webhooks')
+@login_required
+@admin_required
+def wallet_webhooks():
+    """Render the webhook events list UI. Data is loaded via the admin API."""
+    return render_template('wallet/webhooks_list.html')
+
+
+@admin_bp.route('/wallet/webhooks/<int:event_id>')
+@login_required
+@admin_required
+def wallet_webhook_detail(event_id):
+    """Render the webhook event detail page. The page will fetch the event via API."""
+    return render_template('wallet/webhook_detail.html', event_id=event_id)
+
+
+@admin_bp.route('/wallet/webhooks/stats')
+@login_required
+@admin_required
+def wallet_webhooks_stats():
+    """Render webhook queue health dashboard UI."""
+    return render_template('wallet/webhooks_stats.html')
+

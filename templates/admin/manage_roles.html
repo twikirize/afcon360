@@ -270,7 +270,7 @@
                         <select name="user_id" class="form-select" required>
                             <option value="">Choose a user...</option>
                             {% for user in users %}
-                            <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                            <option value="{{ user.public_id }}">{{ user.username }} ({{ user.email }})</option>
                             {% endfor %}
                         </select>
                     </div>

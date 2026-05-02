@@ -1,4 +1,4 @@
-﻿{#
+{#
   FILE: templates/owner/super_admins.html
   LOCATION: /owner/super-admins (route: owner.super_admins)
 
@@ -176,7 +176,7 @@
                             <select name="user_id" class="form-select" required>
                                 <option value="">-- Choose a user to promote --</option>
                                 {% for user in regular_users %}
-                                <option value="{{ user.id }}">
+                                <option value="{{ user.public_id }}">
                                     {{ user.username }} ({{ user.email }})
                                     {% if user.is_verified %}✓ Verified{% endif %}
                                 </option>

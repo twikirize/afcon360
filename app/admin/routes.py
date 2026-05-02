@@ -23,6 +23,9 @@ from app.auth.decorators import (
 )
 from app.profile.models import get_profile_by_user
 from app.admin.models import ContentFlag
+from app.wallet.services.commission_service import CommissionService
+from app.wallet.repositories.commission_repository import CommissionRepository
+from app.extensions import db as _db
 
 # Import event-related modules
 try:
@@ -173,6 +176,41 @@ def super_dashboard():
         logger.error(f"Error loading dashboard: {e}")
         flash("Error loading dashboard.", "danger")
         return redirect(url_for('index'))
+
+
+@admin_bp.route('/wallet/commissions')
+@login_required
+@admin_required
+def admin_list_commissions():
+    try:
+        from app.wallet.models.commission import AgentCommission
+        pending = _db.session.query(AgentCommission).filter(AgentCommission.status == 'pending', AgentCommission.is_deleted == False).order_by(AgentCommission.created_at.desc()).all()
+        return render_template('admin/wallet_commissions.html', pending_commissions=pending)
+    except Exception as e:
+        logger.error(f"Error loading commissions: {e}")
+        flash("Error loading commissions", "danger")
+        return redirect(url_for('admin.super_dashboard'))
+
+
+@admin_bp.route('/wallet/commissions/<string:commission_ref>/pay', methods=['POST'])
+@login_required
+@admin_required
+def admin_pay_commission(commission_ref: str):
+    try:
+        repo = CommissionRepository()
+        with _db.session.begin():
+            commission = repo.get_by_ref(commission_ref)
+            if not commission:
+                flash('Commission not found', 'error')
+                return redirect(url_for('admin.admin_list_commissions'))
+            repo.mark_paid(commission_ref, paid_by=current_user.id)
+        flash('Commission marked as paid', 'success')
+        return redirect(url_for('admin.admin_list_commissions'))
+    except Exception as e:
+        _db.session.rollback()
+        logger.error(f"Error paying commission: {e}")
+        flash('Error marking commission as paid', 'danger')
+        return redirect(url_for('admin.admin_list_commissions'))
 
 
 # -----------------------------

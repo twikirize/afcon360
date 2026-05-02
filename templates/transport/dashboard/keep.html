@@ -366,7 +366,7 @@ setTimeout(() => {
 
 // Global config for JS modules
 const AFCON_CONFIG = {
-    userId: {{ current_user.id|tojson }},
+    userId: {{ current_user.public_id|tojson }},
     userRole: {{ current_user.role|tojson if current_user.role is defined else '"user"'|safe }},
     apiBase: '/api/transport',
 };

@@ -272,7 +272,7 @@
             <div class="user-info">
                 <h1>{{ user.username }}</h1>
                 <p>{{ user.email or 'No email provided' }}</p>
-                <p>User ID: {{ user.user_id if user.user_id else user.id }}</p>
+                <p>User ID: {{ user.public_id }}</p>
             </div>
         </div>
     </div>
@@ -384,7 +384,7 @@
         </a>
 
         {% if not user.is_verified %}
-        <form method="post" action="{{ url_for('admin_ultimate.verify_user', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;">
+        <form method="post" action="{{ url_for('admin_ultimate.verify_user', user_id=user.public_id) }}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-verify">
                 <i class="bi bi-check-circle"></i> Verify User
@@ -393,14 +393,14 @@
         {% endif %}
 
         {% if not user.is_active %}
-        <form method="post" action="{{ url_for('admin_ultimate.activate_user', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;">
+        <form method="post" action="{{ url_for('admin_ultimate.activate_user', user_id=user.public_id) }}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-activate">
                 <i class="bi bi-person-check"></i> Activate
             </button>
         </form>
         {% else %}
-        <form method="post" action="{{ url_for('admin_ultimate.deactivate_user', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;">
+        <form method="post" action="{{ url_for('admin_ultimate.deactivate_user', user_id=user.public_id) }}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-deactivate">
                 <i class="bi bi-person-x"></i> Deactivate
@@ -408,22 +408,22 @@
         </form>
         {% endif %}
 
-        <form method="post" action="{{ url_for('admin_ultimate.promote_user', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;">
+        <form method="post" action="{{ url_for('admin_ultimate.promote_user', user_id=user.public_id) }}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-promote">
                 <i class="bi bi-arrow-up"></i> Promote
             </button>
         </form>
 
-        <form method="post" action="{{ url_for('admin_ultimate.demote_user', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;">
+        <form method="post" action="{{ url_for('admin_ultimate.demote_user', user_id=user.public_id) }}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-demote">
                 <i class="bi bi-arrow-down"></i> Demote
             </button>
         </form>
 
-        {% if user.user_id != current_user.user_id %}
-        <form method="post" action="{{ url_for('admin_ultimate.sign_in_as', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;">
+        {% if user.public_id != current_user.public_id %}
+        <form method="post" action="{{ url_for('admin_ultimate.sign_in_as', user_id=user.public_id) }}" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-impersonate" title="Sign in as this user">
                 <i class="bi bi-person-badge"></i> Impersonate
@@ -431,7 +431,7 @@
         </form>
         {% endif %}
 
-        <form method="post" action="{{ url_for('admin_ultimate.delete_user', user_id=user.user_id if user.user_id else user.id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently? This action cannot be undone and will remove all user data.')">
+        <form method="post" action="{{ url_for('admin_ultimate.delete_user', user_id=user.public_id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently? This action cannot be undone and will remove all user data.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-delete" title="Delete user permanently">
                 <i class="bi bi-trash"></i> Delete

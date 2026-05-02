@@ -172,7 +172,7 @@
             <div style="font-size: 11px; color: var(--muted);">{{ case.user.email }}</div>
           </div>
         </div>
-        <a href="{{ url_for('compliance.user_audit', user_id=case.user.id) }}" class="btn btn-sm btn-secondary w-100">View User Profile</a>
+        <a href="{{ url_for('compliance.user_audit', user_id=case.user.public_id) }}" class="btn btn-sm btn-secondary w-100">View User Profile</a>
         {% elif case.organisation %}
         <div style="margin-bottom: 12px;">
           <div style="font-weight: 600;">{{ case.organisation.name }}</div>
