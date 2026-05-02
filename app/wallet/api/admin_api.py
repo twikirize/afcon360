@@ -1,343 +1,271 @@
 """
-app/wallet/api/admin_api.py
-Admin API endpoints for wallet management.
-Uses UUID-based user identification for external exposure.
+Admin API for wallet management, compliance, and regulatory oversight
+Role-based access: regulators, aggregators, auditors, compliance officers
 """
 
-from flask import Blueprint, request, jsonify, current_app, render_template, redirect, url_for, flash
-from flask_login import login_required, current_user
-from decimal import Decimal
-from datetime import datetime
+from functools import wraps
+from flask import Blueprint, request, jsonify, g
+from flask_login import current_user, login_required
+from datetime import datetime, timedelta
 
-from app.auth.policy import can
-from app.wallet.middleware.kill_switch import wallet_enabled, require_wallet_enabled
+from app.extensions import db
+from app.wallet.models.transaction import TransactionModel, TransactionStatus, TransactionType
+from app.wallet.models.ledger import AccountModel, LedgerEntryModel
+from app.wallet.models.audit import AuditLogModel
+from app.wallet.models.fx import FXRateModel, FXTransactionModel
 from app.wallet.services.wallet_service import WalletService
-from app.wallet.services.wallet_admin_service import WalletAdminService
-from app.wallet.services.payout_service import PayoutService
-from app.wallet.exceptions import (
-    WalletNotFoundError,
-    WalletFrozenError,
-    WalletError
-)
-from app.identity.models.user import User
+from app.wallet.services.compliance_engine import check_transaction, get_country_requirements
+from app.wallet.services.regulatory_reporting import generate_str_report, generate_ctr_report
+from app.wallet.services.payment_gateway import get_provider_status
 
-admin_wallet_bp = Blueprint('admin_wallet_api', __name__, url_prefix='/api/admin/wallet')
+admin_api_bp = Blueprint('wallet_admin_api', __name__, url_prefix='/api/admin/wallet')
 
 
-def require_admin():
-    """Decorator to check admin permission."""
+def require_any_role(*roles):
+    """Decorator to require any of the specified roles"""
     def decorator(f):
-        from functools import wraps
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not can(current_user, 'system.manage'):
-                return jsonify({
-                    "status": "error",
-                    "code": "UNAUTHORIZED",
-                    "message": "Admin access required"
-                }), 403
+            if not current_user.is_authenticated:
+                return jsonify({"error": "Authentication required"}), 401
+            
+            if not any(current_user.has_role(role) for role in roles):
+                return jsonify({"error": f"Requires one of roles: {roles}"}), 403
+            
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
 
-# ============================================================================
-# CORE ENDPOINTS
-# ============================================================================
+# ============== REGULATOR APIs ==============
 
-@admin_wallet_bp.route('/toggle', methods=['POST'])
+@admin_api_bp.route('/regulator/dashboard', methods=['GET'])
 @login_required
-@require_admin()
-def toggle_wallet():
-    """Toggle wallet module ON/OFF."""
-    data = request.get_json()
-    enabled = data.get('enabled')
+@require_any_role('regulator', 'central_bank', 'financial_authority')
+def regulator_dashboard():
+    """Regulator dashboard with system-wide statistics"""
+    
+    # Total system volume
+    total_volume = db.session.query(
+        db.func.sum(LedgerEntryModel.amount)
+    ).filter(LedgerEntryModel.entry_type == 'CREDIT').scalar() or 0
+    
+    # Active users
+    active_users = db.session.query(
+        db.func.count(db.distinct(AccountModel.user_id))
+    ).scalar()
+    
+    # Transaction statistics (last 30 days)
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    
+    txn_stats = db.session.query(
+        db.func.count(TransactionModel.id).label('total'),
+        db.func.sum(TransactionModel.amount).label('volume'),
+        db.func.avg(TransactionModel.amount).label('average'),
+    ).filter(
+        TransactionModel.created_at >= thirty_days_ago
+    ).first()
+    
+    # Currency breakdown
+    currency_stats = db.session.query(
+        TransactionModel.currency,
+        db.func.count(TransactionModel.id).label('count'),
+        db.func.sum(TransactionModel.amount).label('volume')
+    ).filter(
+        TransactionModel.created_at >= thirty_days_ago,
+        TransactionModel.status == TransactionStatus.COMPLETED
+    ).group_by(TransactionModel.currency).all()
+    
+    frozen_accounts = db.session.query(
+        db.func.count(AccountModel.id)
+    ).filter(AccountModel.is_frozen == True).scalar()
+    
+    return jsonify({
+        "system_overview": {
+            "total_volume_all_time": float(total_volume),
+            "active_users": active_users,
+            "frozen_accounts": frozen_accounts
+        },
+        "last_30_days": {
+            "total_transactions": txn_stats.total or 0,
+            "total_volume": float(txn_stats.volume or 0),
+            "average_transaction": float(txn_stats.average or 0),
+        },
+        "currency_breakdown": [
+            {
+                "currency": curr,
+                "transactions": count,
+                "volume": float(volume)
+            }
+            for curr, count, volume in currency_stats
+        ]
+    })
 
-    if enabled is None:
-        return jsonify({
-            "status": "error",
-            "code": "VALIDATION_ERROR",
-            "message": "enabled field required (true/false)"
-        }), 400
 
-    current_app.config["MODULE_FLAGS"]["wallet"] = enabled
-    current_app.logger.warning(
-        f"Wallet module {'ENABLED' if enabled else 'DISABLED'} by admin user {current_user.user_id}"
+@admin_api_bp.route('/regulator/transactions', methods=['GET'])
+@login_required
+@require_any_role('regulator', 'central_bank', 'financial_authority')
+def regulator_transaction_search():
+    """Search all transactions (regulator view)"""
+    
+    user_id = request.args.get('user_id', type=int)
+    min_amount = request.args.get('min_amount', type=float)
+    max_amount = request.args.get('max_amount', type=float)
+    currency = request.args.get('currency')
+    
+    query = TransactionModel.query
+    
+    if user_id:
+        query = query.filter(TransactionModel.user_id == user_id)
+    if min_amount:
+        query = query.filter(TransactionModel.amount >= min_amount)
+    if max_amount:
+        query = query.filter(TransactionModel.amount <= max_amount)
+    if currency:
+        query = query.filter(TransactionModel.currency == currency)
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    
+    pagination = query.order_by(TransactionModel.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
     )
-
+    
     return jsonify({
-        "status": "success",
-        "data": {
-            "wallet_enabled": enabled,
-            "message": f"Wallet module {'enabled' if enabled else 'disabled'} successfully"
+        "transactions": [
+            {
+                "id": str(tx.id),
+                "user_id": tx.user_id,
+                "type": tx.tx_type.value,
+                "status": tx.status.value,
+                "amount": float(tx.amount),
+                "currency": tx.currency,
+            }
+            for tx in pagination.items
+        ],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": pagination.total,
+            "pages": pagination.pages
         }
     })
 
 
-@admin_wallet_bp.route('/status', methods=['GET'])
+@admin_api_bp.route('/regulator/reports/str', methods=['POST'])
 @login_required
-def wallet_status():
-    """Get current wallet module status."""
-    enabled = wallet_enabled()
+@require_any_role('regulator', 'compliance_officer', 'financial_authority')
+def generate_str():
+    """Generate Suspicious Transaction Report"""
+    data = request.get_json()
+    country_code = data.get('country_code', 'NG')
+    days = data.get('days', 7)
+    
+    report = generate_str_report(country_code, days)
+    
     return jsonify({
-        "status": "success",
-        "data": {
-            "wallet_enabled": enabled,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        "report_type": "STR",
+        "country": country_code,
+        "period_days": days,
+        "generated_at": datetime.utcnow().isoformat(),
+        "data": report
     })
 
 
-@admin_wallet_bp.route('/users/<string:user_id>/balance', methods=['GET'])
-@login_required
-@require_admin()
-def get_user_balance(user_id):
-    """Get balance for any user by UUID."""
-    try:
-        user = User.query.filter_by(public_id=user_id).first_or_404()
-        service = WalletService()
-        balance = service.get_balance(user.id) # Internal logic uses BigInt id
+# ============== AUDITOR APIs ==============
 
+@admin_api_bp.route('/auditor/reconciliation', methods=['GET'])
+@login_required
+@require_any_role('auditor', 'regulator')
+def auditor_reconciliation():
+    """Reconciliation report - verify all debits equal credits"""
+    
+    totals = db.session.query(
+        LedgerEntryModel.entry_type,
+        db.func.sum(LedgerEntryModel.amount).label('total'),
+        db.func.count(LedgerEntryModel.id).label('count')
+    ).group_by(LedgerEntryModel.entry_type).all()
+    
+    debit_total = sum(t.total for t in totals if t.entry_type.value == 'DEBIT') or 0
+    credit_total = sum(t.total for t in totals if t.entry_type.value == 'CREDIT') or 0
+    
+    is_balanced = abs(float(debit_total) - float(credit_total)) < 0.01
+    
+    return jsonify({
+        "reconciliation_status": "balanced" if is_balanced else "imbalance_detected",
+        "total_debits": float(debit_total),
+        "total_credits": float(credit_total),
+        "difference": float(debit_total) - float(credit_total),
+        "checked_at": datetime.utcnow().isoformat()
+    })
+
+
+# ============== COMPLIANCE APIs ==============
+
+@admin_api_bp.route('/compliance/freeze-account', methods=['POST'])
+@login_required
+@require_any_role('compliance_officer', 'admin', 'super_admin')
+def compliance_freeze_account():
+    """Freeze account for compliance reasons"""
+    data = request.get_json()
+    account_id = data.get('account_id')
+    reason = data.get('reason')
+    
+    if not account_id or not reason:
+        return jsonify({"error": "account_id and reason required"}), 400
+    
+    try:
+        account = AccountModel.query.get(account_id)
+        if not account:
+            return jsonify({"error": "Account not found"}), 404
+        
+        account.is_frozen = True
+        account.frozen_reason = reason
+        account.frozen_at = datetime.utcnow()
+        account.frozen_by = current_user.id
+        
+        db.session.commit()
+        
         return jsonify({
-            "status": "success",
-            "data": {
-                "user_id": user.user_id,
-                "balance": balance
-            }
+            "success": True,
+            "message": f"Account {account_id} frozen"
         })
+        
     except Exception as e:
-        current_app.logger.error(f"Admin balance error for user {user_id}: {e}")
-        return jsonify({"status": "error", "message": "Unable to retrieve balance"}), 500
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
-@admin_wallet_bp.route('/users/<string:user_id>/transactions', methods=['GET'])
+# ============== SYSTEM ADMIN APIs ==============
+
+@admin_api_bp.route('/system/payment-providers', methods=['GET'])
 @login_required
-@require_admin()
-def get_user_transactions(user_id):
-    """Get transaction history for any user by UUID."""
+@require_any_role('admin', 'super_admin', 'owner')
+def system_payment_providers():
+    """Get payment provider status"""
+    status = get_provider_status()
+    
+    return jsonify({
+        "payment_providers": status,
+        "configured_count": sum(1 for v in status.values() if v),
+        "total_providers": len(status)
+    })
+
+
+@admin_api_bp.route('/system/health', methods=['GET'])
+def system_health():
+    """Public health check endpoint"""
+    
     try:
-        user = User.query.filter_by(public_id=user_id).first_or_404()
-        limit = min(request.args.get('limit', 50, type=int), 100)
-        offset = request.args.get('offset', 0, type=int)
-        transaction_type = request.args.get('type')
-
-        service = WalletService()
-        result = service.get_transaction_history(
-            user_id=user.id, # Internal logic uses BigInt id
-            limit=limit,
-            offset=offset,
-            transaction_type=transaction_type
-        )
-
-        return jsonify({
-            "status": "success",
-            "data": {
-                "user_id": user.user_id,
-                **result
-            }
-        })
-    except Exception as e:
-        current_app.logger.error(f"Admin transactions error for user {user_id}: {e}")
-        return jsonify({"status": "error", "message": "Unable to retrieve transactions"}), 500
+        db.session.execute('SELECT 1')
+        db_healthy = True
+    except:
+        db_healthy = False
+    
+    return jsonify({
+        "status": "healthy" if db_healthy else "unhealthy",
+        "timestamp": datetime.utcnow().isoformat(),
+    })
 
 
-# ============================================================================
-# WALLET MANAGEMENT
-# ============================================================================
-
-@admin_wallet_bp.route('/wallets', methods=['GET'])
-@login_required
-@require_admin()
-def list_wallets():
-    """List all wallets with pagination and filters."""
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 100)
-        search = request.args.get('search')
-        status = request.args.get('status')
-        verified = request.args.get('verified', '').lower() == 'true' if 'verified' in request.args else None
-        frozen = request.args.get('frozen', '').lower() == 'true' if 'frozen' in request.args else None
-
-        admin_service = WalletAdminService()
-        result = admin_service.list_all_wallets(
-            page=page, per_page=per_page, search=search,
-            status=status, verified=verified, frozen=frozen
-        )
-
-        return jsonify({"status": "success", "data": result})
-    except Exception as e:
-        current_app.logger.error(f"Error listing wallets: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@admin_wallet_bp.route('/wallets/<string:user_id>', methods=['GET'])
-@login_required
-@require_admin()
-def get_wallet_details(user_id):
-    """Get detailed wallet information by User UUID."""
-    try:
-        user = User.query.filter_by(public_id=user_id).first_or_404()
-        admin_service = WalletAdminService()
-        result = admin_service.get_wallet_details(user.id) # Internal BigInt
-
-        return jsonify({"status": "success", "data": result})
-    except WalletNotFoundError as e:
-        return jsonify({"status": "error", "message": str(e)}), 404
-    except Exception as e:
-        current_app.logger.error(f"Error getting wallet details for user {user_id}: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@admin_wallet_bp.route('/wallets/<string:user_id>/freeze', methods=['POST'])
-@login_required
-@require_admin()
-def freeze_wallet(user_id):
-    """Freeze a wallet using User UUID."""
-    try:
-        user = User.query.filter_by(public_id=user_id).first_or_404()
-        data = request.get_json() or {}
-        reason = data.get('reason', '').strip()
-        if not reason:
-            return jsonify({"status": "error", "message": "Reason required"}), 400
-
-        admin_service = WalletAdminService()
-        admin_service.freeze_wallet(
-            user_id=user.id,
-            admin_user_id=current_user.id,
-            reason=reason,
-            notes=data.get('notes', '')
-        )
-
-        return jsonify({
-            "status": "success",
-            "message": f"Wallet for user {user_id} frozen",
-            "data": {"user_id": user.user_id, "reason": reason}
-        })
-    except WalletNotFoundError as e:
-        return jsonify({"status": "error", "message": str(e)}), 404
-    except Exception as e:
-        current_app.logger.error(f"Error freezing wallet for user {user_id}: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@admin_wallet_bp.route('/wallets/<string:user_id>/unfreeze', methods=['POST'])
-@login_required
-@require_admin()
-def unfreeze_wallet(user_id):
-    """Unfreeze a wallet using User UUID."""
-    try:
-        user = User.query.filter_by(public_id=user_id).first_or_404()
-        data = request.get_json() or {}
-        admin_service = WalletAdminService()
-        admin_service.unfreeze_wallet(
-            user_id=user.id,
-            admin_user_id=current_user.id,
-            reason=data.get('reason', '')
-        )
-        return jsonify({"status": "success", "message": f"Wallet for user {user_id} unfrozen"})
-    except WalletNotFoundError as e:
-        return jsonify({"status": "error", "message": str(e)}), 404
-    except Exception as e:
-        current_app.logger.error(f"Error unfreezing wallet for user {user_id}: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@admin_wallet_bp.route('/wallets/<string:user_id>/adjust', methods=['POST'])
-@login_required
-@require_admin()
-def adjust_balance(user_id):
-    """Manually adjust wallet balance using User UUID."""
-    try:
-        user = User.query.filter_by(public_id=user_id).first_or_404()
-        data = request.get_json() or {}
-        amount = Decimal(str(data.get('amount', '0')))
-        currency = data.get('currency', 'USD').upper()
-        reason = data.get('reason', '').strip()
-
-        if not reason:
-            return jsonify({"status": "error", "message": "Reason required"}), 400
-
-        admin_service = WalletAdminService()
-        result = admin_service.adjust_balance(
-            user_id=user.id,
-            admin_user_id=current_user.id,
-            amount=amount,
-            currency=currency,
-            reason=reason,
-            notes=data.get('notes', '')
-        )
-
-        return jsonify({"status": "success", "data": result})
-    except WalletNotFoundError as e:
-        return jsonify({"status": "error", "message": str(e)}), 404
-    except Exception as e:
-        current_app.logger.error(f"Error adjusting balance for user {user_id}: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@admin_wallet_bp.route('/stats/detailed', methods=['GET'])
-@login_required
-@require_admin()
-def get_detailed_wallet_stats():
-    """Get comprehensive system statistics."""
-    try:
-        admin_service = WalletAdminService()
-        return jsonify({"status": "success", "data": admin_service.get_wallet_stats()})
-    except Exception as e:
-        current_app.logger.error(f"Error getting wallet stats: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@admin_wallet_bp.route('/control', methods=['GET'])
-@login_required
-@require_admin()
-def wallet_control():
-    """Render wallet control page."""
-    return render_template('admin/wallet_control.html')
-
-
-# ============================================================================
-# PAYOUT MANAGEMENT
-# ============================================================================
-
-@admin_wallet_bp.route('/payouts', methods=['GET'], endpoint="admin_list_payouts")
-@login_required
-@require_admin()
-def admin_list_payouts():
-    """List all payout requests for admin review."""
-    status = request.args.get('status')
-    limit = request.args.get('limit', 50, type=int)
-
-    payout_service = PayoutService()
-    requests = payout_service.list_requests(status=status, limit=limit)
-
-    return render_template('admin_payouts.html', requests=requests)
-
-
-@admin_wallet_bp.route('/payouts/<int:req_id>/process', methods=['POST'], endpoint="admin_process_payout")
-@login_required
-@require_admin()
-def admin_process_payout(req_id):
-    """Process a payout request (approve/reject/mark_paid)."""
-    action = request.form.get('action')
-    notes = request.form.get('notes', '')
-
-    payout_service = PayoutService()
-
-    try:
-        if action == 'approve':
-            payout_service.approve_request(req_id, current_user.id, notes)
-            flash(f"Payout request #{req_id} approved.", "success")
-        elif action == 'reject':
-            reason = notes or "Rejected by admin"
-            payout_service.reject_request(req_id, current_user.id, reason)
-            flash(f"Payout request #{req_id} rejected.", "warning")
-        elif action == 'mark_paid':
-            payout_service.mark_as_paid(req_id, current_user.id, notes=notes)
-            flash(f"Payout request #{req_id} marked as paid.", "success")
-        else:
-            flash("Invalid action specified.", "danger")
-    except Exception as e:
-        flash(f"Error processing payout: {str(e)}", "danger")
-
-    return redirect(url_for('admin_wallet_api.admin_list_payouts'))
+__all__ = ['admin_api_bp']

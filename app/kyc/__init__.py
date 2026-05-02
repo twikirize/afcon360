@@ -28,3 +28,13 @@ def get_kyc_service():
 def get_kyc_bp():
     from app.kyc.routes import kyc_bp
     return kyc_bp
+
+# Register with moderator system
+try:
+    from app.admin.moderator.registry import register_module
+    from flask import url_for
+    register_module('kyc_document', 'KYC Document',
+                   review_url_fn=lambda id: url_for('kyc.moderate_document', id=id),
+                   module_name='KYC', icon='fa-id-card')
+except Exception:
+    pass

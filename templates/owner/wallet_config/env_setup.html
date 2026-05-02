@@ -1,0 +1,290 @@
+{% extends "owner/layout.html" %}
+
+{% block title %}.env Setup Guide - Owner Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">Environment Variables Setup</h1>
+            <p class="text-muted mb-0">Configure payment providers via .env file</p>
+        </div>
+        <a href="{{ url_for('wallet_config.index') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Wallet Config
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Setup Instructions -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-book me-2"></i>Setup Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle me-2"></i>Two Configuration Options</h6>
+                        <p class="mb-0">You can configure payment providers in two ways:</p>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card h-100 border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <strong><i class="fas fa-database me-2"></i>Option 1: Database (Recommended)</strong>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-unstyled mb-0">
+                                        <li><i class="fas fa-check text-success me-2"></i>API keys encrypted at rest</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>Changes take effect immediately</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>No restart required</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>Owner dashboard interface</li>
+                                    </ul>
+                                </div>
+                                <div class="card-footer">
+                                    <a href="{{ url_for('wallet_config.providers') }}" class="btn btn-primary w-100">
+                                        Configure in Database
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card h-100 border-secondary">
+                                <div class="card-header bg-secondary text-white">
+                                    <strong><i class="fas fa-file-code me-2"></i>Option 2: Environment Variables</strong>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-unstyled mb-0">
+                                        <li><i class="fas fa-check text-success me-2"></i>Highest security</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>No database storage</li>
+                                        <li><i class="fas fa-times text-danger me-2"></i>Requires app restart</li>
+                                        <li><i class="fas fa-times text-danger me-2"></i>Manual file editing</li>
+                                    </ul>
+                                </div>
+                                <div class="card-footer">
+                                    <span class="text-muted small">See template below</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="mb-3">Steps to Configure via .env:</h6>
+                    <ol class="list-group list-group-numbered mb-4">
+                        <li class="list-group-item">
+                            <strong>Locate your .env file</strong>
+                            <p class="text-muted mb-0">Find the <code>.env</code> file in your project root directory</p>
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Get API keys from providers</strong>
+                            <p class="text-muted mb-0">
+                                <a href="https://dashboard.flutterwave.com" target="_blank">Flutterwave Dashboard</a> |
+                                <a href="https://dashboard.paystack.com" target="_blank">Paystack Dashboard</a>
+                            </p>
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Copy the template below</strong>
+                            <p class="text-muted mb-0">Add the relevant configuration to your .env file</p>
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Restart the application</strong>
+                            <p class="text-muted mb-0">Environment variables require an application restart to take effect</p>
+                        </li>
+                    </ol>
+
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Security Warning</h6>
+                        <p class="mb-0">Never commit your <code>.env</code> file to version control. Add <code>.env</code> to your <code>.gitignore</code> file.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- .env Template -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-file-code me-2"></i>.env Template</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="copyToClipboard()">
+                        <i class="fas fa-copy me-2"></i>Copy to Clipboard
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <pre class="mb-0"><code class="language-bash bg-light p-3 d-block" id="envTemplate">{{ env_template }}</code></pre>
+                </div>
+            </div>
+
+            <!-- Provider-Specific Instructions -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-plug me-2"></i>Provider-Specific Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Flutterwave -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">Flutterwave</h6>
+                        <ol>
+                            <li>Sign up at <a href="https://flutterwave.com" target="_blank">flutterwave.com</a></li>
+                            <li>Go to Settings > API Keys</li>
+                            <li>Copy your Secret Key, Public Key, and Encryption Key</li>
+                            <li>Set <code>FLUTTERWAVE_SANDBOX=true</code> for testing</li>
+                            <li>Add your webhook URL in Flutterwave dashboard:<br>
+                                <code>{{ request.url_root }}webhooks/flutterwave</code>
+                            </li>
+                        </ol>
+                    </div>
+
+                    <!-- Paystack -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">Paystack</h6>
+                        <ol>
+                            <li>Sign up at <a href="https://paystack.com" target="_blank">paystack.com</a></li>
+                            <li>Go to Settings > API Keys & Webhooks</li>
+                            <li>Copy your Secret Key and Public Key</li>
+                            <li>Set <code>PAYSTACK_SANDBOX=true</code> for testing</li>
+                            <li>Add your webhook URL in Paystack dashboard:<br>
+                                <code>{{ request.url_root }}webhooks/paystack</code>
+                            </li>
+                        </ol>
+                    </div>
+
+                    <!-- MTN Mobile Money -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">MTN Mobile Money</h6>
+                        <ol>
+                            <li>Contact MTN Mobile Money team for API access</li>
+                            <li>Get your API Key, API User, and API Secret</li>
+                            <li>Set <code>MTN_MOMO_SANDBOX=true</code> for testing</li>
+                            <li>Configure callback URL:<br>
+                                <code>{{ request.url_root }}webhooks/mtn-momo</code>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Quick Links -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Quick Links</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('wallet_config.providers') }}" class="list-group-item list-group-item-action px-0">
+                            <i class="fas fa-plug me-2 text-primary"></i>Manage Providers
+                        </a>
+                        <a href="{{ url_for('wallet_config.system_config') }}" class="list-group-item list-group-item-action px-0">
+                            <i class="fas fa-cog me-2 text-success"></i>System Settings
+                        </a>
+                        <a href="https://developer.flutterwave.com/docs" target="_blank" class="list-group-item list-group-item-action px-0">
+                            <i class="fas fa-external-link-alt me-2 text-warning"></i>Flutterwave Docs
+                        </a>
+                        <a href="https://paystack.com/docs" target="_blank" class="list-group-item list-group-item-action px-0">
+                            <i class="fas fa-external-link-alt me-2 text-info"></i>Paystack Docs
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Configuration -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Current Environment Status</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-borderless">
+                        <tr>
+                            <td class="text-muted">Flutterwave:</td>
+                            <td>
+                                {% if env_status.flutterwave %}
+                                <span class="badge bg-success">Configured</span>
+                                {% else %}
+                                <span class="badge bg-warning">Not Set</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Paystack:</td>
+                            <td>
+                                {% if env_status.paystack %}
+                                <span class="badge bg-success">Configured</span>
+                                {% else %}
+                                <span class="badge bg-warning">Not Set</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">MTN MOMO:</td>
+                            <td>
+                                {% if env_status.mtn_momo %}
+                                <span class="badge bg-success">Configured</span>
+                                {% else %}
+                                <span class="badge bg-warning">Not Set</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Airtel Money:</td>
+                            <td>
+                                {% if env_status.airtel_money %}
+                                <span class="badge bg-success">Configured</span>
+                                {% else %}
+                                <span class="badge bg-warning">Not Set</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                    <div class="alert alert-info small mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        These are read from the current .env file. Database configuration can override these values.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Support -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Need Help?</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted">If you're having trouble configuring payment providers:</p>
+                    <ul class="small text-muted">
+                        <li>Check provider documentation for correct API credentials</li>
+                        <li>Ensure webhook URLs are publicly accessible</li>
+                        <li>Verify SSL certificates are valid</li>
+                        <li>Use sandbox mode for initial testing</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyToClipboard() {
+    const template = document.getElementById('envTemplate').innerText;
+    navigator.clipboard.writeText(template).then(function() {
+        alert('.env template copied to clipboard!');
+    }, function(err) {
+        console.error('Could not copy text: ', err);
+        // Fallback
+        const textarea = document.createElement('textarea');
+        textarea.value = template;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('.env template copied to clipboard!');
+    });
+}
+</script>
+{% endblock %}
+</CodeContent>
+<parameter>EmptyFile=false</parameter>
+</function>
+
+<function=read_file>
+<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\admin\owner\routes.py

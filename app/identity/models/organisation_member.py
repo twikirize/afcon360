@@ -104,13 +104,24 @@ class OrganisationMember(BaseModel):
                 perms.update(our.role.permission_names)
 
         # 2 & 3. Direct permission overrides
-        for dp in self.direct_permissions:
-            if not dp.permission:
-                continue
-            if dp.granted:
-                perms.add(dp.permission.name)
-            else:
-                perms.discard(dp.permission.name)
+        # Use permission_id FK directly; never walk dp.permission (lazy-loaded relationship)
+        direct_perm_ids = [(dp.permission_id, dp.granted) for dp in self.direct_permissions]
+        if direct_perm_ids:
+            from app.identity.models.roles_permission import Permission
+            perm_ids = [pid for (pid, _) in direct_perm_ids]
+            perm_rows = (
+                db.session.query(Permission.id, Permission.name)
+                .filter(Permission.id.in_(perm_ids))
+                .all()
+            )
+            id_to_name = {pid: name for (pid, name) in perm_rows}
+            for perm_id, granted in direct_perm_ids:
+                name = id_to_name.get(perm_id)
+                if name:
+                    if granted:
+                        perms.add(name)
+                    else:
+                        perms.discard(name)
 
         # org_owner gets all org.* permissions unconditionally
         if any(our.role and our.role.name == "org_owner" for our in self.roles):
@@ -218,13 +229,31 @@ class OrgRole(BaseModel):
     template_name   = Column(String(64), nullable=True, index=True)
 
     organisation = relationship("Organisation", back_populates="custom_roles")
-    permissions  = relationship("OrgRolePermission", back_populates="role", cascade="all, delete-orphan")
+    permissions  = relationship(
+        "OrgRolePermission",
+        back_populates="role",
+        cascade="all, delete-orphan",
+        lazy="raise",  # Fail fast if code tries to lazy-load from detached object
+    )
     assignments  = relationship("OrgUserRole", back_populates="role")
 
     @property
     def permission_names(self) -> set[str]:
-        """Return all permission name strings granted to this role."""
-        return {rp.permission.name for rp in self.permissions if rp.permission}
+        """Return all permission name strings granted to this role.
+
+        Queries the database directly — safe to call even on detached objects.
+        """
+        if not self.id:
+            return set()
+        # Query DB directly using org_role_id FK; never walks lazy-loaded relationships
+        from app.identity.models.roles_permission import Permission
+        rows = (
+            db.session.query(Permission.name)
+            .join(OrgRolePermission, OrgRolePermission.permission_id == Permission.id)
+            .filter(OrgRolePermission.org_role_id == self.id)
+            .all()
+        )
+        return {name for (name,) in rows}
 
     def __repr__(self) -> str:
         return (

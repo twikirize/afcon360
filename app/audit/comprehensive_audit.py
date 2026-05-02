@@ -638,3 +638,17 @@ class AuditService:
         """
         from app.compliance.logger import ComplianceLogger
         return ComplianceLogger.log_decision(**kwargs)
+
+    @staticmethod
+    def moderator_view(entity_type: str, user_id: int, ip_address: str = None, **kwargs):
+        """
+        Log a moderator viewing action.
+        """
+        return AuditService.security(
+            event_type=f"moderator_view_{entity_type}",
+            severity="info",
+            description=f"Moderator {user_id} viewed {entity_type}",
+            user_id=user_id,
+            ip_address=ip_address,
+            **kwargs
+        )

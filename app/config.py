@@ -72,6 +72,11 @@ class Config:
     RATELIMIT_HEADERS_ENABLED = True
     RATELIMIT_SWALLOW_ERRORS = False
 
+    # Database isolation level for transaction safety (P0 Critical)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "isolation_level": os.getenv("DB_ISOLATION_LEVEL", "REPEATABLE_READ")
+    }
+
     # ============================================================================
     # MODULE TOGGLES (KILL SWITCHES)
     # ============================================================================

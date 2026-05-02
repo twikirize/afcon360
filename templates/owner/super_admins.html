@@ -1,4 +1,4 @@
-{#
+﻿{#
   FILE: templates/owner/super_admins.html
   LOCATION: /owner/super-admins (route: owner.super_admins)
 
@@ -78,7 +78,7 @@
             </p>
         </div>
         <div>
-            <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary">
+            <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Owner Dashboard
             </a>
         </div>
@@ -227,7 +227,7 @@
                         <a href="{{ url_for('events.admin_events') }}" class="btn btn-outline-info">
                             <i class="bi bi-list-ul"></i> All Events
                         </a>
-                        <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary">
+                        <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary">
                             <i class="bi bi-speedometer2"></i> Owner Dashboard
                         </a>
                     </div>

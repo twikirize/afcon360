@@ -581,9 +581,124 @@ def require_kyc_tier(min_tier: int) -> Callable:
     return decorator
 
 # ---------------------------------------------------------------------------
+# Moderation-specific decorators
+# ---------------------------------------------------------------------------
+
+def require_moderator_role(fn: Callable) -> Callable:
+    """
+    Abort with 403 if user is not a moderator or higher.
+    Accessible to: moderator, admin, super_admin, owner.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = _get_current_user()
+
+        if not user:
+            _log_denied("unauthenticated", None, fn.__qualname__)
+            flash("Please log in to access this page.", "warning")
+            return redirect(url_for("auth.login", next=request.url))
+
+        from app.auth.helpers import has_global_role
+        if not has_global_role(user, "moderator", "admin", "super_admin", "owner"):
+            _log_denied(
+                "moderator_required", user, fn.__qualname__,
+                user_roles=getattr(user, "role_names", []),
+            )
+            _flash_and_abort("Moderator access required for this action.")
+
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def require_admin_or_moderator(fn: Callable) -> Callable:
+    """
+    Abort with 403 if user is not an admin or moderator.
+    Accessible to: moderator, admin, super_admin, owner.
+    Alias for require_moderator_role for consistency.
+    """
+    return require_moderator_role(fn)
+
+
+def require_super_admin_or_admin(fn: Callable) -> Callable:
+    """
+    Abort with 403 if user is not an admin or higher.
+    Accessible to: admin, super_admin, owner.
+    More restrictive than moderator - for sensitive admin operations.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = _get_current_user()
+
+        if not user:
+            _log_denied("unauthenticated", None, fn.__qualname__)
+            flash("Please log in to access this page.", "warning")
+            return redirect(url_for("auth.login", next=request.url))
+
+        from app.auth.helpers import has_global_role
+        if not has_global_role(user, "admin", "super_admin", "owner"):
+            _log_denied(
+                "admin_required", user, fn.__qualname__,
+                user_roles=getattr(user, "role_names", []),
+            )
+            _flash_and_abort("Admin access required for this action.")
+
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def can_moderate_content(content_type: str = None) -> Callable:
+    """
+    Check if user can moderate specific content type.
+    Uses permission system for granular control.
+
+    Args:
+        content_type: Type of content (e.g., 'events', 'transport', 'accommodation')
+
+    Example:
+        @can_moderate_content('events')
+        def approve_event():
+            ...
+    """
+    def decorator(fn: Callable) -> Callable:
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = _get_current_user()
+
+            if not user:
+                _log_denied("unauthenticated", None, fn.__qualname__)
+                flash("Please log in to access this page.", "warning")
+                return redirect(url_for("auth.login", next=request.url))
+
+            # Check base moderator role
+            from app.auth.helpers import has_global_role
+            if not has_global_role(user, "moderator", "admin", "super_admin", "owner"):
+                _log_denied(
+                    "moderator_required", user, fn.__qualname__,
+                    user_roles=getattr(user, "role_names", []),
+                )
+                _flash_and_abort("Moderator access required for this action.")
+
+            # Check specific content permission if provided
+            if content_type:
+                from app.auth.policy import can
+                permission = f"{content_type}.moderate"
+                if not can(user, permission):
+                    _log_denied(
+                        "content_permission_check", user, fn.__qualname__,
+                        permission=permission,
+                    )
+                    _flash_and_abort(f"You need '{permission}' permission to moderate {content_type}.")
+
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# ---------------------------------------------------------------------------
 # Convenience aliases
 # ---------------------------------------------------------------------------
 
 # Alias for common use cases
 require_super_admin = require_role("super_admin", "owner")
 require_admin_or_owner = require_role("admin", "super_admin", "owner")
+require_moderator = require_moderator_role

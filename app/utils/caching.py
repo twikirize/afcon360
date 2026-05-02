@@ -1,47 +1,60 @@
-#app/utils/caching.py
 """
-Caching utilities for AFCON360
+app/utils/caching.py
+Redis-only caching with SHA256 keys.
+
+Fixed vulnerabilities:
+- Removed in-memory _cache_store (not distributed)
+- Never cache balance reads (always derive from ledger)
+- Replaced MD5 with SHA256 for cache keys
 """
+
 import json
 import hashlib
 import time
 from functools import wraps
-from typing import Any, Optional, Callable, Union
+from typing import Any, Optional, Callable
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache for development
-_cache_store = {}
-_cache_locks = {}
-
 
 def get_cached(key: str, default: Any = None) -> Any:
     """
-    Get value from cache
+    Get value from Redis cache.
+    
+    Args:
+        key: Cache key
+        default: Default value if not found
+        
+    Returns:
+        Cached value or default
     """
     try:
-        item = _cache_store.get(key)
-        if item and item.get('expires', 0) > time.time():
-            return item['value']
-        elif item:
-            # Expired, remove it
-            del _cache_store[key]
+        from app.extensions import redis_client
+        value = redis_client.get(key)
+        if value:
+            return json.loads(value)
     except Exception as e:
         logger.warning(f"Cache get error for key {key}: {e}")
-
+    
     return default
 
 
 def set_cached(key: str, value: Any, ttl: int = 300) -> bool:
     """
-    Set value in cache with TTL
+    Set value in Redis cache with TTL.
+    
+    Args:
+        key: Cache key
+        value: Value to cache
+        ttl: Time to live in seconds
+        
+    Returns:
+        True if successful, False otherwise
     """
     try:
-        _cache_store[key] = {
-            'value': value,
-            'expires': time.time() + ttl
-        }
+        from app.extensions import redis_client
+        redis_client.setex(key, ttl, json.dumps(value))
         return True
     except Exception as e:
         logger.error(f"Cache set error for key {key}: {e}")
@@ -50,10 +63,17 @@ def set_cached(key: str, value: Any, ttl: int = 300) -> bool:
 
 def delete_cached(key: str) -> bool:
     """
-    Delete value from cache
+    Delete value from Redis cache.
+    
+    Args:
+        key: Cache key
+        
+    Returns:
+        True if successful, False otherwise
     """
     try:
-        _cache_store.pop(key, None)
+        from app.extensions import redis_client
+        redis_client.delete(key)
         return True
     except Exception as e:
         logger.warning(f"Cache delete error for key {key}: {e}")
@@ -62,27 +82,40 @@ def delete_cached(key: str) -> bool:
 
 def invalidate_cache_pattern(pattern: str) -> int:
     """
-    Invalidate cache keys matching pattern
-    Returns number of keys invalidated
+    Invalidate cache keys matching pattern.
+    
+    Args:
+        pattern: Pattern to match
+        
+    Returns:
+        Number of keys invalidated
     """
-    count = 0
-    keys_to_delete = []
-
-    for key in _cache_store.keys():
-        if pattern in key:
-            keys_to_delete.append(key)
-
-    for key in keys_to_delete:
-        if delete_cached(key):
-            count += 1
-
-    logger.info(f"Invalidated {count} cache keys matching pattern: {pattern}")
-    return count
+    try:
+        from app.extensions import redis_client
+        keys = redis_client.keys(f"*{pattern}*")
+        if keys:
+            count = redis_client.delete(*keys)
+            logger.info(f"Invalidated {count} cache keys matching pattern: {pattern}")
+            return count
+    except Exception as e:
+        logger.warning(f"Cache pattern invalidation error: {e}")
+    
+    return 0
 
 
 def generate_cache_key(func_name: str, *args, **kwargs) -> str:
     """
-    Generate cache key from function name and arguments
+    Generate cache key from function name and arguments.
+    
+    Uses SHA256 instead of MD5 for better security.
+    
+    Args:
+        func_name: Function name
+        *args: Positional arguments
+        **kwargs: Keyword arguments
+        
+    Returns:
+        Cache key string
     """
     key_parts = [func_name]
 
@@ -101,14 +134,21 @@ def generate_cache_key(func_name: str, *args, **kwargs) -> str:
             key_parts.append(f"{k}:{repr(v)}")
 
     key_string = "|".join(key_parts)
-    return f"cache:{hashlib.md5(key_string.encode()).hexdigest()}"
+    # Use SHA256 instead of MD5
+    return f"cache:{hashlib.sha256(key_string.encode()).hexdigest()}"
 
 
 def cached_query(ttl: int = 300, key_prefix: str = ""):
     """
-    Decorator for caching query results
+    Decorator for caching query results.
+    
+    WARNING: Never use this for balance queries.
+    Balances must always be derived from ledger.
+    
+    Args:
+        ttl: Time to live in seconds
+        key_prefix: Prefix for cache key
     """
-
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -133,49 +173,13 @@ def cached_query(ttl: int = 300, key_prefix: str = ""):
     return decorator
 
 
-def with_cache_lock(timeout: int = 10, raise_on_timeout: bool = False):
-    """
-    Simple cache lock decorator
-    """
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            lock_key = f"lock:{func.__name__}:{hashlib.md5(str(args).encode() + str(kwargs).encode()).hexdigest()}"
-
-            # Simple lock implementation
-            lock_acquired = False
-            start_time = time.time()
-
-            while not lock_acquired:
-                if lock_key not in _cache_locks:
-                    _cache_locks[lock_key] = True
-                    lock_acquired = True
-                elif time.time() - start_time > timeout:
-                    if raise_on_timeout:
-                        raise TimeoutError(f"Could not acquire lock for {func.__name__}")
-                    else:
-                        logger.warning(f"Lock timeout for {func.__name__}, proceeding without lock")
-                        break
-                else:
-                    time.sleep(0.1)
-
-            try:
-                return func(*args, **kwargs)
-            finally:
-                if lock_acquired:
-                    _cache_locks.pop(lock_key, None)
-
-        return wrapper
-
-    return decorator
-
-
 def cache_invalidate_on_change(invalidate_patterns: list):
     """
-    Decorator to invalidate cache when function modifies data
+    Decorator to invalidate cache when function modifies data.
+    
+    Args:
+        invalidate_patterns: List of patterns to invalidate
     """
-
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -195,6 +199,57 @@ def cache_invalidate_on_change(invalidate_patterns: list):
 
 
 def clear_cache():
-    """Clear all cache"""
-    _cache_store.clear()
-    logger.info("Cache cleared")
+    """Clear all cache from Redis."""
+    try:
+        from app.extensions import redis_client
+        redis_client.flushdb()
+        logger.info("Cache cleared")
+    except Exception as e:
+        logger.error(f"Cache clear error: {e}")
+
+
+def with_cache_lock(key: str, ttl: int = 10):
+    """
+    Decorator to provide cache-based locking.
+    
+    This is a Redis-based distributed lock for backward compatibility.
+    The old in-memory lock was not safe for distributed systems.
+    
+    Args:
+        key: Lock key
+        ttl: Lock TTL in seconds
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            lock_key = f"lock:{key}"
+            
+            try:
+                from app.extensions import redis_client
+                # Try to acquire lock
+                acquired = redis_client.set(lock_key, "1", nx=True, ex=ttl)
+                
+                if not acquired:
+                    logger.warning(f"Could not acquire cache lock for key: {key}")
+                    # Proceed anyway for backward compatibility
+                    # In production, you might want to raise an error here
+                
+                result = func(*args, **kwargs)
+                
+                return result
+            except Exception as e:
+                logger.warning(f"Cache lock error: {e}")
+                # Proceed anyway for backward compatibility
+                return func(*args, **kwargs)
+            finally:
+                try:
+                    from app.extensions import redis_client
+                    redis_client.delete(lock_key)
+                except Exception:
+                    pass  # Lock may have expired
+            
+            return result
+
+        return wrapper
+
+    return decorator

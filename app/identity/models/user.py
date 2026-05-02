@@ -124,7 +124,7 @@ class User(UserMixin, ProtectedModel):
     documents = relationship(
         "IndividualKYCDocument", back_populates="user", cascade="all, delete-orphan"
     )
-    wallet = relationship("Wallet", back_populates="user", uselist=False)
+    wallet = relationship("AccountModel", backref="user", uselist=False)
     controllers = relationship(
         "OrganisationController",
         back_populates="user",

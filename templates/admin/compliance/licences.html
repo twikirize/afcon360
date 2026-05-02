@@ -1,0 +1,127 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Licences — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Licence Management{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+  <div class="stat-card animate-up">
+    <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+    <div class="stat-value">{{ stats.active|default(0) }}</div>
+    <div class="stat-label">Active</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon orange"><i class="fas fa-clock"></i></div>
+    <div class="stat-value">{{ stats.expiring_soon|default(0) }}</div>
+    <div class="stat-label">Expiring Soon</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon red"><i class="fas fa-triangle-exclamation"></i></div>
+    <div class="stat-value">{{ stats.expired|default(0) }}</div>
+    <div class="stat-label">Expired</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon blue"><i class="fas fa-certificate"></i></div>
+    <div class="stat-value">{{ stats.total|default(0) }}</div>
+    <div class="stat-label">Total Licences</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-body">
+    <form method="GET" action="{{ url_for('compliance.licences') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-control">
+          <option value="">All Statuses</option>
+          <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Active</option>
+          <option value="expiring" {% if request.args.get('status') == 'expiring' %}selected{% endif %}>Expiring Soon</option>
+          <option value="expired" {% if request.args.get('status') == 'expired' %}selected{% endif %}>Expired</option>
+          <option value="suspended" {% if request.args.get('status') == 'suspended' %}selected{% endif %}>Suspended</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 2; min-width: 200px; margin-bottom: 0;">
+        <label class="form-label">Search</label>
+        <input type="text" name="search" class="form-control" placeholder="Organisation or licence number..." value="{{ request.args.get('search', '') }}">
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
+      <a href="{{ url_for('compliance.licences') }}" class="btn btn-secondary">Clear</a>
+    </form>
+  </div>
+</div>
+
+<!-- Licences Table -->
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-certificate"></i> Organisation Licences</div>
+  </div>
+  <div class="card-body">
+    {% if licences %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Organisation</th>
+            <th>Licence Type</th>
+            <th>Licence Number</th>
+            <th>Issued</th>
+            <th>Expires</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for licence in licences %}
+          <tr class="{{ 'row-critical' if licence.is_expired else ('row-high' if licence.expires_soon else '') }}">
+            <td>#{{ licence.id }}</td>
+            <td>
+              {% if licence.organisation %}
+                <a href="{{ url_for('compliance.view_org', org_id=licence.organisation.id) }}">{{ licence.organisation.name }}</a>
+              {% else %}
+                <span class="muted">Unknown</span>
+              {% endif %}
+            </td>
+            <td>{{ licence.licence_type }}</td>
+            <td class="mono">{{ licence.licence_number }}</td>
+            <td class="mono">{{ licence.issued_at.strftime('%Y-%m-%d') if licence.issued_at else '-' }}</td>
+            <td class="mono {{ 'text-red' if licence.is_expired else ('text-orange' if licence.expires_soon else '') }}">
+              {{ licence.expires_at.strftime('%Y-%m-%d') if licence.expires_at else '-' }}
+              {% if licence.is_expired %}
+                <i class="fas fa-triangle-exclamation" title="Expired"></i>
+              {% elif licence.expires_soon %}
+                <i class="fas fa-clock" title="Expiring soon"></i>
+              {% endif %}
+            </td>
+            <td>
+              {% if licence.is_expired %}
+                <span class="badge badge-red">Expired</span>
+              {% elif licence.expires_soon %}
+                <span class="badge badge-orange">Expiring Soon</span>
+              {% elif licence.status == 'active' %}
+                <span class="badge badge-green">Active</span>
+              {% elif licence.status == 'suspended' %}
+                <span class="badge badge-purple">Suspended</span>
+              {% else %}
+                <span class="badge badge-gray">{{ licence.status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('compliance.view_licence', licence_id=licence.id) }}" class="btn btn-sm btn-primary">View</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-certificate"></i></div>
+      <p>No licences found matching your criteria.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

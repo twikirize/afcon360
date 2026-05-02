@@ -1,0 +1,296 @@
+{% extends "owner/layout.html" %}
+
+{% block title %}Wallet Configuration - Owner Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">Wallet Configuration</h1>
+            <p class="text-muted mb-0">Manage payment providers and wallet system settings</p>
+        </div>
+        <div>
+            <a href="{{ url_for('wallet_config.env_setup') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-file-code me-2"></i>.env Setup Guide
+            </a>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-primary bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-credit-card text-primary fa-2x"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Active Providers</h6>
+                            <h3 class="mb-0">{{ providers|selectattr('is_active')|list|length }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-success bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-check-circle text-success fa-2x"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Configured</h6>
+                            <h3 class="mb-0">{{ providers|selectattr('has_secret_key')|list|length }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-warning bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-sandbox text-warning fa-2x"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Sandbox Mode</h6>
+                            <h3 class="mb-0">{{ providers|selectattr('is_sandbox')|list|length }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-info bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-cog text-info fa-2x"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">System Status</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Provider Cards -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Payment Providers</h5>
+                    <a href="{{ url_for('wallet_config.providers') }}" class="btn btn-sm btn-primary">
+                        Manage All Providers
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Provider</th>
+                                    <th>Environment</th>
+                                    <th>Status</th>
+                                    <th>Keys</th>
+                                    <th>Last Test</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for provider in providers %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="flex-shrink-0">
+                                                {% if provider.provider_name == 'flutterwave' %}
+                                                <span class="badge bg-warning">FW</span>
+                                                {% elif provider.provider_name == 'paystack' %}
+                                                <span class="badge bg-primary">PS</span>
+                                                {% elif provider.provider_name == 'mtn_momo' %}
+                                                <span class="badge bg-success">MTN</span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">{{ provider.provider_name[:2].upper() }}</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="flex-grow-1 ms-2">
+                                                <strong>{{ provider.display_name }}</strong>
+                                                <small class="text-muted d-block">{{ provider.provider_name }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if provider.is_sandbox %}
+                                        <span class="badge bg-warning">Sandbox</span>
+                                        {% else %}
+                                        <span class="badge bg-success">Production</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if provider.is_active and provider.is_enabled %}
+                                        <span class="badge bg-success">Active</span>
+                                        {% elif not provider.is_enabled %}
+                                        <span class="badge bg-secondary">Disabled</span>
+                                        {% else %}
+                                        <span class="badge bg-warning">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if provider.has_secret_key %}
+                                        <span class="text-success"><i class="fas fa-check-circle"></i> Configured</span>
+                                        {% else %}
+                                        <span class="text-danger"><i class="fas fa-exclamation-circle"></i> Missing</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if provider.last_tested_at %}
+                                            {% if provider.last_test_result == 'success' %}
+                                            <span class="text-success"><i class="fas fa-check"></i> {{ provider.last_tested_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                                            {% else %}
+                                            <span class="text-danger"><i class="fas fa-times"></i> {{ provider.last_tested_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                        <span class="text-muted">Never tested</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('wallet_config.edit_provider', config_id=provider.id) }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('wallet_config.system_config') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-sliders-h me-2 text-primary"></i>
+                                System Settings
+                                <small class="d-block text-muted">Configure limits, fees, and KYC</small>
+                            </div>
+                            <i class="fas fa-chevron-right text-muted"></i>
+                        </a>
+                        <a href="{{ url_for('wallet_config.providers') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-plug me-2 text-success"></i>
+                                Manage Providers
+                                <small class="d-block text-muted">Add or edit payment providers</small>
+                            </div>
+                            <i class="fas fa-chevron-right text-muted"></i>
+                        </a>
+                        <a href="{{ url_for('wallet_config.env_setup') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-file-code me-2 text-info"></i>
+                                .env Setup Guide
+                                <small class="d-block text-muted">View environment variables template</small>
+                            </div>
+                            <i class="fas fa-chevron-right text-muted"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">System Configuration Preview</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            Deposits
+                            {% if system_config.deposits_enabled %}
+                            <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            Withdrawals
+                            {% if system_config.withdrawals_enabled %}
+                            <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            Transfers
+                            {% if system_config.transfers_enabled %}
+                            <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            FX Conversion
+                            {% if system_config.fx_enabled %}
+                            <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item px-0 pt-3">
+                            <a href="{{ url_for('wallet_config.system_config') }}" class="btn btn-sm btn-outline-primary w-100">
+                                Edit System Settings
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh status every 30 seconds
+setInterval(function() {
+    fetch('{{ url_for("wallet_config.api_get_providers") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Could update the UI here with fresh data
+                console.log('Provider status refreshed');
+            }
+        })
+        .catch(error => console.error('Error refreshing status:', error));
+}, 30000);
+</script>
+{% endblock %}
+</CodeContent>
+<parameter>EmptyFile=false</parameter>
+</function>
+
+<function=write_to_file>
+<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\templates\owner\wallet_config\providers.html

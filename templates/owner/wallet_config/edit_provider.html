@@ -1,0 +1,300 @@
+{% extends "owner/layout.html" %}
+
+{% block title %}Edit {{ config.display_name }} - Owner Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">Edit {{ config.display_name }}</h1>
+            <p class="text-muted mb-0">Configure payment provider settings</p>
+        </div>
+        <div>
+            <a href="{{ url_for('wallet_config.providers') }}" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-arrow-left me-2"></i>Back to Providers
+            </a>
+            <button type="submit" form="providerForm" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save Changes
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <form id="providerForm" method="POST" action="{{ url_for('wallet_config.edit_provider', config_id=config.id) }}">
+                <!-- Basic Settings Card -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Basic Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="display_name" class="form-label">Display Name</label>
+                            <input type="text" class="form-control" id="display_name" name="display_name" 
+                                   value="{{ config.display_name }}" required>
+                            <div class="form-text">The name users will see for this provider</div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label d-block">Environment</label>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="environment" 
+                                               id="env_sandbox" value="sandbox" {% if config.is_sandbox %}checked{% endif %}>
+                                        <label class="form-check-label" for="env_sandbox">Sandbox</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="environment" 
+                                               id="env_production" value="production" {% if not config.is_sandbox %}checked{% endif %}>
+                                        <label class="form-check-label" for="env_production">Production</label>
+                                    </div>
+                                    <div class="form-text">Use sandbox for testing, production for live transactions</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label d-block">Status</label>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                                               {% if config.is_active %}checked{% endif %}>
+                                        <label class="form-check-label" for="is_active">Active</label>
+                                    </div>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="is_enabled" name="is_enabled" 
+                                               {% if config.is_enabled %}checked{% endif %}>
+                                        <label class="form-check-label" for="is_enabled">Enabled</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Keys Card -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-key me-2"></i>API Credentials</h5>
+                        <span class="badge bg-warning">Encrypted Storage</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Secret Key -->
+                        <div class="mb-3">
+                            <label for="secret_key" class="form-label">Secret Key</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="secret_key" name="secret_key" 
+                                       value="{% if config.has_secret_key %}••••••••••••{% endif %}">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('secret_key')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">
+                                {% if config.has_secret_key %}
+                                <span class="text-success"><i class="fas fa-check-circle"></i> Key is set</span>
+                                {% else %}
+                                <span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Key is not configured</span>
+                                {% endif %}
+                                <br>Leave as "••••••••••••" to keep existing key, or enter new key to update
+                            </div>
+                        </div>
+
+                        <!-- Public Key -->
+                        <div class="mb-3">
+                            <label for="public_key" class="form-label">Public Key</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="public_key" name="public_key" 
+                                       value="{% if config.has_public_key %}••••••••••••{% endif %}">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('public_key')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">
+                                {% if config.has_public_key %}
+                                <span class="text-success"><i class="fas fa-check-circle"></i> Key is set</span>
+                                {% else %}
+                                <span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Key is not configured</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Encryption Key (if needed) -->
+                        {% if config.provider_name == 'flutterwave' %}
+                        <div class="mb-3">
+                            <label for="encryption_key" class="form-label">Encryption Key (Flutterwave specific)</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="encryption_key" name="encryption_key" 
+                                       value="{% if config.encryption_key %}••••••••••••{% endif %}">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('encryption_key')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">Required for Flutterwave integration</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Webhook Settings -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-webhook me-2"></i>Webhook Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="webhook_url" class="form-label">Webhook URL</label>
+                            <input type="url" class="form-control" id="webhook_url" name="webhook_url" 
+                                   value="{{ config.webhook_url or '' }}" placeholder="https://yourdomain.com/webhooks/{{ config.provider_name }}">
+                            <div class="form-text">
+                                The URL where {{ config.display_name }} will send payment notifications
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle me-2"></i>Webhook Endpoint</h6>
+                            <p class="mb-2">Use this URL in your {{ config.display_name }} dashboard:</p>
+                            <code class="bg-light p-2 rounded d-block">
+                                {{ request.url_root }}webhooks/{{ config.provider_name }}
+                            </code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Configuration -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-code me-2"></i>Advanced Configuration (JSON)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="config_json" class="form-label">Additional Settings (JSON format)</label>
+                            <textarea class="form-control font-monospace" id="config_json" name="config_json" 
+                                      rows="8" style="font-size: 0.875rem;">{{ config.config_json | tojson(indent=2) }}</textarea>
+                            <div class="form-text">Additional provider-specific configuration in JSON format</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('wallet_config.providers') }}" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Provider Info -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Provider Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-borderless">
+                        <tr>
+                            <td class="text-muted">Provider ID:</td>
+                            <td><code>{{ config.provider_name }}</code></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Created:</td>
+                            <td>{{ config.created_at.strftime('%Y-%m-%d') if config.created_at else 'N/A' }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Last Updated:</td>
+                            <td>{{ config.updated_at.strftime('%Y-%m-%d %H:%M') if config.updated_at else 'N/A' }}</td>
+                        </tr>
+                        {% if config.last_tested_at %}
+                        <tr>
+                            <td class="text-muted">Last Test:</td>
+                            <td>
+                                {% if config.last_test_result == 'success' %}
+                                <span class="text-success"><i class="fas fa-check-circle"></i> Success</span>
+                                {% else %}
+                                <span class="text-danger"><i class="fas fa-times-circle"></i> Failed</span>
+                                {% endif %}
+                                <br><small>{{ config.last_tested_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('wallet_config.test_provider', config_id=config.id) }}" class="mb-2">
+                        <button type="submit" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-vial me-2"></i>Test Connection
+                        </button>
+                    </form>
+                    <a href="{{ url_for('wallet_config.env_setup') }}" class="btn btn-outline-secondary w-100">
+                        <i class="fas fa-file-code me-2"></i>View .env Template
+                    </a>
+                </div>
+            </div>
+
+            <!-- Security Notice -->
+            <div class="card border-warning bg-warning bg-opacity-10 mb-4">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="fas fa-shield-alt me-2"></i>Security Notice</h6>
+                    <p class="card-text small mb-0">
+                        API keys are encrypted at rest using AES-256 encryption. 
+                        Only the application can decrypt these values. 
+                        Never share these credentials or commit them to version control.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const button = input.nextElementSibling;
+    const icon = button.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+
+// Form validation
+document.getElementById('providerForm').addEventListener('submit', function(e) {
+    const secretKey = document.getElementById('secret_key').value;
+    const publicKey = document.getElementById('public_key').value;
+    
+    // Check if keys are being updated (not the placeholder)
+    if (secretKey && secretKey !== '••••••••••••' && secretKey.length < 10) {
+        alert('Secret key appears to be too short. Please verify the key is correct.');
+        e.preventDefault();
+        return false;
+    }
+    
+    return true;
+});
+</script>
+{% endblock %}
+</CodeContent>
+<parameter>EmptyFile=false</parameter>
+</function>
+
+<function=write_to_file>
+<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\templates\owner\wallet_config\system.html

@@ -168,6 +168,9 @@ class Property(BaseModel):
     verified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     verification_notes = Column(Text, nullable=True)
 
+    # Internal moderation notes (separate from verification_notes which go to host)
+    moderation_notes = Column(Text, nullable=True)
+
     # -------------------------------
     # Ratings (denormalized)
     # -------------------------------

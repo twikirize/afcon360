@@ -1,0 +1,139 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Generate Report — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Generate Compliance Report{% endblock %}
+
+{% block content %}
+<div class="col-layout-2-1">
+  <!-- Main Form -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-file-lines"></i> Report Configuration</div>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('compliance.generate_report') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          
+          <div class="form-group">
+            <label class="form-label">Report Type</label>
+            <select name="report_type" class="form-control" required>
+              <option value="">Select report type...</option>
+              <option value="kyc_summary">KYC Summary</option>
+              <option value="aml_activity">AML Activity</option>
+              <option value="transaction_monitoring">Transaction Monitoring</option>
+              <option value="regulatory_filing">Regulatory Filing</option>
+              <option value="audit_trail">Audit Trail</option>
+              <option value="data_requests">Data Requests Summary</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Report Title</label>
+            <input type="text" name="title" class="form-control" placeholder="e.g., Q1 2025 KYC Summary" required>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label class="form-label">Date Range Start</label>
+              <input type="date" name="date_range_start" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Date Range End</label>
+              <input type="date" name="date_range_end" class="form-control" required>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="3" placeholder="Additional context for this report..."></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Include Sections</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                <input type="checkbox" name="include_summary" checked> Executive Summary
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                <input type="checkbox" name="include_charts" checked> Charts & Visualizations
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                <input type="checkbox" name="include_details"> Detailed Records
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                <input type="checkbox" name="include_recommendations"> Recommendations
+              </label>
+            </div>
+          </div>
+          
+          <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-file-export"></i> Generate Report
+            </button>
+            <a href="{{ url_for('compliance.reports') }}" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Sidebar Info -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-circle-info"></i> Report Types</div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+          <div>
+            <strong style="color: var(--ink);">KYC Summary</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Overview of KYC verifications, pending reviews, and approval rates.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">AML Activity</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Suspicious transaction reports and AML alerts.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">Transaction Monitoring</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">High-value transactions and risk assessment.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">Regulatory Filing</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Formatted report for regulatory submission.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">Audit Trail</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Complete audit log of compliance activities.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-clock"></i> Recent Reports</div>
+      </div>
+      <div class="card-body">
+        {% if recent_reports %}
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          {% for report in recent_reports[:5] %}
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg); border-radius: var(--radius);">
+            <div>
+              <div style="font-weight: 600; font-size: 13px;">{{ report.title }}</div>
+              <div style="font-size: 11px; color: var(--muted);">{{ report.created_at.strftime('%Y-%m-%d') if report.created_at else '-' }}</div>
+            </div>
+            <a href="{{ url_for('compliance.download_report', report_id=report.id) }}" class="btn btn-sm btn-secondary">
+              <i class="fas fa-download"></i>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--muted); font-size: 13px;">No reports generated yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

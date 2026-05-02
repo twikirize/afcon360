@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}My Event Dashboard - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>My Event Dashboard</h1>
+            <p class="lead">Manage your event registrations and tickets</p>
+        </div>
+    </div>
+
+    <div class="row">
+        {# Stats Summary #}
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 text-primary mb-2">{{ upcoming_count }}</div>
+                    <h5 class="text-muted">Upcoming Events</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 text-success mb-2">{{ attended_count }}</div>
+                    <h5 class="text-muted">Events Attended</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 text-info mb-2">${{ total_spent }}</div>
+                    <h5 class="text-muted">Total Spent</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        {# Upcoming Events #}
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Upcoming Events</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if upcoming_registrations %}
+                        <div class="list-group list-group-flush">
+                            {% for reg in upcoming_registrations %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">{{ reg.event.name }}</h6>
+                                        <p class="text-muted small mb-0">
+                                            <i class="fas fa-calendar-alt"></i> {{ reg.event.start_date[:10] }} |
+                                            <i class="fas fa-ticket-alt"></i> {{ reg.ticket_type }}
+                                        </p>
+                                    </div>
+                                    <div class="text-end">
+                                        <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                           class="btn btn-sm btn-primary">
+                                            <i class="fas fa-qrcode"></i> View Ticket
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <p class="text-muted">No upcoming events.</p>
+                            <a href="{{ url_for('events.list') }}" class="btn btn-outline-primary">Browse Events</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# Recommended Events Placeholder #}
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Recommended for You</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">Based on your interests and location.</p>
+                    {# Add recommendation logic later #}
+                    <div class="alert alert-info">
+                        Check back soon for personalized event recommendations!
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Side Column - Wallet & Quick Links #}
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-wallet"></i> My Wallet</h5>
+                </div>
+                <div class="card-body">
+                    {% if wallet %}
+                        <h3 class="mb-1">{{ wallet.balance }} {{ wallet.currency }}</h3>
+                        <p class="text-muted small">Available Balance</p>
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('wallet.wallet_home') }}" class="btn btn-sm btn-outline-primary">Manage Wallet</a>
+                        </div>
+                    {% else %}
+                        <div class="text-center">
+                            <p class="small text-muted">You don't have a wallet yet.</p>
+                            <a href="{{ url_for('wallet.wallet_home') }}" class="btn btn-sm btn-primary">Setup Wallet</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Links</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    <a href="{{ url_for('events.my_registrations') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-list-ul me-2"></i> All My Registrations
+                    </a>
+                    <a href="{{ url_for('accommodation.accommodation_guest.index') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-hotel me-2"></i> Book Accommodation
+                    </a>
+                    <a href="{{ url_for('transport.transport_guest.index') }}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-car me-2"></i> Book Transport
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

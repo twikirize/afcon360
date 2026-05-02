@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}My Preferences - Accessibility Settings{% endblock %}
+
+{% block styles %}
+<style>
+    .preference-card {
+        background: var(--bg-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .preference-title {
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .preference-title i {
+        font-size: 20px;
+        color: var(--brand-primary);
+    }
+    .preview-box {
+        background: var(--bg-surface-alt);
+        border-radius: var(--radius-md);
+        padding: 15px;
+        margin-top: 15px;
+        text-align: center;
+        border: 1px dashed var(--border-medium);
+    }
+    .font-size-demo {
+        font-size: 1rem;
+        transition: font-size 0.2s ease;
+    }
+    .slider-value {
+        display: inline-block;
+        min-width: 50px;
+        text-align: center;
+        font-weight: 600;
+        color: var(--brand-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <h1 class="h2 mb-2">👤 My Preferences</h1>
+            <p class="text-muted mb-4">
+                Customize your experience. These settings are saved to your account and
+                will apply wherever you log in.
+            </p>
+
+            <form id="preferencesForm">
+                <!-- Font Size -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-text-height"></i>
+                        <span>Font Size</span>
+                    </div>
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <span>A</span>
+                        </div>
+                        <div class="col">
+                            <input type="range" id="fontSizeSlider" class="form-range" min="0.75" max="1.5" step="0.05" value="1.0">
+                        </div>
+                        <div class="col-auto">
+                            <span class="slider-value" id="fontSizeValue">1.0x</span>
+                        </div>
+                    </div>
+                    <div class="preview-box">
+                        <p class="font-size-demo mb-0">
+                            The quick brown fox jumps over the lazy dog.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Font Family -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-font"></i>
+                        <span>Font Family (Dyslexia Friendly)</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="dyslexicFont">
+                        <label class="form-check-label" for="dyslexicFont">
+                            Enable Dyslexic-friendly font
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Open Dyslexic font is designed to increase readability for users with dyslexia.
+                    </div>
+                </div>
+
+                <!-- High Contrast -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-adjust"></i>
+                        <span>High Contrast Mode</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="highContrast" id="contrastOff" value="off" checked>
+                                <label class="form-check-label" for="contrastOff">Off (Default)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="highContrast" id="contrastYellowBlack" value="yellow_black">
+                                <label class="form-check-label" for="contrastYellowBlack">Yellow on Black</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="highContrast" id="contrastWhiteBlack" value="white_black">
+                                <label class="form-check-label" for="contrastWhiteBlack">White on Black</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Color Blindness -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-eye"></i>
+                        <span>Color Blindness Mode</span>
+                    </div>
+                    <select id="colorBlindMode" class="form-select">
+                        <option value="none">No adjustment</option>
+                        <option value="protanopia">Protanopia (Red-blind)</option>
+                        <option value="deuteranopia">Deuteranopia (Green-blind)</option>
+                        <option value="tritanopia">Tritanopia (Blue-blind)</option>
+                        <option value="monochromacy">Monochromacy (Full color blindness)</option>
+                    </select>
+                </div>
+
+                <!-- Dark/Light Mode -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-moon"></i>
+                        <span>Theme Mode</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="darkMode" id="darkModeLight" value="light">
+                                <label class="form-check-label" for="darkModeLight">Light Mode</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="darkMode" id="darkModeDark" value="dark">
+                                <label class="form-check-label" for="darkModeDark">Dark Mode</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="darkMode" id="darkModeSystem" value="system" checked>
+                                <label class="form-check-label" for="darkModeSystem">Use System Setting</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reading Width -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-align-center"></i>
+                        <span>Reading Width</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="readingWidth" id="widthFull" value="full" checked>
+                                <label class="form-check-label" for="widthFull">Full Width</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="readingWidth" id="widthMedium" value="medium">
+                                <label class="form-check-label" for="widthMedium">Medium (1000px)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="readingWidth" id="widthNarrow" value="narrow">
+                                <label class="form-check-label" for="widthNarrow">Narrow (800px)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Motion & Animation -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-video"></i>
+                        <span>Motion & Animation</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="reducedMotion">
+                        <label class="form-check-label" for="reducedMotion">
+                            Reduce motion (disable animations)
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Recommended for users with vestibular disorders or motion sensitivity.
+                    </div>
+                </div>
+
+                <!-- Compact Mode -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-compress"></i>
+                        <span>Compact Mode</span>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="compactMode">
+                        <label class="form-check-label" for="compactMode">
+                            Enable compact spacing
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Reduces padding and margins to fit more content on screen.
+                    </div>
+                </div>
+
+                <!-- Custom Accent Color -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-palette"></i>
+                        <span>Personal Accent Color</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <input type="color" id="customAccent" class="form-control form-control-color" style="width: 60px;" value="#2d5a2d">
+                        <span>Choose your preferred accent color</span>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        This overrides the site's primary color for your view only.
+                    </div>
+                </div>
+
+
+                <!-- DASHBOARD COLORS SECTION - NEW -->
+                <div class="preference-card">
+                    <div class="preference-title">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>🎨 Dashboard Colors (Owner/Admin Only)</span>
+                    </div>
+                    <div class="small text-muted mb-3">
+                        Customize the appearance of your admin dashboard. These colors only affect your view.
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Page Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardPageBg" class="form-control form-control-color" style="width: 60px;" value="#f5f7fa">
+                                <input type="text" id="dashboardPageBgText" class="form-control form-control-sm" style="width: 100px;" value="#f5f7fa">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardPageBg" data-default="#f5f7fa">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Sidebar Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardSidebarBg" class="form-control form-control-color" style="width: 60px;" value="#ffffff">
+                                <input type="text" id="dashboardSidebarBgText" class="form-control form-control-sm" style="width: 100px;" value="#ffffff">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardSidebarBg" data-default="#ffffff">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Card Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardCardBg" class="form-control form-control-color" style="width: 60px;" value="#ffffff">
+                                <input type="text" id="dashboardCardBgText" class="form-control form-control-sm" style="width: 100px;" value="#ffffff">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardCardBg" data-default="#ffffff">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Header Background</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardHeaderBg" class="form-control form-control-color" style="width: 60px;" value="#1a1a2e">
+                                <input type="text" id="dashboardHeaderBgText" class="form-control form-control-sm" style="width: 100px;" value="#1a1a2e">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardHeaderBg" data-default="#1a1a2e">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Primary Green</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardPrimaryGreen" class="form-control form-control-color" style="width: 60px;" value="#10b981">
+                                <input type="text" id="dashboardPrimaryGreenText" class="form-control form-control-sm" style="width: 100px;" value="#10b981">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardPrimaryGreen" data-default="#10b981">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Text Primary</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="color" id="dashboardTextPrimary" class="form-control form-control-color" style="width: 60px;" value="#111827">
+                                <input type="text" id="dashboardTextPrimaryText" class="form-control form-control-sm" style="width: 100px;" value="#111827">
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-color" data-target="dashboardTextPrimary" data-default="#111827">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Border Radius (px)</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="range" id="dashboardBorderRadius" min="0" max="24" value="8" class="form-range" style="flex:1">
+                                <span id="borderRadiusValue" class="badge bg-secondary" style="min-width: 45px;">8px</span>
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-radius" data-default="8">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Card Padding (px)</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="range" id="dashboardCardPadding" min="12" max="32" value="16" class="form-range" style="flex:1">
+                                <span id="cardPaddingValue" class="badge bg-secondary" style="min-width: 45px;">16px</span>
+                                <button class="btn btn-sm btn-outline-secondary reset-dashboard-padding" data-default="16">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="preview-box" id="dashboardLivePreview">
+                            <div style="background: var(--dashboard-card-bg, white); border-radius: var(--dashboard-radius, 8px); padding: var(--dashboard-padding, 16px); border: 1px solid #e5e7eb;">
+                                <div style="color: var(--dashboard-text-primary, #111827); font-weight: 600;">Live Preview Card</div>
+                                <div style="color: var(--dashboard-text-secondary, #4b5563); font-size: 13px; margin-top: 8px;">This is how your dashboard will look</div>
+                                <div style="margin-top: 12px;">
+                                    <button style="background: var(--dashboard-primary, #10b981); color: white; border: none; padding: 6px 12px; border-radius: 6px;">Sample Button</button>
+                                    <button style="background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; padding: 6px 12px; border-radius: 6px; margin-left: 8px;">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" id="dashboardPresetDefault" class="btn btn-outline-primary btn-sm">Default Green</button>
+                            <button type="button" id="dashboardPresetDark" class="btn btn-outline-primary btn-sm">Dark Mode</button>
+                            <button type="button" id="dashboardPresetBlue" class="btn btn-outline-primary btn-sm">Blue Theme</button>
+                            <button type="button" id="dashboardPresetPurple" class="btn btn-outline-primary btn-sm">Purple Theme</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 d-flex gap-3">
+                        <button id="saveDashboardPreferences" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Changes
+                        </button>
+                        <button id="resetDashboardPreferences" class="btn btn-outline-secondary">
+                            <i class="fas fa-undo me-2"></i>Reset to Saved
+                        </button>
+                    </div>
+                </div>
+
+
+                <div class="d-flex gap-3 mt-4">
+                    <button type="submit" class="btn btn-primary">💾 Save All Preferences</button>
+                    <button type="button" id="resetPreferences" class="btn btn-outline-secondary">↺ Reset All to Defaults</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Font size demo logic
+    const fontSizeSlider = document.getElementById('fontSizeSlider');
+    const fontSizeValue = document.getElementById('fontSizeValue');
+    const fontSizeDemo = document.querySelector('.font-size-demo');
+
+    if (fontSizeSlider) {
+        fontSizeSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            fontSizeValue.textContent = parseFloat(value).toFixed(1) + 'x';
+            if (fontSizeDemo) {
+                fontSizeDemo.style.fontSize = (16 * parseFloat(value)) + 'px';
+            }
+        });
+    }
+
+    // Update radius and padding value displays
+    const radiusSlider = document.getElementById('dashboardBorderRadius');
+    const radiusValue = document.getElementById('borderRadiusValue');
+    if (radiusSlider && radiusValue) {
+        radiusSlider.addEventListener('input', (e) => {
+            radiusValue.textContent = e.target.value + 'px';
+        });
+    }
+
+    const paddingSlider = document.getElementById('dashboardCardPadding');
+    const paddingValue = document.getElementById('cardPaddingValue');
+    if (paddingSlider && paddingValue) {
+        paddingSlider.addEventListener('input', (e) => {
+            paddingValue.textContent = e.target.value + 'px';
+        });
+    }
+
+    // Sync color text inputs with color pickers
+    const colorMappings = {
+        'dashboardPageBg': 'dashboardPageBgText',
+        'dashboardSidebarBg': 'dashboardSidebarBgText',
+        'dashboardCardBg': 'dashboardCardBgText',
+        'dashboardHeaderBg': 'dashboardHeaderBgText',
+        'dashboardPrimaryGreen': 'dashboardPrimaryGreenText',
+        'dashboardTextPrimary': 'dashboardTextPrimaryText'
+    };
+
+    for (const [colorId, textId] of Object.entries(colorMappings)) {
+        const colorPicker = document.getElementById(colorId);
+        const textInput = document.getElementById(textId);
+        if (colorPicker && textInput) {
+            colorPicker.addEventListener('input', (e) => {
+                textInput.value = e.target.value;
+            });
+            textInput.addEventListener('input', (e) => {
+                colorPicker.value = e.target.value;
+            });
+        }
+    }
+
+    // Reset color buttons
+    document.querySelectorAll('.reset-dashboard-color').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const target = this.dataset.target;
+            const defaultValue = this.dataset.default;
+            const colorPicker = document.getElementById(target);
+            const textInput = document.getElementById(target + 'Text');
+            if (colorPicker) colorPicker.value = defaultValue;
+            if (textInput) textInput.value = defaultValue;
+            // Trigger input event to update working preferences
+            if (colorPicker) colorPicker.dispatchEvent(new Event('input'));
+        });
+    });
+
+    // Reset radius button
+    document.querySelectorAll('.reset-dashboard-radius').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const defaultValue = this.dataset.default;
+            const slider = document.getElementById('dashboardBorderRadius');
+            if (slider) {
+                slider.value = defaultValue;
+                slider.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
+    // Reset padding button
+    document.querySelectorAll('.reset-dashboard-padding').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const defaultValue = this.dataset.default;
+            const slider = document.getElementById('dashboardCardPadding');
+            if (slider) {
+                slider.value = defaultValue;
+                slider.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
+    // Handled by window.themeManager defined in static/js/theme-manager.js
+    const form = document.getElementById('preferencesForm');
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        // Save all preferences (including dashboard)
+        if (window.themeManager && window.themeManager.saveUserPreferences) {
+            window.themeManager.saveUserPreferences();
+        }
+    });
+});
+</script>
+{% endblock %}

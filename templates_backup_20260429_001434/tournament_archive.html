@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Tournament archive</h2>
+{% if archived %}
+  <ul>
+    {% for item in archived %}
+      <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No archived items yet.</p>
+{% endif %}
+{% endblock %}

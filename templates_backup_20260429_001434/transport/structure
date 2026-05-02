@@ -1,0 +1,155 @@
+app/transport/
+├── __init__.py                    # Module initializer
+├── models.py                       # Your existing models (keep as is)
+├── services/
+│   ├── __init__.py
+│   ├── models.py                   # Your models (already have this)
+│   ├── driver_service.py           # Driver business logic
+│   ├── vehicle_service.py          # Vehicle business logic
+│   ├── booking_service.py          # Booking business logic
+│   └── settings_service.py          # Settings business logic
+│
+├── api/                             # API ROUTES (separate files)
+│   ├── __init__.py
+│   ├── routes.py                    # Main blueprint registration
+│   ├── driver_routes.py              # Driver endpoints
+│   ├── vehicle_routes.py             # Vehicle endpoints
+│   ├── organisation_routes.py        # Organisation endpoints
+│   ├── booking_routes.py             # Booking endpoints
+│   ├── incident_routes.py             # Incident endpoints
+│   ├── route_routes.py                # Scheduled route endpoints
+│   ├── analytics_routes.py            # Analytics endpoints
+│   ├── settings_routes.py             # Settings endpoints
+│   └── dashboard_routes.py            # Dashboard overview endpoints
+│
+├── templates/                         # HTML TEMPLATES (Jinja2)
+│   ├── transport/
+│   │   ├── base.html                  # Base template
+│   │   ├── dashboard/
+│   │   │   ├── index.html              # Main dashboard
+│   │   │   ├── overview.html           # Overview widgets
+│   │   │   └── widgets/                 # Reusable widgets
+│   │   │       ├── driver_card.html
+│   │   │       ├── vehicle_card.html
+│   │   │       └── booking_card.html
+│   │   │
+│   │   ├── drivers/
+│   │   │   ├── index.html              # Driver list
+│   │   │   ├── show.html                # Driver detail
+│   │   │   ├── new.html                 # Create driver
+│   │   │   ├── edit.html                 # Edit driver
+│   │   │   ├── _form.html                # Driver form partial
+│   │   │   ├── verification.html        # Verification page
+│   │   │   ├── history.html              # Driver history
+│   │   │   └── location.html             # Live location
+│   │   │
+│   │   ├── vehicles/
+│   │   │   ├── index.html              # Vehicle list
+│   │   │   ├── show.html                # Vehicle detail
+│   │   │   ├── new.html                 # Create vehicle
+│   │   │   ├── edit.html                 # Edit vehicle
+│   │   │   ├── _form.html                # Vehicle form partial
+│   │   │   ├── maintenance.html         # Maintenance page
+│   │   │   ├── history.html              # Vehicle history
+│   │   │   └── assign.html               # Assign driver
+│   │   │
+│   │   ├── organisations/
+│   │   │   ├── index.html              # Organisation list
+│   │   │   ├── show.html                # Organisation detail
+│   │   │   ├── new.html                 # Create organisation
+│   │   │   ├── edit.html                 # Edit organisation
+│   │   │   ├── _form.html                # Organisation form
+│   │   │   ├── drivers.html              # Manage drivers
+│   │   │   └── vehicles.html             # Manage fleet
+│   │   │
+│   │   ├── bookings/
+│   │   │   ├── index.html              # Booking list
+│   │   │   ├── show.html                # Booking detail
+│   │   │   ├── new.html                 # Create booking
+│   │   │   ├── edit.html                 # Edit booking
+│   │   │   ├── _form.html                # Booking form
+│   │   │   ├── status.html               # Update status
+│   │   │   ├── assign.html               # Assign driver/vehicle
+│   │   │   ├── payments.html             # Payment history
+│   │   │   └── timeline.html             # Booking timeline
+│   │   │
+│   │   ├── incidents/
+│   │   │   ├── index.html              # Incident list
+│   │   │   ├── show.html                # Incident detail
+│   │   │   ├── new.html                 # Report incident
+│   │   │   ├── edit.html                 # Update incident
+│   │   │   ├── _form.html                # Incident form
+│   │   │   ├── investigate.html         # Investigation page
+│   │   │   └── evidence.html             # Evidence management
+│   │   │
+│   │   ├── routes/
+│   │   │   ├── index.html              # Route list
+│   │   │   ├── show.html                # Route detail
+│   │   │   ├── new.html                 # Create route
+│   │   │   ├── edit.html                 # Edit route
+│   │   │   ├── _form.html                # Route form
+│   │   │   └── schedule.html             # Schedule view
+│   │   │
+│   │   ├── analytics/
+│   │   │   ├── index.html              # Analytics dashboard
+│   │   │   ├── revenue.html              # Revenue reports
+│   │   │   ├── performance.html          # Performance reports
+│   │   │   ├── drivers.html               # Driver analytics
+│   │   │   └── vehicles.html              # Vehicle analytics
+│   │   │
+│   │   ├── settings/
+│   │   │   ├── index.html              # Settings list
+│   │   │   ├── general.html              # General settings
+│   │   │   ├── booking.html              # Booking settings
+│   │   │   ├── payment.html              # Payment settings
+│   │   │   ├── safety.html               # Safety settings
+│   │   │   ├── integrations.html         # Integration settings
+│   │   │   └── advanced.html             # Advanced settings
+│   │   │
+│   │   └── partials/                     # Reusable components
+│   │       ├── sidebar.html
+│   │       ├── topbar.html
+│   │       ├── modals/
+│   │       │   ├── confirm_delete.html
+│   │       │   ├── assign_driver.html
+│   │       │   ├── assign_vehicle.html
+│   │       │   └── update_status.html
+│   │       └── tables/
+│   │           ├── driver_row.html
+│   │           ├── vehicle_row.html
+│   │           └── booking_row.html
+│   │
+├── static/                             # STATIC ASSETS
+│   ├── transport/
+│   │   ├── css/
+│   │   │   ├── dashboard.css
+│   │   │   ├── drivers.css
+│   │   │   ├── vehicles.css
+│   │   │   └── bookings.css
+│   │   ├── js/
+│   │   │   ├── dashboard.js
+│   │   │   ├── drivers.js
+│   │   │   ├── vehicles.js
+│   │   │   ├── bookings.js
+│   │   │   ├── maps.js                  # For location tracking
+│   │   │   ├── charts.js                # For analytics charts
+│   │   │   └── realtime.js              # For real-time updates
+│   │   └── images/
+│   │       ├── vehicle-icons/
+│   │       └── driver-avatars/
+│   │
+├── forms/                               # FORM CLASSES
+│   ├── __init__.py
+│   ├── driver_forms.py
+│   ├── vehicle_forms.py
+│   ├── organisation_forms.py
+│   ├── booking_forms.py
+│   ├── incident_forms.py
+│   └── settings_forms.py
+│
+└── utils/                               # UTILITY FUNCTIONS
+    ├── __init__.py
+    ├── decorators.py                     # Auth, permissions
+    ├── helpers.py                         # Helper functions
+    ├── validators.py                      # Custom validators
+    └── exporters.py                       # CSV/Excel export logic

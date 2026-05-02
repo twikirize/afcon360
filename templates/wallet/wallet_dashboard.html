@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <!-- Page Header -->
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Wallet Dashboard</h1>
+    <p class="text-gray-600 mt-2">Manage your funds, transactions, and payments</p>
+  </div>
+
+  <!-- Balance Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <!-- Main Balance Card -->
+    <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+      <div class="flex justify-between items-start">
+        <div>
+          <p class="text-green-100 text-sm font-medium">Available Balance</p>
+          <h2 class="text-4xl font-bold mt-2">{{ balance | round(2) }} {{ account.currency if account else 'UGX' }}</h2>
+          <p class="text-green-100 text-sm mt-1">
+            <i class="fas fa-check-circle mr-1"></i> Account Active
+          </p>
+        </div>
+        <div class="bg-white/20 rounded-full p-3">
+          <i class="fas fa-wallet text-2xl"></i>
+        </div>
+      </div>
+      <div class="mt-6 pt-4 border-t border-white/20">
+        <a href="{{ url_for('wallet.deposit_page') }}" class="inline-flex items-center text-white font-medium hover:text-green-100 transition">
+          <i class="fas fa-plus-circle mr-2"></i> Add Funds
+        </a>
+      </div>
+    </div>
+
+    <!-- Commission Card -->
+    <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg">
+      <div class="flex justify-between items-start">
+        <div>
+          <p class="text-purple-100 text-sm font-medium">Agent Commission</p>
+          <h2 class="text-4xl font-bold mt-2">{{ commission | round(2) }} {{ account.currency if account else 'UGX' }}</h2>
+          <p class="text-purple-100 text-sm mt-1">
+            <i class="fas fa-chart-line mr-1"></i> Total Earnings
+          </p>
+        </div>
+        <div class="bg-white/20 rounded-full p-3">
+          <i class="fas fa-coins text-2xl"></i>
+        </div>
+      </div>
+      <div class="mt-6 pt-4 border-t border-white/20 flex gap-3">
+        <a href="{{ url_for('wallet.agent_payout_history') }}" class="inline-flex items-center text-white font-medium hover:text-purple-100 transition text-sm">
+          <i class="fas fa-history mr-1"></i> History
+        </a>
+        <a href="{{ url_for('wallet.agent_payout_request_page') }}" class="inline-flex items-center text-white font-medium hover:text-purple-100 transition text-sm">
+          <i class="fas fa-hand-holding-usd mr-1"></i> Request Payout
+        </a>
+      </div>
+    </div>
+
+    <!-- Account Info Card -->
+    <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+      <div class="flex justify-between items-start">
+        <div>
+          <p class="text-gray-500 text-sm font-medium">Account Details</p>
+          <h3 class="text-lg font-bold text-gray-900 mt-2">Wallet Account</h3>
+          <p class="text-gray-600 text-sm mt-1">
+            <i class="fas fa-id-card mr-1"></i>
+            {% if account %}
+              ID: {{ account.id | slice(0, 8) }}...
+            {% else %}
+              No account
+            {% endif %}
+          </p>
+        </div>
+        <div class="bg-gray-100 rounded-full p-3">
+          <i class="fas fa-user-circle text-2xl text-gray-600"></i>
+        </div>
+      </div>
+      <div class="mt-6 pt-4 border-t border-gray-100">
+        <p class="text-sm text-gray-600">
+          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            <i class="fas fa-shield-alt mr-1"></i> Verified
+          </span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <a href="{{ url_for('wallet.deposit_page') }}" class="group bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-green-300">
+      <div class="flex flex-col items-center text-center">
+        <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-green-500 transition-colors">
+          <i class="fas fa-arrow-down text-2xl text-green-600 group-hover:text-white transition-colors"></i>
+        </div>
+        <span class="font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Deposit</span>
+        <span class="text-xs text-gray-500 mt-1">Add funds</span>
+      </div>
+    </a>
+
+    <a href="{{ url_for('wallet.send_page') }}" class="group bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-yellow-300">
+      <div class="flex flex-col items-center text-center">
+        <div class="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-yellow-500 transition-colors">
+          <i class="fas fa-paper-plane text-2xl text-yellow-600 group-hover:text-white transition-colors"></i>
+        </div>
+        <span class="font-semibold text-gray-900 group-hover:text-yellow-600 transition-colors">Send</span>
+        <span class="text-xs text-gray-500 mt-1">Transfer funds</span>
+      </div>
+    </a>
+
+    <a href="{{ url_for('wallet.withdraw_page') }}" class="group bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-red-300">
+      <div class="flex flex-col items-center text-center">
+        <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-red-500 transition-colors">
+          <i class="fas fa-arrow-up text-2xl text-red-600 group-hover:text-white transition-colors"></i>
+        </div>
+        <span class="font-semibold text-gray-900 group-hover:text-red-600 transition-colors">Withdraw</span>
+        <span class="text-xs text-gray-500 mt-1">Cash out</span>
+      </div>
+    </a>
+
+    <a href="{{ url_for('wallet.wallet_transactions') }}" class="group bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-300">
+      <div class="flex flex-col items-center text-center">
+        <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-500 transition-colors">
+          <i class="fas fa-list text-2xl text-blue-600 group-hover:text-white transition-colors"></i>
+        </div>
+        <span class="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Transactions</span>
+        <span class="text-xs text-gray-500 mt-1">View history</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- Recent Transactions -->
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+    <div class="p-6 border-b border-gray-100">
+      <div class="flex justify-between items-center">
+        <h3 class="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+        <a href="{{ url_for('wallet.wallet_transactions') }}" class="text-blue-600 hover:text-blue-700 font-medium text-sm">
+          View All <i class="fas fa-arrow-right ml-1"></i>
+        </a>
+      </div>
+    </div>
+    
+    {% if recent_transactions %}
+      <div class="divide-y divide-gray-100">
+        {% for tx in recent_transactions %}
+        <div class="p-4 hover:bg-gray-50 transition-colors">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-full flex items-center justify-center mr-4
+                {% if tx.transaction_type.value == 'DEPOSIT' %}bg-green-100
+                {% elif tx.transaction_type.value == 'WITHDRAWAL' %}bg-red-100
+                {% elif tx.transaction_type.value == 'TRANSFER' %}bg-yellow-100
+                {% else %}bg-gray-100{% endif %}">
+                <i class="fas 
+                  {% if tx.transaction_type.value == 'DEPOSIT' %}fa-arrow-down text-green-600
+                  {% elif tx.transaction_type.value == 'WITHDRAWAL' %}fa-arrow-up text-red-600
+                  {% elif tx.transaction_type.value == 'TRANSFER' %}fa-exchange-alt text-yellow-600
+                  {% else %}fa-receipt text-gray-600{% endif %}"></i>
+              </div>
+              <div>
+                <p class="font-medium text-gray-900">{{ tx.description or tx.transaction_type.value | capitalize }}</p>
+                <p class="text-sm text-gray-500">
+                  {{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else 'N/A' }}
+                </p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="font-semibold 
+                {% if tx.transaction_type.value == 'DEPOSIT' %}text-green-600
+                {% elif tx.transaction_type.value == 'WITHDRAWAL' %}text-red-600
+                {% else %}text-gray-900{% endif %}">
+                {% if tx.transaction_type.value == 'DEPOSIT' %}+{% endif %}
+                {{ tx.amount | round(2) }} {{ tx.currency }}
+              </p>
+              <p class="text-xs text-gray-500">
+                <span class="px-2 py-1 rounded-full
+                  {% if tx.status.value == 'COMPLETED' %}bg-green-100 text-green-800
+                  {% elif tx.status.value == 'PENDING' %}bg-yellow-100 text-yellow-800
+                  {% elif tx.status.value == 'FAILED' %}bg-red-100 text-red-800
+                  {% else %}bg-gray-100 text-gray-800{% endif %}">
+                  {{ tx.status.value | capitalize }}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="p-12 text-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-receipt text-3xl text-gray-400"></i>
+        </div>
+        <p class="text-gray-600 mb-2">No recent transactions</p>
+        <p class="text-gray-400 text-sm">Start by depositing funds or sending money</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Additional Features Section -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+    <!-- Quick Stats -->
+    <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
+      <div class="space-y-4">
+        <div class="flex justify-between items-center">
+          <span class="text-gray-600">Total Transactions</span>
+          <span class="font-semibold text-gray-900">{{ recent_transactions | length }}</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-gray-600">Account Currency</span>
+          <span class="font-semibold text-gray-900">{{ account.currency if account else 'UGX' }}</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-gray-600">Account Status</span>
+          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            Active
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Support & Help -->
+    <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+      <h3 class="text-lg font-semibold mb-2">Need Help?</h3>
+      <p class="text-blue-100 text-sm mb-4">Our support team is here to assist you with any wallet-related questions.</p>
+      <div class="flex gap-3">
+        <a href="#" class="inline-flex items-center px-4 py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+          <i class="fas fa-headset mr-2"></i> Contact Support
+        </a>
+        <a href="#" class="inline-flex items-center px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition">
+          <i class="fas fa-book mr-2"></i> FAQ
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

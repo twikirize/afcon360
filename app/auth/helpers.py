@@ -3,8 +3,12 @@
 Stateless role and permission helper functions.
 
 These functions accept a ``User`` ORM instance and inspect its loaded
-relationships. They never hit the database directly — callers are
-responsible for ensuring the relevant relationships are loaded.
+relationships for role checks (fast, cached on user object).
+
+Permission checks (has_global_permission, has_org_permission) always
+query the database directly — permissions are security-critical and must
+reflect the current state of the DB, not a potentially stale/detached
+ORM object loaded earlier in the session lifecycle.
 
 Global helpers  →  operate on ``user.roles``         (UserRole → Role)
 Org helpers     →  operate on ``user.organisations``  (OrganisationMember
@@ -25,12 +29,10 @@ if TYPE_CHECKING:
     from app.identity.models.organisation_member import OrganisationMember
     from app.identity.models.user import User
 else:
-    # Import for runtime
     try:
         from app.identity.models.organisation_member import OrganisationMember
         from app.identity.models.user import User
     except ImportError:
-        # For TYPE_CHECKING only
         pass
 
 
@@ -55,7 +57,28 @@ ROLE_HIERARCHY: tuple[str, ...] = (
 
 
 # ---------------------------------------------------------------------------
-# Global role helpers
+# Internal DB helpers
+# ---------------------------------------------------------------------------
+
+def _get_user_global_role_ids(user: "User") -> list:
+    """
+    Return the list of Role PKs assigned to the user via their UserRole
+    join records. Safe to call even when role objects are detached — we
+    only read the FK column, not a lazy relationship.
+    """
+    ids = []
+    for ur in (user.roles or []):
+        # ur.role_id is a plain column — never triggers a lazy load.
+        if hasattr(ur, 'role_id') and ur.role_id is not None:
+            ids.append(ur.role_id)
+        elif ur.role:
+            # Fallback: role already in memory
+            ids.append(ur.role.id)
+    return ids
+
+
+# ---------------------------------------------------------------------------
+# Global role helpers  (safe — only inspects role.name, loaded with user)
 # ---------------------------------------------------------------------------
 
 def is_owner(user: "User") -> bool:
@@ -129,8 +152,11 @@ def has_global_permission(user: "User", permission_name: str) -> bool:
     Return ``True`` if any of the user's global roles carries the named
     permission.
 
-    ``owner`` short-circuits to ``True`` without consulting the permission
-    table — the platform owner is never locked out.
+    ``owner`` short-circuits to ``True`` without a DB query.
+
+    Always queries the database for non-owner users — permissions are
+    security-critical and must never be read from a detached/stale ORM
+    object.
 
     Args:
         user:            The authenticated ``User`` instance.
@@ -139,19 +165,33 @@ def has_global_permission(user: "User", permission_name: str) -> bool:
     if not user or not user.roles:
         return False
 
-    for ur in user.roles:
-        role = ur.role
-        if not role:
-            continue
+    # Owner bypass — no DB needed.
+    if is_owner(user):
+        return True
 
-        if role.name == "owner":
-            return True
+    # Always go to the DB for permission data.
+    from app.extensions import db
 
-        for rp in role.permissions:
-            if rp.permission and rp.permission.name == permission_name:
-                return True
+    role_ids = _get_user_global_role_ids(user)
+    if not role_ids:
+        return False
 
-    return False
+    # Import lazily to avoid circular imports at module load time.
+    from app.identity.models.roles_permission import Role, Permission, RolePermission
+
+    # One query: join Role → RolePermission → Permission.
+    # Works regardless of whether the in-memory role objects are detached.
+    match = (
+        db.session.query(Permission)
+        .join(Permission.roles)
+        .join(Role, RolePermission.role)
+        .filter(
+            Permission.name == permission_name,
+            Role.id.in_(role_ids),
+        )
+        .first()
+    )
+    return match is not None
 
 
 # ---------------------------------------------------------------------------
@@ -168,15 +208,18 @@ def get_current_context():
     org_id = session.get("current_org_id")
     return context, org_id
 
+
 def is_acting_as_organization():
     """Check if user is currently acting as an organization."""
     context, org_id = get_current_context()
     return context == "organization" and org_id is not None
 
+
 def get_current_org_id():
     """Get the current organization ID if in organization context."""
     context, org_id = get_current_context()
     return org_id if context == "organization" else None
+
 
 # ---------------------------------------------------------------------------
 # Profile completion helpers
@@ -188,13 +231,8 @@ def get_profile_completion_data(user: "User"):
     Returns a dictionary with completion percentage and breakdown.
     """
     if not user:
-        return {
-            'percentage': 0,
-            'breakdown': {},
-            'needs_completion': False
-        }
+        return {'percentage': 0, 'breakdown': {}, 'needs_completion': False}
 
-    # Try to get the user's profile
     try:
         from app.profile.models import get_profile_by_user
         profile = get_profile_by_user(user.public_id)
@@ -205,20 +243,16 @@ def get_profile_completion_data(user: "User"):
             return {
                 'percentage': percentage,
                 'breakdown': breakdown,
-                'needs_completion': percentage < 100
+                'needs_completion': percentage < 100,
             }
     except Exception:
-        # If there's any error, fall back to default
         pass
 
-    return {
-        'percentage': 0,
-        'breakdown': {},
-        'needs_completion': True
-    }
+    return {'percentage': 0, 'breakdown': {}, 'needs_completion': True}
+
 
 # ---------------------------------------------------------------------------
-# Organisation role helpers
+# Organisation role helpers  (safe — only inspects role.name)
 # ---------------------------------------------------------------------------
 
 def get_org_member(
@@ -231,10 +265,7 @@ def get_org_member(
     soft-deleted.
     """
     for membership in (user.organisations or []):
-        if (
-            membership.organisation_id == org_id
-            and not membership.is_deleted
-        ):
+        if membership.organisation_id == org_id and not membership.is_deleted:
             return membership
     return None
 
@@ -244,8 +275,7 @@ def has_org_role(user: "User", org_id: int, *role_names: str) -> bool:
     Return ``True`` if the user holds **any** of the named roles within
     *org_id*.
 
-    Platform owners bypass this check and always return ``True`` —
-    they have implicit access to every organisation.
+    Platform owners bypass this check and always return ``True``.
 
     Args:
         user:        The authenticated ``User`` instance.
@@ -281,6 +311,8 @@ def has_org_permission(
 
     Platform owners bypass this check unconditionally.
 
+    Always queries the database for non-owner users.
+
     Args:
         user:            The authenticated ``User`` instance.
         org_id:          The target organisation's primary key.
@@ -296,12 +328,28 @@ def has_org_permission(
     if not member:
         return False
 
+    # Collect org-role IDs from the membership (FK columns only — no lazy load).
+    org_role_ids = []
     for our in (member.roles or []):
-        role = our.role
-        if not role:
-            continue
-        for rp in role.permissions:
-            if rp.permission and rp.permission.name == permission_name:
-                return True
+        if hasattr(our, 'role_id') and our.role_id is not None:
+            org_role_ids.append(our.role_id)
+        elif our.role:
+            org_role_ids.append(our.role.id)
 
-    return False
+    if not org_role_ids:
+        return False
+
+    from app.extensions import db
+    from app.identity.models.role import Role          # adjust path if needed
+    from app.identity.models.permission import Permission  # adjust path if needed
+
+    match = (
+        db.session.query(Permission)
+        .join(Permission.role_permissions)
+        .filter(
+            Permission.name == permission_name,
+            Role.id.in_(org_role_ids),
+        )
+        .first()
+    )
+    return match is not None

@@ -18,7 +18,7 @@ from flask import render_template, jsonify, request, url_for, flash, redirect, s
 from flask_login import login_required, current_user
 
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
-from app.auth.decorators import require_profile_completion, require_kyc_tier
+from app.auth.decorators import require_profile_completion, require_kyc_tier, require_moderator
 from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_switch import check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
@@ -26,7 +26,7 @@ from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.models import Booking, DriverProfile, Vehicle
 from app.extensions import db
-from app.auth.decorators import require_profile_completion, require_kyc_tier
+from app.auth.decorators import require_profile_completion, require_kyc_tier, require_moderator
 
 logger = logging.getLogger(__name__)
 
@@ -1237,3 +1237,137 @@ def dashboard():
         logger.error(f"Transport admin dashboard error: {e}", exc_info=True)
         flash("Unable to load dashboard. Please try again.", "danger")
         return redirect(url_for("transport_admin.dashboard"))
+
+
+# ============================================================================
+# MODERATOR ROUTES
+# ============================================================================
+
+@transport_bp.route("/moderate")
+@login_required
+@require_moderator
+def moderate():
+    """Show all transport items for moderators (same data as admin view)"""
+    # Show all items, not just pending
+    all_bookings = Booking.query.filter_by(is_deleted=False).order_by(Booking.created_at.desc()).all()
+    all_vehicles = Vehicle.query.filter_by(is_deleted=False).order_by(Vehicle.created_at.desc()).all()
+    all_drivers = DriverProfile.query.order_by(DriverProfile.created_at.desc()).all()
+
+    # Audit log for moderator viewing
+    from app.audit.comprehensive_audit import AuditService
+    AuditService.security(
+        event_type="moderator_view_transport",
+        severity="info",
+        description=f"Moderator {current_user.id} viewed all transport items",
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+    )
+
+    return render_template('transport/moderate.html',
+                          bookings=all_bookings,
+                          vehicles=all_vehicles,
+                          drivers=all_drivers,
+                          is_moderator=True)
+
+
+@transport_bp.route("/moderate/booking/<int:id>")
+@login_required
+@require_moderator
+def moderate_booking(id):
+    """Show single booking for moderation review"""
+    booking = Booking.query.get_or_404(id)
+    return render_template('transport/moderate_booking.html', booking=booking)
+
+
+@transport_bp.route("/moderate/vehicle/<int:id>")
+@login_required
+@require_moderator
+def moderate_vehicle(id):
+    """Show single vehicle for moderation review"""
+    vehicle = Vehicle.query.get_or_404(id)
+    return render_template('transport/moderate_vehicle.html', vehicle=vehicle)
+
+
+@transport_bp.route("/moderate/driver/<int:id>")
+@login_required
+@require_moderator
+def moderate_driver(id):
+    """Show single driver for moderation review"""
+    driver = DriverProfile.query.get_or_404(id)
+    return render_template('transport/moderate_driver.html', driver=driver)
+
+
+@transport_bp.route("/moderate/<entity_type>/<int:id>/<action>", methods=['POST'])
+@login_required
+@require_moderator
+def moderate_action(entity_type, id, action):
+    """Approve, reject, or flag transport items"""
+    
+    if entity_type == 'booking':
+        item = Booking.query.get_or_404(id)
+        redirect_url = url_for('transport.moderate_booking', id=id)
+    elif entity_type == 'vehicle':
+        item = Vehicle.query.get_or_404(id)
+        redirect_url = url_for('transport.moderate_vehicle', id=id)
+    elif entity_type == 'driver':
+        item = DriverProfile.query.get_or_404(id)
+        redirect_url = url_for('transport.moderate_driver', id=id)
+    else:
+        flash('Invalid entity type.', 'danger')
+        return redirect(url_for('transport.moderate'))
+    
+    if action == 'approve':
+        if entity_type == 'vehicle':
+            item.verification_status = 'verified'
+            item.verified_at = datetime.utcnow()
+        elif entity_type == 'driver':
+            item.verification_status = 'verified'
+            item.verified_at = datetime.utcnow()
+        elif entity_type == 'booking':
+            item.status = 'confirmed'
+        
+        db.session.commit()
+        flash(f'{entity_type.capitalize()} approved successfully.', 'success')
+    
+    elif action == 'reject':
+        reason = request.form.get('reason', '').strip()
+        if not reason:
+            flash('Rejection reason is required.', 'warning')
+            return redirect(redirect_url)
+        
+        if entity_type == 'vehicle':
+            item.verification_status = 'rejected'
+            item.rejection_reason = reason
+        elif entity_type == 'driver':
+            item.verification_status = 'rejected'
+            item.rejection_reason = reason
+        elif entity_type == 'booking':
+            item.status = 'cancelled'
+            item.cancellation_reason = reason
+        
+        db.session.commit()
+        flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
+    
+    elif action == 'flag':
+        from app.admin.services import create_flag
+        reason = request.form.get('reason', '').strip()
+        priority = request.form.get('priority', 'medium')
+        
+        if not reason:
+            flash('Reason required for flagging.', 'warning')
+            return redirect(redirect_url)
+        
+        ok, flag = create_flag(
+            user=current_user,
+            entity_type=f'transport_{entity_type}',
+            entity_id=id,
+            reason=reason,
+            priority=priority
+        )
+        
+        if ok:
+            flash(f'{entity_type.capitalize()} flagged for review (Priority: {priority})', 'warning')
+        else:
+            flash(f'Failed to flag: {flag}', 'danger')
+    
+    return redirect(url_for('transport.moderate'))

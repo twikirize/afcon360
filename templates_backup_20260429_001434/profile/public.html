@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.username }} - Public Profile{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-cover {
+        height: 280px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        position: relative;
+        border-radius: 0 0 20px 20px;
+        margin-bottom: 100px;
+    }
+    .profile-avatar {
+        position: absolute;
+        bottom: -80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 160px;
+        height: 160px;
+        border: 6px solid white;
+        border-radius: 50%;
+        background: white;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    }
+    .profile-avatar-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .profile-avatar-initials {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 60px;
+        font-weight: bold;
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: white;
+    }
+    .profile-stats-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+        transition: transform 0.3s ease;
+        height: 100%;
+    }
+    .profile-stats-card:hover {
+        transform: translateY(-5px);
+    }
+    .stat-number {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #2d3748;
+        line-height: 1;
+    }
+    .stat-label {
+        font-size: 0.9rem;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .badge-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .badge-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        color: white;
+        font-size: 1.5rem;
+    }
+    .activity-item {
+        border-left: 3px solid #4f46e5;
+        padding-left: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .activity-time {
+        font-size: 0.85rem;
+        color: #718096;
+    }
+    .verified-badge-large {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        padding: 0.5rem 1.5rem;
+        border-radius: 50px;
+        display: inline-flex;
+        align-items: center;
+        font-weight: 600;
+        box-shadow: 0 5px 15px rgba(16, 185, 129, 0.3);
+    }
+    .location-text {
+        color: #4a5568;
+        font-size: 1.1rem;
+    }
+    .bio-text {
+        font-size: 1.1rem;
+        line-height: 1.6;
+        color: #2d3748;
+    }
+    .member-since {
+        color: #718096;
+        font-size: 0.95rem;
+    }
+    .section-title {
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Cover Banner -->
+<div class="profile-cover"></div>
+
+<div class="container">
+    <div class="row">
+        <div class="col-lg-4">
+            <!-- Profile Info Card -->
+            <div class="card border-0 shadow-lg mb-4">
+                <div class="card-body text-center pt-5">
+                    <!-- Avatar -->
+                    <div class="profile-avatar">
+                        {% if public_info.avatar_url %}
+                            <img src="{{ public_info.avatar_url }}" alt="{{ user.username }}" class="profile-avatar-img">
+                        {% else %}
+                            <div class="profile-avatar-initials">
+                                {{ user.username[0]|upper }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Name and Username -->
+                    <h1 class="h3 mt-5 mb-1">
+                        {% if public_info.full_name %}
+                            {{ public_info.full_name }}
+                        {% else %}
+                            {{ user.username }}
+                        {% endif %}
+                    </h1>
+                    <p class="text-muted mb-3">@{{ user.username }}</p>
+
+                    <!-- Location -->
+                    {% if public_info.city or public_info.country %}
+                    <div class="location-text mb-3">
+                        <i class="fas fa-map-marker-alt me-1"></i>
+                        {% if public_info.city %}{{ public_info.city }}{% endif %}{% if public_info.city and public_info.country %}, {% endif %}{% if public_info.country %}{{ public_info.country }}{% endif %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Verification Badge -->
+                    {% if profile and profile.verification_status == 'verified' %}
+                    <div class="mb-4">
+                        <div class="verified-badge-large">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Verified User
+                        </div>
+                        <p class="text-muted small mt-2 mb-0">Identity verified</p>
+                    </div>
+                    {% endif %}
+
+                    <!-- Bio -->
+                    {% if public_info.bio %}
+                    <div class="bio-text mb-4">
+                        {{ public_info.bio }}
+                    </div>
+                    {% endif %}
+
+                    <!-- Member Since -->
+                    {% if public_info.joined_date %}
+                    <div class="member-since mb-4">
+                        <i class="far fa-calendar-alt me-1"></i>
+                        Member since {{ public_info.joined_date.strftime('%B %Y') }}
+                    </div>
+                    {% endif %}
+
+                    <!-- Action Buttons for Own Profile -->
+                    {% if is_own_profile %}
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('profile.account_overview') }}" class="btn btn-primary">
+                            <i class="fas fa-user-cog me-2"></i>Account Settings
+                        </a>
+                        <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-edit me-2"></i>Edit Profile
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Badges Section -->
+            {% if badges %}
+            <div class="card border-0 shadow-lg mb-4">
+                <div class="card-body">
+                    <h3 class="section-title">Badges</h3>
+                    {% for badge in badges %}
+                    <div class="badge-card">
+                        <div class="badge-icon">
+                            <i class="{{ badge.icon|default('fas fa-award') }}"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-1">{{ badge.name }}</h6>
+                            <p class="text-muted small mb-0">{{ badge.description|default('Achievement unlocked') }}</p>
+                            {% if badge.earned_date %}
+                            <small class="text-muted">Earned {{ badge.earned_date.strftime('%b %Y') }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="col-lg-8">
+            <!-- Stats Grid -->
+            <div class="row mb-4">
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="profile-stats-card text-center">
+                        <div class="stat-number">{{ stats.events_count|default(0) }}</div>
+                        <div class="stat-label">Events</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="profile-stats-card text-center">
+                        <div class="stat-number">{{ stats.reviews_count|default(0) }}</div>
+                        <div class="stat-label">Reviews</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="profile-stats-card text-center">
+                        <div class="stat-number">{{ stats.stays_count|default(0) }}</div>
+                        <div class="stat-label">Stays</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="profile-stats-card text-center">
+                        <div class="stat-number">{{ stats.trips_count|default(0) }}</div>
+                        <div class="stat-label">Trips</div>
+                    </div>
+                </div>
+                {% if 'driver' in user_roles %}
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="profile-stats-card text-center">
+                        <div class="stat-number">{{ stats.get('driver_trips', 0) }}</div>
+                        <div class="stat-label">Driver Trips</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if 'host' in user_roles %}
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="profile-stats-card text-center">
+                        <div class="stat-number">{{ stats.get('host_properties', 0) }}</div>
+                        <div class="stat-label">Properties</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Role Badges -->
+            {% if user_roles %}
+            <div class="card border-0 shadow-lg mb-4">
+                <div class="card-body">
+                    <h3 class="section-title">Roles</h3>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for role in user_roles %}
+                        <span class="badge
+                            {% if role == 'owner' %}bg-danger
+                            {% elif role == 'admin' %}bg-warning text-dark
+                            {% elif role == 'driver' %}bg-primary
+                            {% elif role == 'host' %}bg-success
+                            {% else %}bg-secondary{% endif %}
+                            p-2 fs-6">
+                            <i class="fas
+                                {% if role == 'owner' %}fa-crown
+                                {% elif role == 'admin' %}fa-user-shield
+                                {% elif role == 'driver' %}fa-car
+                                {% elif role == 'host' %}fa-home
+                                {% else %}fa-user{% endif %}
+                                me-1"></i>
+                            {{ role|title }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Recent Activity Feed -->
+            <div class="card border-0 shadow-lg">
+                <div class="card-body">
+                    <h3 class="section-title">Recent Activity</h3>
+
+                    {% if recent_activity %}
+                        {% for activity in recent_activity %}
+                        <div class="activity-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h5 class="h6 mb-1">{{ activity.title|default('Activity') }}</h5>
+                                <span class="activity-time">{{ activity.time|default('') }}</span>
+                            </div>
+                            {% if activity.description %}
+                            <p class="mb-2">{{ activity.description }}</p>
+                            {% endif %}
+                            {% if activity.resource_type %}
+                            <span class="badge bg-light text-dark">
+                                {{ activity.resource_type }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-stream fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No recent activity to display</p>
+                        </div>
+                    {% endif %}
+
+                    {% if recent_activity and recent_activity|length > 5 %}
+                    <div class="text-center mt-4">
+                        <a href="#" class="btn btn-outline-primary">View All Activity</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

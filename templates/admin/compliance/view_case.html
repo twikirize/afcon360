@@ -1,0 +1,269 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Case {{ case.case_number }} — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Case {{ case.case_number }}{% endblock %}
+
+{% block content %}
+<!-- Case Header -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">{{ case.case_number }}</div>
+      <div style="font-family: var(--font-display); font-size: 18px; font-weight: 700;">{{ case.title }}</div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      {% if case.status.value == 'open' %}
+        <span class="badge badge-orange">Open</span>
+      {% elif case.status.value == 'in_review' %}
+        <span class="badge badge-blue">In Review</span>
+      {% elif case.status.value == 'escalated' %}
+        <span class="badge badge-purple">Escalated</span>
+      {% elif case.status.value == 'resolved' %}
+        <span class="badge badge-green">Resolved</span>
+      {% elif case.status.value == 'closed' %}
+        <span class="badge badge-gray">Closed</span>
+      {% endif %}
+      
+      {% if case.priority.value == 'critical' %}
+        <span class="badge badge-red">Critical</span>
+      {% elif case.priority.value == 'high' %}
+        <span class="badge badge-orange">High</span>
+      {% elif case.priority.value == 'medium' %}
+        <span class="badge badge-blue">Medium</span>
+      {% else %}
+        <span class="badge badge-gray">Low</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; font-size: 13px;">
+      <div>
+        <div style="color: var(--muted); font-size: 11px; text-transform: uppercase; font-family: var(--font-mono);">Type</div>
+        <div style="font-weight: 600;">{{ case.case_type.value|upper }}</div>
+      </div>
+      <div>
+        <div style="color: var(--muted); font-size: 11px; text-transform: uppercase; font-family: var(--font-mono);">Created</div>
+        <div>{{ case.created_at.strftime('%Y-%m-%d %H:%M') if case.created_at else '-' }}</div>
+      </div>
+      <div>
+        <div style="color: var(--muted); font-size: 11px; text-transform: uppercase; font-family: var(--font-mono);">SLA Due</div>
+        <div style="{{ 'color: var(--red); font-weight: 600;' if case.sla_due_at and case.sla_due_at < now else '' }}">
+          {{ case.sla_due_at.strftime('%Y-%m-%d') if case.sla_due_at else 'Not Set' }}
+        </div>
+      </div>
+      <div>
+        <div style="color: var(--muted); font-size: 11px; text-transform: uppercase; font-family: var(--font-mono);">Assigned To</div>
+        <div>
+          {% if case.assignee %}
+            {{ case.assignee.username }}
+          {% else %}
+            <span style="color: var(--muted);">Unassigned</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    
+    {% if case.description %}
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+      <div style="color: var(--muted); font-size: 11px; text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 8px;">Description</div>
+      <div style="font-size: 14px; line-height: 1.6;">{{ case.description }}</div>
+    </div>
+    {% endif %}
+    
+    {% if case.resolution %}
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+      <div style="color: var(--muted); font-size: 11px; text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 8px;">Resolution</div>
+      <div style="font-size: 14px; line-height: 1.6; background: var(--green-lt); padding: 12px; border-radius: var(--radius);">
+        {{ case.resolution }}
+      </div>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 8px;">
+        Resolved by {{ case.resolver.username if case.resolver else 'Unknown' }} on {{ case.resolved_at.strftime('%Y-%m-%d %H:%M') if case.resolved_at else '-' }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  
+  <!-- Actions -->
+  {% if case.status.value != 'resolved' and case.status.value != 'closed' %}
+  <div class="card-footer">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      {% if not case.assigned_to or case.assigned_to != current_user.id %}
+      <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="assign_to_me">
+        <button type="submit" class="btn btn-primary">Assign to Me</button>
+      </form>
+      {% endif %}
+      
+      <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="escalate">
+        <button type="submit" class="btn btn-warning">Escalate</button>
+      </form>
+      
+      <button type="button" class="btn btn-success" onclick="document.getElementById('resolveModal').style.display='block'">Resolve</button>
+      
+      <a href="#notes" class="btn btn-secondary">Add Note</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="col-layout-8-4">
+  <!-- Main: Notes & Activity -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-comments"></i> Case Notes & Activity</div>
+      </div>
+      <div class="card-body">
+        {% if notes %}
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          {% for note in notes %}
+          <div style="display: flex; gap: 12px;">
+            <div class="user-avatar" style="flex-shrink: 0;">{{ note.author.username[0] if note.author else '?' }}</div>
+            <div style="flex: 1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-weight: 600;">{{ note.author.username if note.author else 'Unknown' }}</span>
+                <span style="font-size: 11px; color: var(--muted);">{{ note.created_at.strftime('%Y-%m-%d %H:%M') if note.created_at else '-' }}</span>
+              </div>
+              <div style="font-size: 13px; line-height: 1.6; background: var(--bg); padding: 12px; border-radius: var(--radius);">
+                {{ note.content }}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 30px;">
+          <div class="empty-icon" style="font-size: 24px;"><i class="fas fa-comments"></i></div>
+          <p>No notes yet. Add the first note below.</p>
+        </div>
+        {% endif %}
+        
+        <!-- Add Note Form -->
+        <div id="notes" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_note">
+            <div class="form-group">
+              <label class="form-label">Add Note</label>
+              <textarea name="note" class="form-control" rows="3" placeholder="Enter your note..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Add Note</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Sidebar: Related Info -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-link"></i> Related Entity</div>
+      </div>
+      <div class="card-body">
+        {% if case.user %}
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+          <div class="user-avatar">{{ case.user.username[0] }}</div>
+          <div>
+            <div style="font-weight: 600;">{{ case.user.username }}</div>
+            <div style="font-size: 11px; color: var(--muted);">{{ case.user.email }}</div>
+          </div>
+        </div>
+        <a href="{{ url_for('compliance.user_audit', user_id=case.user.id) }}" class="btn btn-sm btn-secondary w-100">View User Profile</a>
+        {% elif case.organisation %}
+        <div style="margin-bottom: 12px;">
+          <div style="font-weight: 600;">{{ case.organisation.name }}</div>
+          <div style="font-size: 11px; color: var(--muted);">{{ case.organisation.registration_number or 'No reg. number' }}</div>
+        </div>
+        <a href="{{ url_for('compliance.view_org', org_id=case.organisation.id) }}" class="btn btn-sm btn-secondary w-100">View Organisation</a>
+        {% else %}
+        <p style="color: var(--muted);">No user or organisation linked to this case.</p>
+        {% endif %}
+      </div>
+    </div>
+    
+    {% if case.kyc_id or case.payout_id or case.flag_id %}
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-paperclip"></i> Related Records</div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          {% if case.kyc_id %}
+          <a href="{{ url_for('compliance.view_kyc', kyc_id=case.kyc_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
+            <i class="fas fa-id-card"></i> KYC #{{ case.kyc_id }}
+          </a>
+          {% endif %}
+          {% if case.payout_id %}
+          <a href="{{ url_for('compliance.view_payout', payout_id=case.payout_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
+            <i class="fas fa-money-bill"></i> Payout #{{ case.payout_id }}
+          </a>
+          {% endif %}
+          {% if case.flag_id %}
+          <a href="{{ url_for('admin.moderator.view_flag', flag_id=case.flag_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
+            <i class="fas fa-flag"></i> Flag #{{ case.flag_id }}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-clock-rotate-left"></i> Case History</div>
+      </div>
+      <div class="card-body">
+        {% if history %}
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12px;">
+          {% for entry in history[:5] %}
+          <div style="display: flex; gap: 8px;">
+            <div style="color: var(--muted);">{{ entry.created_at.strftime('%H:%M') if entry.created_at else '-' }}</div>
+            <div>
+              <span style="font-weight: 600;">{{ entry.action }}</span>
+              {% if entry.user %}
+              <span style="color: var(--muted);">by {{ entry.user.username }}</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--muted); font-size: 13px;">No history available</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Resolve Modal -->
+<div id="resolveModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+  <div style="background: var(--surface); border-radius: var(--radius-lg); padding: 24px; width: 90%; max-width: 500px; box-shadow: var(--shadow-lg);">
+    <h3 style="margin: 0 0 16px; font-family: var(--font-display);">Resolve Case</h3>
+    <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="resolve">
+      <div class="form-group">
+        <label class="form-label">Resolution Notes</label>
+        <textarea name="resolution" class="form-control" rows="4" placeholder="Describe how this case was resolved..." required></textarea>
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('resolveModal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-success">Resolve Case</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// Close modal when clicking outside
+document.getElementById('resolveModal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    this.style.display = 'none';
+  }
+});
+</script>
+{% endblock %}

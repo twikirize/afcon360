@@ -162,7 +162,7 @@
   }
 }
 
-/* Force dark mode */
+/* Force dark mode - only applied when user explicitly enables via theme settings */
 body.dark-mode {
   --text-primary: #e0e0e0;
   --text-secondary: #b0b0b0;
@@ -173,10 +173,26 @@ body.dark-mode {
   --bg-elevated: #252525;
   --border-light: #2d2d2d;
   --border-medium: #404040;
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
 }
 
-/* Force light mode */
+/* Force light mode - default theme */
 body.light-mode {
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6c757d;
+  --bg-body: #f2f4f2;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #f8f9fa;
+  --bg-elevated: #ffffff;
+  --border-light: #e9ecef;
+  --border-medium: #dee2e6;
+}
+
+/* Default to light mode by adding light-mode class to body */
+body {
+  /* Default to light mode colors */
   --text-primary: #1a1a1a;
   --text-secondary: #4a4a4a;
   --text-muted: #6c757d;

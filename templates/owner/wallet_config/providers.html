@@ -1,0 +1,185 @@
+{% extends "owner/layout.html" %}
+
+{% block title %}Payment Providers - Owner Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">Payment Providers</h1>
+            <p class="text-muted mb-0">Manage payment gateway integrations</p>
+        </div>
+        <a href="{{ url_for('wallet_config.index') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Wallet Config
+        </a>
+    </div>
+
+    <!-- Provider Cards -->
+    <div class="row">
+        {% for provider in providers %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        {% if provider.provider_name == 'flutterwave' %}
+                        <span class="badge bg-warning text-dark me-2">FW</span>
+                        {% elif provider.provider_name == 'paystack' %}
+                        <span class="badge bg-primary me-2">PS</span>
+                        {% elif provider.provider_name == 'mtn_momo' %}
+                        <span class="badge bg-success me-2">MTN</span>
+                        {% elif provider.provider_name == 'airtel_money' %}
+                        <span class="badge bg-danger me-2">Airtel</span>
+                        {% else %}
+                        <span class="badge bg-secondary me-2">{{ provider.provider_name[:2].upper() }}</span>
+                        {% endif %}
+                        <h5 class="mb-0">{{ provider.display_name }}</h5>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-link text-dark" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('wallet_config.edit_provider', config_id=provider.id) }}">
+                                    <i class="fas fa-edit me-2"></i>Edit Configuration
+                                </a>
+                            </li>
+                            <li>
+                                <form method="POST" action="{{ url_for('wallet_config.test_provider', config_id=provider.id) }}" class="d-inline">
+                                    <button type="submit" class="dropdown-item">
+                                        <i class="fas fa-vial me-2"></i>Test Connection
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Status Badges -->
+                    <div class="mb-3">
+                        {% if provider.is_active and provider.is_enabled %}
+                        <span class="badge bg-success">Active</span>
+                        {% elif not provider.is_enabled %}
+                        <span class="badge bg-secondary">Disabled</span>
+                        {% else %}
+                        <span class="badge bg-warning">Inactive</span>
+                        {% endif %}
+                        
+                        {% if provider.is_sandbox %}
+                        <span class="badge bg-warning">Sandbox</span>
+                        {% else %}
+                        <span class="badge bg-success">Production</span>
+                        {% endif %}
+                        
+                        {% if provider.has_secret_key %}
+                        <span class="badge bg-success"><i class="fas fa-key"></i> Keys Set</span>
+                        {% else %}
+                        <span class="badge bg-danger"><i class="fas fa-exclamation"></i> No Keys</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Details -->
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Provider ID</small>
+                        <code>{{ provider.provider_name }}</code>
+                    </div>
+
+                    {% if provider.webhook_url %}
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Webhook URL</small>
+                        <code class="small">{{ provider.webhook_url }}</code>
+                    </div>
+                    {% endif %}
+
+                    {% if provider.config_json and provider.config_json.supported_countries %}
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Supported Countries</small>
+                        <div>
+                            {% for country in provider.config_json.supported_countries %}
+                            <span class="badge bg-light text-dark border">{{ country }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if provider.config_json and provider.config_json.supported_methods %}
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Supported Methods</small>
+                        <div>
+                            {% for method in provider.config_json.supported_methods %}
+                            <span class="badge bg-light text-dark border text-capitalize">{{ method }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Last Test -->
+                    {% if provider.last_tested_at %}
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-1">Last Connection Test</small>
+                        {% if provider.last_test_result == 'success' %}
+                        <span class="text-success"><i class="fas fa-check-circle"></i> 
+                            {{ provider.last_tested_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% else %}
+                        <span class="text-danger"><i class="fas fa-times-circle"></i> 
+                            {{ provider.last_tested_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% if provider.last_error_message %}
+                        <small class="text-danger d-block">{{ provider.last_error_message }}</small>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-footer bg-white border-top-0">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('wallet_config.edit_provider', config_id=provider.id) }}" 
+                           class="btn btn-primary">
+                            <i class="fas fa-edit me-2"></i>Edit Configuration
+                        </a>
+                        <form method="POST" action="{{ url_for('wallet_config.test_provider', config_id=provider.id) }}">
+                            <button type="submit" class="btn btn-outline-secondary w-100">
+                                <i class="fas fa-vial me-2"></i>Test Connection
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Environment Variables Info -->
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Configuration Options</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Option 1: Database Configuration (Recommended)</h6>
+                    <p class="text-muted small">API keys are stored in the database with encryption. 
+                    Changes take effect immediately without restarting the application.</p>
+                    <a href="{{ url_for('wallet_config.edit_provider', config_id=providers[0].id) }}" class="btn btn-sm btn-outline-primary">
+                        Configure in Database
+                    </a>
+                </div>
+                <div class="col-md-6">
+                    <h6>Option 2: Environment Variables</h6>
+                    <p class="text-muted small">API keys are stored in the <code>.env</code> file. 
+                    More secure but requires application restart after changes.</p>
+                    <a href="{{ url_for('wallet_config.env_setup') }}" class="btn btn-sm btn-outline-secondary">
+                        View .env Template
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+</CodeContent>
+<parameter>EmptyFile=false</parameter>
+</function>
+
+<function=write_to_file>
+<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\templates\owner\wallet_config\edit_provider.html

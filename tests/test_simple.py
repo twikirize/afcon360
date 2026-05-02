@@ -7,10 +7,10 @@ with app.app_context():
     print("FanProfile has is_deleted:", hasattr(FanProfile, 'is_deleted'))
     print("FanProfile has deleted_at:", hasattr(FanProfile, 'deleted_at'))
 
-    # Also check Wallet
-    from app.wallet.models import Wallet
-    print("\nWallet has is_deleted:", hasattr(Wallet, 'is_deleted'))
-    print("Wallet has deleted_at:", hasattr(Wallet, 'deleted_at'))
+    # Also check AccountModel (new architecture)
+    from app.wallet.models.ledger import AccountModel
+    print("\nAccountModel has user_id:", hasattr(AccountModel, 'user_id'))
+    print("AccountModel has is_frozen:", hasattr(AccountModel, 'is_frozen'))
 
     # Check if columns exist in database
     print("\nChecking database columns...")

@@ -22,6 +22,7 @@ from app.auth.kyc_compliance import (
     TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD,
     calculate_kyc_tier
 )
+from app.auth.decorators import require_moderator
 
 kyc_bp = Blueprint("kyc", __name__, url_prefix="/kyc")
 
@@ -464,3 +465,40 @@ def verify_upload():
             return redirect(url_for('kyc.verify_upload'))
 
     return render_template('kyc/verify_upload.html')
+
+
+# ============================================================================
+# MODERATOR ROUTES (VIEW ONLY)
+# ============================================================================
+
+@kyc_bp.route("/moderate")
+@login_required
+@require_moderator
+def moderate():
+    """Show all KYC records for moderators (same data as admin view)"""
+    
+    # Show all records, not just pending
+    all_records = KycRecord.query.order_by(KycRecord.created_at.desc()).all()
+    
+    # Audit log for moderator viewing
+    from app.audit.comprehensive_audit import AuditService
+    AuditService.security(
+        event_type="moderator_view_kyc",
+        severity="info",
+        description=f"Moderator {current_user.id} viewed all KYC records",
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+    )
+    
+    return render_template('kyc/moderate.html', records=all_records, is_moderator=True)
+
+
+@kyc_bp.route("/moderate/document/<int:id>")
+@login_required
+@require_moderator
+def moderate_document(id):
+    """Show single KYC document for review (view-only for moderators)"""
+    
+    record = KycRecord.query.get_or_404(id)
+    
+    return render_template('kyc/moderate_document.html', record=record)

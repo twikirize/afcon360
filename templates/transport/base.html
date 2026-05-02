@@ -188,6 +188,16 @@ setTimeout(() => {
 <!-- Base functionality that uses utils -->
 <script src="{{ url_for('static', filename='transport/js/base.js') }}"></script>
 
+<!-- Theme Manager -->
+<script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof ThemeManager !== 'undefined') {
+      window.themeManager = new ThemeManager();
+    }
+  });
+</script>
+
 {% block extra_js %}{% endblock %}
 </body>
 </html>

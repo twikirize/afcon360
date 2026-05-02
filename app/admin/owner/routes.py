@@ -53,6 +53,135 @@ def utility_processor():
 # Dashboard & Core
 # ============================================================================
 
+@owner_bp.route('/wallet-capabilities')
+@owner_login_required
+def wallet_capabilities():
+    """Wallet system capabilities overview and configuration (Owner only)"""
+    try:
+        # Get wallet statistics
+        from app.wallet.models.ledger import AccountModel
+        from app.wallet.models.transaction import TransactionModel
+        
+        stats = {
+            'total_users': User.query.count(),
+            'active_wallets': AccountModel.query.count(),
+            'total_transactions': TransactionModel.query.count(),
+            'total_volume': '0'  # Would need calculation from transactions
+        }
+        
+        return render_template('owner/wallet_capabilities.html', stats=stats)
+    except Exception as e:
+        current_app.logger.error(f"Wallet capabilities error: {e}")
+        flash('Error loading wallet capabilities', 'error')
+        return redirect(url_for('owner.dashboard'))
+
+@owner_bp.route('/admin-audit-log')
+@owner_login_required
+def admin_audit_log():
+    """View admin audit log (Owner only)"""
+    try:
+        from app.wallet.services.admin_audit_service import AdminAuditService
+        
+        # Get audit logs for last 30 days
+        logs = AdminAuditService.get_audit_logs(days=30, limit=100)
+        summary = AdminAuditService.get_audit_summary(days=30)
+        
+        return render_template('owner/admin_audit_log.html', logs=logs, summary=summary)
+    except Exception as e:
+        current_app.logger.error(f"Admin audit log error: {e}")
+        flash('Error loading admin audit log', 'error')
+        return redirect(url_for('owner.dashboard'))
+
+@owner_bp.route('/manage-aggregators', methods=['GET', 'POST'])
+@owner_login_required
+def manage_aggregators():
+    """Manage aggregators (Owner only)"""
+    try:
+        from app.wallet.services.aggregator_service import AggregatorService
+        from flask_login import current_user
+        
+        if request.method == 'POST':
+            # Create new aggregator
+            name = request.form.get('name')
+            display_name = request.form.get('display_name')
+            api_key = request.form.get('api_key')
+            api_secret = request.form.get('api_secret')
+            description = request.form.get('description')
+            tier = request.form.get('tier', 'standard')
+            
+            AggregatorService.create_aggregator(
+                name=name,
+                display_name=display_name,
+                api_key=api_key,
+                api_secret=api_secret,
+                description=description,
+                tier=tier,
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner'
+            )
+            
+            flash('Aggregator created successfully', 'success')
+            return redirect(url_for('owner.manage_aggregators'))
+        
+        # GET request - show list
+        aggregators = AggregatorService.get_all_aggregators()
+        return render_template('owner/manage_aggregators.html', aggregators=aggregators)
+    except Exception as e:
+        current_app.logger.error(f"Manage aggregators error: {e}")
+        flash('Error managing aggregators', 'error')
+        return redirect(url_for('owner.dashboard'))
+
+@owner_bp.route('/aggregator/<int:aggregator_id>/suspend', methods=['POST'])
+@owner_login_required
+def suspend_aggregator(aggregator_id):
+    """Suspend an aggregator"""
+    try:
+        from app.wallet.services.aggregator_service import AggregatorService
+        from flask_login import current_user
+        
+        reason = request.form.get('reason', 'No reason provided')
+        
+        AggregatorService.suspend_aggregator(
+            aggregator_id=aggregator_id,
+            admin_id=current_user.id,
+            admin_name=current_user.username,
+            admin_role='owner',
+            reason=reason
+        )
+        
+        flash('Aggregator suspended successfully', 'success')
+        return redirect(url_for('owner.manage_aggregators'))
+    except Exception as e:
+        current_app.logger.error(f"Suspend aggregator error: {e}")
+        flash('Error suspending aggregator', 'error')
+        return redirect(url_for('owner.manage_aggregators'))
+
+@owner_bp.route('/aggregator/<int:aggregator_id>/activate', methods=['POST'])
+@owner_login_required
+def activate_aggregator(aggregator_id):
+    """Activate a suspended aggregator"""
+    try:
+        from app.wallet.services.aggregator_service import AggregatorService
+        from flask_login import current_user
+        
+        reason = request.form.get('reason', 'No reason provided')
+        
+        AggregatorService.activate_aggregator(
+            aggregator_id=aggregator_id,
+            admin_id=current_user.id,
+            admin_name=current_user.username,
+            admin_role='owner',
+            reason=reason
+        )
+        
+        flash('Aggregator activated successfully', 'success')
+        return redirect(url_for('owner.manage_aggregators'))
+    except Exception as e:
+        current_app.logger.error(f"Activate aggregator error: {e}")
+        flash('Error activating aggregator', 'error')
+        return redirect(url_for('owner.manage_aggregators'))
+
 @owner_bp.route('/dashboard')
 @owner_login_required
 def dashboard():
@@ -149,10 +278,10 @@ def dashboard():
         total_revenue = 0
         try:
             # This would need actual transaction data
-            from app.wallet.models import Transaction
+            from app.wallet.models.transaction import TransactionModel
             # Check if Transaction has a 'status' field, if not, count all transactions
             # Let's be safe and count all transactions for now
-            total_revenue = Transaction.query.count()  # Placeholder count
+            total_revenue = TransactionModel.query.count()  # Placeholder count
         except Exception as revenue_error:
             logger.warning(f"Revenue query error: {revenue_error}")
 
@@ -299,7 +428,7 @@ def impersonate_role(role_name):
             'moderator': url_for('admin.moderator_dashboard'),
             'support': url_for('admin.support_dashboard'),
             'event_manager': url_for('events.admin_dashboard'),
-            'transport_admin': url_for('transport.admin_dashboard'),
+            'transport_admin': url_for('transport_admin.dashboard'),
             'wallet_admin': url_for('wallet.wallet_dashboard'),
             'accommodation_admin': url_for('accommodation.admin_dashboard'),
             'tourism_admin': url_for('tourism.home'),
@@ -429,33 +558,50 @@ def audit_logs():
 @owner_login_required
 @audit_owner_action('viewed_settings', 'settings')
 def settings():
-    """Owner settings page"""
+    """Owner settings page - includes system security settings"""
     try:
         from app.admin.owner.models import OwnerSettings
 
         if request.method == 'POST':
             # Update settings
             session_timeout = request.form.get('session_timeout', type=int, default=120)
+            
+            # SECURITY: Update MFA requirement toggle
+            require_owner_mfa = request.form.get('require_owner_mfa') == 'on'
+            
+            # Update config (this is a system-wide setting)
+            # In production, this should update a SystemSetting in DB
+            current_app.config['REQUIRE_OWNER_MFA'] = require_owner_mfa
+            
+            # Also update OwnerSettings
+            owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
+            if not owner_settings:
+                owner_settings = OwnerSettings(owner_id=current_user.id)
+                db.session.add(owner_settings)
 
-            settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-            if not settings:
-                settings = OwnerSettings(owner_id=current_user.id)
-                db.session.add(settings)
-
-            settings.session_timeout_minutes = session_timeout
+            owner_settings.session_timeout_minutes = session_timeout
             db.session.commit()
 
             flash("✅ Settings updated successfully", "success")
             log_owner_action(
                 action='updated_settings',
                 category='settings',
-                details={'session_timeout': session_timeout}
+                details={
+                    'session_timeout': session_timeout,
+                    'require_owner_mfa': require_owner_mfa
+                }
             )
             return redirect(url_for('admin.owner.settings'))
 
         # GET request - show settings page
-        settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-        return render_template('owner/settings.html', settings=settings)
+        owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
+        
+        # Get current MFA requirement status
+        require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+        
+        return render_template('owner/settings.html', 
+                             settings=owner_settings, 
+                             require_owner_mfa=require_mfa)
     except Exception as e:
         logger.error(f"Settings error: {e}")
         flash("Error loading settings", "danger")
@@ -485,11 +631,123 @@ def manage_roles():
     try:
         roles = Role.query.all()
         users = User.query.all()
-        return render_template('owner/manage_roles.html', roles=roles, users=users)
+
+        # Get role statistics
+        role_stats = {}
+        try:
+            role_stats = dict(db.session.query(Role.name, func.count(UserRole.user_id))
+                .join(UserRole, Role.id == UserRole.role_id)
+                .group_by(Role.name).all())
+        except Exception as role_error:
+            logger.warning(f"Role stats query error: {role_error}")
+
+        return render_template('admin/manage_roles.html', roles=roles, users=users, role_stats=role_stats)
     except Exception as e:
         logger.error(f"Role management error: {e}")
         flash("Error loading roles", "danger")
         return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/roles/<int:role_id>/users')
+@owner_login_required
+@audit_owner_action('viewed_role_users', 'user_management')
+def role_users(role_id):
+    """View users with a specific role"""
+    try:
+        role = Role.query.get_or_404(role_id)
+        user_roles = UserRole.query.filter_by(role_id=role_id).all()
+        users = [ur.user for ur in user_roles]
+
+        return render_template('admin/role_users.html', role=role, users=users)
+    except Exception as e:
+        logger.error(f"Error loading role users: {e}")
+        flash("Error loading role users", "danger")
+        return redirect(url_for('admin.owner.manage_roles'))
+
+@owner_bp.route('/roles/assign', methods=['POST'])
+@owner_login_required
+@audit_owner_action('assigned_role', 'user_management')
+def assign_role():
+    """Assign a role to a user"""
+    try:
+        user_id = request.form.get('user_id')
+        role_id = request.form.get('role_id')
+
+        if not user_id or not role_id:
+            flash("User ID and Role ID are required", "danger")
+            return redirect(url_for('admin.owner.manage_roles'))
+
+        user = User.query.get_or_404(user_id)
+        role = Role.query.get_or_404(role_id)
+
+        # Check if user already has this role
+        existing = UserRole.query.filter_by(user_id=user_id, role_id=role_id).first()
+        if existing:
+            flash(f"{user.username} already has the {role.name} role", "warning")
+            return redirect(url_for('admin.owner.manage_roles'))
+
+        # Assign the role
+        user_role = UserRole(user_id=user_id, role_id=role_id)
+        db.session.add(user_role)
+        db.session.commit()
+
+        flash(f"Successfully assigned {role.name} role to {user.username}", "success")
+        log_owner_action(
+            action='role_assigned',
+            category='user_management',
+            details={'user_id': user_id, 'username': user.username, 'role': role.name}
+        )
+
+    except Exception as e:
+        logger.error(f"Error assigning role: {e}")
+        db.session.rollback()
+        flash("Error assigning role", "danger")
+
+    return redirect(url_for('admin.owner.manage_roles'))
+
+@owner_bp.route('/roles/revoke', methods=['POST'])
+@owner_login_required
+@audit_owner_action('revoked_role', 'user_management')
+def revoke_role():
+    """Revoke a role from a user"""
+    try:
+        user_id = request.form.get('user_id')
+        role_id = request.form.get('role_id')
+
+        if not user_id or not role_id:
+            flash("User ID and Role ID are required", "danger")
+            return redirect(url_for('admin.owner.manage_roles'))
+
+        user = User.query.get_or_404(user_id)
+        role = Role.query.get_or_404(role_id)
+
+        # Prevent revoking owner role from the only owner
+        if role.name == 'owner':
+            owner_count = UserRole.query.filter_by(role_id=role_id).count()
+            if owner_count <= 1:
+                flash("Cannot revoke owner role from the last owner", "danger")
+                return redirect(url_for('admin.owner.manage_roles'))
+
+        # Revoke the role
+        user_role = UserRole.query.filter_by(user_id=user_id, role_id=role_id).first()
+        if user_role:
+            db.session.delete(user_role)
+            db.session.commit()
+
+            flash(f"Successfully revoked {role.name} role from {user.username}", "success")
+            log_owner_action(
+                action='role_revoked',
+                category='user_management',
+                details={'user_id': user_id, 'username': user.username, 'role': role.name}
+            )
+        else:
+            flash(f"{user.username} does not have the {role.name} role", "warning")
+
+    except Exception as e:
+        logger.error(f"Error revoking role: {e}")
+        db.session.rollback()
+        flash("Error revoking role", "danger")
+
+    return redirect(url_for('admin.owner.manage_roles'))
 
 @owner_bp.route('/danger-zone')
 @owner_login_required

@@ -23,6 +23,8 @@ from app.profile.models import UserProfile, get_profile_by_user
 from app.identity.models.user import User
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import or_, and_
+from app.admin.compliance.services import ComplianceCaseService
+from app.admin.compliance.models import ComplianceCaseType, ComplianceCasePriority
 
 class KycService:
     """
@@ -392,3 +394,174 @@ class KycService:
             db.session.commit()
 
         return updated, errors
+
+    @staticmethod
+    def refer_to_compliance(record_id: int, referred_by: int, reason: str, 
+                           priority: ComplianceCasePriority = ComplianceCasePriority.MEDIUM):
+        """
+        Refer a KYC record to compliance for further review.
+        Creates a compliance case and updates the KYC record.
+        """
+        record = KycRecord.query.get(record_id)
+        if not record:
+            raise ValueError(f"KYC record {record_id} not found")
+
+        # Create compliance case
+        compliance_case = ComplianceCaseService.create_case(
+            case_type=ComplianceCaseType.KYC_REVIEW,
+            title=f'KYC Review - {record.public_id}',
+            description=f'KYC record referred for compliance review: {reason}',
+            created_by=referred_by,
+            user_id=record.user_id,
+            kyc_id=record_id,
+            priority=priority,
+            escalated_from=referred_by,
+            escalation_reason=reason
+        )
+
+        # Update KYC record
+        record.referred_to_compliance = True
+        record.referred_at = datetime.now(timezone.utc)
+        record.referred_by = referred_by
+        record.compliance_case_id = compliance_case.id
+        record.compliance_status = 'pending'
+
+        db.session.commit()
+
+        # Log audit
+        ForensicAuditService.log_action(
+            action='refer_kyc_to_compliance',
+            user_id=referred_by,
+            resource_type='kyc_record',
+            resource_id=record.id,
+            details={
+                'compliance_case_id': compliance_case.id,
+                'reason': reason,
+                'priority': priority.value
+            }
+        )
+
+        return compliance_case
+
+    @staticmethod
+    def compliance_approve_kyc(record_id: int, reviewer_id: int, notes: str = None):
+        """
+        Approve a KYC record from compliance perspective.
+        Updates both KYC status and compliance status.
+        """
+        record = KycRecord.query.get(record_id)
+        if not record:
+            raise ValueError(f"KYC record {record_id} not found")
+
+        # Update KYC record
+        record.status = "approved"
+        record.checked_by = str(reviewer_id)
+        record.verified_at = datetime.now(timezone.utc)
+        record.rejection_reason = None
+        record.compliance_status = 'approved'
+        record.compliance_reviewed_at = datetime.now(timezone.utc)
+        record.compliance_reviewed_by = reviewer_id
+        record.compliance_notes = notes
+
+        # Update user profile verification status
+        _user = User.query.filter_by(id=record.user_id).first()
+        profile = get_profile_by_user(_user) if _user else None
+        if profile:
+            profile.verification_status = "verified"
+            profile.verified_at = datetime.now(timezone.utc)
+            db.session.add(profile)
+
+        # Update compliance case if exists
+        if record.compliance_case_id:
+            from app.compliance.models import ComplianceCaseStatus
+            ComplianceCaseService.update_case_status(
+                record.compliance_case_id,
+                ComplianceCaseStatus.APPROVED,
+                reviewer_id,
+                resolution=notes
+            )
+
+        db.session.commit()
+
+        # Log audit
+        ForensicAuditService.log_action(
+            action='compliance_approve_kyc',
+            user_id=reviewer_id,
+            resource_type='kyc_record',
+            resource_id=record.id,
+            details={
+                'compliance_case_id': record.compliance_case_id,
+                'notes': notes
+            }
+        )
+
+        return record
+
+    @staticmethod
+    def compliance_reject_kyc(record_id: int, reviewer_id: int, rejection_reason: str):
+        """
+        Reject a KYC record from compliance perspective.
+        Updates both KYC status and compliance status.
+        """
+        record = KycRecord.query.get(record_id)
+        if not record:
+            raise ValueError(f"KYC record {record_id} not found")
+
+        # Update KYC record
+        record.status = "rejected"
+        record.checked_by = str(reviewer_id)
+        record.verified_at = datetime.now(timezone.utc)
+        record.rejection_reason = rejection_reason
+        record.compliance_status = 'rejected'
+        record.compliance_reviewed_at = datetime.now(timezone.utc)
+        record.compliance_reviewed_by = reviewer_id
+        record.compliance_notes = rejection_reason
+
+        # Update compliance case if exists
+        if record.compliance_case_id:
+            from app.compliance.models import ComplianceCaseStatus
+            ComplianceCaseService.update_case_status(
+                record.compliance_case_id,
+                ComplianceCaseStatus.REJECTED,
+                reviewer_id,
+                resolution=rejection_reason
+            )
+
+        db.session.commit()
+
+        # Log audit
+        ForensicAuditService.log_action(
+            action='compliance_reject_kyc',
+            user_id=reviewer_id,
+            resource_type='kyc_record',
+            resource_id=record.id,
+            details={
+                'compliance_case_id': record.compliance_case_id,
+                'rejection_reason': rejection_reason
+            }
+        )
+
+        return record
+
+    @staticmethod
+    def get_referred_to_compliance(limit: int = 50) -> List[KycRecord]:
+        """
+        Get KYC records that have been referred to compliance.
+        """
+        return KycRecord.query.filter_by(
+            referred_to_compliance=True
+        ).order_by(
+            KycRecord.referred_at.desc()
+        ).limit(limit).all()
+
+    @staticmethod
+    def get_compliance_pending_kyc(limit: int = 50) -> List[KycRecord]:
+        """
+        Get KYC records pending compliance review.
+        """
+        return KycRecord.query.filter_by(
+            referred_to_compliance=True,
+            compliance_status='pending'
+        ).order_by(
+            KycRecord.referred_at.asc()
+        ).limit(limit).all()

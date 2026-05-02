@@ -33,7 +33,6 @@ from sqlalchemy.orm import relationship, validates
 
 from app.extensions import db
 from app.models.base import BaseModel
-from functools import cached_property
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +258,7 @@ class Role(BaseModel):
         "RolePermission",
         back_populates="role",
         cascade="all, delete-orphan",
-        lazy="select",
+        lazy="raise",  # Fail fast if code tries to lazy-load from detached object
     )
 
     user_roles: list = relationship(
@@ -272,17 +271,27 @@ class Role(BaseModel):
 
     # --- computed properties -------------------------------------------------
 
-    @cached_property
+    @property
     def permission_names(self) -> Set[str]:
-        """Return the set of permission name strings granted to this role."""
-        return {rp.permission.name for rp in self.permissions if rp.permission}
+        """Return the set of permission name strings granted to this role.
+
+        Queries the database directly — safe to call even on detached objects.
+        """
+        if not self.id:
+            return set()
+        # Query DB directly using role_id FK; never walks lazy-loaded relationships
+        from app.extensions import db
+        rows = (
+            db.session.query(Permission.name)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .filter(RolePermission.role_id == self.id)
+            .all()
+        )
+        return {name for (name,) in rows}
 
     def clear_permission_cache(self):
-        """Clear cached permissions when role-permission mappings change"""
-        try:
-            del self.permission_names
-        except AttributeError:
-            pass
+        """No-op: permission_names now queries DB directly on each call."""
+        pass
 
     @property
     def is_global(self) -> bool:

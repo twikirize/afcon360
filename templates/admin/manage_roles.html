@@ -201,7 +201,7 @@
             {% endif %}
 
             <div class="role-actions">
-                <a href="{{ url_for('admin.role_users', role_id=role.id) }}" class="btn-role btn-view">
+                <a href="{{ url_for('admin.owner.role_users', role_id=role.id) }}" class="btn-role btn-view">
                     <i class="bi bi-people"></i> View Users
                 </a>
 
@@ -256,7 +256,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form method="post" action="{{ url_for('admin.assign_role') }}">
+                <form method="post" action="{{ url_for('admin.owner.assign_role') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="role_id" id="modalRoleId">
 
@@ -269,8 +269,9 @@
                         <label class="form-label">Select User:</label>
                         <select name="user_id" class="form-select" required>
                             <option value="">Choose a user...</option>
-                            <!-- This would be populated with actual users -->
-                            <option value="1">OBED (Current User)</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                            {% endfor %}
                         </select>
                     </div>
 

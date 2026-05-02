@@ -22,6 +22,48 @@ auth_bp = Blueprint("auth", __name__, url_prefix="")
 
 
 # ---------------------------------------------------------------------------
+# Security Helpers
+# ---------------------------------------------------------------------------
+
+def _verify_mfa_token(user, token: str) -> bool:
+    """
+    Verify MFA token for user.
+    
+    SECURITY: Used for owner login MFA requirement.
+    
+    Args:
+        user: User model instance
+        token: MFA code from user
+        
+    Returns:
+        True if token valid, False otherwise
+    """
+    if not token or not hasattr(user, 'mfa_secret'):
+        return False
+    
+    try:
+        # Use pyotp if available
+        import pyotp
+        totp = pyotp.TOTP(user.mfa_secret)
+        return totp.verify(token, valid_window=1)
+    except ImportError:
+        # Fallback: simple time-based verification (less secure, for dev only)
+        import hashlib
+        import time
+        secret = user.mfa_secret
+        # Check current time window and adjacent windows
+        for window in [-1, 0, 1]:
+            time_window = int(time.time()) // 30 + window
+            expected = hashlib.sha256(f"{secret}:{time_window}".encode()).hexdigest()[:6]
+            if token == expected:
+                return True
+        return False
+    except Exception as e:
+        current_app.logger.error(f"MFA verification error: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Post-login redirect helper
 # ---------------------------------------------------------------------------
 
@@ -436,12 +478,48 @@ def login():
                 flash("Please confirm your email address.", "warning")
                 return render_template("login.html", username=identifier)
 
-            # Check if user is an owner - owners bypass all checks
+            # SECURITY: Owner login with optional MFA (configurable)
             if user.is_app_owner():
-                # Directly log in the owner without any profile or verification checks
+                # Check if MFA is required for owners (configurable in settings)
+                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                
+                if require_mfa:
+                    # Owners MUST have MFA enabled when requirement is active
+                    if not getattr(user, 'mfa_enabled', False):
+                        current_app.logger.warning(f"Owner {user.id} attempted login without MFA enabled (MFA required)")
+                        flash("Owner accounts require Multi-Factor Authentication. Please set up MFA.", "error")
+                        return redirect(url_for("auth.setup_mfa"))
+                    
+                    # Verify MFA token for owners
+                    mfa_code = request.form.get('mfa_code')
+                    if not mfa_code:
+                        flash("MFA code is required for owner login", "error")
+                        return render_template("login.html", username=identifier, require_mfa=True)
+                    
+                    # Validate MFA token
+                    if not _verify_mfa_token(user, mfa_code):
+                        current_app.logger.warning(f"Failed MFA attempt for owner {user.id}")
+                        flash("Invalid MFA code. Please try again.", "error")
+                        return render_template("login.html", username=identifier, require_mfa=True)
+                    
+                    # MFA passed - track in session
+                    session["mfa_verified"] = True
+                else:
+                    # MFA not required, but check if user has it enabled anyway
+                    if getattr(user, 'mfa_enabled', False):
+                        # User has MFA - verify it for extra security even when not required
+                        mfa_code = request.form.get('mfa_code')
+                        if mfa_code and not _verify_mfa_token(user, mfa_code):
+                            flash("Invalid MFA code. Please try again.", "error")
+                            return render_template("login.html", username=identifier, require_mfa=True)
+                        # If no MFA code provided but user has MFA, we'll still allow login
+                        # (this maintains backward compatibility while encouraging MFA use)
+                
+                # Proceed with login
                 login_user(user, remember="remember" in request.form)
 
                 # Set up session for owner
+                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
                 session.update({
                     "server_session_id": session_id,
                     "user_id": user.public_id,
@@ -456,9 +534,12 @@ def login():
                     "kyc_missing_reqs": [],
                     "kyc_verification_id": None,
                     "kyc_verification_status": "verified",
+                    "mfa_verified": session.get("mfa_verified", False),  # Track actual MFA verification
+                    "mfa_required": require_mfa,  # Track if MFA was required
                 })
 
-                # Flash a message for the owner
+                mfa_status = "with MFA" if session.get("mfa_verified") else "(MFA not required)"
+                current_app.logger.info(f"Owner {user.id} logged in successfully {mfa_status}")
                 flash("Welcome back, owner!", "success")
 
                 # Redirect to owner dashboard
@@ -466,11 +547,6 @@ def login():
                 if not next_page or not is_safe_url(next_page):
                     next_page = url_for("admin.owner.dashboard")
                 return redirect(next_page)
-
-            # DEBUG - remove after testing
-            import sys
-            print(f"DEBUG: user.public_id = {user.public_id}, type = {type(user.public_id)}", file=sys.stderr)
-            print(f"DEBUG: user.id = {user.id}, type = {type(user.id)}", file=sys.stderr)
 
             # Use public_id explicitly since get_profile_by_user expects a string UUID
             profile = get_profile_by_user(user.public_id)

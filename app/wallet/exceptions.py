@@ -90,6 +90,26 @@ class ConversionError(WalletError):
         super().__init__(message)
 
 
+class PaymentError(WalletError):
+    """Raised when a payment gateway operation fails."""
+
+    def __init__(self, message: str = "Payment processing failed"):
+        self.message = message
+        super().__init__(message)
+
+
+class InsufficientFundsError(WalletError):
+    """Raised when the payment source has insufficient funds."""
+
+    def __init__(self, currency: str, required: float, available: float):
+        self.currency = currency
+        self.required = required
+        self.available = available
+        super().__init__(
+            f"Insufficient funds in {currency}: required {required}, available {available}"
+        )
+
+
 class TransactionNotFoundError(WalletError):
     """Raised when a transaction reference is not found."""
 

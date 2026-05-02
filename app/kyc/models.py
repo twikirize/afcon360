@@ -62,9 +62,21 @@ class KycRecord(ProtectedModel):
     scope = db.Column(db.JSON, default=dict)
     raw_response = db.Column(db.JSON, nullable=True)  # Full audit trail from NIRA/Provider
 
+    # Compliance integration
+    compliance_case_id = db.Column(db.Integer, db.ForeignKey("compliance_cases.id"), nullable=True, index=True)
+    compliance_status = db.Column(db.String(50), nullable=True, index=True)  # pending, approved, rejected, escalated
+    compliance_notes = db.Column(db.Text, nullable=True)
+    compliance_reviewed_at = db.Column(db.DateTime, nullable=True)
+    compliance_reviewed_by = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=True)
+    referred_to_compliance = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    referred_at = db.Column(db.DateTime, nullable=True)
+    referred_by = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=True)
+
     # Relationships - use string references to avoid import issues
     user = db.relationship("User", foreign_keys=[user_id], back_populates="kyc_records")
     verified_by = db.relationship("User", foreign_keys=[verified_by_id], lazy="joined")
+    compliance_reviewer = db.relationship("User", foreign_keys=[compliance_reviewed_by], lazy="joined")
+    referrer = db.relationship("User", foreign_keys=[referred_by], lazy="joined")
 
     def __repr__(self):
         return f"<KycRecord {self.id}: User {self.user_id} - {self.status} ({self.record_type})>"

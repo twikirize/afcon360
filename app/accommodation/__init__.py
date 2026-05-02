@@ -76,7 +76,16 @@ def legacy_detail(identifier):
 __all__ = ['accommodation_bp', 'module_enabled', 'require_accommodation_permission']
 
 try:
-    from app.admin.moderation.registry import register_module
-    register_module("accommodation", "Accommodation", lambda eid: f"/accommodation/admin/{eid}")
+    from app.admin.moderator.registry import register_module
+    from flask import url_for
+    register_module('accommodation_property', 'Accommodation Property',
+                   review_url_fn=lambda id: url_for('accommodation.admin.moderate_property', id=id),
+                   module_name='Accommodation', icon='fa-building')
+    register_module('accommodation_booking', 'Accommodation Booking',
+                   review_url_fn=lambda id: url_for('accommodation.admin.moderate_booking', id=id),
+                   module_name='Accommodation', icon='fa-bed')
+    register_module('accommodation_review', 'Accommodation Review',
+                   review_url_fn=lambda id: url_for('accommodation.admin.moderate_review', id=id),
+                   module_name='Accommodation', icon='fa-star')
 except Exception:
     pass

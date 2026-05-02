@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, jsonify, request, render_template, current_app
+from flask import Blueprint, jsonify, request, render_template, current_app, send_from_directory
 from flask_login import login_required, current_user
 from app.extensions import db
 from app.models.theme import UserThemePreference, GlobalTheme, EventTheme
@@ -140,3 +140,35 @@ def reset_preferences():
         except Exception as e:
             current_app.logger.error(f"Failed to remove user theme CSS: {e}")
     return jsonify({"success": True, "message": "Preferences reset"})
+
+
+@theme_bp.route('/css/user-theme.css')
+def serve_user_theme_css():
+    """
+    Serve user-specific CSS file.
+    If user is not authenticated or has no custom preferences,
+    serve global-theme.css instead of returning 404.
+    """
+    generated_dir = ThemeService.ensure_generated_dir()
+    global_css_path = os.path.join(generated_dir, 'global-theme.css')
+
+    # For non-authenticated users, always serve global theme
+    if not current_user.is_authenticated:
+        if os.path.exists(global_css_path):
+            return send_from_directory(generated_dir, 'global-theme.css', mimetype='text/css')
+        return "", 200, {'Content-Type': 'text/css'}
+
+    # Check if user has custom preferences
+    user_css_filename = f'user-{current_user.id}.css'
+    user_css_path = os.path.join(generated_dir, user_css_filename)
+    pref = UserThemePreference.query.get(current_user.id)
+
+    # If user has custom preferences and the file exists, serve it
+    if pref and os.path.exists(user_css_path):
+        return send_from_directory(generated_dir, user_css_filename, mimetype='text/css')
+
+    # Otherwise, fall back to global theme
+    if os.path.exists(global_css_path):
+        return send_from_directory(generated_dir, 'global-theme.css', mimetype='text/css')
+
+    return "", 200, {'Content-Type': 'text/css'}

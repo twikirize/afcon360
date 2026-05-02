@@ -1,242 +1,131 @@
 """
 app/wallet/repositories/wallet_repository.py
-Database operations for Wallet model.
-
-This repository wraps the existing WalletModel from models.py.
-It does NOT change how data is stored - just provides a clean interface.
+Wallet repository - thin wrapper around account_repository for compatibility.
 """
 
-from decimal import Decimal
-from typing import Optional, Tuple, Dict, Any
-from datetime import datetime, date
-from sqlalchemy import update, select
-from sqlalchemy.orm import Session
-from app.extensions import db
-from app.wallet.models import Wallet as WalletModel
-from app.wallet.exceptions import WalletNotFoundError, WalletFrozenError
+from typing import Optional, Dict, Any
+from uuid import UUID
+from app.wallet.repositories.account_repository import AccountRepository
+from app.wallet.repositories.ledger_repository import LedgerRepository
+from app.wallet.models.ledger import AccountModel
 
 
 class WalletRepository:
     """
-    Repository for wallet database operations.
-
-    All methods work with the existing WalletModel. No schema changes required yet.
+    Repository for wallet operations.
+    
+    This is a thin wrapper around AccountRepository for backward compatibility.
+    The actual implementation uses the new account/ledger architecture.
     """
 
-    def __init__(self, db_session: Session = None):
-        """
-        Initialize repository with database session.
-
-        Args:
-            db_session: SQLAlchemy session (defaults to db.session)
-        """
+    def __init__(self, db_session=None):
+        from app.extensions import db
         self.db = db_session or db.session
+        self.account_repo = AccountRepository(self.db)
+        self.ledger_repo = LedgerRepository(self.db)
 
-    def get_by_user_id(self, user_id: int, for_update: bool = False) -> Optional[WalletModel]:
+    def get_by_user_id(
+        self, 
+        user_id: int, 
+        for_update: bool = False
+    ) -> Optional[AccountModel]:
         """
         Get wallet by user ID.
-
+        
         Args:
-            user_id: Internal user ID (BIGINT from users table)
-            for_update: If True, locks the row for update (SELECT ... FOR UPDATE)
-
+            user_id: User ID
+            for_update: If True, locks row with SELECT FOR UPDATE
+            
         Returns:
-            WalletModel instance or None if not found
+            AccountModel or None
         """
-        query = select(WalletModel).where(WalletModel.user_id == user_id)
+        return self.account_repo.get_by_user_id(user_id, for_update=for_update)
 
-        if for_update:
-            query = query.with_for_update()
-
-        return self.db.execute(query).scalar_one_or_none()
-
-    def get_by_org_id(self, org_id: int, for_update: bool = False) -> Optional[WalletModel]:
+    def get_or_create_by_user_id(
+        self, 
+        user_id: int
+    ) -> AccountModel:
         """
-        Get wallet by organisation ID.
-
+        Get or create wallet for user.
+        
         Args:
-            org_id: Internal organisation ID
-            for_update: If True, locks the row for update
-
+            user_id: User ID
+            
         Returns:
-            WalletModel instance or None if not found
+            AccountModel (existing or newly created)
         """
-        query = select(WalletModel).where(WalletModel.organisation_id == org_id)
+        return self.account_repo.get_or_create(user_id)
 
-        if for_update:
-            query = query.with_for_update()
-
-        return self.db.execute(query).scalar_one_or_none()
-
-    def get_or_create_by_user_id(self, user_id: int) -> WalletModel:
+    def get_balance(
+        self, 
+        user_id: int, 
+        currency: str = 'USD'
+    ) -> Dict[str, Any]:
         """
-        Get wallet by user ID, creating one if it doesn't exist.
-
+        Get wallet balance derived from ledger.
+        
         Args:
-            user_id: Internal user ID
-
-        Returns:
-            WalletModel instance (new or existing)
-        """
-        wallet = self.get_by_user_id(user_id, for_update=True)
-
-        if wallet:
-            return wallet
-
-        # Create new wallet
-        wallet = WalletModel(
-            user_id=user_id,
-            home_currency="USD",
-            local_currency="UGX",
-            balance_home=Decimal("0"),
-            balance_local=Decimal("0"),
-        )
-        self.db.add(wallet)
-        self.db.flush()  # Get ID without committing
-
-        return wallet
-
-    def get_or_create_by_org_id(self, org_id: int) -> WalletModel:
-        """
-        Get wallet by organisation ID, creating one if it doesn't exist.
-
-        Args:
-            org_id: Internal organisation ID
-
-        Returns:
-            WalletModel instance (new or existing)
-        """
-        wallet = self.get_by_org_id(org_id, for_update=True)
-
-        if wallet:
-            return wallet
-
-        # Create new wallet
-        wallet = WalletModel(
-            organisation_id=org_id,
-            home_currency="USD",
-            local_currency="UGX",
-            balance_home=Decimal("0"),
-            balance_local=Decimal("0"),
-        )
-        self.db.add(wallet)
-        self.db.flush()
-
-        return wallet
-
-    def update_balance(
-            self,
-            wallet_id: int,
-            amount_home_delta: Decimal,
-            amount_local_delta: Decimal,
-            expected_version: int
-    ) -> Tuple[bool, Optional[WalletModel]]:
-        """
-        Atomically update wallet balance with version check (optimistic locking).
-
-        Args:
-            wallet_id: Wallet ID to update
-            amount_home_delta: Change to home balance (positive or negative)
-            amount_local_delta: Change to local balance (positive or negative)
-            expected_version: Expected version number (for optimistic lock)
-
-        Returns:
-            Tuple of (success, updated_wallet)
-            success=True if update succeeded, False if version mismatch
-        """
-        # Atomic update with version check
-        result = self.db.execute(
-            update(WalletModel)
-            .where(
-                WalletModel.id == wallet_id,
-                WalletModel.version == expected_version
-            )
-            .values(
-                balance_home=WalletModel.balance_home + amount_home_delta,
-                balance_local=WalletModel.balance_local + amount_local_delta,
-                version=WalletModel.version + 1,
-                updated_at=datetime.utcnow()
-            )
-        )
-
-        if result.rowcount == 0:
-            # Version mismatch - someone else updated
-            return False, None
-
-        # Refresh the updated wallet
-        wallet = self.db.execute(
-            select(WalletModel).where(WalletModel.id == wallet_id)
-        ).scalar_one()
-
-        return True, wallet
-
-    def get_balance_summary(self, user_id: int) -> Dict[str, Any]:
-        """
-        Get balance summary for a user.
-
-        Args:
-            user_id: Internal user ID
-
+            user_id: User ID
+            currency: Currency code
+            
         Returns:
             Dict with balance information
         """
-        wallet = self.get_by_user_id(user_id)
-
-        if not wallet:
+        account = self.account_repo.get_by_user_id(user_id)
+        
+        if not account:
             return {
                 "exists": False,
-                "balance_home": "0.00",
-                "balance_local": "0.00",
-                "home_currency": "USD",
-                "local_currency": "UGX",
-                "verified": False,
+                "balance": "0.00",
+                "currency": currency,
+                "is_frozen": False
             }
-
+        
+        balance = self.ledger_repo.get_balance(account.id, currency)
+        
         return {
             "exists": True,
-            "wallet_id": wallet.id,
-            "balance_home": str(wallet.balance_home),
-            "balance_local": str(wallet.balance_local),
-            "home_currency": wallet.home_currency,
-            "local_currency": wallet.local_currency,
-            "verified": wallet.verified,
-            "updated_at": wallet.updated_at.isoformat() if wallet.updated_at else None,
+            "account_id": str(account.id),
+            "user_id": user_id,
+            "balance": str(balance),
+            "currency": currency,
+            "is_frozen": account.is_frozen,
+            "frozen_reason": account.frozen_reason,
+            "updated_at": account.updated_at.isoformat() if account.updated_at else None
         }
 
-    def check_frozen(self, user_id: int = None, org_id: int = None) -> bool:
+    def check_frozen(self, user_id: int) -> bool:
         """
         Check if wallet is frozen.
-
-        Note: This reads the 'is_frozen' column we'll add later.
-        For now, returns False (not frozen).
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            True if frozen, False otherwise
         """
-        # TODO: After adding is_frozen column to WalletModel, implement this
-        # For now, assume not frozen
-        return False
+        account = self.account_repo.get_by_user_id(user_id)
+        return account.is_frozen if account else False
 
-    def get_frozen_reason(self, user_id: int = None, org_id: int = None) -> Optional[str]:
-        """Get reason wallet is frozen, if any."""
-        # TODO: Implement after adding frozen_reason column
-        return None
-
-    def record_daily_volume(
-            self,
-            wallet_id: int,
-            amount_home: Decimal,
-            amount_local: Decimal
-    ) -> None:
+    def get_frozen_reason(self, user_id: int) -> Optional[str]:
         """
-        Record transaction volume for daily limit tracking.
-
-        TODO: Implement after adding daily_volume columns to WalletModel
+        Get reason wallet is frozen.
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            Frozen reason or None
         """
-        # Placeholder - will implement in Phase 2
-        pass
+        account = self.account_repo.get_by_user_id(user_id)
+        return account.frozen_reason if account else None
 
-    def get_daily_volume(self, wallet_id: int) -> Dict[str, Decimal]:
+    # DEPRECATED: update_balance() removed - use ledger entries instead
+    def update_balance(self, *args, **kwargs):
         """
-        Get today's transaction volume.
-
-        TODO: Implement after adding daily_volume columns
+        DEPRECATED: Balance updates are done via ledger entries.
+        This method is kept for compatibility but raises an error.
         """
-        return {"home": Decimal("0"), "local": Decimal("0")}
+        raise NotImplementedError(
+            "update_balance() is deprecated. Use ledger_repository.post_entries() instead."
+        )

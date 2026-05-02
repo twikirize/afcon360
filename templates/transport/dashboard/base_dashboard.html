@@ -21,6 +21,9 @@
   <!-- Socket.IO -->
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
+  <!-- Theme System CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+
   <!-- Core CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='transport/css/base.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='transport/css/dashboard.css') }}">
@@ -376,7 +379,7 @@
             {% endif %}
           </div>
         </div>
-        <a href="{{ url_for('auth_routes.logout') }}" title="Sign out" class="logout-link">
+        <a href="{{ url_for('auth.logout') }}" title="Sign out" class="logout-link">
           <i class="fa-solid fa-arrow-right-from-bracket"></i>
         </a>
       </div>
@@ -433,7 +436,7 @@
             <a href="#"><i class="fa-solid fa-shield"></i> Security</a>
             <hr>
             <a href="{{ url_for('index') }}"><i class="fa-solid fa-globe"></i> Main Site</a>
-            <a href="{{ url_for('auth_routes.logout') }}">
+            <a href="{{ url_for('auth.logout') }}">
               <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
             </a>
           </div>
@@ -536,6 +539,16 @@ const AFCON_CONFIG = {
   userRoles: {{ current_user.role_names|tojson }},
   apiBase: '/api/transport',
 };
+</script>
+
+<!-- Theme Manager -->
+<script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof ThemeManager !== 'undefined') {
+      window.themeManager = new ThemeManager();
+    }
+  });
 </script>
 
 {% block extra_js %}{% endblock %}

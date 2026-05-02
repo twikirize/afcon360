@@ -31,7 +31,6 @@ def dict_to_wallet(data, Wallet):
 ####
 # app/wallet/utils.py
 from flask import session
-from .models import Wallet
 
 def wallet_to_dict(wallet: Wallet):
     return {

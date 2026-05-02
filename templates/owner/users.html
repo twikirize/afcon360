@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Manage Users - AFCON360{% endblock %}
 
@@ -10,7 +10,7 @@
 {% block body %}
 <div class="owner-shell owner-theme">
   <div class="owner-topbar">
-    <a href="{{ url_for('owner.dashboard') }}" class="owner-back-link">
+    <a href="{{ url_for('admin.owner.dashboard') }}" class="owner-back-link">
       <i class="bi bi-arrow-left"></i>
       <span>Back to Dashboard</span>
     </a>
@@ -40,7 +40,8 @@
             </tr>
           </thead>
           <tbody>
-            {% for user in users.items if users else [] %}
+            {% if users %}
+            {% for user in users.items %}
             <tr>
               <td>{{ user.username }}</td>
               <td>{{ user.email }}</td>
@@ -63,11 +64,12 @@
                 </a>
               </td>
             </tr>
+            {% endfor %}
             {% else %}
             <tr>
               <td colspan="6" class="text-center">No users found</td>
             </tr>
-            {% endfor %}
+            {% endif %}
           </tbody>
         </table>
 

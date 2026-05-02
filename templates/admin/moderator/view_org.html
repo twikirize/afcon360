@@ -1,0 +1,140 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}View Organisation #{{ org.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}View Organisation #{{ org.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.orgs_queue') }}">Organisations</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ org.id }}</span>
+</div>
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:40px;height:40px;border-radius:8px;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--accent-dk);text-transform:uppercase;">{{ org.name[0] }}</div>
+    <h1 class="page-heading" style="margin:0;">{{ org.name }}</h1>
+    <span class="badge {% if org.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">{{ 'Verified' if org.is_verified else 'Unverified' }}</span>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: ORGANISATION DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-building" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Organisation Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Organisation Name</label>
+          <div style="font-weight:600;font-size:15px;">{{ org.name }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Email</label>
+          <div>{{ org.contact_email or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <div>{{ org.phone or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Address</label>
+          <div>{{ org.address or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);line-height:1.6;">{{ org.description or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Organisation ID</label>
+          <div class="mono">#{{ org.id }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <div><span class="badge {% if org.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">{{ 'Verified' if org.is_verified else 'Unverified' }}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Created At</label>
+          <div class="mono">{{ org.created_at.strftime('%Y-%m-%d %H:%M:%S') if org.created_at else '-' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Members Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-users" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Members ({{ org.users|length if org.users else 0 }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if org.users %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Role</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in org.users %}
+            <tr>
+              <td style="font-weight:600;">{{ user.username }}</td>
+              <td style="color:var(--muted);">{{ user.email }}</td>
+              <td>
+                {% for role in user.roles %}
+                <span class="badge badge-role">{{ role.name }}</span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div style="color:var(--muted);">No members found</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: ACTION PANEL -->
+  <div style="position:sticky;top:76px;">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-gavel" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if not org.is_verified %}
+        <form action="{{ url_for('admin.moderator.verify_org', org_id=org.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Verify this organisation?');">
+            <i class="fas fa-check"></i> Verify Organisation
+          </button>
+        </form>
+        {% endif %}
+
+        <form action="{{ url_for('admin.moderator.refer_compliance', org_id=org.id) }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Compliance Issue Details *</label>
+          <textarea name="reason" class="form-control" rows="3" placeholder="Describe the compliance issue..." required></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-exclamation-triangle"></i> Refer for Compliance
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

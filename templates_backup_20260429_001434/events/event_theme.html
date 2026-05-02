@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Event Theme - {{ event.title }}{% endblock %}
+
+{% block styles %}
+<style>
+    .event-preview {
+        background: var(--bg-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+        overflow: hidden;
+        position: sticky;
+        top: 20px;
+        box-shadow: var(--shadow-md);
+    }
+    .preview-banner {
+        height: 150px;
+        background: linear-gradient(135deg, var(--event-primary, var(--brand-primary)) 0%, var(--event-primary-dark, var(--brand-primary-dark)) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-light);
+        font-weight: var(--font-weight-bold);
+        background-size: cover;
+        background-position: center;
+    }
+    .preview-content {
+        padding: var(--space-5);
+        background-color: var(--event-bg, var(--bg-surface));
+    }
+    .preview-content .badge {
+        background-color: var(--event-primary, var(--brand-primary));
+        color: var(--text-light);
+    }
+    .preview-content .btn-primary {
+        background-color: var(--event-primary, var(--brand-primary));
+        border-color: var(--event-primary, var(--brand-primary));
+        color: var(--text-light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-7">
+            <h1 class="h2 mb-2">🎨 Event Theme</h1>
+            <p class="text-muted mb-4">
+                Customize the look of "{{ event.title }}". These settings only affect this event's landing page.
+            </p>
+
+            <form id="eventThemeForm">
+                <div class="mb-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="useGlobalBranding" checked>
+                        <label class="form-check-label" for="useGlobalBranding">
+                            Use global branding (recommended)
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-1">
+                        When enabled, this event uses the site's global theme colors.
+                    </div>
+                </div>
+
+                <div id="customThemeFields" style="display: none;">
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Event Primary Color</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" id="eventPrimaryColor" class="form-control form-control-color" style="width: 60px;" value="#2d5a2d">
+                            <input type="text" id="eventPrimaryColorHex" class="form-control" placeholder="#2d5a2d" style="font-family: monospace;">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Event Accent Color</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" id="eventAccentColor" class="form-control form-control-color" style="width: 60px;" value="#ffcc00">
+                            <input type="text" id="eventAccentColorHex" class="form-control" placeholder="#ffcc00" style="font-family: monospace;">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Banner Image URL</label>
+                        <input type="url" id="bannerImage" class="form-control" placeholder="https://example.com/banner.jpg">
+                        <div class="small text-muted mt-1">Recommended size: 1200x400px</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Background Color</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" id="bgColor" class="form-control form-control-color" style="width: 60px;" value="#ffffff">
+                            <input type="text" id="bgColorHex" class="form-control" placeholder="#ffffff" style="font-family: monospace;">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary px-4">💾 Save Event Theme</button>
+            </form>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="event-preview">
+                <div class="preview-header">
+                    <strong>Live Preview</strong>
+                </div>
+                <div class="preview-banner" id="previewBanner">
+                    <h3 class="mb-0">{{ event.title }}</h3>
+                </div>
+                <div class="preview-content" id="previewContent">
+                    <span class="badge mb-3">Featured Event</span>
+                    <p>{{ event.description|truncate(100) if event.description else "Event description will appear here. This preview shows how organizers can brand their specific event pages." }}</p>
+                    <button class="btn btn-primary w-100" id="previewButton">Register Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const useGlobalBranding = document.getElementById('useGlobalBranding');
+    const customFields = document.getElementById('customThemeFields');
+    const eventPrimary = document.getElementById('eventPrimaryColor');
+    const eventPrimaryHex = document.getElementById('eventPrimaryColorHex');
+    const eventAccent = document.getElementById('eventAccentColor');
+    const eventAccentHex = document.getElementById('eventAccentColorHex');
+    const bannerImage = document.getElementById('bannerImage');
+    const bgColor = document.getElementById('bgColor');
+    const bgColorHex = document.getElementById('bgColorHex');
+
+    const previewBanner = document.getElementById('previewBanner');
+    const previewContent = document.getElementById('previewContent');
+    const previewButton = document.getElementById('previewButton');
+
+    // Toggle custom fields
+    useGlobalBranding.addEventListener('change', (e) => {
+        customFields.style.display = e.target.checked ? 'none' : 'block';
+        updatePreview();
+    });
+
+    // Update preview
+    function updatePreview() {
+        if (useGlobalBranding.checked) {
+            // Use global theme (simulate with CSS variables)
+            previewBanner.style.background = 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%)';
+            previewBanner.style.backgroundImage = 'none';
+            previewButton.style.backgroundColor = '';
+            previewButton.style.borderColor = '';
+            previewContent.style.backgroundColor = '';
+        } else {
+            // Use custom colors
+            const primary = eventPrimary.value;
+            previewBanner.style.background = `linear-gradient(135deg, ${primary} 0%, ${primary} 100%)`; // Simple preview
+            previewButton.style.backgroundColor = primary;
+            previewButton.style.borderColor = primary;
+
+            if (bgColor.value) {
+                previewContent.style.backgroundColor = bgColor.value;
+            }
+
+            if (bannerImage.value) {
+                previewBanner.style.backgroundImage = `url(${bannerImage.value})`;
+            } else {
+                previewBanner.style.backgroundImage = 'none';
+            }
+        }
+    }
+
+    // Sync color pickers
+    eventPrimary.addEventListener('input', (e) => {
+        eventPrimaryHex.value = e.target.value;
+        updatePreview();
+    });
+    eventPrimaryHex.addEventListener('input', (e) => {
+        eventPrimary.value = e.target.value;
+        updatePreview();
+    });
+    eventAccent.addEventListener('input', (e) => {
+        eventAccentHex.value = e.target.value;
+        updatePreview();
+    });
+    eventAccentHex.addEventListener('input', (e) => {
+        eventAccent.value = e.target.value;
+        updatePreview();
+    });
+    bannerImage.addEventListener('input', updatePreview);
+    bgColor.addEventListener('input', (e) => {
+        bgColorHex.value = e.target.value;
+        updatePreview();
+    });
+    bgColorHex.addEventListener('input', (e) => {
+        bgColor.value = e.target.value;
+        updatePreview();
+    });
+
+    // Load existing event theme
+    async function loadEventTheme() {
+        try {
+            const response = await fetch(`/theme/event/{{ event.id }}/api`);
+            if (response.ok) {
+                const theme = await response.json();
+                useGlobalBranding.checked = theme.use_global_branding !== false;
+                customFields.style.display = useGlobalBranding.checked ? 'none' : 'block';
+
+                if (theme.primary_color) {
+                    eventPrimary.value = theme.primary_color;
+                    eventPrimaryHex.value = theme.primary_color;
+                }
+                if (theme.accent_color) {
+                    eventAccent.value = theme.accent_color;
+                    eventAccentHex.value = theme.accent_color;
+                }
+                if (theme.banner_image) {
+                    bannerImage.value = theme.banner_image;
+                }
+                if (theme.background_color) {
+                    bgColor.value = theme.background_color;
+                    bgColorHex.value = theme.background_color;
+                }
+                updatePreview();
+            }
+        } catch (error) {
+            console.error('Failed to load event theme:', error);
+        }
+    }
+
+    // Save event theme
+    document.getElementById('eventThemeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const settings = {
+            use_global_branding: useGlobalBranding.checked,
+            primary_color: useGlobalBranding.checked ? null : eventPrimary.value,
+            accent_color: useGlobalBranding.checked ? null : eventAccent.value,
+            banner_image: useGlobalBranding.checked ? null : bannerImage.value,
+            background_color: useGlobalBranding.checked ? null : bgColor.value
+        };
+
+        const saveBtn = e.target.querySelector('button[type="submit"]');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+        saveBtn.disabled = true;
+
+        try {
+            const response = await fetch(`/theme/event/{{ event.id }}/save`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify(settings)
+            });
+
+            if (response.ok) {
+                alert('Event theme saved successfully!');
+            } else {
+                const error = await response.json();
+                alert('Error: ' + (error.error || 'Failed to save'));
+            }
+        } catch (error) {
+            alert('Error saving theme: ' + error.message);
+        } finally {
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        }
+    });
+
+    loadEventTheme();
+});
+</script>
+{% endblock %}

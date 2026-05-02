@@ -1,0 +1,149 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Cases — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Compliance Cases{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-body">
+    <form method="GET" action="{{ url_for('compliance.cases') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-control">
+          <option value="">All Statuses</option>
+          <option value="open" {% if request.args.get('status') == 'open' %}selected{% endif %}>Open</option>
+          <option value="in_review" {% if request.args.get('status') == 'in_review' %}selected{% endif %}>In Review</option>
+          <option value="escalated" {% if request.args.get('status') == 'escalated' %}selected{% endif %}>Escalated</option>
+          <option value="resolved" {% if request.args.get('status') == 'resolved' %}selected{% endif %}>Resolved</option>
+          <option value="closed" {% if request.args.get('status') == 'closed' %}selected{% endif %}>Closed</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+        <label class="form-label">Priority</label>
+        <select name="priority" class="form-control">
+          <option value="">All Priorities</option>
+          <option value="critical" {% if request.args.get('priority') == 'critical' %}selected{% endif %}>Critical</option>
+          <option value="high" {% if request.args.get('priority') == 'high' %}selected{% endif %}>High</option>
+          <option value="medium" {% if request.args.get('priority') == 'medium' %}selected{% endif %}>Medium</option>
+          <option value="low" {% if request.args.get('priority') == 'low' %}selected{% endif %}>Low</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+        <label class="form-label">Type</label>
+        <select name="type" class="form-control">
+          <option value="">All Types</option>
+          <option value="kyc" {% if request.args.get('type') == 'kyc' %}selected{% endif %}>KYC</option>
+          <option value="aml" {% if request.args.get('type') == 'aml' %}selected{% endif %}>AML</option>
+          <option value="sanctions" {% if request.args.get('type') == 'sanctions' %}selected{% endif %}>Sanctions</option>
+          <option value="fraud" {% if request.args.get('type') == 'fraud' %}selected{% endif %}>Fraud</option>
+          <option value="kyb" {% if request.args.get('type') == 'kyb' %}selected{% endif %}>KYB</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 2; min-width: 200px; margin-bottom: 0;">
+        <label class="form-label">Search</label>
+        <input type="text" name="search" class="form-control" placeholder="Case # or title..." value="{{ request.args.get('search', '') }}">
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
+      <a href="{{ url_for('compliance.cases') }}" class="btn btn-secondary">Clear</a>
+    </form>
+  </div>
+</div>
+
+<!-- Cases Table -->
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-folder-open"></i> Compliance Cases</div>
+    <a href="{{ url_for('compliance.create_case') }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> New Case</a>
+  </div>
+  <div class="card-body">
+    {% if cases %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Case #</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Assigned</th>
+            <th>Created</th>
+            <th>SLA</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for case in cases %}
+          <tr class="{{ 'row-critical' if case.priority.value == 'critical' else ('row-high' if case.priority.value == 'high' else '') }}">
+            <td><a href="{{ url_for('compliance.view_case', case_id=case.id) }}">{{ case.case_number }}</a></td>
+            <td style="max-width: 250px;">{{ case.title }}</td>
+            <td>
+              {% if case.case_type.value == 'kyc' %}
+                <span class="badge badge-blue">KYC</span>
+              {% elif case.case_type.value == 'aml' %}
+                <span class="badge badge-red">AML</span>
+              {% elif case.case_type.value == 'sanctions' %}
+                <span class="badge badge-purple">Sanctions</span>
+              {% elif case.case_type.value == 'fraud' %}
+                <span class="badge badge-orange">Fraud</span>
+              {% elif case.case_type.value == 'kyb' %}
+                <span class="badge badge-cyan">KYB</span>
+              {% else %}
+                <span class="badge badge-gray">{{ case.case_type.value }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if case.priority.value == 'critical' %}
+                <span class="badge badge-red">Critical</span>
+              {% elif case.priority.value == 'high' %}
+                <span class="badge badge-orange">High</span>
+              {% elif case.priority.value == 'medium' %}
+                <span class="badge badge-blue">Medium</span>
+              {% else %}
+                <span class="badge badge-gray">Low</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if case.status.value == 'open' %}
+                <span class="badge badge-orange">Open</span>
+              {% elif case.status.value == 'in_review' %}
+                <span class="badge badge-blue">In Review</span>
+              {% elif case.status.value == 'escalated' %}
+                <span class="badge badge-purple">Escalated</span>
+              {% elif case.status.value == 'resolved' %}
+                <span class="badge badge-green">Resolved</span>
+              {% elif case.status.value == 'closed' %}
+                <span class="badge badge-gray">Closed</span>
+              {% else %}
+                <span class="badge badge-gray">{{ case.status.value }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if case.assignee %}
+                {{ case.assignee.username }}
+              {% else %}
+                <span class="muted">Unassigned</span>
+              {% endif %}
+            </td>
+            <td class="mono">{{ case.created_at.strftime('%Y-%m-%d') if case.created_at else '-' }}</td>
+            <td class="mono {{ 'text-red' if case.sla_due_at and case.sla_due_at < now else '' }}">
+              {{ case.sla_due_at.strftime('%Y-%m-%d') if case.sla_due_at else '-' }}
+            </td>
+            <td>
+              <a href="{{ url_for('compliance.view_case', case_id=case.id) }}" class="btn btn-sm btn-primary">View</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-folder-open"></i></div>
+      <p>No cases found matching your criteria.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

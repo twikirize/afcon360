@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Moderate Events - AFCON360{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0a0f; --surface: #0f0f1a; --panel: #14141f;
+  --border: rgba(255,255,255,0.07); --gold: #d4a843; --gold-dim: rgba(212,168,67,0.15);
+  --text: #e8e8f0; --muted: #6b6b80;
+  --red: #e05252; --green: #4ade80; --amber: #fbbf24; --blue: #60a5fa; --cyan: #22d3ee;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.6; }
+
+.mod-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mod-badge { background: var(--gold); color: #000; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; }
+.mod-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); margin-left: 12px; }
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+.mod-wrap { padding: 28px 32px; max-width: 1500px; }
+.breadcrumb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 12px; color: var(--muted); }
+.breadcrumb-row a { color: var(--muted); text-decoration: none; } .breadcrumb-row a:hover { color: var(--gold); }
+.breadcrumb-row .sep { color: var(--border); } .breadcrumb-row .active { color: var(--text); }
+
+/* FILTER TABS */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px;
+  width: fit-content;
+}
+.tab-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.tab-link:hover { color: var(--text); }
+.tab-link.active { background: var(--gold); color: #000; font-weight: 700; }
+.tab-count {
+  background: rgba(255,255,255,0.1);
+  color: inherit;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+}
+.tab-link.active .tab-count { background: rgba(0,0,0,0.2); }
+
+/* PANEL */
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; animation: fadeUp 0.3s ease both; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-icon { width: 22px; height: 22px; border-radius: 5px; background: var(--gold-dim); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--gold); }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead th { padding: 10px 20px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: 'DM Mono', monospace; border-bottom: 1px solid var(--border); font-weight: 500; background: rgba(255,255,255,0.01); }
+.data-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.15s; }
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+.data-table tbody td { padding: 14px 20px; font-size: 13px; vertical-align: middle; }
+.mono { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; letter-spacing: 0.03em; text-transform: uppercase; }
+.badge-pending { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-approved { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-rejected { background: rgba(224,82,82,0.12); color: var(--red); border: 1px solid rgba(224,82,82,0.2); }
+.badge-flagged { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+
+/* ACTION BUTTON */
+.btn-action { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(212,168,67,0.2); border-radius: 5px; font-size: 11px; font-weight: 600; text-decoration: none; transition: all 0.15s; }
+.btn-action:hover { background: var(--gold); color: #000; }
+
+/* EMPTY */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-state .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
+.empty-state p { font-size: 13px; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mod-header">
+  <div style="display: flex; align-items: center;">
+    <span class="mod-badge">MODERATOR</span>
+    <span class="mod-title">Events Moderation</span>
+  </div>
+  <a href="{{ url_for('admin.moderator_dashboard') }}" class="btn-ghost">
+    <i class="fas fa-arrow-left"></i> Back to Dashboard
+  </a>
+</div>
+
+<div class="mod-wrap">
+  <div class="breadcrumb-row">
+    <a href="{{ url_for('admin.moderator_dashboard') }}">Dashboard</a>
+    <span class="sep">/</span>
+    <span class="active">Events</span>
+  </div>
+
+  <div class="tab-bar">
+    <a href="#" class="tab-link active">
+      <i class="fas fa-clock"></i> Pending Review
+      <span class="tab-count">{{ events|length }}</span>
+    </a>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-icon"><i class="fas fa-calendar"></i></div>
+        Events Awaiting Moderation
+      </div>
+    </div>
+
+    {% if events %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Event</th>
+          <th>Organizer</th>
+          <th>Date</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+        <tr>
+          <td>
+            <div style="font-weight: 600; color: var(--text);">{{ event.name }}</div>
+            <div class="mono" style="font-size: 11px; margin-top: 2px;">{{ event.slug }}</div>
+          </td>
+          <td>
+            <div style="color: var(--text);">{{ event.organizer.username if event.organizer else 'Unknown' }}</div>
+          </td>
+          <td>
+            <div style="color: var(--text);">{{ event.start_date|default('TBD') }}</div>
+          </td>
+          <td>
+            <div style="color: var(--text);">{{ event.city }}, {{ event.country }}</div>
+          </td>
+          <td>
+            {% if event.status.value == 'pending_approval' %}
+              <span class="badge badge-pending">Pending</span>
+            {% elif event.status.value == 'flagged' %}
+              <span class="badge badge-flagged">Flagged</span>
+            {% else %}
+              <span class="badge">{{ event.status.value }}</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ event.created_at.strftime('%Y-%m-%d') if event.created_at else '-' }}</td>
+          <td>
+            <a href="{{ url_for('events.moderate_detail', id=event.id) }}" class="btn-action">
+              <i class="fas fa-eye"></i> Review
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+      <p>No events pending moderation</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

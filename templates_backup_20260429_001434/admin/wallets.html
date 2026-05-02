@@ -1,0 +1,445 @@
+{% extends "admin/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Wallet Management</h1>
+            <p class="text-muted">View and manage all user wallets</p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin_wallet_api.get_wallet_stats') }}" class="btn btn-outline-info" target="_blank">
+                <i class="bi bi-graph-up"></i> View Stats
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Wallets</h6>
+                    <h2 class="mb-0" id="totalWallets">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-title">Frozen Wallets</h6>
+                    <h2 class="mb-0" id="frozenWallets">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Balance (USD)</h6>
+                    <h2 class="mb-0" id="totalBalanceHome">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Balance (UGX)</h6>
+                    <h2 class="mb-0" id="totalBalanceLocal">0</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="filterForm" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Search</label>
+                    <input type="text" class="form-control" id="searchInput" placeholder="Username, email, wallet ref">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="statusSelect">
+                        <option value="">All</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Verified</label>
+                    <select class="form-select" id="verifiedSelect">
+                        <option value="">All</option>
+                        <option value="true">Verified</option>
+                        <option value="false">Unverified</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Frozen</label>
+                    <select class="form-select" id="frozenSelect">
+                        <option value="">All</option>
+                        <option value="true">Frozen</option>
+                        <option value="false">Not Frozen</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary me-2" onclick="applyFilters()">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="resetFilters()">
+                        <i class="bi bi-arrow-repeat"></i> Reset
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Wallets Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Wallet Ref</th>
+                            <th>Balance (USD)</th>
+                            <th>Balance (UGX)</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="walletsTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <nav id="paginationNav" class="mt-3">
+                <ul class="pagination justify-content-center" id="paginationList">
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- Freeze Wallet Modal -->
+<div class="modal fade" id="freezeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="bi bi-snow2"></i> Freeze Wallet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Freezing a wallet will block all deposits, withdrawals, and transfers for this user.
+                </div>
+                <input type="hidden" id="freezeUserId">
+                <div class="mb-3">
+                    <label class="form-label">Reason for freezing <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="freezeReason" rows="3"
+                              placeholder="e.g., Suspicious activity, Fraud investigation, User request..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Additional Notes (Optional)</label>
+                    <textarea class="form-control" id="freezeNotes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="confirmFreeze()">Freeze Wallet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Unfreeze Wallet Modal -->
+<div class="modal fade" id="unfreezeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-snow"></i> Unfreeze Wallet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i>
+                    Unfreezing will restore all wallet operations for this user.
+                </div>
+                <input type="hidden" id="unfreezeUserId">
+                <div class="mb-3">
+                    <label class="form-label">Reason for unfreezing</label>
+                    <textarea class="form-control" id="unfreezeReason" rows="3"
+                              placeholder="e.g., Investigation complete, Issue resolved..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="confirmUnfreeze()">Unfreeze Wallet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let currentFilters = {};
+
+async function loadWallets() {
+    const params = new URLSearchParams({
+        page: currentPage,
+        per_page: 50,
+        ...currentFilters
+    });
+
+    try {
+        const response = await fetch(`/api/admin/wallet/wallets?${params}`);
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            updateStats(result.data.stats);
+            renderWalletsTable(result.data.wallets);
+            renderPagination(result.data);
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        console.error('Error loading wallets:', error);
+        showError('Failed to load wallets');
+    }
+}
+
+function updateStats(stats) {
+    document.getElementById('totalWallets').textContent = stats.total_wallets || 0;
+    document.getElementById('frozenWallets').textContent = stats.total_frozen || 0;
+    document.getElementById('totalBalanceHome').textContent = parseFloat(stats.total_balance_home).toLocaleString();
+    document.getElementById('totalBalanceLocal').textContent = parseFloat(stats.total_balance_local).toLocaleString();
+}
+
+function renderWalletsTable(wallets) {
+    const tbody = document.getElementById('walletsTableBody');
+
+    if (!wallets || wallets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No wallets found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = wallets.map(wallet => `
+        <tr class="${wallet.is_frozen ? 'table-warning' : ''}">
+            <td>
+                <strong>${escapeHtml(wallet.username || 'N/A')}</strong><br>
+                <small class="text-muted">${escapeHtml(wallet.email || 'No email')}</small>
+            </td>
+            <td><code>${escapeHtml(wallet.wallet_ref || 'N/A')}</code></td>
+            <td class="${parseFloat(wallet.balance_home) > 0 ? 'text-success' : 'text-muted'}">
+                ${parseFloat(wallet.balance_home).toLocaleString()} ${wallet.home_currency}
+            </td>
+            <td>${parseFloat(wallet.balance_local).toLocaleString()} ${wallet.local_currency}</td>
+            <td>
+                ${wallet.is_frozen ?
+                    '<span class="badge bg-warning text-dark"><i class="bi bi-snow2"></i> Frozen</span>' :
+                    '<span class="badge bg-success">Active</span>'}
+                ${wallet.verified ?
+                    '<span class="badge bg-info">Verified</span>' :
+                    '<span class="badge bg-secondary">Unverified</span>'}
+            </td>
+            <td><small>${new Date(wallet.created_at).toLocaleDateString()}</small></td>
+            <td>
+                <a href="/admin/wallets/${wallet.user_id}" class="btn btn-sm btn-outline-primary me-1">
+                    <i class="bi bi-eye"></i> View
+                </a>
+                ${wallet.is_frozen ?
+                    `<button class="btn btn-sm btn-outline-success" onclick="showUnfreezeModal(${wallet.user_id})">
+                        <i class="bi bi-snow"></i> Unfreeze
+                    </button>` :
+                    `<button class="btn btn-sm btn-outline-warning" onclick="showFreezeModal(${wallet.user_id})">
+                        <i class="bi bi-snow2"></i> Freeze
+                    </button>`
+                }
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderPagination(data) {
+    const paginationList = document.getElementById('paginationList');
+
+    if (data.pages <= 1) {
+        paginationList.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    // Previous button
+    if (data.has_prev) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${data.page - 1})">Previous</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
+    }
+
+    // Page numbers
+    for (let i = 1; i <= data.pages; i++) {
+        if (i === data.page) {
+            html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else if (Math.abs(i - data.page) <= 2 || i === 1 || i === data.pages) {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${i})">${i}</a></li>`;
+        } else if (Math.abs(i - data.page) === 3) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+
+    // Next button
+    if (data.has_next) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${data.page + 1})">Next</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
+    }
+
+    paginationList.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = page;
+    loadWallets();
+}
+
+function applyFilters() {
+    currentFilters = {
+        search: document.getElementById('searchInput').value,
+        status: document.getElementById('statusSelect').value,
+        verified: document.getElementById('verifiedSelect').value,
+        frozen: document.getElementById('frozenSelect').value
+    };
+    currentPage = 1;
+    loadWallets();
+}
+
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('statusSelect').value = '';
+    document.getElementById('verifiedSelect').value = '';
+    document.getElementById('frozenSelect').value = '';
+    currentFilters = {};
+    currentPage = 1;
+    loadWallets();
+}
+
+let currentFreezeUserId = null;
+let currentUnfreezeUserId = null;
+
+function showFreezeModal(userId) {
+    currentFreezeUserId = userId;
+    document.getElementById('freezeUserId').value = userId;
+    document.getElementById('freezeReason').value = '';
+    document.getElementById('freezeNotes').value = '';
+    new bootstrap.Modal(document.getElementById('freezeModal')).show();
+}
+
+function confirmFreeze() {
+    const reason = document.getElementById('freezeReason').value.trim();
+    const notes = document.getElementById('freezeNotes').value;
+
+    if (!reason) {
+        alert('Please provide a reason for freezing the wallet');
+        return;
+    }
+
+    fetch(`/api/admin/wallet/wallets/${currentFreezeUserId}/freeze`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value
+        },
+        body: JSON.stringify({ reason: reason, notes: notes })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('freezeModal')).hide();
+            loadWallets();
+            showToast('success', data.message);
+        } else {
+            showToast('error', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error freezing wallet:', error);
+        showToast('error', 'Failed to freeze wallet');
+    });
+}
+
+function showUnfreezeModal(userId) {
+    currentUnfreezeUserId = userId;
+    document.getElementById('unfreezeUserId').value = userId;
+    document.getElementById('unfreezeReason').value = '';
+    new bootstrap.Modal(document.getElementById('unfreezeModal')).show();
+}
+
+function confirmUnfreeze() {
+    const reason = document.getElementById('unfreezeReason').value;
+
+    fetch(`/api/admin/wallet/wallets/${currentUnfreezeUserId}/unfreeze`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value
+        },
+        body: JSON.stringify({ reason: reason })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('unfreezeModal')).hide();
+            loadWallets();
+            showToast('success', data.message);
+        } else {
+            showToast('error', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error unfreezing wallet:', error);
+        showToast('error', 'Failed to unfreeze wallet');
+    });
+}
+
+function showToast(type, message) {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed bottom-0 end-0 m-3`;
+    toast.style.zIndex = 9999;
+    toast.style.padding = '12px 20px';
+    toast.style.borderRadius = '8px';
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
+
+function showError(message) {
+    showToast('error', message);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load on page load
+loadWallets();
+
+// Auto-refresh every 60 seconds
+setInterval(loadWallets, 60000);
+</script>
+{% endblock %}

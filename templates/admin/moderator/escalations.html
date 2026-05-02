@@ -1,0 +1,127 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Escalations — AFCON360{% endblock %}
+
+{% block topbar_title %}Escalations{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Escalations</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Escalations Queue</h1>
+    <p class="page-subheading">Review escalated items requiring admin+ attention</p>
+  </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.escalations', status='pending') }}" class="tab-link {% if status == 'pending' or status is none %}active{% endif %}">
+    Pending
+  </a>
+  <a href="{{ url_for('admin.moderator.escalations', status='resolved') }}" class="tab-link {% if status == 'resolved' %}active{% endif %}">
+    Resolved
+  </a>
+  <a href="{{ url_for('admin.moderator.escalations', status='all') }}" class="tab-link {% if status == 'all' %}active{% endif %}">
+    All
+  </a>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search escalations..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  <select class="form-control" style="width: auto;" name="escalation_type">
+    <option value="">All Types</option>
+    <option value="flag" {% if request.args.get('escalation_type') == 'flag' %}selected{% endif %}>Flag</option>
+    <option value="content" {% if request.args.get('escalation_type') == 'content' %}selected{% endif %}>Content</option>
+    <option value="user" {% if request.args.get('escalation_type') == 'user' %}selected{% endif %}>User</option>
+  </select>
+  <button type="submit" class="btn btn-primary">Filter</button>
+  {% if request.args.get('search') or request.args.get('escalation_type') %}
+  <a href="{{ url_for('admin.moderator.escalations') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if escalations and escalations.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>Type</th>
+        <th>Entity</th>
+        <th>Escalated By</th>
+        <th>Reason</th>
+        <th>Escalated At</th>
+        <th>Status</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for escalation in escalations.items %}
+      <tr class="{% if escalation.priority == 'critical' %}row-critical{% endif %}">
+        <td class="mono">{{ escalation.id }}</td>
+        <td><span class="badge badge-type">{{ escalation.escalation_type }}</span></td>
+        <td>
+          {% if escalation.entity_name %}
+          <a href="{{ escalation.entity_url if escalation.entity_url else '#' }}" style="color:var(--ink-2);font-weight:600;text-decoration:none;">{{ escalation.entity_name }}</a>
+          {% else %}
+          <span class="mono">#{{ escalation.entity_id }}</span>
+          {% endif %}
+        </td>
+        <td>{{ escalation.escalated_by.username if escalation.escalated_by else '-' }}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ escalation.reason }}">{{ escalation.reason[:80] }}{% if escalation.reason|length > 80 %}…{% endif %}</td>
+        <td class="mono">{{ escalation.escalated_at.strftime('%Y-%m-%d %H:%M') if escalation.escalated_at else '-' }}</td>
+        <td><span class="badge badge-{{ escalation.status }}">{{ escalation.status }}</span></td>
+        <td>
+          <a href="{{ url_for('admin.moderator.view_escalation', escalation_id=escalation.id) }}" class="btn btn-outline btn-xs">Review</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if escalations.has_prev %}
+    <a href="{{ url_for('admin.moderator.escalations', status=status, page=escalations.prev_num, search=request.args.get('search'), escalation_type=request.args.get('escalation_type')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in escalations.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != escalations.page %}
+        <a href="{{ url_for('admin.moderator.escalations', status=status, page=page_num, search=request.args.get('search'), escalation_type=request.args.get('escalation_type')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if escalations.has_next %}
+    <a href="{{ url_for('admin.moderator.escalations', status=status, page=escalations.next_num, search=request.args.get('search'), escalation_type=request.args.get('escalation_type')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ escalations.page }} of {{ escalations.pages }} pages ({{ escalations.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-arrow-up empty-icon"></i>
+    <p>No escalations found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

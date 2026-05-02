@@ -178,9 +178,9 @@
         ] %}
         {% for val, label, count in status_tabs %}
         <a href="{{ url_for('events.admin_events', status=val) }}"
-           class="filter-tab{% if current_filter == val %} active{% endif %}">
+           class="filter-pill{% if current_filter == val %} active{% endif %}">
           {{ label }}
-          <span class="tab-count">{{ count }}</span>
+          <span class="pill-count">{{ count }}</span>
         </a>
         {% endfor %}
 
@@ -228,14 +228,62 @@
                 </div>
               </td>
               <td>
-                <span class="badge badge-{{ st }}">{{ st|upper }}</span>
-                {% if st == 'suspended' and event.suspension_reason %}
-                <div style="font-size:11px;color:var(--brand-orange);margin-top:3px;" title="{{ event.suspension_reason }}">
+                {# Normalize status: fix misspellings and strip prefixes #}
+                {% set raw_status = event.status.value if event.status else event.status %}
+                {% set clean_status = raw_status|string|lower|replace('j.', '')|replace('supended', 'suspended')|replace(' ', '')|replace('_', '') %}
+                {% set status_class = 'status-' + clean_status %}
+
+                {# Determine icon and label based on normalized status #}
+                {% if clean_status in ['pending', 'pendingapproval', 'pending_approval'] %}
+                  {% set status_icon = '⏳' %}
+                  {% set status_label = 'Pending Approval' %}
+                {% elif clean_status in ['approved'] %}
+                  {% set status_icon = '✓' %}
+                  {% set status_label = 'Approved' %}
+                {% elif clean_status in ['published', 'active'] %}
+                  {% set status_icon = '✓' %}
+                  {% set status_label = 'Published' %}
+                {% elif clean_status in ['suspended', 'supended'] %}
+                  {% set status_icon = '⏸' %}
+                  {% set status_label = 'Suspended' %}
+                {% elif clean_status == 'rejected' %}
+                  {% set status_icon = '✕' %}
+                  {% set status_label = 'Rejected' %}
+                {% elif clean_status == 'cancelled' %}
+                  {% set status_icon = '✗' %}
+                  {% set status_label = 'Cancelled' %}
+                {% elif clean_status == 'archived' %}
+                  {% set status_icon = '📦' %}
+                  {% set status_label = 'Archived' %}
+                {% elif clean_status == 'completed' %}
+                  {% set status_icon = '🏆' %}
+                  {% set status_label = 'Completed' %}
+                {% elif clean_status in ['takendown', 'takedown'] %}
+                  {% set status_icon = '⚠️' %}
+                  {% set status_label = 'Taken Down' %}
+                {% elif clean_status == 'paused' %}
+                  {% set status_icon = '⏸' %}
+                  {% set status_label = 'Paused' %}
+                {% elif clean_status == 'draft' %}
+                  {% set status_icon = '📝' %}
+                  {% set status_label = 'Draft' %}
+                {% else %}
+                  {% set status_icon = '●' %}
+                  {% set status_label = raw_status|title|replace('_', ' ')|replace('J.', '') %}
+                {% endif %}
+
+                <span class="status-badge {{ status_class }}">
+                  <span>{{ status_icon }}</span>
+                  <span>{{ status_label }}</span>
+                </span>
+
+                {% if clean_status in ['suspended', 'supended'] and event.suspension_reason %}
+                <div style="font-size:11px;color:var(--brand-orange);margin-top:6px;max-width:200px;" title="{{ event.suspension_reason }}">
                   <i class="fas fa-info-circle"></i>
-                  {{ event.suspension_reason|truncate(30, true, '…') }}
+                  {{ event.suspension_reason|truncate(35, true, '…') }}
                 </div>
-                {% elif st == 'archived' and event.takedown_category %}
-                <div style="font-size:11px;color:#ff8080;margin-top:3px;" title="Takedown: {{ event.takedown_category }}{% if event.takedown_reason %} — {{ event.takedown_reason }}{% endif %}">
+                {% elif clean_status == 'archived' and event.takedown_category %}
+                <div style="font-size:11px;color:#ff8080;margin-top:6px;max-width:200px;" title="Takedown: {{ event.takedown_category }}{% if event.takedown_reason %} — {{ event.takedown_reason }}{% endif %}">
                   <i class="fas fa-exclamation-triangle"></i>
                   Taken down: {{ event.takedown_category }}
                 </div>
@@ -739,5 +787,5 @@ const style = document.createElement('style');
 style.textContent = '@keyframes shake { 0%,100%{transform:none} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }';
 document.head.appendChild(style);
 </script>
-<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/admin_moderation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/admin/admin_moderation.js') }}"></script>
 {% endblock %}

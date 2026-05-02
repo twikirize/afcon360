@@ -1,0 +1,117 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Organisation Moderation — AFCON360{% endblock %}
+
+{% block topbar_title %}Organisation Moderation{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Organisations</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Organisation Moderation</h1>
+    <p class="page-subheading">Review and manage organisation accounts</p>
+  </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.orgs_queue', filter='all') }}" class="tab-link {% if current_filter == 'all' or current_filter is none %}active{% endif %}">
+    All Orgs
+  </a>
+  <a href="{{ url_for('admin.moderator.orgs_queue', filter='pending') }}" class="tab-link {% if current_filter == 'pending' %}active{% endif %}">
+    Pending Verification
+  </a>
+  <a href="{{ url_for('admin.moderator.orgs_queue', filter='verified') }}" class="tab-link {% if current_filter == 'verified' %}active{% endif %}">
+    Verified
+  </a>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search organisations..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  <button type="submit" class="btn btn-primary">Search</button>
+  {% if request.args.get('search') %}
+  <a href="{{ url_for('admin.moderator.orgs_queue') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if orgs and orgs.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>Name</th>
+        <th>Contact Email</th>
+        <th>Created At</th>
+        <th>Status</th>
+        <th>Members</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for org in orgs.items %}
+      <tr>
+        <td class="mono">{{ org.id }}</td>
+        <td style="font-weight:600;">{{ org.name }}</td>
+        <td style="color:var(--muted);">{{ org.contact_email or '-' }}</td>
+        <td class="mono">{{ org.created_at.strftime('%Y-%m-%d') if org.created_at else '-' }}</td>
+        <td>
+          <span class="badge {% if org.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">
+            {% if org.is_verified %}Verified{% else %}Unverified{% endif %}
+          </span>
+        </td>
+        <td class="mono">{{ org.users|length if org.users else 0 }}</td>
+        <td>
+          <a href="{{ url_for('admin.moderator.view_org', org_id=org.id) }}" class="btn btn-outline btn-xs">View</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if orgs.has_prev %}
+    <a href="{{ url_for('admin.moderator.orgs_queue', filter=current_filter, page=orgs.prev_num, search=request.args.get('search')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in orgs.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != orgs.page %}
+        <a href="{{ url_for('admin.moderator.orgs_queue', filter=current_filter, page=page_num, search=request.args.get('search')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if orgs.has_next %}
+    <a href="{{ url_for('admin.moderator.orgs_queue', filter=current_filter, page=orgs.next_num, search=request.args.get('search')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ orgs.page }} of {{ orgs.pages }} pages ({{ orgs.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-building empty-icon"></i>
+    <p>No organisations found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

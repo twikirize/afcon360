@@ -75,8 +75,8 @@ ALL_GLOBAL_ROLES_LIST = [
 # Role → permissions mapping
 ROLE_PERMISSIONS = {
     ROLE_OWNER: ["audit.read", "audit.export", "audit.delete", "aml.review", "aml.resolve", "system.admin", "impersonate.any"],
-    ROLE_SUPER_ADMIN: ["audit.read", "audit.export", "aml.review", "system.admin"],
-    ROLE_ADMIN: ["audit.read", "audit.export", "content.manage"],
+    ROLE_SUPER_ADMIN: ["audit.read", "audit.export", "aml.review", "system.admin", "events.manage", "events.approve", "events.analytics"],
+    ROLE_ADMIN: ["audit.read", "audit.export", "content.manage", "events.manage", "events.approve", "events.analytics"],
     ROLE_AUDITOR: ["audit.read"],
     ROLE_COMPLIANCE_OFFICER: ["audit.read", "aml.review", "aml.resolve"],
     ROLE_MODERATOR: ["content.moderate", "audit.read"],

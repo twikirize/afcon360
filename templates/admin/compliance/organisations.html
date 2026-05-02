@@ -1,0 +1,173 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Organisations — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Organisation Compliance (KYB){% endblock %}
+
+{% block content %}
+<!-- Filters & Actions -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-body">
+    <form method="GET" action="{{ url_for('compliance.organisations') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-control">
+          <option value="">All Statuses</option>
+          <option value="pending" {% if request.args.get('status') == 'pending' %}selected{% endif %}>Pending</option>
+          <option value="in_review" {% if request.args.get('status') == 'in_review' %}selected{% endif %}>In Review</option>
+          <option value="verified" {% if request.args.get('status') == 'verified' %}selected{% endif %}>Verified</option>
+          <option value="rejected" {% if request.args.get('status') == 'rejected' %}selected{% endif %}>Rejected</option>
+          <option value="suspended" {% if request.args.get('status') == 'suspended' %}selected{% endif %}>Suspended</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+        <label class="form-label">Risk Level</label>
+        <select name="risk" class="form-control">
+          <option value="">All Risks</option>
+          <option value="high" {% if request.args.get('risk') == 'high' %}selected{% endif %}>High</option>
+          <option value="medium" {% if request.args.get('risk') == 'medium' %}selected{% endif %}>Medium</option>
+          <option value="low" {% if request.args.get('risk') == 'low' %}selected{% endif %}>Low</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 2; min-width: 200px; margin-bottom: 0;">
+        <label class="form-label">Search</label>
+        <input type="text" name="search" class="form-control" placeholder="Organisation name..." value="{{ request.args.get('search', '') }}">
+      </div>
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-filter"></i> Filter
+      </button>
+      <a href="{{ url_for('compliance.organisations') }}" class="btn btn-secondary">Clear</a>
+    </form>
+  </div>
+</div>
+
+<!-- Stats Row -->
+<div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+  <div class="stat-card animate-up">
+    <div class="stat-icon orange"><i class="fas fa-clock"></i></div>
+    <div class="stat-value">{{ stats.pending|default(0) }}</div>
+    <div class="stat-label">Pending Review</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon blue"><i class="fas fa-building"></i></div>
+    <div class="stat-value">{{ stats.total|default(0) }}</div>
+    <div class="stat-label">Total Orgs</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+    <div class="stat-value">{{ stats.verified|default(0) }}</div>
+    <div class="stat-label">Verified</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon red"><i class="fas fa-triangle-exclamation"></i></div>
+    <div class="stat-value">{{ stats.high_risk|default(0) }}</div>
+    <div class="stat-label">High Risk</div>
+  </div>
+</div>
+
+<!-- Organisations Table -->
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-building"></i> Organisation Verification Queue</div>
+    <span class="badge badge-blue">{{ organisations|length }} organisations</span>
+  </div>
+  <div class="card-body">
+    {% if organisations %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Organisation</th>
+            <th>Type</th>
+            <th>Registration</th>
+            <th>Submitted</th>
+            <th>Risk</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for org in organisations %}
+          <tr class="{{ 'row-critical' if org.risk_level == 'high' else ('row-high' if org.risk_level == 'medium' else '') }}">
+            <td><a href="{{ url_for('compliance.view_org', org_id=org.id) }}">#{{ org.id }}</a></td>
+            <td>
+              <div style="display: flex; flex-direction: column;">
+                <span style="font-weight: 600;">{{ org.name }}</span>
+                <span style="font-size: 11px; color: var(--muted);">{{ org.country or 'No country' }}</span>
+              </div>
+            </td>
+            <td>{{ org.type or 'Unknown' }}</td>
+            <td class="mono">{{ org.registration_number or 'N/A' }}</td>
+            <td class="mono">{{ org.created_at.strftime('%Y-%m-%d') if org.created_at else '-' }}</td>
+            <td>
+              {% if org.risk_level == 'high' %}
+                <span class="badge badge-red">High</span>
+              {% elif org.risk_level == 'medium' %}
+                <span class="badge badge-orange">Medium</span>
+              {% else %}
+                <span class="badge badge-green">Low</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if org.compliance_status == 'pending' or not org.compliance_status %}
+                <span class="badge badge-orange">Pending</span>
+              {% elif org.compliance_status == 'in_review' %}
+                <span class="badge badge-blue">In Review</span>
+              {% elif org.compliance_status == 'verified' %}
+                <span class="badge badge-green">Verified</span>
+              {% elif org.compliance_status == 'rejected' %}
+                <span class="badge badge-red">Rejected</span>
+              {% elif org.compliance_status == 'suspended' %}
+                <span class="badge badge-purple">Suspended</span>
+              {% else %}
+                <span class="badge badge-gray">{{ org.compliance_status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('compliance.view_org', org_id=org.id) }}" class="btn btn-sm btn-primary">Review</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination and pagination.pages > 1 %}
+    <div class="pagination">
+      {% if pagination.has_prev %}
+        <a href="{{ url_for('compliance.organisations', page=pagination.prev_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+      {% else %}
+        <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+      {% endif %}
+      
+      {% for page_num in pagination.iter_pages(left_current=2, right_current=2, left_edge=1, right_edge=1) %}
+        {% if page_num %}
+          {% if page_num == pagination.page %}
+            <span class="pg-btn active">{{ page_num }}</span>
+          {% else %}
+            <a href="{{ url_for('compliance.organisations', page=page_num, **request.args) }}" class="pg-btn">{{ page_num }}</a>
+          {% endif %}
+        {% else %}
+          <span class="pg-btn disabled">...</span>
+        {% endif %}
+      {% endfor %}
+      
+      {% if pagination.has_next %}
+        <a href="{{ url_for('compliance.organisations', page=pagination.next_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+      {% else %}
+        <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+      {% endif %}
+      <span class="pg-info">{{ pagination.total }} total</span>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+      <p>No organisations found matching your criteria.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

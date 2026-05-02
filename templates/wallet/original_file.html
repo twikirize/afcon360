@@ -1,5 +1,4 @@
-
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
 <section class="container py-4">
   <h2 class="mb-4">{{ title or 'Wallet' }}</h2>
@@ -30,8 +29,8 @@
 
       <div class="mt-2">
         <strong>Agent Commission Earned:</strong> UGX {{ commission | round(2) }}
-        <a href="{{ url_for('wallet_routes.agent_payout_history') }}" class="btn btn-sm btn-outline-secondary ms-2">View Payout History</a>
-        <a href="{{ url_for('wallet_routes.agent_payout_request') }}" class="btn btn-sm btn-outline-info ms-2">Request Payout</a>
+        <a href="{{ url_for('wallet.agent_payout_history') }}" class="btn btn-sm btn-outline-secondary ms-2">View Payout History</a>
+        <a href="{{ url_for('wallet.agent_payout_request_page') }}" class="btn btn-sm btn-outline-info ms-2">Request Payout</a>
       </div>
     </div>
   </div>
@@ -40,7 +39,7 @@
   <div class="card mb-4">
     <div class="card-body">
       <h5>Deposit</h5>
-      <form method="POST" action="{{ url_for('wallet_routes.deposit_form') }}">
+      <form method="POST" action="{{ url_for('wallet.deposit_form') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="row g-3">
           <div class="col-md-4">
@@ -69,7 +68,7 @@
   <div class="card mb-4">
     <div class="card-body">
       <h5>Send Funds to Another Fan</h5>
-      <form method="POST" action="{{ url_for('wallet_routes.send_funds') }}">
+      <form method="POST" action="{{ url_for('wallet.send_funds') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="row g-3">
           <div class="col-md-4">
@@ -109,7 +108,7 @@
   <div class="card mb-4">
     <div class="card-body">
       <h5>Withdraw Funds</h5>
-      <form method="POST" action="{{ url_for('wallet_routes.withdraw_funds') }}">
+      <form method="POST" action="{{ url_for('wallet.withdraw_funds') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="row g-3">
           <div class="col-md-3">
@@ -184,7 +183,7 @@
         </tbody>
       </table>
 
-        <a href="{{ url_for('wallet_routes.agent_payout_history') }}" class="btn btn-outline-primary">View Full History</a>
+        <a href="{{ url_for('wallet.agent_payout_history') }}" class="btn btn-outline-primary">View Full History</a>
 
     </div>
   </div>
@@ -270,18 +269,18 @@
         <li class="menu-item"><a href="{{ url_for('tournament.home') }}">{{ tournament_name or "Tournament Hub" }}</a></li>
         <li class="menu-item"><a href="{{ url_for('tourism.home') }}">Tourism</a></li>
         <li class="menu-item"><a href="{{ url_for('transport.home') }}">Transport</a></li>
-        <li class="menu-item"><a href="{{ url_for('accommodation.home') }}">Accommodation</a></li>
-        <li class="menu-item"><a href="{{ url_for('wallet_routes.wallet_home') }}">Wallet</a></li>
+        <li class="menu-item"><a href="{{ url_for('accommodation.index') }}">Accommodation</a></li>
+        <li class="menu-item"><a href="{{ url_for('wallet.wallet_home') }}">Wallet</a></li>
 
          <li class="menu-item">
           {% if session.get('user_id') %}
-          <a href="{{ url_for('wallet_routes.wallet_dashboard') }}">Wallet</a>
+          <a href="{{ url_for('wallet.wallet_dashboard') }}">Wallet</a>
           {% else %}
-          <a href="{{ url_for('wallet_routes.wallet_dashboard') }}">Wallet</a>
+          <a href="{{ url_for('wallet.wallet_dashboard') }}">Wallet</a>
           {% endif %}
         </li>
-        <li class="menu-item auth"><a href="{{ url_for('auth_routes.register') }}">Register</a></li>
-        <li class="menu-item auth"><a href="{{ url_for('auth_routes.login') }}">Login</a></li>
+        <li class="menu-item auth"><a href="{{ url_for('auth.register') }}">Register</a></li>
+        <li class="menu-item auth"><a href="{{ url_for('auth.login') }}">Login</a></li>
         <li class="menu-item auth"><a href="{{ url_for('admin.super_dashboard') }}">Super Admin</a></li>
         <li class="nav-item">
 </li>

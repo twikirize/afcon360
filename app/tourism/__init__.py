@@ -10,6 +10,16 @@ tourism_bp = Blueprint(
 
 from app.tourism import routes  # noqa: F401,E402
 
+# Register with moderator system
+try:
+    from app.admin.moderator.registry import register_module
+    from flask import url_for
+    register_module('tourism_listing', 'Tourism Attraction',
+                   review_url_fn=lambda id: url_for('tourism.moderate_listing', id=id),
+                   module_name='Tourism', icon='fa-tree')
+except Exception:
+    pass
+
 """
 #version 1
 from flask import Blueprint

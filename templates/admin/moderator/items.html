@@ -1,0 +1,164 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Manage Items — AFCON360{% endblock %}
+
+{% block topbar_title %}Manage Items{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Items</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Manage Items</h1>
+    <p class="page-subheading">Review and manage manageable items</p>
+  </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.items_list', approved='all', category_id=selected_category, q=search) }}" class="tab-link {% if approved_filter == 'all' %}active{% endif %}">
+    All Items
+  </a>
+  <a href="{{ url_for('admin.moderator.items_list', approved='pending', category_id=selected_category, q=search) }}" class="tab-link {% if approved_filter == 'pending' %}active{% endif %}">
+    Pending
+  </a>
+  <a href="{{ url_for('admin.moderator.items_list', approved='approved', category_id=selected_category, q=search) }}" class="tab-link {% if approved_filter == 'approved' %}active{% endif %}">
+    Approved
+  </a>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search items..." name="q" value="{{ search }}">
+  </div>
+  <select name="category_id" class="search-select">
+    <option value="">All Categories</option>
+    {% for category in categories %}
+    <option value="{{ category.id }}" {% if selected_category == category.id %}selected{% endif %}>{{ category.name }}</option>
+    {% endfor %}
+  </select>
+  <input type="hidden" name="approved" value="{{ approved_filter }}">
+  <button type="submit" class="btn btn-primary">Filter</button>
+  {% if search or selected_category %}
+  <a href="{{ url_for('admin.moderator.items_list', approved=approved_filter) }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if items and items.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>Name</th>
+        <th>Category</th>
+        <th>Description</th>
+        <th>Featured</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items.items %}
+      <tr>
+        <td class="mono">{{ item.id }}</td>
+        <td>
+          <div style="font-weight:600;">{{ item.name }}</div>
+          <div class="mono" style="font-size:11px;color:var(--muted);">{{ item.slug }}</div>
+        </td>
+        <td>
+          {% for category in categories %}
+            {% if category.id == item.category_id %}
+              <span class="badge badge-role">{{ category.name }}</span>
+            {% endif %}
+          {% endfor %}
+        </td>
+        <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ item.description or '-' }}
+        </td>
+        <td>
+          <span class="badge {% if item.is_featured %}badge-verified{% else %}badge-unverified{% endif %}">
+            {% if item.is_featured %}Featured{% else %}Standard{% endif %}
+          </span>
+        </td>
+        <td>
+          <span class="badge {% if item.is_approved %}badge-active{% else %}badge-inactive{% endif %}">
+            {{ 'Approved' if item.is_approved else 'Pending' }}
+          </span>
+        </td>
+        <td class="mono">{{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '-' }}</td>
+        <td>
+          <div class="action-buttons">
+            <a href="{{ url_for('admin.moderator.view_item', item_id=item.id) }}" class="btn btn-outline btn-xs" title="View Details">
+              <i class="fas fa-eye"></i>
+            </a>
+            {% if not item.is_approved %}
+            <form method="POST" action="{{ url_for('admin.moderator.approve_item', item_id=item.id) }}" style="display:inline;">
+              <button type="submit" class="btn btn-success btn-xs" title="Approve" onclick="return confirm('Approve this item?')">
+                <i class="fas fa-check"></i>
+              </button>
+            </form>
+            {% endif %}
+            {% if item.is_approved %}
+            <form method="POST" action="{{ url_for('admin.moderator.reject_item', item_id=item.id) }}" style="display:inline;">
+              <button type="submit" class="btn btn-danger btn-xs" title="Reject" onclick="return confirm('Reject this item?')">
+                <i class="fas fa-times"></i>
+              </button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('admin.moderator.toggle_item_featured', item_id=item.id) }}" style="display:inline;">
+              <button type="submit" class="btn {% if item.is_featured %}btn-warning{% else %}btn-outline{% endif %} btn-xs" title="{% if item.is_featured %}Unfeature{% else %}Feature{% endif %}">
+                <i class="fas fa-star"></i>
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if items.has_prev %}
+    <a href="{{ url_for('admin.moderator.items_list', approved=approved_filter, category_id=selected_category, q=search, page=items.prev_num) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in items.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != items.page %}
+        <a href="{{ url_for('admin.moderator.items_list', approved=approved_filter, category_id=selected_category, q=search, page=page_num) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if items.has_next %}
+    <a href="{{ url_for('admin.moderator.items_list', approved=approved_filter, category_id=selected_category, q=search, page=items.next_num) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ items.page }} of {{ items.pages }} pages ({{ items.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-box empty-icon"></i>
+    <p>No items found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

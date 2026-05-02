@@ -3,12 +3,14 @@
 Fan/User Portal - Accommodation, tourism, and personal dashboard
 """
 import logging
+from decimal import Decimal
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
 from app.auth.decorators import require_role
 from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits, check_transaction_allowed
 from app.accommodation.services.search_service import get_property_by_identifier
-from app.wallet.models import Wallet
+from app.wallet.models.ledger import AccountModel
+from app.wallet.services.wallet_service import WalletService
 from app.extensions import db
 from app.profile.models import get_profile_by_user  # 🆕 ADD THIS IMPORT
 
@@ -25,9 +27,21 @@ def dashboard():
     kyc_info = calculate_kyc_tier(current_user.id)
     user_limits = get_user_limits(current_user.id)
 
-    # Get wallet balance
-    wallet = Wallet.query.filter_by(user_id=current_user.id).first()
-    wallet_balance = wallet.balance_home if wallet else 0
+    # Get wallet balance using AccountModel
+    # current_user.id is public_id (UUID), need internal id (BIGINT)
+    from app.identity.models.user import User
+    user = User.query.filter_by(public_id=str(current_user.id)).first()
+    internal_id = user.id if user else current_user.id
+    
+    account = AccountModel.query.filter_by(user_id=internal_id).first()
+    if account:
+        service = WalletService()
+        wallet_balance = service.get_balance(account.id)
+    else:
+        wallet_balance = Decimal('0')
+    
+    # For backward compatibility with templates
+    wallet = account
 
     # 🆕 Get profile and completion percentage
     profile = get_profile_by_user(current_user.public_id)
@@ -130,14 +144,35 @@ def kyc_status():
 @login_required
 def wallet():
     """View wallet and transaction history"""
-    wallet = Wallet.query.filter_by(user_id=current_user.id).first()
-
-    # Get transactions if wallet exists
+    from app.wallet.models.transaction import TransactionModel
+    from app.identity.models.user import User
+    
+    # Get account using new AccountModel
+    # current_user.id is public_id (UUID), need internal id (BIGINT)
+    user = User.query.filter_by(public_id=str(current_user.id)).first()
+    internal_id = user.id if user else current_user.id
+    
+    account = AccountModel.query.filter_by(user_id=internal_id).first()
+    
+    # Get balance
+    if account:
+        service = WalletService()
+        balance = service.get_balance(account.id)
+    else:
+        balance = Decimal('0')
+    
+    # Get transactions if account exists
     transactions = []
+    if account:
+        transactions = TransactionModel.query.filter_by(
+            account_id=account.id
+        ).order_by(TransactionModel.created_at.desc()).limit(20).all()
+    
+    # For template compatibility
+    wallet = account
     if wallet:
-        transactions = wallet.transactions.order_by(
-            db.desc('created_at')
-        ).limit(20).all()
+        wallet.balance_home = balance
+        wallet.home_currency = account.currency if account else 'UGX'
 
     return render_template('fan/wallet.html',
                           wallet=wallet,
@@ -171,25 +206,42 @@ def check_transaction_limit():
 @login_required
 def view_fan_profile():
     """View fan profile"""
-    from app.wallet import get_or_create_wallet
+    from app.wallet import get_or_create_account
     from app.fan.services.registry import get_or_create_fan
-
-    wallet = get_or_create_wallet(current_user.id)
-    profile = get_or_create_fan(wallet.user_id)
-    return render_template("fan_profile.html", profile=profile, wallet=wallet)
+    from app.identity.models.user import User
+    
+    # Get internal user ID
+    user = User.query.filter_by(public_id=str(current_user.id)).first()
+    internal_id = user.id if user else current_user.id
+    
+    account = get_or_create_account(internal_id)
+    if not account:
+        # Create account if doesn't exist
+        account = AccountModel(user_id=internal_id, currency='UGX')
+        db.session.add(account)
+        db.session.commit()
+    
+    profile = get_or_create_fan(internal_id)
+    
+    # For template compatibility, use account as wallet
+    return render_template("fan_profile.html", profile=profile, wallet=account)
 
 @fan_bp.route("/profile/update", methods=["POST"])
 @login_required
 def update_fan_profile_route():
     """Update fan profile"""
-    from app.wallet import get_or_create_wallet
+    from app.wallet import get_or_create_account
     from app.fan.services.registry import update_fan_profile
-
-    wallet = get_or_create_wallet(current_user.id)
+    from app.identity.models.user import User
+    
+    # Get internal user ID
+    user = User.query.filter_by(public_id=str(current_user.id)).first()
+    internal_id = user.id if user else current_user.id
+    
     name = request.form.get("name")
     nationality = request.form.get("nationality")
     favorite_team = request.form.get("favorite_team")
     avatar_url = request.form.get("avatar_url")
-    update_fan_profile(wallet.user_id, name, nationality, favorite_team, avatar_url)
+    update_fan_profile(internal_id, name, nationality, favorite_team, avatar_url)
     flash("Profile updated.", "success")
     return redirect(url_for("fan.view_fan_profile"))

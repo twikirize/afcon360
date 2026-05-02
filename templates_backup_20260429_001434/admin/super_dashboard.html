@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Super Admin Dashboard - AFCON360{% endblock %}
+
+{% block styles %}
+<style>
+    .admin-header {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        text-align: center;
+        transition: transform 0.3s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #ff6b6b;
+        margin-bottom: 10px;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .action-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .action-card {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        border-left: 4px solid #ff6b6b;
+    }
+
+    .action-card h3 {
+        color: #ff6b6b;
+        margin-bottom: 15px;
+        font-size: 1.3rem;
+    }
+
+    .action-card p {
+        color: #6c757d;
+        margin-bottom: 20px;
+    }
+
+    .btn-primary {
+        background: #ff6b6b;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        text-decoration: none;
+        display: inline-block;
+        transition: background 0.3s ease;
+    }
+
+    .btn-primary:hover {
+        background: #ee5a24;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="admin-header">
+        <h1><i class="bi bi-shield-check"></i> Super Admin Dashboard</h1>
+        <p>Complete system administration and oversight</p>
+    </div>
+
+    <!-- Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ total_users or 0 }}</div>
+            <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ active_users or 0 }}</div>
+            <div class="stat-label">Active Users</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_roles or 0 }}</div>
+            <div class="stat-label">System Roles</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_orgs or 0 }}</div>
+            <div class="stat-label">Organizations</div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="action-cards">
+        <div class="action-card">
+            <h3><i class="bi bi-people"></i> User Management</h3>
+            <p>Manage all platform users, roles, and permissions</p>
+            <a href="{{ url_for('admin_ultimate.manage_users') }}" class="btn-primary">
+                <i class="bi bi-gear"></i> Manage Users
+            </a>
+        </div>
+
+        <div class="action-card">
+            <h3><i class="bi bi-shield"></i> Role Management</h3>
+            <p>Configure system roles and permissions</p>
+            <a href="{{ url_for('admin.manage_roles') }}" class="btn-primary">
+                <i class="bi bi-sliders"></i> Manage Roles
+            </a>
+        </div>
+
+        <div class="action-card">
+            <h3><i class="bi bi-building"></i> Organization Management</h3>
+            <p>Oversee all organizations and their activities</p>
+            <a href="{{ url_for('admin.manage_organizations') }}" class="btn-primary">
+                <i class="bi bi-building"></i> Manage Organizations
+            </a>
+        </div>
+
+        <div class="action-card">
+            <h3><i class="bi bi-graph-up"></i> System Analytics</h3>
+            <p>View system performance and usage statistics</p>
+            <a href="{{ url_for('admin.analytics') }}" class="btn-primary">
+                <i class="bi bi-bar-chart"></i> View Analytics
+            </a>
+        </div>
+
+        <div class="action-card">
+            <h3><i class="bi bi-file-text"></i> Audit Logs</h3>
+            <p>Review system activity and security logs</p>
+            <a href="{{ url_for('admin.audit_logs') }}" class="btn-primary">
+                <i class="bi bi-journal-text"></i> View Logs
+            </a>
+        </div>
+
+        <div class="action-card">
+            <h3><i class="bi bi-gear"></i> System Settings</h3>
+            <p>Configure system-wide settings and preferences</p>
+            <a href="{{ url_for('admin.settings') }}" class="btn-primary">
+                <i class="bi bi-wrench"></i> Settings
+            </a>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="bi bi-clock-history"></i> Recent Activity</h3>
+        </div>
+        <div class="card-body">
+            {% if recent_activities %}
+                {% for activity in recent_activities %}
+                <div class="activity-item">
+                    <div class="activity-icon">
+                        <i class="bi bi-{{ activity.icon }}"></i>
+                    </div>
+                    <div class="activity-content">
+                        <strong>{{ activity.user }}</strong> {{ activity.action }}
+                        <small class="text-muted">{{ activity.time }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No recent activity to display.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

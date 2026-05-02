@@ -1,0 +1,235 @@
+﻿{% extends "base.html" %}
+{% block title %}Review Event - AFCON360{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0a0f; --surface: #0f0f1a; --panel: #14141f;
+  --border: rgba(255,255,255,0.07); --gold: #d4a843; --gold-dim: rgba(212,168,67,0.15);
+  --text: #e8e8f0; --muted: #6b6b80;
+  --red: #e05252; --green: #4ade80; --amber: #fbbf24; --blue: #60a5fa; --cyan: #22d3ee;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.6; }
+
+.mod-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mod-badge { background: var(--gold); color: #000; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; }
+.mod-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); margin-left: 12px; }
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+.mod-wrap { padding: 28px 32px; max-width: 1500px; }
+.breadcrumb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 12px; color: var(--muted); }
+.breadcrumb-row a { color: var(--muted); text-decoration: none; } .breadcrumb-row a:hover { color: var(--gold); }
+.breadcrumb-row .sep { color: var(--border); } .breadcrumb-row .active { color: var(--text); }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); }
+.panel-body { padding: 24px; }
+
+.info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.info-item { display: flex; flex-direction: column; gap: 4px; }
+.info-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-family: 'DM Mono', monospace; }
+.info-value { font-size: 14px; color: var(--text); }
+
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; letter-spacing: 0.03em; text-transform: uppercase; }
+.badge-pending { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-approved { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+.badge-rejected { background: rgba(224,82,82,0.12); color: var(--red); border: 1px solid rgba(224,82,82,0.2); }
+
+.action-bar { display: flex; gap: 12px; padding: 20px 24px; background: rgba(255,255,255,0.02); border-top: 1px solid var(--border); }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; transition: all 0.2s; }
+.btn-approve { background: var(--green); color: #000; }
+.btn-approve:hover { background: #4ade80; }
+.btn-reject { background: var(--red); color: #fff; }
+.btn-reject:hover { background: #ef4444; }
+.btn-flag { background: var(--amber); color: #000; }
+.btn-flag:hover { background: #fbbf24; }
+
+.guidelines-box { background: rgba(212,168,67,0.05); border: 1px solid var(--gold-dim); border-radius: 8px; padding: 16px; margin-top: 24px; }
+.guidelines-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; color: var(--gold); margin-bottom: 8px; }
+.guidelines-list { list-style: none; padding: 0; margin: 0; }
+.guidelines-list li { font-size: 12px; color: var(--muted); padding: 4px 0; display: flex; align-items: flex-start; gap: 8px; }
+.guidelines-list li::before { content: "•"; color: var(--gold); }
+
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.form-input, .form-textarea, .form-select { width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: 'DM Sans', sans-serif; }
+.form-input:focus, .form-textarea:focus, .form-select:focus { outline: none; border-color: var(--gold); }
+.form-textarea { min-height: 100px; resize: vertical; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mod-header">
+  <div style="display: flex; align-items: center;">
+    <span class="mod-badge">MODERATOR</span>
+    <span class="mod-title">Review Event</span>
+  </div>
+  <a href="{{ url_for('events.moderate') }}" class="btn-ghost">
+    <i class="fas fa-arrow-left"></i> Back to Queue
+  </a>
+</div>
+
+<div class="mod-wrap">
+  <div class="breadcrumb-row">
+    <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+    <span class="sep">/</span>
+    <a href="{{ url_for('events.moderate') }}">Events</a>
+    <span class="sep">/</span>
+    <span class="active">{{ event.name }}</span>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Event Details</div>
+      {% if event.status.value == 'pending_approval' %}
+        <span class="badge badge-pending">Pending Approval</span>
+      {% elif event.status.value == 'flagged' %}
+        <span class="badge badge-flagged">Flagged</span>
+      {% else %}
+        <span class="badge">{{ event.status.value }}</span>
+      {% endif %}
+    </div>
+    <div class="panel-body">
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="info-label">Event Name</span>
+          <span class="info-value">{{ event.name }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Slug</span>
+          <span class="info-value" style="font-family: 'DM Mono', monospace;">{{ event.slug }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Organizer</span>
+          <span class="info-value">{{ event.organizer.username if event.organizer else 'Unknown' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Category</span>
+          <span class="info-value">{{ event.category }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Start Date</span>
+          <span class="info-value">{{ event.start_date|default('TBD') }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">End Date</span>
+          <span class="info-value">{{ event.end_date|default('TBD') }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Location</span>
+          <span class="info-value">{{ event.venue or 'TBD' }}, {{ event.city }}, {{ event.country }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Max Capacity</span>
+          <span class="info-value">{{ event.max_capacity or 'Unlimited' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Registration Fee</span>
+          <span class="info-value">{{ event.registration_fee or 0 }} {{ event.currency }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Registration Required</span>
+          <span class="info-value">{{ 'Yes' if event.registration_required else 'No' }}</span>
+        </div>
+        <div class="info-item" style="grid-column: span 2;">
+          <span class="info-label">Description</span>
+          <span class="info-value">{{ event.description or 'No description provided' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Contact Email</span>
+          <span class="info-value">{{ event.contact_email or '-' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Contact Phone</span>
+          <span class="info-value">{{ event.contact_phone or '-' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Created</span>
+          <span class="info-value">{{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '-' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Featured</span>
+          <span class="info-value">{{ 'Yes' if event.featured else 'No' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <form method="POST" action="{{ url_for('events.moderate_action', id=event.id, action='approve') }}" style="display: inline;">
+        <button type="submit" class="btn btn-approve">
+          <i class="fas fa-check"></i> Approve
+        </button>
+      </form>
+      <button onclick="document.getElementById('reject-form').style.display='block'" class="btn btn-reject">
+        <i class="fas fa-times"></i> Reject
+      </button>
+      <button onclick="document.getElementById('flag-form').style.display='block'" class="btn btn-flag">
+        <i class="fas fa-flag"></i> Flag
+      </button>
+    </div>
+  </div>
+
+  <!-- Reject Form -->
+  <div id="reject-form" class="panel" style="display: none;">
+    <div class="panel-header">
+      <div class="panel-title">Reject Event</div>
+    </div>
+    <div class="panel-body">
+      <form method="POST" action="{{ url_for('events.moderate_action', id=event.id, action='reject') }}">
+        <div class="form-group">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="reason" class="form-textarea" required placeholder="Explain why this event is being rejected..."></textarea>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <button type="submit" class="btn btn-reject">Confirm Rejection</button>
+          <button type="button" onclick="document.getElementById('reject-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Flag Form -->
+  <div id="flag-form" class="panel" style="display: none;">
+    <div class="panel-header">
+      <div class="panel-title">Flag for Review</div>
+    </div>
+    <div class="panel-body">
+      <form method="POST" action="{{ url_for('events.moderate_action', id=event.id, action='flag') }}">
+        <div class="form-group">
+          <label class="form-label">Reason *</label>
+          <textarea name="reason" class="form-textarea" required placeholder="Explain why this event needs further review..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select name="priority" class="form-select">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <button type="submit" class="btn btn-flag">Flag Event</button>
+          <button type="button" onclick="document.getElementById('flag-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="guidelines-box">
+    <div class="guidelines-title">Moderation Guidelines</div>
+    <ul class="guidelines-list">
+      <li>Ensure event name and description are appropriate and non-offensive</li>
+      <li>Verify location details are accurate and complete</li>
+      <li>Check that contact information is valid</li>
+      <li>Confirm registration fees are reasonable and clearly stated</li>
+      <li>Flag events that appear suspicious or potentially fraudulent</li>
+      <li>Reject events with incomplete or misleading information</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

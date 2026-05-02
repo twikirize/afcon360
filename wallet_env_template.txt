@@ -1,0 +1,70 @@
+# ============================================
+# Payment Provider Configuration
+# ============================================
+
+# Flutterwave Configuration
+FLUTTERWAVE_SECRET_KEY=your_flutterwave_secret_key_here
+FLUTTERWAVE_PUBLIC_KEY=your_flutterwave_public_key_here
+FLUTTERWAVE_ENCRYPTION_KEY=your_flutterwave_encryption_key_here
+FLUTTERWAVE_SANDBOX=true
+FLUTTERWAVE_CALLBACK_URL=https://yourdomain.com/webhooks/flutterwave
+
+# Paystack Configuration
+PAYSTACK_SECRET_KEY=your_paystack_secret_key_here
+PAYSTACK_PUBLIC_KEY=your_paystack_public_key_here
+PAYSTACK_SANDBOX=true
+PAYSTACK_CALLBACK_URL=https://yourdomain.com/webhooks/paystack
+
+# MTN Mobile Money Configuration
+MTN_MOMO_API_KEY=your_mtn_momo_api_key_here
+MTN_MOMO_API_USER=your_api_user_here
+MTN_MOMO_API_SECRET=your_api_secret_here
+MTN_MOMO_SANDBOX=true
+MTN_MOMO_CALLBACK_URL=https://yourdomain.com/webhooks/mtn-momo
+
+# Airtel Money Configuration
+AIRTEL_MONEY_API_KEY=your_airtel_money_api_key_here
+AIRTEL_MONEY_SANDBOX=true
+AIRTEL_MONEY_CALLBACK_URL=https://yourdomain.com/webhooks/airtel-money
+
+# ============================================
+# Wallet System Configuration
+# ============================================
+
+# Feature Flags
+WALLET_DEPOSITS_ENABLED=true
+WALLET_WITHDRAWALS_ENABLED=true
+WALLET_TRANSFERS_ENABLED=true
+WALLET_FX_ENABLED=true
+
+# Transaction Limits (in default currency)
+MAX_DEPOSIT_AMOUNT=1000000
+MAX_WITHDRAWAL_AMOUNT=500000
+MAX_TRANSFER_AMOUNT=1000000
+
+# Fee Settings (percentage)
+DEPOSIT_FEE_PERCENT=0
+WITHDRAWAL_FEE_PERCENT=1
+TRANSFER_FEE_PERCENT=0.5
+FX_SPREAD_PERCENT=1.5
+
+# KYC Requirements
+REQUIRE_KYC_FOR_DEPOSITS=false
+REQUIRE_KYC_FOR_WITHDRAWALS=true
+REQUIRE_KYC_FOR_TRANSFERS=false
+
+# Compliance Settings
+LARGE_TRANSACTION_THRESHOLD=10000
+NOTIFY_LARGE_TRANSACTIONS=true
+
+# ============================================
+# Security Settings
+# ============================================
+
+# Database Encryption Key (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+DB_ENCRYPTION_KEY=your_32_byte_encryption_key_here
+
+# Rate Limiting
+RATE_LIMIT_DEPOSIT_PER_MINUTE=10
+RATE_LIMIT_WITHDRAWAL_PER_MINUTE=5
+RATE_LIMIT_TRANSFER_PER_MINUTE=10

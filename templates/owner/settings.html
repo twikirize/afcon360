@@ -10,7 +10,7 @@
 {% block body %}
 <div class="owner-shell owner-theme">
   <div class="owner-topbar">
-    <a href="{{ url_for('owner.dashboard') }}" class="owner-back-link">
+    <a href="{{ url_for('admin.owner.dashboard') }}" class="owner-back-link">
       <i class="bi bi-arrow-left"></i>
       <span>Back to Dashboard</span>
     </a>
@@ -29,7 +29,7 @@
 
       <div class="settings-section">
         <h3>Security Settings</h3>
-        <form method="POST" action="{{ url_for('owner.update_settings') }}">
+        <form method="POST" action="{{ url_for('admin.owner.settings') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
           <div class="form-group">
@@ -40,7 +40,38 @@
             <small>How long until you're automatically logged out</small>
           </div>
 
-          <button type="submit" class="owner-btn-primary">Save Settings</button>
+          <hr style="margin: 20px 0; border: 1px solid #e0e0e0;">
+
+          <!-- MFA Toggle for Owner Login -->
+          <div class="form-group" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+              <div>
+                <label for="require_owner_mfa" style="font-weight: bold; margin-bottom: 5px; display: block;">
+                  🔐 Require MFA for Owner Login
+                </label>
+                <small style="color: #666;">
+                  When enabled, owner accounts must use Multi-Factor Authentication to log in.
+                  <strong style="color: #d9534f;">Recommended for production.</strong>
+                </small>
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="require_owner_mfa" name="require_owner_mfa" 
+                       {% if require_owner_mfa %}checked{% endif %}
+                       style="width: 50px; height: 26px; cursor: pointer;">
+              </div>
+            </div>
+            
+            <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; font-size: 13px;">
+              <strong>Current Status:</strong> 
+              {% if require_owner_mfa %}
+                <span style="color: #28a745;">✅ ENABLED</span> - Owners must provide MFA code to log in
+              {% else %}
+                <span style="color: #ffc107;">⚠️ DISABLED</span> - Owners can log in without MFA (for setup/development)
+              {% endif %}
+            </div>
+          </div>
+
+          <button type="submit" class="owner-btn-primary" style="margin-top: 20px;">Save Settings</button>
         </form>
       </div>
     </div>

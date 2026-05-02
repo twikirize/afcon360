@@ -1,217 +1,257 @@
-{% extends "admin/base.html" %}
+{% extends "admin/compliance/base_compliance.html" %}
 
-{% block title %}Compliance Dashboard - AFCON 360{% endblock %}
+{% block title %}Compliance Dashboard — AFCON360{% endblock %}
+{% block topbar_title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0">Compliance Dashboard</h1>
-        <div class="btn-group">
-            <a href="{{ url_for('compliance.kyc_review_panel') }}" class="btn btn-primary">
-                <i class="fas fa-id-card me-1"></i> KYC Review
-            </a>
-            <a href="{{ url_for('compliance.aml_monitoring') }}" class="btn btn-danger">
-                <i class="fas fa-radar me-1"></i> AML Monitoring
-            </a>
-            <a href="{{ url_for('compliance.transaction_monitoring') }}" class="btn btn-warning">
-                <i class="fas fa-money-bill-wave me-1"></i> Transaction Monitoring
-            </a>
-        </div>
-    </div>
-
-    <!-- Stats Cards -->
-    <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Pending KYC
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_verifications|length }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-id-card fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                AML Alerts
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ high_risk_transactions|length }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Pending Orgs
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_orgs }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-building fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                High Risk TX
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ high_risk_tx }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-exclamation-circle fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- KYC Review Queue -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3 d-flex justify-content-between align-items-center">
-            <h6 class="m-0 font-weight-bold text-primary">Pending KYC Reviews</h6>
-            <span class="badge bg-secondary">{{ pending_verifications|length }} pending</span>
-        </div>
-        <div class="card-body">
-            {% if pending_verifications %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Verification ID</th>
-                            <th>User ID</th>
-                            <th>Requested At</th>
-                            <th>Documents</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for verification in pending_verifications %}
-                        <tr>
-                            <td>{{ verification.id }}</td>
-                            <td>{{ user_map.get(verification.user_id, verification.user_id) }}</td>
-                            <td>{{ verification.requested_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                            <td>
-                                {% if verification.scope %}
-                                    {% for doc, status in verification.scope.items() %}
-                                        {% if status %}
-                                            <span class="badge bg-success me-1">{{ doc }}</span>
-                                        {% endif %}
-                                    {% endfor %}
-                                {% endif %}
-                            </td>
-                            <td class="action-buttons">
-                                <form method="post" action="{{ url_for('compliance.compliance_action', verification_id=verification.id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="action" value="approve">
-                                    <button type="submit" class="btn btn-sm btn-success">Approve</button>
-                                </form>
-                                <form method="post" action="{{ url_for('compliance.compliance_action', verification_id=verification.id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="action" value="reject">
-                                    <button type="submit" class="btn btn-sm btn-danger">Reject</button>
-                                </form>
-                                <form method="post" action="{{ url_for('compliance.compliance_action', verification_id=verification.id) }}" style="display: inline;">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="action" value="request_info">
-                                    <button type="submit" class="btn btn-sm btn-warning">Request Info</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>No pending KYC reviews at this time.
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- AML Alerts -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3 d-flex justify-content-between align-items-center">
-            <h6 class="m-0 font-weight-bold text-danger">AML Alert - High-Risk Transactions</h6>
-            <span class="badge bg-danger">{{ high_risk_transactions|length }} alerts</span>
-        </div>
-        <div class="card-body">
-            {% if high_risk_transactions %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Transaction ID</th>
-                            <th>User ID</th>
-                            <th>Amount</th>
-                            <th>Currency</th>
-                            <th>Type</th>
-                            <th>Date</th>
-                            <th>Risk Level</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for transaction in high_risk_transactions %}
-                        <tr>
-                            <td>{{ transaction.transaction_id }}</td>
-                            <td>{{ transaction_user_map.get(transaction.user_id, transaction.user_id) }}</td>
-                            <td>{{ "UGX {:,.0f}".format(transaction.amount) if transaction.amount else 'N/A' }}</td>
-                            <td>{{ transaction.currency or 'UGX' }}</td>
-                            <td>{{ transaction.transaction_type }}</td>
-                            <td>{{ transaction.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                            <td>
-                                {% if transaction.amount >= 20000000 %}
-                                    <span class="badge bg-danger">HIGH</span>
-                                {% elif transaction.amount >= 5000000 %}
-                                    <span class="badge bg-warning">MEDIUM</span>
-                                {% else %}
-                                    <span class="badge bg-success">LOW</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle me-2"></i>No high-risk transactions detected.
-            </div>
-            {% endif %}
-        </div>
-    </div>
+<!-- Stats Grid -->
+<div class="stat-grid">
+  <div class="stat-card animate-up">
+    <div class="stat-icon blue"><i class="fas fa-id-card"></i></div>
+    <div class="stat-value">{{ stats.kyc_pending|default(0) }}</div>
+    <div class="stat-label">KYC Pending</div>
+    {% if stats.kyc_pending > 0 %}
+    <div class="stat-change up"><i class="fas fa-arrow-up"></i> Requires attention</div>
+    {% endif %}
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon orange"><i class="fas fa-money-bill-wave"></i></div>
+    <div class="stat-value">{{ stats.payouts_pending|default(0) }}</div>
+    <div class="stat-label">Payouts Queue</div>
+    {% if stats.payouts_pending > 0 %}
+    <div class="stat-change up"><i class="fas fa-clock"></i> Awaiting review</div>
+    {% endif %}
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon red"><i class="fas fa-radar"></i></div>
+    <div class="stat-value">{{ stats.aml_alerts|default(0) }}</div>
+    <div class="stat-label">AML Alerts</div>
+    {% if stats.aml_alerts > 0 %}
+    <div class="stat-change down"><i class="fas fa-exclamation"></i> High priority</div>
+    {% endif %}
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon purple"><i class="fas fa-folder-open"></i></div>
+    <div class="stat-value">{{ stats.open_cases|default(0) }}</div>
+    <div class="stat-label">Open Cases</div>
+    {% if stats.escalations > 0 %}
+    <div class="stat-change down"><i class="fas fa-arrow-up"></i> {{ stats.escalations }} escalated</div>
+    {% endif %}
+  </div>
 </div>
 
-<script>
-    // Auto-refresh every 60 seconds
-    setTimeout(function() {
-        window.location.reload();
-    }, 60000);
-</script>
+<div class="col-layout-8-4">
+  <!-- Main Column -->
+  <div>
+    <!-- KYC Queue Card -->
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-id-card"></i> KYC Review Queue</div>
+        <a href="{{ url_for('compliance.kyc_queue') }}" class="btn btn-sm btn-secondary">View All</a>
+      </div>
+      <div class="card-body">
+        {% if kyc_items %}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Type</th>
+                <th>Submitted</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in kyc_items[:5] %}
+              <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
+                <td><a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
+                <td>
+                  <div class="user-cell">
+                    <div class="av">{{ item.user.username[0] if item.user else '?' }}</div>
+                    <div>
+                      <div class="u-name">{{ item.user.username if item.user else 'Unknown' }}</div>
+                      <div class="u-sub">{{ item.user.email if item.user else '' }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>{{ item.verification_type }}</td>
+                <td class="mono">{{ item.submitted_at.strftime('%Y-%m-%d') if item.submitted_at else '-' }}</td>
+                <td><span class="badge badge-{{ 'orange' if item.status == 'pending' else 'blue' }}">{{ item.status }}</span></td>
+                <td>
+                  <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+          <p>No pending KYC reviews. All caught up!</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Payouts Queue Card -->
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-money-bill-wave"></i> Payout Compliance Queue</div>
+        <a href="{{ url_for('compliance.payouts') }}" class="btn btn-sm btn-secondary">View All</a>
+      </div>
+      <div class="card-body">
+        {% if payout_items %}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Recipient</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Risk</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in payout_items[:5] %}
+              <tr class="{{ 'row-critical' if item.risk_level == 'high' else ('row-high' if item.risk_level == 'medium' else '') }}">
+                <td><a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}">#{{ item.id }}</a></td>
+                <td>
+                  <div class="user-cell">
+                    <div class="av">{{ item.wallet.user.username[0] if item.wallet and item.wallet.user else '?' }}</div>
+                    <div>
+                      <div class="u-name">{{ item.wallet.user.username if item.wallet and item.wallet.user else 'Unknown' }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">{{ "{:,.0f}".format(item.amount) }} {{ item.currency }}</td>
+                <td>{{ item.payout_method }}</td>
+                <td>
+                  {% if item.risk_level == 'high' %}
+                    <span class="badge badge-red">High</span>
+                  {% elif item.risk_level == 'medium' %}
+                    <span class="badge badge-orange">Medium</span>
+                  {% else %}
+                    <span class="badge badge-green">Low</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+          <p>No payouts awaiting compliance review.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar Column -->
+  <div>
+    <!-- Escalations Card -->
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-arrow-up-right-from-square"></i> Escalations</div>
+        <a href="{{ url_for('compliance.escalations') }}" class="btn btn-sm btn-secondary">View All</a>
+      </div>
+      <div class="card-body">
+        {% if escalations %}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Flag</th>
+                <th>From</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for flag in escalations[:5] %}
+              <tr>
+                <td><a href="#">#{{ flag.id }}</a></td>
+                <td>{{ flag.escalated_from }}</td>
+                <td>{{ flag.escalation_reason[:30] }}...</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 30px;">
+          <div class="empty-icon" style="font-size: 24px;"><i class="fas fa-check"></i></div>
+          <p>No active escalations</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quick Actions Card -->
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-bolt"></i> Quick Actions</div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <a href="{{ url_for('compliance.kyc_queue') }}" class="btn btn-primary">
+            <i class="fas fa-id-card"></i> Review KYC Queue
+          </a>
+          <a href="{{ url_for('compliance.payouts') }}" class="btn btn-secondary">
+            <i class="fas fa-money-bill-wave"></i> Review Payouts
+          </a>
+          <a href="{{ url_for('compliance.aml_queue') }}" class="btn btn-secondary">
+            <i class="fas fa-radar"></i> AML Monitoring
+          </a>
+          <a href="{{ url_for('compliance.generate_report') }}" class="btn btn-secondary">
+            <i class="fas fa-file-lines"></i> Generate Report
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Case Statistics Mini -->
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-chart-pie"></i> Case Overview</div>
+      </div>
+      <div class="card-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div style="text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius);">
+            <div style="font-size: 20px; font-weight: 700; color: var(--blue);">{{ stats.open_cases|default(0) }}</div>
+            <div style="font-size: 11px; color: var(--muted);">Open</div>
+          </div>
+          <div style="text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius);">
+            <div style="font-size: 20px; font-weight: 700; color: var(--orange);">{{ stats.in_review|default(0) }}</div>
+            <div style="font-size: 11px; color: var(--muted);">In Review</div>
+          </div>
+          <div style="text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius);">
+            <div style="font-size: 20px; font-weight: 700; color: var(--red);">{{ stats.escalations|default(0) }}</div>
+            <div style="font-size: 11px; color: var(--muted);">Escalated</div>
+          </div>
+          <div style="text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius);">
+            <div style="font-size: 20px; font-weight: 700; color: var(--green);">{{ stats.resolved_today|default(0) }}</div>
+            <div style="font-size: 11px; color: var(--muted);">Resolved Today</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+// Auto-refresh every 60 seconds
+setTimeout(function() {
+    window.location.reload();
+}, 60000);
 {% endblock %}

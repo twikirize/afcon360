@@ -1,0 +1,195 @@
+{% extends "admin/owner/base.html" %}
+
+{% block title %}KYC Tier Management - Owner Dashboard{% endblock %}
+
+{% block owner_content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-shield-check"></i> KYC Tier Management</h2>
+        <a href="{{ url_for('admin.owner.compliance_reports') }}" class="btn btn-outline-primary">
+            <i class="bi bi-file-text"></i> Compliance Reports
+        </a>
+    </div>
+
+    <!-- Tier Summary Cards -->
+    <div class="row mb-4">
+        {% for tier in range(6) %}
+        <div class="col-md-2 col-sm-4 mb-3">
+            <div class="card bg-light">
+                <div class="card-body text-center">
+                    <h6>Tier {{ tier }}</h6>
+                    <h4>{{ tier_counts.get(tier, 0) }}</h4>
+                    <small class="text-muted">Users</small>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="search" placeholder="Search by username or email"
+                           value="{{ current_filters.search if current_filters and current_filters.search else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" name="tier">
+                        <option value="">All Tiers</option>
+                        {% if tier_requirements %}
+                            {% for tier_id, tier_info in tier_requirements.items() %}
+                            <option value="{{ tier_id }}"
+                                {% if current_filters.tier|string == tier_id|string %}selected{% endif %}>
+                                Tier {{ tier_id }}: {{ tier_info.name if tier_info.name else 'Unknown' }}
+                            </option>
+                            {% endfor %}
+                        {% else %}
+                            {% for tier in range(6) %}
+                            <option value="{{ tier }}"
+                                {% if current_filters.tier|string == tier|string %}selected{% endif %}>
+                                Tier {{ tier }}
+                            </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" name="status">
+                        <option value="">All Statuses</option>
+                        <option value="pending" {% if current_filters.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="verified" {% if current_filters.status == 'verified' %}selected{% endif %}>Verified</option>
+                        <option value="rejected" {% if current_filters.status == 'rejected' %}selected{% endif %}>Rejected</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">User KYC Status</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Current Tier</th>
+                            <th>Verification Status</th>
+                            <th>Missing Requirements</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in user_kyc_info %}
+                        <tr>
+                            <td>{{ item.user.username }}</td>
+                            <td>{{ item.user.email }}</td>
+                            <td>
+                                {% set tier_num = item.kyc_info.tier|default(0) %}
+                                {% set tier_name = item.kyc_info.tier_name|default('Unregistered') %}
+                                {% set tier_color_map = tier_colors|default({0: 'secondary', 1: 'info', 2: 'primary', 3: 'success', 4: 'warning', 5: 'danger'}) %}
+                                <span class="badge bg-{{ tier_color_map.get(tier_num, 'secondary') }}">
+                                    {{ tier_name }}
+                                </span>
+                            </td>
+                            <td>
+                                {% set status = item.kyc_info.verification_status|default('not_started') %}
+                                {% if status == 'verified' %}
+                                <span class="badge bg-success">Verified</span>
+                                {% elif status == 'pending' %}
+                                <span class="badge bg-warning">Pending</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Not Started</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item.kyc_info.missing_requirements %}
+                                <small>{{ item.kyc_info.missing_requirements|join(', ')|truncate(30) if item.kyc_info.missing_requirements else '' }}</small>
+                                {% else %}
+                                <span class="text-success">Complete</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
+                                        data-bs-target="#upgradeModal{{ item.user.id }}">
+                                    <i class="bi bi-arrow-up"></i> Manual Upgrade
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Manual Upgrade Modal -->
+                        <div class="modal fade" id="upgradeModal{{ item.user.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <form method="POST" action="{{ url_for('admin.owner.manual_kyc_upgrade', user_id=item.user.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <div class="modal-header bg-warning">
+                                            <h5 class="modal-title">
+                                                <i class="bi bi-exclamation-triangle"></i> Manual KYC Upgrade
+                                            </h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <p>Manually upgrade KYC tier for <strong>{{ item.user.username }}</strong></p>
+                                            <p class="text-muted">Current Tier: {{ item.kyc_info.tier_name }}</p>
+
+                                            <div class="mb-3">
+                                                <label class="form-label">Target Tier</label>
+                                                <select class="form-select" name="tier" required>
+                                                    <option value="">Select tier...</option>
+                                                    {% if tier_requirements %}
+                                                        {% for tier_id, tier_info in tier_requirements.items() %}
+                                                        {% set current_tier = item.kyc_info.tier|default(0) %}
+                                                        {% set current_tier_int = current_tier|int %}
+                                                        {% set tier_id_int = tier_id|int %}
+                                                        {% if tier_id_int > current_tier_int %}
+                                                        <option value="{{ tier_id_int }}">Tier {{ tier_id_int }}: {{ tier_info.name if tier_info.name else 'Unknown' }}</option>
+                                                        {% endif %}
+                                                        {% endfor %}
+                                                    {% else %}
+                                                        {% set current_tier = item.kyc_info.tier|default(0) %}
+                                                        {% set current_tier_int = current_tier|int %}
+                                                        {% for tier in range(current_tier_int + 1, 6) %}
+                                                        <option value="{{ tier }}">Tier {{ tier }}</option>
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                </select>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label">Reason for Manual Upgrade</label>
+                                                <textarea class="form-control" name="reason" rows="3" required
+                                                          placeholder="Explain why this manual upgrade is necessary..."></textarea>
+                                            </div>
+
+                                            <div class="alert alert-danger">
+                                                <i class="bi bi-shield-exclamation"></i>
+                                                <strong>Compliance Warning:</strong> This action will be logged for audit purposes.
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-warning">Confirm Manual Upgrade</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

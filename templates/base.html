@@ -19,9 +19,8 @@
 
   <!-- Generated theme CSS (will be created by backend) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="global-theme-css">
-  {% if current_user.is_authenticated %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/user-' + current_user.id|string + '.css') }}" id="user-theme-css">
-  {% endif %}
+  <!-- User theme CSS - lazy generated, falls back to global if no custom preferences -->
+  <link rel="stylesheet" href="{{ url_for('theme.serve_user_theme_css') }}" id="user-theme-css">
 
   <!-- Global Custom CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
@@ -124,9 +123,10 @@
           </ul>
         </li>
 
-        <li class="menu-item"><a href="{{ links.tourism_home }}">Tourism</a></li>
-        <li class="menu-item"><a href="{{ links.transport_home }}">Transport</a></li>
-        <li class="menu-item"><a href="{{ links.accommodation_home }}">Accommodation</a></li>
+        <!-- FIXED: Use direct url_for instead of links variable -->
+        <li class="menu-item"><a href="{{ url_for('tourism.home') }}">Tourism</a></li>
+        <li class="menu-item"><a href="{{ url_for('transport.home') }}">Transport</a></li>
+        <li class="menu-item"><a href="{{ url_for('accommodation.index') }}">Accommodation</a></li>
 
         {% if current_user.is_authenticated %}
           <!-- Simple direct links instead of dropdown -->
@@ -139,12 +139,18 @@
                      {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
                      {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
                      {% elif current_user.has_global_role('event_manager') %}{{ url_for('events.admin_dashboard') }}
-                     {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport.admin_dashboard') }}
-                     {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.admin_dashboard') }}
-                     {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin_dashboard') }}
-                     {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.admin_dashboard') }}
+                     {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
+                     {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
+                     {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
+                     {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
                      {% else %}{{ url_for('fan.dashboard') }}{% endif %}">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
+            </a>
+          </li>
+          <!-- FIXED: Added Wallet menu item for authenticated users -->
+          <li class="menu-item">
+            <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet_api.wallet_home') }}{% endif %}">
+              <i class="bi bi-wallet2 me-1"></i>Wallet
             </a>
           </li>
           <li class="menu-item">
@@ -172,9 +178,12 @@
               </div>
           </li>
         {% else %}
-          <li class="menu-item"><a href="{{ links.wallet_home }}">Wallet</a></li>
-          <li class="menu-item auth"><a href="{{ links.auth_login }}">Login</a></li>
-          <li class="menu-item auth"><a href="{{ links.auth_register }}">Register</a></li>
+          <!-- Non-authenticated users see Wallet prominently -->
+          <li class="menu-item"><a href="{{ url_for('wallet.home') }}">
+            <i class="bi bi-wallet2 me-1"></i>Wallet
+          </a></li>
+          <li class="menu-item auth"><a href="{{ url_for('auth.login') }}">Login</a></li>
+          <li class="menu-item auth"><a href="{{ url_for('auth.register') }}">Register</a></li>
         {% endif %}
 
       </ul>
@@ -210,9 +219,10 @@
         </div>
       </div>
 
-      <a class="drawer-link" href="{{ links.tourism_home }}">🌍 Tourism</a>
-      <a class="drawer-link" href="{{ links.transport_home }}">🚌 Transport</a>
-      <a class="drawer-link" href="{{ links.accommodation_home }}">🏨 Accommodation</a>
+      <!-- FIXED: Use direct url_for instead of links variable -->
+      <a class="drawer-link" href="{{ url_for('tourism.home') }}">🌍 Tourism</a>
+      <a class="drawer-link" href="{{ url_for('transport.home') }}">🚌 Transport</a>
+      <a class="drawer-link" href="{{ url_for('accommodation.index') }}">🏨 Accommodation</a>
 
       <div class="drawer-divider"></div>
 
@@ -220,17 +230,21 @@
         <a class="drawer-link" href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
                           {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
                           {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
-                          {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor_dashboard') }}
-                          {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance_dashboard') }}
+                          {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor.dashboard') }}
+                          {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance.dashboard') }}
                           {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
-                          {% elif current_user.has_global_role('support') %}{{ url_for('admin.support_dashboard') }}
+                          {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
                           {% elif current_user.has_global_role('event_manager') %}{{ url_for('events.admin_dashboard') }}
-                          {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport.admin_dashboard') }}
-                          {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.admin_dashboard') }}
-                          {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin_dashboard') }}
-                          {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.admin_dashboard') }}
+                          {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
+                          {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
+                          {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
+                          {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
                           {% else %}{{ url_for('fan.dashboard') }}{% endif %}">
             <i class="bi bi-speedometer2 me-2"></i>My Dashboard
+        </a>
+        <!-- FIXED: Added Wallet to mobile drawer -->
+        <a class="drawer-link" href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet_api.wallet_home') }}{% endif %}">
+          <i class="bi bi-wallet2 me-2"></i>Wallet
         </a>
         <a class="drawer-link" href="{{ url_for('profile.account_overview') }}">
           <i class="bi bi-person-badge me-2"></i>My Account
@@ -245,9 +259,9 @@
           </button>
         </form>
       {% else %}
-        <a class="drawer-link" href="{{ links.wallet_home }}">👛 Wallet</a>
-        <a class="drawer-link drawer-auth" href="{{ links.auth_login }}">Login</a>
-        <a class="drawer-link drawer-auth" href="{{ links.auth_register }}">Register</a>
+        <a class="drawer-link" href="{{ url_for('wallet_api.wallet_home') }}">👛 Wallet</a>
+        <a class="drawer-link drawer-auth" href="{{ url_for('auth.login') }}">Login</a>
+        <a class="drawer-link drawer-auth" href="{{ url_for('auth.register') }}">Register</a>
       {% endif %}
 
       {% if current_user.is_authenticated and current_user.has_global_role('admin') %}

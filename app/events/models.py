@@ -190,6 +190,9 @@ class Event(BaseModel):
     rejected_at      = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
+    # Internal moderation notes (separate from rejection_reason which goes to organiser)
+    moderation_notes = Column(Text, nullable=True)
+
     # ── Moderation enforcement ─────────────────────────────────────────────
     suspension_reason   = Column(Text,       nullable=True)
     suspension_duration = Column(String(20), nullable=True)

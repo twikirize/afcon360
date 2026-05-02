@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from flask import current_app, request, g
+from flask_login import current_user
 from sqlalchemy import or_, and_, func, text
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
@@ -147,7 +148,7 @@ class SettingsService:
                 query = query.filter_by(is_advanced=False)
 
             # Apply sensitive filter
-            if not include_sensitive and not g.user.has_permission('settings:view_sensitive'):
+            if not include_sensitive and not verify_permission(current_user, 'settings:view_sensitive'):
                 query = query.filter_by(is_public=True)
 
             # Order by category and key
@@ -164,7 +165,7 @@ class SettingsService:
                 # Include value for authorized users
                 if (setting.is_public or
                     include_sensitive or
-                    g.user.has_permission('settings:view_sensitive')):
+                    verify_permission(current_user, 'settings:view_sensitive')):
                     setting_dict['value'] = setting.value
 
                 result.append(setting_dict)
@@ -269,7 +270,7 @@ class SettingsService:
                         continue
 
                     # Check permissions for sensitive settings
-                    if not setting.is_public and not g.user.has_permission('settings:edit_sensitive'):
+                    if not setting.is_public and not verify_permission(current_user, 'settings:edit_sensitive'):
                         errors.append({
                             'key': key,
                             'error': 'Insufficient permissions',
@@ -868,7 +869,7 @@ class SettingsService:
                             continue
 
                         # Check permissions for sensitive settings
-                        if not setting.is_public and not g.user.has_permission('settings:edit_sensitive'):
+                        if not setting.is_public and not verify_permission(current_user, 'settings:edit_sensitive'):
                             failed_keys.append({
                                 'key': key,
                                 'error': 'Insufficient permissions'

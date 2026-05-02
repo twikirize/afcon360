@@ -125,6 +125,15 @@ def is_system_admin(user) -> bool:
     return has_global_role(user, 'owner', 'super_admin', 'admin')
 
 
+def is_moderator(user) -> bool:
+    """
+    True for moderator role.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    return has_global_role(user, 'moderator')
+
+
 def is_super_admin(user) -> bool:
     """
     True only for owner and super_admin.
@@ -229,6 +238,8 @@ def can_manage_event(user, event) -> Tuple[bool, str]:
         return False, 'Not authenticated'
     if is_event_manager(user):
         return True, ''
+    if is_moderator(user):
+        return True, ''
     if event:
         if _is_event_owner(user, event):
             return True, ''
@@ -253,7 +264,7 @@ def can_reject_event(user, event) -> Tuple[bool, str]:
     """Reject PENDING_APPROVAL → REJECTED.  event_manager and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
-    if not is_event_manager(user):
+    if not has_global_permission(user, 'events.approve'):
         return False, 'Only event managers and above can reject events'
     status = _resolve_status(event)
     if status and status != EventStatus.PENDING_APPROVAL:

@@ -20,6 +20,7 @@ Sections:
 """
 
 import logging
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 
 from flask import (
@@ -30,58 +31,20 @@ from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 
 from app.auth.decorators import require_role, require_permission
+
 from app.extensions import db
 from app.identity.models.user import User
 from app.admin.models import (
     ContentSubmission, ManageableItem,
-    ManageableCategory, ContentFlag
+    ManageableCategory, ContentFlag, ModerationLog
 )
 from app.admin.services import create_flag, resolve_flag
+from app.admin.moderator.registry import get_review_url
+from app.admin.compliance.services import ComplianceCaseService
+from app.admin.compliance.models import ComplianceCaseType, ComplianceCasePriority
 
-# Phase 2: ModerationLog model
-class ModerationLog(db.Model):
-    __tablename__ = 'moderation_logs'
-    id = db.Column(db.Integer, primary_key=True)
-    moderator_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    submission_id = db.Column(db.Integer, db.ForeignKey('content_submission.id'))
-    action = db.Column(db.String(20))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    processing_time = db.Column(db.Float)
-    moderator = db.relationship('User')
-
-# Phase 2: Ensure SLA columns exist
-def _ensure_sla_columns():
-    try:
-        from sqlalchemy import inspect
-        inspector = inspect(db.engine)
-        sub_cols = [c['name'] for c in inspector.get_columns('content_submission')]
-        if 'claimed_at' not in sub_cols:
-            db.engine.execute('ALTER TABLE content_submission ADD COLUMN claimed_at TIMESTAMP')
-        if 'resolved_at' not in sub_cols:
-            db.engine.execute('ALTER TABLE content_submission ADD COLUMN resolved_at TIMESTAMP')
-        if 'processing_time' not in sub_cols:
-            db.engine.execute('ALTER TABLE content_submission ADD COLUMN processing_time FLOAT')
-        flag_cols = [c['name'] for c in inspector.get_columns('content_flag')]
-        if 'auto_priority' not in flag_cols:
-            db.engine.execute('ALTER TABLE content_flag ADD COLUMN auto_priority BOOLEAN DEFAULT TRUE')
-        if 'resolved_at' not in flag_cols:
-            db.engine.execute('ALTER TABLE content_flag ADD COLUMN resolved_at TIMESTAMP')
-        tables = inspector.get_table_names()
-        if 'moderation_logs' not in tables:
-            db.engine.execute('''
-                CREATE TABLE moderation_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    moderator_id INTEGER REFERENCES user(id),
-                    submission_id INTEGER REFERENCES content_submission(id),
-                    action VARCHAR(20),
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    processing_time FLOAT
-                )
-            ''')
-    except Exception as exc:
-        logger.warning("SLA migration: %s", exc)
-
-_ensure_sla_columns()
+# ModerationLog model is now defined in app/admin/models.py
+# SLA migration is handled via Alembic migrations
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +103,97 @@ def _redirect_back(fallback):
     return redirect(ref if ref else url_for(fallback))
 
 
+def _build_moderation_stats():
+    """Build moderation statistics for dashboard across all modules."""
+    stats = {}
+
+    # Content Submissions
+    try:
+        stats['content_submissions'] = ContentSubmission.query.filter_by(status='pending').count()
+    except Exception:
+        stats['content_submissions'] = 0
+
+    # Open Flags
+    try:
+        stats['open_flags'] = ContentFlag.query.filter_by(status='open').count()
+        stats['flags_critical'] = ContentFlag.query.filter_by(status='open', priority='critical').count()
+    except Exception:
+        stats['open_flags'] = 0
+        stats['flags_critical'] = 0
+
+    # Events
+    try:
+        from app.events.models import Event
+        from app.events.constants import EventStatus
+        stats['events'] = Event.query.filter_by(status=EventStatus.PENDING_APPROVAL, is_deleted=False).count()
+    except Exception:
+        stats['events'] = 0
+
+    # Organisations
+    try:
+        from app.identity.models.organisation import Organisation
+        stats['pending_orgs'] = Organisation.query.filter_by(verification_status='pending').count()
+    except Exception:
+        stats['pending_orgs'] = 0
+
+    # KYC
+    try:
+        from app.kyc.models import KycRecord
+        stats['kyc'] = KycRecord.query.filter_by(status='pending').count()
+    except Exception:
+        stats['kyc'] = 0
+
+    # Tourism
+    try:
+        from app.tourism.models import TourismListing
+        stats['tourism'] = TourismListing.query.filter_by(status='pending').count()
+    except Exception:
+        stats['tourism'] = 0
+
+    # Transport (drivers, vehicles)
+    try:
+        from app.transport.models import Vehicle, DriverProfile
+        drivers = DriverProfile.query.filter_by(verification_status='pending').count()
+        vehicles = Vehicle.query.filter_by(verification_status='pending').count()
+        stats['transport'] = drivers + vehicles
+    except Exception:
+        stats['transport'] = 0
+
+    # Accommodation (properties, bookings, reviews)
+    try:
+        from app.accommodation.models.property import Property, AccommodationPropertyStatus
+        from app.accommodation.models.booking import AccommodationBooking
+        from app.accommodation.models.review import Review, AccommodationReviewStatus
+        properties = Property.query.filter_by(status=AccommodationPropertyStatus.PENDING_REVIEW).count()
+        bookings = AccommodationBooking.query.filter_by(status='pending').count()
+        reviews = Review.query.filter_by(status=AccommodationReviewStatus.PENDING).count()
+        stats['accommodation'] = properties + bookings + reviews
+    except Exception:
+        stats['accommodation'] = 0
+
+    return stats
+
+
+def _build_my_stats():
+    """Build moderator's personal statistics from ModerationLog."""
+    try:
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        my_logs = ModerationLog.query.filter(
+            ModerationLog.moderator_id == current_user.id,
+            ModerationLog.created_at >= week_ago
+        ).all()
+
+        my_stats = {}
+        for log in my_logs:
+            action = log.action
+            my_stats[action] = my_stats.get(action, 0) + 1
+
+        return my_stats
+    except Exception as e:
+        logger.debug("Error building my_stats: %s", e)
+        return {}
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # A.  DASHBOARD
 # ═════════════════════════════════════════════════════════════════════════════
@@ -196,6 +250,12 @@ def dashboard():
     pending_count = ContentSubmission.query.filter_by(status='pending').count()
     changes_requested_count = ContentSubmission.query.filter_by(status='changes_requested').count()
 
+    # Build moderation stats using helper
+    moderation_stats = _build_moderation_stats()
+
+    # Build moderator's personal stats
+    my_stats = _build_my_stats() if _build_my_stats else {}
+
     return render_template(
         'admin/moderator/dashboard.html',
         pending_submissions=pending_submissions,
@@ -210,6 +270,9 @@ def dashboard():
         resolved_flags_7d=resolved_flags_7d,
         pending_count=pending_count,
         changes_requested_count=changes_requested_count,
+        moderation_stats=moderation_stats,
+        my_stats=my_stats,
+        now=datetime.utcnow,
         title="Moderator Dashboard"
     )
 
@@ -253,6 +316,14 @@ def content_moderation():
         .group_by(ContentSubmission.status).all()
     )
 
+    # If this is an AJAX request for partial table refresh, return only the table rows
+    if request.headers.get('Accept') == 'text/html' and request.args.get('partial') == '1':
+        return render_template(
+            'admin/moderator/_pending_table.html',
+            pending_submissions=submissions.items,
+            now=datetime.utcnow
+        )
+
     return render_template(
         'admin/moderator/content.html',
         submissions=submissions,
@@ -284,6 +355,34 @@ def view_submission(submission_id):
     )
 
 
+@moderator_bp.route('/content/<int:submission_id>/claim', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def claim_submission(submission_id):
+    """Claim a content submission for review."""
+    submission = ContentSubmission.query.get_or_404(submission_id)
+
+    # Check if already claimed
+    if submission.assigned_to_id is not None:
+        return jsonify({'ok': False, 'error': 'Already claimed'}), 409
+
+    now = datetime.utcnow()
+    submission.assigned_to_id = current_user.id
+    submission.claimed_at = now
+
+    db.session.add(ModerationLog(
+        moderator_id=current_user.id,
+        submission_id=submission_id,
+        action='claim',
+        notes='Submission claimed for review'
+    ))
+    db.session.commit()
+
+    _audit('submission.claim', 'content', {'id': submission_id, 'claimed_by': current_user.id})
+
+    return jsonify({'ok': True, 'claimed_at': now.isoformat()})
+
+
 @moderator_bp.route('/content/<int:submission_id>/approve', methods=['POST'])
 @login_required
 @require_role(*_MOD)
@@ -296,12 +395,12 @@ def approve_submission(submission_id):
     s.review_notes = request.form.get('notes', '')
     s.resolved_at = now
     if s.claimed_at:
-        s.processing_time = (now - s.claimed_at).total_seconds()
+        s.processing_time_seconds = int((now - s.claimed_at).total_seconds())
     db.session.add(ModerationLog(
         moderator_id=current_user.id,
         submission_id=submission_id,
         action='approve',
-        processing_time=s.processing_time
+        notes=f"Processing time: {s.processing_time_seconds}s"
     ))
     db.session.commit()
     _audit('submission.approve', 'content', {'id': submission_id, 'name': s.name})
@@ -325,12 +424,12 @@ def reject_submission(submission_id):
     s.review_notes = notes
     s.resolved_at = now
     if s.claimed_at:
-        s.processing_time = (now - s.claimed_at).total_seconds()
+        s.processing_time_seconds = int((now - s.claimed_at).total_seconds())
     db.session.add(ModerationLog(
         moderator_id=current_user.id,
         submission_id=submission_id,
         action='reject',
-        processing_time=s.processing_time
+        notes=f"Processing time: {s.processing_time_seconds}s"
     ))
     db.session.commit()
     _audit('submission.reject', 'content', {'id': submission_id, 'reason': notes})
@@ -837,6 +936,58 @@ def verify_user(user_id):
     return redirect(url_for('admin.moderator.view_user', user_id=user_id))
 
 
+@moderator_bp.route('/users/<int:user_id>/reject-verification', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def reject_user_verification(user_id):
+    """Reject user's KYC/verification record with reason. Does NOT create a flag."""
+    user = User.query.get_or_404(user_id)
+    reason = request.form.get('reason', '').strip()
+
+    if not reason:
+        flash('Rejection reason is required.', 'danger')
+        return redirect(url_for('admin.moderator.view_user', user_id=user_id))
+
+    now = datetime.utcnow()
+
+    # Try to find and reject the most recent KYC/verification record
+    try:
+        from app.kyc.models import KycRecord
+        kyc_record = KycRecord.query.filter_by(user_id=user_id).order_by(KycRecord.created_at.desc()).first()
+
+        if kyc_record and kyc_record.status in ('pending', 'manual_review'):
+            kyc_record.status = 'rejected'
+            kyc_record.rejection_reason = reason
+            kyc_record.verified_at = now
+            kyc_record.verified_by_id = current_user.id
+            db.session.add(kyc_record)
+            flash(f'KYC verification rejected for {user.username}.', 'warning')
+        else:
+            flash(f'No pending KYC record found for {user.username}.', 'info')
+    except Exception:
+        # If KYC module not available, try other verification models
+        try:
+            from app.identity.models.organisation import Organisation
+            org = Organisation.query.filter_by(owner_id=user_id).first()
+            if org and org.verification_status == 'pending':
+                org.verification_status = 'rejected'
+                db.session.add(org)
+                flash(f'Organisation verification rejected for {user.username}.', 'warning')
+            else:
+                flash(f'No pending verification record found for {user.username}.', 'info')
+        except Exception:
+            flash(f'No pending verification record found for {user.username}.', 'info')
+
+    db.session.commit()
+    _audit('user.reject_verification', 'user_management', {
+        'target': user.username,
+        'target_id': user_id,
+        'reason': reason
+    })
+
+    return redirect(url_for('admin.moderator.view_user', user_id=user_id))
+
+
 @moderator_bp.route('/users/<int:user_id>/deactivate', methods=['POST'])
 @login_required
 @require_role(*_MOD)
@@ -980,6 +1131,37 @@ def toggle_category_active(cat_id):
     return redirect(url_for('admin.moderator.categories_list'))
 
 
+@moderator_bp.route('/categories/create', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def create_category():
+    name = request.form.get('name', '').strip()
+    slug = request.form.get('slug', '').strip()
+    description = request.form.get('description', '').strip()
+    is_active = request.form.get('is_active') == 'on'
+
+    if not name or not slug:
+        flash('Name and slug are required.', 'danger')
+        return redirect(url_for('admin.moderator.categories_list'))
+
+    # Check if slug already exists
+    if ManageableCategory.query.filter_by(slug=slug).first():
+        flash('Category with this slug already exists.', 'danger')
+        return redirect(url_for('admin.moderator.categories_list'))
+
+    category = ManageableCategory(
+        name=name,
+        slug=slug,
+        description=description,
+        is_active=is_active
+    )
+    db.session.add(category)
+    db.session.commit()
+    _audit('category.create', 'content', {'category_id': category.id, 'name': name})
+    flash(f'Category "{name}" created successfully.', 'success')
+    return redirect(url_for('admin.moderator.categories_list'))
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # F.  MANAGEABLE ITEMS
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1021,14 +1203,16 @@ def items_list():
 @login_required
 @require_role(*_MOD)
 def view_item(item_id):
-    item  = ManageableItem.query.get_or_404(item_id)
-    flags = (ContentFlag.query
-             .filter_by(entity_type='manageable_item', entity_id=item_id)
-             .order_by(ContentFlag.created_at.desc()).all())
+    item       = ManageableItem.query.get_or_404(item_id)
+    flags      = (ContentFlag.query
+                  .filter_by(entity_type='manageable_item', entity_id=item_id)
+                  .order_by(ContentFlag.created_at.desc()).all())
+    categories = ManageableCategory.query.filter_by(is_active=True).all()
     return render_template(
         'admin/moderator/view_item.html',
         item=item,
         flags=flags,
+        categories=categories,
         title=f"Item: {item.name}"
     )
 
@@ -1102,87 +1286,49 @@ def _events_model():
 @login_required
 @require_role(*_MOD)
 def events_list():
-    page          = request.args.get('page', 1, type=int)
-    status_filter = request.args.get('status', 'all')
-    search        = request.args.get('q', '').strip()
-
+    """Redirect to Events module admin dashboard."""
     try:
-        Event = _events_model()
-        q     = Event.query.filter_by(is_deleted=False)
-        if status_filter != 'all':
-            q = q.filter_by(status=status_filter)
-        if search:
-            q = q.filter(Event.title.ilike(f'%{search}%'))
-        events           = q.order_by(Event.created_at.desc()).paginate(page=page, per_page=25, error_out=False)
-        events_available = True
+        return redirect(url_for('events.admin_dashboard'))
     except Exception:
-        events           = None
-        events_available = False
-
-    return render_template(
-        'admin/moderator/events.html',
-        events=events,
-        events_available=events_available,
-        status_filter=status_filter,
-        search=search,
-        title="Event Moderation"
-    )
+        # Fallback if events module is not available
+        flash('Events module is not available.', 'warning')
+        return redirect(url_for('admin.moderator.dashboard'))
 
 
 @moderator_bp.route('/events/<int:event_id>')
 @login_required
 @require_role(*_MOD)
 def view_event(event_id):
+    """Redirect to specific event in Events module."""
     try:
-        Event = _events_model()
-        event = Event.query.get_or_404(event_id)
+        return redirect(url_for('events.admin_view_event', event_id=event_id))
     except Exception:
-        abort(404)
-
-    flags = (ContentFlag.query
-             .filter_by(entity_type='event', entity_id=event_id)
-             .order_by(ContentFlag.created_at.desc()).all())
-    return render_template(
-        'admin/moderator/view_event.html',
-        event=event,
-        flags=flags,
-        title=f"Event #{event_id}"
-    )
+        flash('Event module is not available.', 'warning')
+        return redirect(url_for('admin.moderator.flagged_content'))
 
 
 @moderator_bp.route('/events/<int:event_id>/approve', methods=['POST'])
 @login_required
 @require_role(*_MOD)
 def approve_event(event_id):
+    """Redirect to event module's approve endpoint."""
     try:
-        Event        = _events_model()
-        event        = Event.query.get_or_404(event_id)
-        event.status = 'approved'
-        db.session.commit()
-        _audit('event.approve', 'content', {'event_id': event_id})
-        flash('Event approved.', 'success')
-    except Exception as exc:
-        logger.error("approve_event: %s", exc)
-        flash('Could not approve event.', 'danger')
-    return redirect(url_for('admin.moderator.events_list'))
+        return redirect(url_for('events.admin_approve_event', event_id=event_id))
+    except Exception:
+        flash('Cannot approve event - module unavailable.', 'danger')
+        return redirect(url_for('admin.moderator.events_list'))
 
 
 @moderator_bp.route('/events/<int:event_id>/reject', methods=['POST'])
 @login_required
 @require_role(*_MOD)
 def reject_event(event_id):
+    """Redirect to event module's reject endpoint."""
     try:
-        Event        = _events_model()
-        event        = Event.query.get_or_404(event_id)
-        reason       = request.form.get('notes', '').strip()
-        event.status = 'rejected'
-        db.session.commit()
-        _audit('event.reject', 'content', {'event_id': event_id, 'reason': reason})
-        flash('Event rejected.', 'warning')
-    except Exception as exc:
-        logger.error("reject_event: %s", exc)
-        flash('Could not reject event.', 'danger')
-    return redirect(url_for('admin.moderator.events_list'))
+        return redirect(url_for('events.admin_reject_event', event_id=event_id))
+    except Exception:
+        flash('Cannot reject event - module unavailable.', 'danger')
+        return redirect(url_for('admin.moderator.events_list'))
 
 
 @moderator_bp.route('/events/<int:event_id>/flag', methods=['POST'])
@@ -1216,84 +1362,48 @@ def _org_model():
 @login_required
 @require_role(*_MOD)
 def orgs_queue():
-    page          = request.args.get('page', 1, type=int)
-    status_filter = request.args.get('status', 'pending')
-
+    """Redirect to Organisation module admin."""
     try:
-        Org  = _org_model()
-        q    = Org.query
-        if status_filter != 'all':
-            q = q.filter_by(verification_status=status_filter)
-        orgs           = q.order_by(Org.created_at.desc()).paginate(page=page, per_page=25, error_out=False)
-        orgs_available = True
+        return redirect(url_for('org.dashboard'))
     except Exception:
-        orgs           = None
-        orgs_available = False
-
-    return render_template(
-        'admin/moderator/orgs.html',
-        orgs=orgs,
-        orgs_available=orgs_available,
-        status_filter=status_filter,
-        title="Organisation Verification"
-    )
+        flash('Organisation module is not available.', 'warning')
+        return redirect(url_for('admin.moderator.dashboard'))
 
 
 @moderator_bp.route('/orgs/<int:org_id>')
 @login_required
 @require_role(*_MOD)
 def view_org(org_id):
+    """Redirect to specific organisation in Org module."""
     try:
-        Org = _org_model()
-        org = Org.query.get_or_404(org_id)
+        return redirect(url_for('org.view_organisation', org_id=org_id))
     except Exception:
-        abort(404)
-
-    flags = (ContentFlag.query
-             .filter_by(entity_type='organisation', entity_id=org_id)
-             .order_by(ContentFlag.created_at.desc()).all())
-    return render_template(
-        'admin/moderator/view_org.html',
-        org=org,
-        flags=flags,
-        title=f"Org: {org.name}"
-    )
+        flash('Organisation module is not available.', 'warning')
+        return redirect(url_for('admin.moderator.orgs_queue'))
 
 
 @moderator_bp.route('/orgs/<int:org_id>/approve', methods=['POST'])
 @login_required
 @require_role(*_MOD)
 def approve_org(org_id):
+    """Redirect to org module's approve endpoint."""
     try:
-        Org                       = _org_model()
-        org                       = Org.query.get_or_404(org_id)
-        org.verification_status   = 'verified'
-        org.is_active             = True
-        db.session.commit()
-        _audit('org.approve', 'compliance', {'org_id': org_id, 'name': org.name})
-        flash(f'"{org.name}" approved.', 'success')
-    except Exception as exc:
-        logger.error("approve_org: %s", exc)
-        flash('Could not approve.', 'danger')
-    return redirect(url_for('admin.moderator.orgs_queue'))
+        return redirect(url_for('org.approve_organisation', org_id=org_id))
+    except Exception:
+        flash('Cannot approve organisation - module unavailable.', 'danger')
+        return redirect(url_for('admin.moderator.orgs_queue'))
 
 
 @moderator_bp.route('/orgs/<int:org_id>/reject', methods=['POST'])
 @login_required
 @require_role(*_MOD)
 def reject_org(org_id):
+    """Redirect to org module's reject endpoint."""
     try:
-        Org                     = _org_model()
-        org                     = Org.query.get_or_404(org_id)
-        reason                  = request.form.get('notes', '').strip()
-        org.verification_status = 'rejected'
-        db.session.commit()
-        _audit('org.reject', 'compliance', {'org_id': org_id, 'name': org.name, 'reason': reason})
-        flash(f'"{org.name}" rejected.', 'warning')
-    except Exception as exc:
-        logger.error("reject_org: %s", exc)
-        flash('Could not reject.', 'danger')
-    return redirect(url_for('admin.moderator.orgs_queue'))
+        return redirect(url_for('org.reject_organisation', org_id=org_id))
+    except Exception:
+        flash('Cannot reject organisation - module unavailable.', 'danger')
+        return redirect(url_for('admin.moderator.orgs_queue'))
 
 
 @moderator_bp.route('/orgs/<int:org_id>/flag', methods=['POST'])
@@ -1312,8 +1422,182 @@ def flag_org(org_id):
     return _redirect_back('admin.moderator.orgs_queue')
 
 
+@moderator_bp.route('/orgs/<int:org_id>/refer-compliance', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def refer_org_compliance(org_id):
+    """Refer organisation to compliance officer for review. Creates a compliance task."""
+    try:
+        from app.identity.models.organisation import Organisation
+        org = Organisation.query.get_or_404(org_id)
+    except Exception:
+        flash('Organisation module not available.', 'danger')
+        return redirect(url_for('admin.moderator.orgs_queue'))
+
+    reason = request.form.get('reason', '').strip()
+    if not reason:
+        flash('Referral reason is required.', 'danger')
+        return redirect(url_for('admin.moderator.view_org', org_id=org_id))
+
+    # Create a high-priority flag for compliance review
+    ok, flag = create_flag(
+        current_user,
+        'organisation',
+        org_id,
+        f'[COMPLIANCE REFERRAL] {reason}',
+        priority='high'
+    )
+
+    if ok:
+        # Update organisation status to indicate compliance review
+        org.verification_status = 'pending'
+        db.session.add(org)
+        db.session.commit()
+
+        _audit('org.refer_compliance', 'compliance', {
+            'org_id': org_id,
+            'org_name': org.name,
+            'referred_by': current_user.id,
+            'reason': reason,
+            'flag_id': flag.id if flag else None
+        })
+
+        flash(f'Organisation referred to compliance officer for review.', 'warning')
+    else:
+        flash(f'Failed to create compliance referral: {flag}', 'danger')
+
+    return redirect(url_for('admin.moderator.view_org', org_id=org_id))
+
+
 # ═════════════════════════════════════════════════════════════════════════════
-# I.  KYC QUEUE
+# J.  ESCALATION QUEUE (Admin+ only, rendered with role-aware UI)
+# ═════════════════════════════════════════════════════════════════════════════
+
+@moderator_bp.route('/escalations')
+@login_required
+@require_role(*_MOD)
+def escalation_queue():
+    """Show items escalated to admin for review. Templates will hide this for moderators."""
+    from sqlalchemy import func
+
+    try:
+        # Get flags escalated to admin role
+        escalated_flags = ContentFlag.query.filter(
+            ContentFlag.escalated_to_role == 'admin',
+            ContentFlag.status.in_(['open', 'in_review'])
+        ).order_by(
+            ContentFlag.priority.desc(),
+            ContentFlag.created_at.asc()
+        ).all()
+
+        # Count by priority
+        priority_counts = db.session.query(
+            ContentFlag.priority,
+            func.count(ContentFlag.id)
+        ).filter(
+            ContentFlag.escalated_to_role == 'admin',
+            ContentFlag.status.in_(['open', 'in_review'])
+        ).group_by(ContentFlag.priority).all()
+
+        priority_stats = {row[0]: row[1] for row in priority_counts}
+        total_escalated = sum(priority_stats.values())
+
+        return render_template(
+            'admin/moderator/escalations.html',
+            escalated_flags=escalated_flags,
+            priority_stats=priority_stats,
+            total_escalated=total_escalated
+        )
+    except Exception as e:
+        logger.error(f"Escalation queue error: {e}")
+        flash("Error loading escalation queue.", "danger")
+        return redirect(url_for("admin.moderator.dashboard"))
+
+
+@moderator_bp.route('/escalations/<int:flag_id>/resolve', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def resolve_escalation(flag_id):
+    """Resolve an escalated flag. Admin+ only action enforced in template."""
+    flag = ContentFlag.query.get_or_404(flag_id)
+
+    if flag.escalated_to_role != 'admin':
+        flash("This flag is not escalated to admin.", "danger")
+        return redirect(url_for("admin.moderator.escalation_queue"))
+
+    resolution_action = request.form.get('resolution_action', 'resolved')
+    resolution_notes = request.form.get('resolution_notes', '').strip()
+
+    ok, result = resolve_flag(current_user, flag_id, resolution_action, resolution_notes)
+
+    if ok:
+        flash(f"Escalation resolved: {resolution_action}", "success")
+    else:
+        flash(f"Failed to resolve: {result}", "danger")
+
+    return redirect(url_for("admin.moderator.escalation_queue"))
+
+
+@moderator_bp.route('/escalations/<int:flag_id>/escalate', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def escalate_to_compliance(flag_id):
+    """Escalate a flag to compliance officer. Admin+ only action enforced in template."""
+    flag = ContentFlag.query.get_or_404(flag_id)
+
+    if flag.escalated_to_role != 'admin':
+        flash("This flag is not escalated to admin.", "danger")
+        return redirect(url_for("admin.moderator.escalation_queue"))
+
+    reason = request.form.get('reason', '').strip()
+    if not reason:
+        flash("Escalation reason is required.", "danger")
+        return redirect(url_for("admin.moderator.escalation_queue"))
+
+    # Create compliance case
+    try:
+        compliance_case = ComplianceCaseService.create_case(
+            case_type=ComplianceCaseType.FLAG_ESCALATION,
+            title=f'Flag Escalation - {flag.entity_type}:{flag.entity_id}',
+            description=f'Flag escalated from moderator: {reason}',
+            created_by=current_user.id,
+            flag_id=flag_id,
+            priority=ComplianceCasePriority.MEDIUM,
+            escalated_from=current_user.id,
+            escalation_reason=reason
+        )
+
+        # Update flag with compliance case reference
+        flag.compliance_case_id = compliance_case.id
+        flag.referred_to_compliance = True
+        flag.referred_at = datetime.utcnow()
+        flag.referred_by = current_user.id
+        flag.escalated_to_role = 'compliance_officer'
+        flag.status = 'in_review'
+        flag.assigned_to = None  # Clear assignment for compliance to pick up
+        db.session.add(flag)
+        db.session.commit()
+
+        # Audit log
+        _audit('escalation.to_compliance', 'moderation', {
+            "flag_id": flag_id,
+            "entity_type": flag.entity_type,
+            "entity_id": flag.entity_id,
+            "reason": reason,
+            "compliance_case_id": compliance_case.id
+        })
+
+        flash("Escalated to compliance officer.", "warning")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error escalating to compliance: {e}")
+        flash(f"Error escalating to compliance: {str(e)}", "danger")
+
+    return redirect(url_for("admin.moderator.escalation_queue"))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# K.  KYC QUEUE
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _kyc_model():
@@ -1325,48 +1609,24 @@ def _kyc_model():
 @login_required
 @require_role(*_MOD)
 def kyc_queue():
-    page          = request.args.get('page', 1, type=int)
-    status_filter = request.args.get('status', 'pending')
-
+    """Redirect to KYC module admin."""
     try:
-        KYC  = _kyc_model()
-        q    = KYC.query
-        if status_filter != 'all':
-            q = q.filter_by(status=status_filter)
-        records       = q.order_by(KYC.created_at.desc()).paginate(page=page, per_page=25, error_out=False)
-        kyc_available = True
+        return redirect(url_for('kyc.admin_dashboard'))
     except Exception:
-        records       = None
-        kyc_available = False
-
-    return render_template(
-        'admin/moderator/kyc.html',
-        records=records,
-        kyc_available=kyc_available,
-        status_filter=status_filter,
-        title="KYC Queue"
-    )
+        flash('KYC module is not available.', 'warning')
+        return redirect(url_for('admin.moderator.dashboard'))
 
 
 @moderator_bp.route('/kyc/<int:doc_id>')
 @login_required
 @require_role(*_MOD)
 def view_kyc(doc_id):
+    """Redirect to specific KYC document."""
     try:
-        KYC = _kyc_model()
-        doc = KYC.query.get_or_404(doc_id)
+        return redirect(url_for('kyc.admin_view_document', doc_id=doc_id))
     except Exception:
-        abort(404)
-
-    flags = (ContentFlag.query
-             .filter_by(entity_type='kyc_document', entity_id=doc_id)
-             .order_by(ContentFlag.created_at.desc()).all())
-    return render_template(
-        'admin/moderator/view_kyc.html',
-        doc=doc,
-        flags=flags,
-        title=f"KYC Document #{doc_id}"
-    )
+        flash('KYC module is not available.', 'warning')
+        return redirect(url_for('admin.moderator.kyc_queue'))
 
 
 @moderator_bp.route('/kyc/<int:doc_id>/flag', methods=['POST'])
@@ -1391,16 +1651,42 @@ def flag_kyc(doc_id):
 def refer_kyc_compliance(doc_id):
     """Escalate a KYC document directly to the compliance team."""
     reason   = request.form.get('reason', 'Referred by moderator for compliance review').strip()
-    ok, result = create_flag(current_user, 'kyc_document', doc_id, reason,
-                             priority='critical')
-    if ok:
-        result.escalated_to_role = 'compliance_officer'
-        result.status            = 'in_review'
-        db.session.commit()
-        _audit('kyc.refer_compliance', 'compliance', {'doc_id': doc_id, 'reason': reason})
+
+    try:
+        # Create compliance case
+        compliance_case = ComplianceCaseService.create_case(
+            case_type=ComplianceCaseType.KYC_REVIEW,
+            title=f'KYC Review - Document {doc_id}',
+            description=f'KYC document referred for compliance review: {reason}',
+            created_by=current_user.id,
+            kyc_id=doc_id,
+            priority=ComplianceCasePriority.HIGH,
+            escalated_from=current_user.id,
+            escalation_reason=reason
+        )
+
+        # Also create flag for tracking
+        ok, result = create_flag(current_user, 'kyc_document', doc_id, reason, priority='critical')
+        if ok:
+            result.escalated_to_role = 'compliance_officer'
+            result.status = 'in_review'
+            result.compliance_case_id = compliance_case.id
+            result.referred_to_compliance = True
+            result.referred_at = datetime.utcnow()
+            result.referred_by = current_user.id
+            db.session.commit()
+
+        _audit('kyc.refer_compliance', 'compliance', {
+            'doc_id': doc_id,
+            'reason': reason,
+            'compliance_case_id': compliance_case.id
+        })
         flash('KYC record referred to compliance team.', 'warning')
-    else:
-        flash(f'Could not refer: {result}', 'danger')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error referring KYC to compliance: {e}")
+        flash(f'Could not refer: {str(e)}', 'danger')
+
     return _redirect_back('admin.moderator.kyc_queue')
 
 
@@ -1605,12 +1891,12 @@ def api_approve_submission(submission_id):
     s.review_notes = (request.get_json() or {}).get('notes', '')
     s.resolved_at = now
     if s.claimed_at:
-        s.processing_time = (now - s.claimed_at).total_seconds()
+        s.processing_time_seconds = int((now - s.claimed_at).total_seconds())
     db.session.add(ModerationLog(
         moderator_id=current_user.id,
         submission_id=submission_id,
         action='approve',
-        processing_time=s.processing_time
+        notes=f"Processing time: {s.processing_time_seconds}s"
     ))
     db.session.commit()
     return jsonify({"ok": True})
@@ -1632,33 +1918,91 @@ def api_reject_submission(submission_id):
     s.review_notes = notes
     s.resolved_at = now
     if s.claimed_at:
-        s.processing_time = (now - s.claimed_at).total_seconds()
+        s.processing_time_seconds = int((now - s.claimed_at).total_seconds())
     db.session.add(ModerationLog(
         moderator_id=current_user.id,
         submission_id=submission_id,
         action='reject',
-        processing_time=s.processing_time
+        notes=f"Processing time: {s.processing_time_seconds}s"
     ))
     db.session.commit()
     return jsonify({"ok": True})
 
 
-@moderator_bp.route('/claim/<int:submission_id>', methods=['POST'])
+@moderator_bp.route('/moderate/<int:submission_id>', methods=['POST'])
 @login_required
 @require_role(*_MOD)
-def claim_submission(submission_id):
+def moderate_submission(submission_id):
+    """Approve or reject a submission (must be claimed by current user)."""
+    data = request.get_json() or {}
+    action = data.get('action', '').strip().lower()
+    notes = data.get('notes', '').strip()
+
+    if action not in ('approve', 'reject'):
+        return jsonify({"ok": False, "error": "action must be 'approve' or 'reject'"}), 400
+
     s = ContentSubmission.query.get_or_404(submission_id)
-    if s.reviewed_by:
-        return jsonify({"ok": False, "error": "Already claimed"}), 400
+
+    # Must be claimed by current user
+    if s.assigned_to_id != current_user.id:
+        return jsonify({"ok": False, "error": "Submission not claimed by you"}), 403
+
+    if s.status != 'pending':
+        return jsonify({"ok": False, "error": "Submission already resolved"}), 400
+
+    now = datetime.utcnow()
+    s.status = 'approved' if action == 'approve' else 'rejected'
     s.reviewed_by = current_user.id
-    s.claimed_at = datetime.utcnow()
+    s.reviewed_at = now
+    s.review_notes = notes
+    s.resolved_at = now
+    if s.claimed_at:
+        s.processing_time_seconds = int((now - s.claimed_at).total_seconds())
+
     db.session.add(ModerationLog(
-        moderator_id=current_user.id,
         submission_id=submission_id,
-        action='claim'
+        moderator_id=current_user.id,
+        action=action,
+        notes=notes
     ))
     db.session.commit()
-    return jsonify({"ok": True})
+
+    _audit(f'submission.{action}', 'content', {
+        'id': submission_id,
+        'name': s.name,
+        'processing_time_seconds': s.processing_time_seconds
+    })
+
+    return jsonify({"ok": True, "status": s.status, "processing_time_seconds": s.processing_time_seconds})
+
+
+
+
+@moderator_bp.route('/preview/<int:submission_id>')
+@login_required
+@require_role(*_MOD)
+def preview_submission(submission_id):
+    """Preview user-submitted content before approval."""
+    submission = ContentSubmission.query.get_or_404(submission_id)
+    
+    # Determine template based on category
+    category_templates = {
+        'vehicle': 'admin/moderator/previews/vehicle.html',
+        'property': 'admin/moderator/previews/property.html',
+        'event': 'admin/moderator/previews/event.html',
+        'tour': 'admin/moderator/previews/tour.html',
+    }
+    
+    template = category_templates.get(
+        submission.category.slug if submission.category else None,
+        'admin/moderator/previews/default.html'
+    )
+    
+    return render_template(
+        template,
+        submission=submission,
+        data=submission.data
+    )
 
 
 @moderator_bp.route('/performance')
@@ -1669,7 +2013,7 @@ def performance():
     data = db.session.query(
         User.id, User.username,
         func.count(ContentSubmission.id).label('processed'),
-        func.avg(ContentSubmission.processing_time).label('avg_time')
+        func.avg(ContentSubmission.processing_time_seconds).label('avg_time')
     ).join(ContentSubmission, ContentSubmission.reviewed_by == User.id)\
      .filter(ContentSubmission.status.in_(['approved','rejected']))\
      .group_by(User.id).all()
@@ -1687,10 +2031,26 @@ def queue_metrics():
     now = datetime.utcnow()
     pending = ContentSubmission.query.filter_by(status='pending')
     total = pending.count()
-    unassigned = pending.filter(ContentSubmission.reviewed_by == None).count()
+    unassigned = pending.filter(ContentSubmission.assigned_to_id == None).count()
+    assigned = total - unassigned
     oldest = pending.order_by(ContentSubmission.created_at.asc()).first()
     age = int((now - oldest.created_at).total_seconds()) if oldest else 0
-    return jsonify({"total_pending": total, "unassigned_count": unassigned, "oldest_item_age_sec": age})
+
+    # Average processing time for resolved items
+    avg_time = db.session.query(
+        func.avg(ContentSubmission.processing_time_seconds)
+    ).filter(
+        ContentSubmission.status.in_(['approved', 'rejected']),
+        ContentSubmission.processing_time_seconds != None
+    ).scalar()
+
+    return jsonify({
+        "total_pending": total,
+        "unassigned_count": unassigned,
+        "assigned_count": assigned,
+        "oldest_item_age_sec": age,
+        "avg_processing_time": round(avg_time or 0, 2)
+    })
 
 
 @moderator_bp.route('/audit_insights')
@@ -1727,40 +2087,329 @@ def api_auto_priority():
     return jsonify({"ok": True, "updated": updated})
 
 
-@moderator_bp.route('/api/my-queue')
+@moderator_bp.route('/my_queue')
 @login_required
 @require_role(*_MOD)
 def my_queue():
     """Return items assigned to the current moderator for the My Queue panel."""
     submissions = ContentSubmission.query.filter_by(
-        reviewed_by=current_user.id,
+        assigned_to_id=current_user.id,
         status='pending'
-    ).limit(5).all()
+    ).order_by(ContentSubmission.claimed_at.asc()).limit(10).all()
 
     flags = ContentFlag.query.filter_by(
         assigned_to=current_user.id,
         status='in_review'
     ).limit(5).all()
 
+    return render_template(
+        'admin/moderator/my_queue.html',
+        submissions=submissions,
+        flags=flags,
+        title="My Queue"
+    )
+
+
+@moderator_bp.route('/api/unified-queue')
+@login_required
+@require_role(*_MOD)
+def unified_queue():
+    """Return unified moderation queue across all registered modules"""
+    from app.admin.moderator.registry import get_registry, get_modules, get_entity_display, get_entity_icon
+    
+    # Query all open flags
+    flags = ContentFlag.query.filter_by(status='open').order_by(
+        db.case(
+            (ContentFlag.priority == 'critical', 1),
+            (ContentFlag.priority == 'high', 2),
+            (ContentFlag.priority == 'medium', 3),
+            (ContentFlag.priority == 'normal', 4),
+            (ContentFlag.priority == 'low', 5),
+            else_=6
+        ),
+        ContentFlag.created_at.asc()
+    ).limit(50).all()
+    
+    registry = get_registry()
+    modules = get_modules()
+    
+    # Group by module
+    items = []
+    for flag in flags:
+        entity_type = flag.entity_type
+        entity_info = registry.get(entity_type, {})
+        
+        # Try to get entity title
+        title = f"{entity_type}#{flag.entity_id}"
+        if entity_info.get('review_url_fn'):
+            try:
+                # Attempt to get entity name from the module's own function
+                pass
+            except:
+                pass
+        
+        items.append({
+            'id': flag.id,
+            'entity_type': entity_type,
+            'entity_id': flag.entity_id,
+            'title': title,
+            'priority': flag.priority,
+            'reason': flag.reason[:100],
+            'created_at': flag.created_at.isoformat(),
+            'flagged_by': flag.flagger.username if flag.flagger else 'Unknown',
+            'module': entity_info.get('module_name', 'Other'),
+            'display_name': entity_info.get('display_name', entity_type),
+            'icon': entity_info.get('icon', 'fa-flag'),
+            'review_url': get_review_url(entity_type, flag.entity_id) or f"/moderator/flagged/{flag.id}"
+        })
+    
+    # Get counts by module
+    module_counts = {}
+    for item in items:
+        module = item['module']
+        module_counts[module] = module_counts.get(module, 0) + 1
+    
+    # Get counts by type
+    type_counts = {}
+    for item in items:
+        etype = item['entity_type']
+        type_counts[etype] = {
+            'display_name': item['display_name'],
+            'count': type_counts.get(etype, {}).get('count', 0) + 1
+        }
+    
     return jsonify({
-        "submissions": [
-            {
-                "id": s.id,
-                "name": s.name,
-                "category_slug": s.category.slug if s.category else None,
-                "created_at": s.created_at.isoformat()
-            }
-            for s in submissions
-        ],
-        "flags": [
-            {
-                "id": f.id,
-                "entity_type": f.entity_type,
-                "entity_id": f.entity_id,
-                "priority": f.priority,
-                "reason": f.reason,
-                "created_at": f.created_at.isoformat()
-            }
-            for f in flags
-        ]
+        'items': items,
+        'total_pending': len(items),
+        'modules': module_counts,
+        'types': type_counts
     })
+
+
+@moderator_bp.route('/api/moderate/<entity_type>/<int:entity_id>/<action>', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def moderate_action(entity_type, entity_id, action):
+    """Perform moderation action on any entity type"""
+    data = request.get_json() or {}
+    notes = data.get('notes', '')
+    
+    # Find flag for this entity
+    flag = ContentFlag.query.filter_by(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        status='open'
+    ).first()
+    
+    if not flag:
+        return jsonify({'ok': False, 'error': 'No open flag found for this entity'}), 404
+    
+    if action == 'approve':
+        flag.status = 'resolved'
+        flag.resolution_action = 'approved'
+        flag.resolution_notes = notes
+        flag.resolved_by = current_user.id
+        flag.resolved_at = datetime.utcnow()
+        db.session.commit()
+        
+        _audit('moderate.approve', entity_type, {'entity_id': entity_id, 'notes': notes})
+        
+    elif action == 'reject':
+        flag.status = 'resolved'
+        flag.resolution_action = 'rejected'
+        flag.resolution_notes = notes
+        flag.resolved_by = current_user.id
+        flag.resolved_at = datetime.utcnow()
+        db.session.commit()
+        
+        _audit('moderate.reject', entity_type, {'entity_id': entity_id, 'notes': notes})
+        
+    else:
+        return jsonify({'ok': False, 'error': f'Unknown action: {action}'}), 400
+    
+    return jsonify({'ok': True, 'message': f'{action.capitalize()}d successfully'})
+
+
+@moderator_bp.route('/audit-log/export')
+@login_required
+@require_role(*_MOD)
+def audit_log_export():
+    """Export audit logs to CSV, Excel, or PDF."""
+    import csv
+    from io import StringIO, BytesIO
+    from flask import Response, request
+    from app.admin.owner.models import OwnerAuditLog
+    from datetime import datetime, timedelta
+
+    # Get format from query parameter (default: csv)
+    export_format = request.args.get('format', 'csv').lower()
+
+    # Get filters
+    action_filter = request.args.get('action', '').strip()
+    category_filter = request.args.get('category', '').strip()
+    days = request.args.get('days', '30')
+
+    # Build query for current user's actions only
+    q = OwnerAuditLog.query.filter_by(actor_id=current_user.id)
+
+    if action_filter:
+        q = q.filter(OwnerAuditLog.action.ilike(f'%{action_filter}%'))
+    if category_filter:
+        q = q.filter_by(category=category_filter)
+
+    # Date filter
+    if days != 'all':
+        days_int = int(days)
+        cutoff = datetime.utcnow() - timedelta(days=days_int)
+        q = q.filter(OwnerAuditLog.created_at >= cutoff)
+
+    logs = q.order_by(OwnerAuditLog.created_at.desc()).limit(5000).all()
+
+    # Prepare data rows
+    rows = []
+    headers = ['Timestamp', 'Action', 'Category', 'Entity Type', 'Entity ID', 'Details', 'IP Address', 'Status']
+
+    for log in logs:
+        details = log.details or {}
+        rows.append([
+            log.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            log.action,
+            log.category,
+            details.get('entity_type', ''),
+            details.get('entity_id', ''),
+            str(details)[:500] if details else '',
+            getattr(log, '_ip', ''),
+            getattr(log, 'status', 'success')
+        ])
+
+    filename_base = f"moderator_audit_{current_user.username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+    # ========== CSV Export ==========
+    if export_format == 'csv':
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
+        output.seek(0)
+
+        return Response(
+            output,
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename={filename_base}.csv'}
+        )
+
+    # ========== Excel Export ==========
+    elif export_format == 'excel':
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Audit Log"
+
+            # Style headers
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+
+            # Write headers
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center')
+
+            # Write data
+            for row_idx, row in enumerate(rows, 2):
+                for col_idx, value in enumerate(row, 1):
+                    ws.cell(row=row_idx, column=col_idx, value=value)
+
+            # Auto-size columns
+            for col in ws.columns:
+                max_length = 0
+                column_letter = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+
+            return Response(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                headers={'Content-Disposition': f'attachment; filename={filename_base}.xlsx'}
+            )
+        except ImportError:
+            return jsonify({"error": "openpyxl not installed. Run: pip install openpyxl"}), 500
+
+    # ========== PDF Export ==========
+    elif export_format == 'pdf':
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import landscape, A4
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+
+            output = BytesIO()
+            doc = SimpleDocTemplate(output, pagesize=landscape(A4))
+            elements = []
+
+            # Title
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                textColor=colors.HexColor('#4472C4'),
+                spaceAfter=30
+            )
+            elements.append(Paragraph(f"Moderation Audit Log - {current_user.username}", title_style))
+            elements.append(Spacer(1, 0.2*inch))
+
+            # Table data
+            table_data = [headers]
+            for row in rows:
+                # Truncate long details for PDF
+                truncated_row = list(row)
+                if len(truncated_row[5]) > 100:
+                    truncated_row[5] = truncated_row[5][:100] + '...'
+                table_data.append(truncated_row)
+
+            # Create table
+            table = Table(table_data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ]))
+
+            elements.append(table)
+            doc.build(elements)
+            output.seek(0)
+
+            return Response(
+                output,
+                mimetype='application/pdf',
+                headers={'Content-Disposition': f'attachment; filename={filename_base}.pdf'}
+            )
+        except ImportError:
+            return jsonify({"error": "reportlab not installed. Run: pip install reportlab"}), 500
+
+    else:
+        return jsonify({"error": f"Unsupported format: {export_format}"}), 400
+

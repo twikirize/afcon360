@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Timeline Search - Forensic Audit System{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .timeline-event {
+        border-left: 4px solid #dee2e6;
+        padding-left: 15px;
+        margin-bottom: 20px;
+        padding: 15px;
+        border-radius: 5px;
+        background: #f8f9fa;
+    }
+    .timeline-event.pending {
+        border-left-color: #ffc107;
+        background: #fff3cd;
+    }
+    .timeline-event.approved {
+        border-left-color: #198754;
+        background: #d4edda;
+    }
+    .timeline-event.blocked {
+        border-left-color: #dc3545;
+        background: #f8d7da;
+    }
+    .timeline-event.failed {
+        border-left-color: #6c757d;
+        background: #e2e3e5;
+    }
+    .search-form-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1><i class="bi bi-clock-history me-2"></i>Audit Timeline Search</h1>
+            <p class="text-muted">Search and analyze audit events across the system</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('admin.owner.compliance_dashboard') }}" class="btn btn-primary">
+                <i class="bi bi-shield-check me-1"></i>Back to Compliance Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Form -->
+    <div class="card search-form-card mb-4">
+        <div class="card-body">
+            <h5 class="card-title text-white">Search Criteria</h5>
+            <form method="GET" action="{{ url_for('admin.owner.audit_timeline') }}">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label text-white">Entity Type</label>
+                        <select name="entity_type" class="form-select">
+                            <option value="">Select type...</option>
+                            <option value="user" {% if entity_type is defined and entity_type == 'user' %}selected{% endif %}>User</option>
+                            <option value="transaction" {% if entity_type is defined and entity_type == 'transaction' %}selected{% endif %}>Transaction</option>
+                            <option value="kyc" {% if entity_type is defined and entity_type == 'kyc' %}selected{% endif %}>KYC</option>
+                            <option value="wallet" {% if entity_type is defined and entity_type == 'wallet' %}selected{% endif %}>Wallet</option>
+                            <option value="event" {% if entity_type is defined and entity_type == 'event' %}selected{% endif %}>Event</option>
+                            <option value="booking" {% if entity_type is defined and entity_type == 'booking' %}selected{% endif %}>Booking</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-white">Entity ID</label>
+                        <input type="text" name="entity_id" class="form-control"
+                               value="{{ entity_id }}" placeholder="Enter ID...">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-white">Time Range (Days)</label>
+                        <select name="days" class="form-select">
+                            <option value="1" {% if days is defined and days == 1 %}selected{% endif %}>Last 24 hours</option>
+                            <option value="7" {% if days is defined and days == 7 %}selected{% endif %}>Last 7 days</option>
+                            <option value="30" {% if days is defined and days == 30 %}selected{% endif %}>Last 30 days</option>
+                            <option value="90" {% if days is defined and days == 90 %}selected{% endif %}>Last 90 days</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-light">
+                        <i class="bi bi-search me-2"></i>Search Audit Trail
+                    </button>
+                    <a href="{{ url_for('admin.owner.audit_timeline') }}" class="btn btn-outline-light ms-2">
+                        <i class="bi bi-arrow-clockwise me-2"></i>Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results -->
+    {% if entity_type is defined and entity_id is defined and entity_type and entity_id %}
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">Audit Timeline for {{ entity_type }} #{{ entity_id }}</h5>
+        </div>
+        <div class="card-body">
+            {% if timeline_events %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Found {{ timeline_events|length }} audit events in the selected time range.
+                </div>
+
+                {% for event in timeline_events %}
+                <div class="timeline-event mb-3 {% if event.status %} {{ event.status }} {% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1">
+                                <strong>{{ event.action|title if event.action else 'Unknown Action' }}</strong>
+                                {% if event.status %}
+                                    <span class="badge bg-{% if event.status == 'approved' %}success
+                                        {% elif event.status == 'pending' %}warning
+                                        {% elif event.status == 'blocked' %}danger
+                                        {% elif event.status == 'failed' %}secondary
+                                        {% else %}info{% endif %} ms-2">
+                                        {{ event.status|upper }}
+                                    </span>
+                                {% endif %}
+                            </h6>
+                            <p class="mb-2">{{ event.description|default('No description available') }}</p>
+
+                            <div class="row small text-muted">
+                                <div class="col-md-6">
+                                    <p class="mb-1">
+                                        <i class="bi bi-clock"></i>
+                                        <strong>Attempted:</strong> {{ event.attempted_at|default('N/A') }}
+                                    </p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-1">
+                                        <i class="bi bi-check-circle"></i>
+                                        <strong>Completed:</strong> {{ event.created_at|default('N/A') }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="mt-2">
+                                {% if event.risk_score is defined %}
+                                    {% set risk_score = event.risk_score|default(0) %}
+                                    {% if risk_score > 70 %}
+                                        <span class="badge bg-danger">High Risk: {{ risk_score }}/100</span>
+                                    {% elif risk_score > 30 %}
+                                        <span class="badge bg-warning">Medium Risk: {{ risk_score }}/100</span>
+                                    {% else %}
+                                        <span class="badge bg-success">Low Risk: {{ risk_score }}/100</span>
+                                    {% endif %}
+                                {% endif %}
+
+                                {% if event.ip_address %}
+                                    <span class="badge bg-info ms-1">
+                                        <i class="bi bi-globe"></i> IP: {{ event.ip_address }}
+                                    </span>
+                                {% endif %}
+
+                                {% if event.user_agent %}
+                                    <span class="badge bg-dark ms-1">
+                                        <i class="bi bi-laptop"></i> {{ event.user_agent[:20] }}...
+                                    </span>
+                                {% endif %}
+                            </div>
+
+                            {% if event.review_notes %}
+                            <div class="mt-2 alert alert-secondary">
+                                <strong>Review Notes:</strong> {{ event.review_notes }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="ms-3">
+                            {% if event.status == 'pending' %}
+                                <button class="btn btn-sm btn-success mb-1"
+                                        onclick="approveEvent('{{ event.audit_id }}')">
+                                    <i class="bi bi-check"></i> Approve
+                                </button>
+                                <button class="btn btn-sm btn-danger"
+                                        onclick="rejectEvent('{{ event.audit_id }}')">
+                                    <i class="bi bi-x"></i> Reject
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
+                    <h4 class="mt-3">No Audit Events Found</h4>
+                    <p class="text-muted">No audit events found for {{ entity_type }} #{{ entity_id }} in the selected time range.</p>
+                    <a href="{{ url_for('admin.owner.audit_timeline') }}" class="btn btn-primary">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Search
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-search text-primary" style="font-size: 4rem;"></i>
+            <h3 class="mt-3">Search Audit Timeline</h3>
+            <p class="text-muted">Enter search criteria above to view audit events for a specific entity.</p>
+            <div class="row mt-4">
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <i class="bi bi-person text-primary" style="font-size: 2rem;"></i>
+                            <h5 class="mt-2">User Audit</h5>
+                            <p class="small">Search by User ID to see all actions by a specific user</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <i class="bi bi-currency-exchange text-success" style="font-size: 2rem;"></i>
+                            <h5 class="mt-2">Transaction Audit</h5>
+                            <p class="small">Search by Transaction ID to see payment and wallet activity</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <i class="bi bi-shield-check text-warning" style="font-size: 2rem;"></i>
+                            <h5 class="mt-2">KYC Audit</h5>
+                            <p class="small">Search by KYC ID to see verification and compliance events</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function approveEvent(auditId) {
+    if (confirm('Approve this audit event?')) {
+        fetch(`/owner/api/compliance/review/${auditId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                action: 'approve',
+                notes: 'Approved via audit timeline search'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Event approved successfully');
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+
+function rejectEvent(auditId) {
+    const reason = prompt('Enter rejection reason:');
+    if (reason) {
+        fetch(`/owner/api/compliance/review/${auditId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                action: 'reject',
+                notes: reason
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Event rejected successfully');
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

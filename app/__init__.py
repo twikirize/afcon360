@@ -131,6 +131,53 @@ def create_app(config_object=None) -> Flask:
 
     app = Flask(__name__, static_folder=static_path, template_folder=template_path)
 
+    # ------------------------------------------------------------------
+    # PERMANENT FIX: Custom Jinja2 Loader with Encoding Fallback
+    # Prevents UnicodeDecodeError by forcing UTF-8 with fallback encodings
+    # ------------------------------------------------------------------
+    from jinja2 import FileSystemLoader, ChoiceLoader
+    import warnings
+
+    class EncodingSafeLoader(FileSystemLoader):
+        """Custom loader that handles encoding errors gracefully."""
+
+        def get_source(self, environment, template):
+            for searchpath in self.searchpath:
+                filename = os.path.join(searchpath, template)
+                if os.path.exists(filename):
+                    # Try UTF-8 first (standard)
+                    encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'latin-1', 'iso-8859-1']
+                    for encoding in encodings:
+                        try:
+                            with open(filename, 'r', encoding=encoding) as f:
+                                contents = f.read()
+                            # Log if we had to use fallback encoding
+                            if encoding != 'utf-8':
+                                warnings.warn(
+                                    f"Template {template} was encoded as {encoding}, "
+                                    f"not UTF-8. Please re-save as UTF-8.",
+                                    UserWarning
+                                )
+                            mtime = os.path.getmtime(filename)
+                            def uptodate():
+                                try:
+                                    return os.path.getmtime(filename) == mtime
+                                except OSError:
+                                    return False
+                            return contents, filename, uptodate
+                        except UnicodeDecodeError:
+                            continue
+                    # If all encodings fail, raise a helpful error
+                    raise UnicodeDecodeError(
+                        'utf-8', b'', 0, 0,
+                        f"Could not decode template {template} with any known encoding. "
+                        f"Please re-save the file as UTF-8."
+                    )
+            raise Exception(f"Template {template} not found")
+
+    # Replace the default loader with our encoding-safe one
+    app.jinja_env.loader = EncodingSafeLoader(template_path)
+
     # Load configuration
     app.config.from_object(config_object or Config)
 
@@ -261,6 +308,15 @@ def create_app(config_object=None) -> Flask:
     login_manager.login_message = 'Your session has expired. Please log in again.'
     login_manager.login_message_category = 'warning'
 
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        """Return JSON for API requests instead of redirecting to login page."""
+        # Check if this is an AJAX request (fetch sends Content-Type: application/json)
+        if request.is_json or request.headers.get('Content-Type') == 'application/json':
+            return jsonify({"ok": False, "error": "Not authenticated"}), 401
+        flash('Your session has expired. Please log in again.', 'warning')
+        return redirect(url_for('auth.login', next=request.url))
+
     # Initialize IDGuard for runtime protection against ID mixing
     if IDGUARD_AVAILABLE:
         try:
@@ -348,23 +404,24 @@ def create_app(config_object=None) -> Flask:
                 pass
 
     # ------------------------------------------------------------------
+    # CRITICAL: Register ALL models before SQLAlchemy initialization
+    # ------------------------------------------------------------------
+    from app.core.model_registry import register_all_models
+    register_all_models()
+
+    # ------------------------------------------------------------------
     # Lazy Imports - Blueprints & Models
     # ------------------------------------------------------------------
     from app.identity import models as identity_models
     from app.profile import models as profile_models
     from app.audit import models as audit_models
     from app.auth import roles as role_models
-
-    # Attempt to load KYC models
-    try:
-        from app.kyc import models as kyc_models
-    except ImportError:
-        kyc_models = None
+    from app.admin import models as admin_models  # Required for Alembic to detect ModerationLog
 
     # Core Web Blueprints
     from app.auth.routes import auth_bp
     from app.fan.routes import fan_bp
-    from app.wallet.routes import wallet_bp
+    # from app.wallet.routes import wallet_bp  # DELETED - will be rebuilt
     from app.admin import admin_bp
     try:
         from app.events import events_bp
@@ -397,9 +454,11 @@ def create_app(config_object=None) -> Flask:
     except ImportError:
         logger.warning("org_bp not found - skipping registration")
 
+    # Comprehensive compliance blueprint from admin module
     try:
         from app.admin.compliance.routes import compliance_bp
     except ImportError:
+        compliance_bp = None
         logger.warning("compliance_bp not found - skipping registration")
 
     try:
@@ -418,9 +477,10 @@ def create_app(config_object=None) -> Flask:
         logger.warning("moderator_bp not found - skipping registration")
     # API Blueprints
     from app.wallet.api.wallet_api import wallet_api_bp
-    from app.wallet.api.admin_api import admin_wallet_bp
-    from app.wallet.api.audit_api import audit_bp
-    from app.wallet.api.webhook_api import webhook_bp
+    from app.wallet.api.fx_api import fx_api_bp
+    from app.wallet.api.webhooks import webhooks_bp
+    from app.wallet.api.admin_api import admin_api_bp
+    # from app.wallet.api.audit_api import audit_bp  # DELETED
 
     # Feature-Based Blueprints
     from app.tournament import tournament_bp
@@ -437,7 +497,7 @@ def create_app(config_object=None) -> Flask:
         (admin_bp, None),
         (auth_bp, None),
         (fan_bp, None),
-        (wallet_bp, None),
+        # (wallet_bp, None),  # DELETED - routes.py removed
         (events_bp, None),
         (theme_bp, None),
         (kyc_bp, '/kyc'),  # Fixed: Added KYC with prefix
@@ -455,6 +515,8 @@ def create_app(config_object=None) -> Flask:
     for bp, prefix in core_blueprints:
         app.register_blueprint(bp, url_prefix=prefix)
 
+    # Note: Compliance blueprint is already registered under admin_bp in app/admin/__init__.py
+
     # Register organization blueprint
     try:
         from app.org.routes import org_bp
@@ -467,7 +529,7 @@ def create_app(config_object=None) -> Flask:
         app.register_blueprint(org_bp)
 
     # 2. Register API Blueprints
-    api_blueprints = [wallet_api_bp, admin_wallet_bp, audit_bp, webhook_bp]
+    api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp]
     for bp in api_blueprints:
         app.register_blueprint(bp)
 
@@ -486,6 +548,10 @@ def create_app(config_object=None) -> Flask:
 
     if app.config.get("ACCOMMODATION_ENABLED", True):
         app.register_blueprint(accommodation_bp)
+
+    # Wallet module
+    from app.wallet.routes import wallet_bp
+    app.register_blueprint(wallet_bp)
 
     # 4. Event Listeners
     try:
@@ -722,7 +788,7 @@ def create_app(config_object=None) -> Flask:
     def inject_user_context():
         """Inject user context into all templates."""
         from flask_login import current_user
-        from app.wallet.models import Wallet
+        from app.wallet.models.ledger import AccountModel
         from app.profile.models import get_profile_by_user
 
         if not current_user.is_authenticated:
@@ -765,9 +831,18 @@ def create_app(config_object=None) -> Flask:
         # Get wallet balance
         wallet_balance = "UGX 0"
         try:
-            wallet = Wallet.query.filter_by(user_id=current_user.id).first()
-            if wallet:
-                wallet_balance = f"UGX {wallet.balance:,.2f}"
+            from app.wallet.models.ledger import AccountModel
+            from app.wallet.services.wallet_service import WalletService
+            from app.identity.models.user import User
+            
+            # current_user.id is public_id (UUID), need internal id (BIGINT)
+            user = User.query.filter_by(public_id=str(current_user.id)).first()
+            internal_id = user.id if user else current_user.id
+            
+            service = WalletService()
+            balance_data = service.get_balance(internal_id)
+            balance_value = balance_data.get('balance', '0.00') if isinstance(balance_data, dict) else '0.00'
+            wallet_balance = f"UGX {balance_value}"
         except Exception as e:
             logger.warning(f"Wallet balance query error: {e}")
 
@@ -790,6 +865,21 @@ def create_app(config_object=None) -> Flask:
 
     @login_manager.user_loader
     def load_user(public_id):
+        """
+        Load user by public_id for Flask-Login.
+
+        CONTRACT: The returned User object is a session-scoped identity token,
+        NOT a live database object carrier. It is safe for:
+            - user.id, user.public_id, user.email (scalar columns)
+            - user.roles (UserRole join records, role names via ur.role.name only)
+
+        It is NOT safe for:
+            - Any nested relationship beyond one level (role.permissions, etc.)
+            - Lazy-loaded attributes accessed outside the request context
+
+        Permission checks MUST use app/auth/helpers.py which queries the DB
+        directly by role IDs — never walk role.permissions on detached objects.
+        """
         from app.identity.models.user import User
         from sqlalchemy.orm import joinedload
         try:

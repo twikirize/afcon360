@@ -37,6 +37,18 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
     if not has_global_permission(user, "content.flag"):
         return False, "Not authorized"
 
+    # Calculate SLA due time based on priority
+    now = datetime.utcnow()
+    sla_hours = {
+        'critical': 4,
+        'high': 12,
+        'medium': 24,
+        'normal': 72,
+        'low': 72
+    }.get(priority or 'normal', 72)
+
+    sla_due_at = now + timedelta(hours=sla_hours)
+
     flag = ContentFlag(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -45,6 +57,7 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
         priority=priority or "normal",
         category=category,
         status="open",
+        sla_due_at=sla_due_at,
     )
     db.session.add(flag)
     db.session.flush()  # get ID
@@ -61,6 +74,7 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
             "category": category,
             "reason": reason,
             "flag_id": int(flag.id),
+            "sla_due_at": sla_due_at.isoformat(),
         }
     )
 

@@ -1,0 +1,595 @@
+{% extends "owner/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Wallet System Capabilities</h1>
+            <p class="text-muted">Comprehensive overview and configuration of all wallet features</p>
+        </div>
+        <div>
+            <span class="badge bg-success">System Status: Active</span>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Users</h6>
+                    <h3 class="card-text">{{ stats.total_users or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Active Wallets</h6>
+                    <h3 class="card-text">{{ stats.active_wallets or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Transactions</h6>
+                    <h3 class="card-text">{{ stats.total_transactions or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Volume (UGX)</h6>
+                    <h3 class="card-text">{{ stats.total_volume or '0' }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Wallet Features -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Core Wallet Features</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('core-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="core-features">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Double-Entry Ledger</h6>
+                                    <p class="card-text small text-muted">Immutable financial records with debit/credit entries</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-journal-text text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Multi-Currency Support</h6>
+                                    <p class="card-text small text-muted">150+ currencies with real-time FX rates</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-currency-exchange text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Idempotency Protection</h6>
+                                    <p class="card-text small text-muted">Prevents duplicate transactions</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-shield-check text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Database Isolation</h6>
+                                    <p class="card-text small text-muted">REPEATABLE_READ for transaction safety</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-database text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Deadlock Retry Logic</h6>
+                                    <p class="card-text small text-muted">Automatic retry with exponential backoff</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-arrow-repeat text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">FX Rate Snapshot</h6>
+                                    <p class="card-text small text-muted">Rates stored at transaction time</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-graph-up text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Features -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Security Features</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('security-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="security-features">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">End-to-End Encryption</h6>
+                                    <p class="card-text small text-muted">Fernet encryption for sensitive data</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-lock text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">2FA/MFA Enforcement</h6>
+                                    <p class="card-text small text-muted">TOTP + backup codes support</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-shield-lock text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Rate Limiting</h6>
+                                    <p class="card-text small text-muted">Per-user and per-IP rate limits</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                </div>
+                                <i class="bi bi-speedometer2 text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Nonce Replay Protection</h6>
+                                    <p class="card-text small text-muted">User-specific nonce counter</p>
+                                    <span class="badge bg-warning">Not Implemented</span>
+                                    <a href="{{ url_for('owner.configure_nonce_protection') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-shield-exclamation text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compliance Features -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Compliance & Regulatory</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('compliance-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="compliance-features">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">AML/KYC Screening</h6>
+                                    <p class="card-text small text-muted">OFAC, UN sanctions, country-specific KYC</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                    <a href="{{ url_for('owner.configure_aml_kyc') }}" class="btn btn-sm btn-outline-primary mt-2">Manage</a>
+                                </div>
+                                <i class="bi bi-file-earmark-check text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Regulatory Reporting</h6>
+                                    <p class="card-text small text-muted">STR, CTR, LTR generation</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                    <a href="{{ url_for('owner.regulatory_reports') }}" class="btn btn-sm btn-outline-primary mt-2">View Reports</a>
+                                </div>
+                                <i class="bi bi-file-text text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Regulator API</h6>
+                                    <p class="card-text small text-muted">Read-only audit access for regulators</p>
+                                    <span class="badge bg-success">Implemented</span>
+                                    <a href="{{ url_for('owner.manage_regulator_access') }}" class="btn btn-sm btn-outline-primary mt-2">Manage Access</a>
+                                </div>
+                                <i class="bi bi-shield-shaded text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Travel Rule Compliance</h6>
+                                    <p class="card-text small text-muted">FATF Travel Rule for crypto/fiat transfers</p>
+                                    <span class="badge bg-warning">Not Implemented</span>
+                                    <a href="{{ url_for('owner.configure_travel_rule') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-airplane text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fraud Detection -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Fraud Detection & Monitoring</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('fraud-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="fraud-features">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Fraud Detection Algorithm</h6>
+                                    <p class="card-text small text-muted">ML-based real-time transaction scoring</p>
+                                    <span class="badge bg-warning">Not Implemented</span>
+                                    <a href="{{ url_for('owner.configure_fraud_detection') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-robot text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Admin Audit Log</h6>
+                                    <p class="card-text small text-muted">System-level audit for admin actions</p>
+                                    <span class="badge bg-warning">Not Implemented</span>
+                                    <a href="{{ url_for('owner.admin_audit_log') }}" class="btn btn-sm btn-outline-primary mt-2">View Logs</a>
+                                </div>
+                                <i class="bi bi-clipboard-data text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Integration -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Payment Integration</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('payment-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="payment-features">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Flutterwave</h6>
+                                    <p class="card-text small text-muted">African payment gateway</p>
+                                    <span class="badge bg-success">Integrated</span>
+                                    <a href="{{ url_for('owner.edit_provider', provider='flutterwave') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-credit-card text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Paystack</h6>
+                                    <p class="card-text small text-muted">Nigeria payment gateway</p>
+                                    <span class="badge bg-success">Integrated</span>
+                                    <a href="{{ url_for('owner.edit_provider', provider='paystack') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-credit-card text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">MTN Mobile Money</h6>
+                                    <p class="card-text small text-muted">Mobile money integration</p>
+                                    <span class="badge bg-success">Integrated</span>
+                                    <a href="{{ url_for('owner.edit_provider', provider='mtn') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-phone text-success fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Visa Direct</h6>
+                                    <p class="card-text small text-muted">Visa card-to-card transfers</p>
+                                    <span class="badge bg-warning">Not Integrated</span>
+                                    <a href="{{ url_for('owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Add Gateway</a>
+                                </div>
+                                <i class="bi bi-credit-card text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">MasterCard Send</h6>
+                                    <p class="card-text small text-muted">MasterCard real-time payments</p>
+                                    <span class="badge bg-warning">Not Integrated</span>
+                                    <a href="{{ url_for('owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Add Gateway</a>
+                                </div>
+                                <i class="bi bi-credit-card text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aggregator & Bulk Operations -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Aggregator & Bulk Operations</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('aggregator-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="aggregator-features">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Aggregator API</h6>
+                                    <p class="card-text small text-muted">Bulk deposit/withdraw/transfer operations</p>
+                                    <span class="badge bg-warning">Not Implemented</span>
+                                    <a href="{{ url_for('owner.manage_aggregators') }}" class="btn btn-sm btn-outline-primary mt-2">Manage Aggregators</a>
+                                </div>
+                                <i class="bi bi-layers text-warning fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-info">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Bulk Reconciliation</h6>
+                                    <p class="card-text small text-muted">Automated bulk transaction reconciliation</p>
+                                    <span class="badge bg-info">Partial</span>
+                                    <a href="{{ url_for('owner.bulk_reconciliation') }}" class="btn btn-sm btn-outline-primary mt-2">Run Reconciliation</a>
+                                </div>
+                                <i class="bi bi-arrow-repeat text-info fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Infrastructure -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Infrastructure & Scalability</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('infrastructure-features')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="infrastructure-features">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card border-secondary">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Database Sharding</h6>
+                                    <p class="card-text small text-muted">Horizontal scaling with read replicas</p>
+                                    <span class="badge bg-secondary">Not Implemented</span>
+                                    <a href="{{ url_for('owner.configure_sharding') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-diagram-3 text-secondary fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card border-secondary">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="card-title">Circuit Breakers</h6>
+                                    <p class="card-text small text-muted">Automatic protection for large transfers</p>
+                                    <span class="badge bg-secondary">Not Implemented</span>
+                                    <a href="{{ url_for('owner.configure_circuit_breakers') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                </div>
+                                <i class="bi bi-lightning text-secondary fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wallet Operations -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Wallet Operations (All Routes)</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="toggleSection('wallet-operations')">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="card-body" id="wallet-operations">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">Deposit</h6>
+                            <p class="card-text small text-muted">Add funds to wallet</p>
+                            <a href="{{ url_for('wallet.deposit') }}" class="btn btn-sm btn-success">Go to Deposit</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">Withdraw</h6>
+                            <p class="card-text small text-muted">Withdraw funds</p>
+                            <a href="{{ url_for('wallet.withdraw') }}" class="btn btn-sm btn-success">Go to Withdraw</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">Transfer</h6>
+                            <p class="card-text small text-muted">Send to other users</p>
+                            <a href="{{ url_for('wallet.send') }}" class="btn btn-sm btn-success">Go to Transfer</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">FX Conversion</h6>
+                            <p class="card-text small text-muted">Currency exchange</p>
+                            <a href="{{ url_for('wallet.fx_convert') }}" class="btn btn-sm btn-success">Go to FX</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">Transaction History</h6>
+                            <p class="card-text small text-muted">View all transactions</p>
+                            <a href="{{ url_for('wallet.transaction_history') }}" class="btn btn-sm btn-success">View History</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title">Wallet Settings</h6>
+                            <p class="card-text small text-muted">Manage preferences</p>
+                            <a href="{{ url_for('wallet.wallet_settings') }}" class="btn btn-sm btn-success">Go to Settings</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+    } else {
+        section.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

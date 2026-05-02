@@ -5,6 +5,9 @@ YEAR = 2025
 VERSION = "1.0.0"
 REQUIRE_EMAIL_VERIFICATION = False
 
+# Security Settings
+REQUIRE_OWNER_MFA = False  # Toggle to require MFA for owner login
+
 # Email Configuration for Flask-Mail
 MAIL_SERVER = 'smtp.gmail.com'  # Default to Gmail SMTP
 MAIL_PORT = 587

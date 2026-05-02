@@ -24,6 +24,7 @@ from app.events.permissions import (
     can_hard_delete_event,
 )
 from app.events.constants import EventStatus
+from app.auth.decorators import require_moderator
 
 
 # Remove tight coupling - define fallback functions
@@ -402,17 +403,29 @@ def create_event():
     try:
         event, error = EventService.create_event(data, current_user.id)
         if error:
-            return jsonify({'success': False, 'error': error}), 400
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'error': error}), 400
+            flash(f'Error: {error}', 'danger')
+            return redirect(url_for('events.create_event'))
 
-        return jsonify({
-            'success': True,
-            'redirect': url_for('events.my_events'),
-            'message': 'Event created successfully!'
-        })
+        # For AJAX/fetch requests, return JSON
+        if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'success': True,
+                'redirect': url_for('events.my_events'),
+                'message': 'Event created successfully!'
+            })
+
+        # For regular form submissions, redirect
+        flash('Event created successfully!', 'success')
+        return redirect(url_for('events.my_events'))
     except Exception as e:
         logger.error(f"Error creating event: {e}")
         print(f"🔥 Exception in create_event: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        flash('Internal server error', 'danger')
+        return redirect(url_for('events.create_event'))
 
 
 @events_bp.route("/<identifier>/edit", methods=['GET', 'POST'])
@@ -475,6 +488,8 @@ def scanner(identifier):
 
         if staff_role:
             # Check if role has check-in permission
+            # NOTE: EventRole.permissions is a JSON column (not an ORM relationship),
+            # so this read is safe and doesn't trigger lazy loading.
             permissions = staff_role.permissions or []
             if 'check_in_attendees' in permissions:
                 return True
@@ -1407,11 +1422,42 @@ def admin_restore(identifier):
         return jsonify({'success': False, 'error': 'Database error'}), 500
 
 
+@events_bp.route("/admin/<identifier>/resume", methods=['POST'])
+@login_required
+def admin_resume(identifier):
+    """
+    Resume a paused event back to published - admin/moderator endpoint.
+    """
+    if not is_system_admin(current_user):
+        return jsonify({'success': False, 'error': 'Unauthorized - Admin access required'}), 403
+
+    event = resolve_event(identifier)
+    if not event or event.is_deleted:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+
+    if event.status != EventStatus.PAUSED:
+        return jsonify({'success': False, 'error': f'Event is not paused (current: {event.status})'}), 400
+
+    event.status = EventStatus.PUBLISHED
+
+    try:
+        db.session.commit()
+        logger.info(
+            f"MODERATION | resume | event={event.slug} | admin={current_user.id}"
+        )
+        return jsonify({'success': True, 'message': f'Event "{event.name}" resumed'})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"admin_resume error: {e}")
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+
+
 @events_bp.route("/admin/events")
 @login_required
 def admin_events():
-    """View all events as admin with status filtering."""
-    if not is_system_admin(current_user):
+    """View all events as admin or moderator with status filtering."""
+    # Allow moderators as well as admins
+    if not (is_system_admin(current_user) or current_user.has_global_role('moderator')):
         return redirect(url_for('events.list'))
 
     raw_status = request.args.get('status', 'all')
@@ -1494,12 +1540,24 @@ def admin_events():
     except Exception:
         counts = {}
 
+    # Audit log for moderator viewing
+    if current_user.has_global_role('moderator'):
+        from app.audit.comprehensive_audit import AuditService
+        AuditService.security(
+            event_type="moderator_view_events",
+            severity="info",
+            description=f"Moderator {current_user.id} viewed all events (filter={current_filter})",
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+        )
+
     return render_template(
         'events/admin/events.html',
         events=events,
         current_filter=current_filter,  # always a clean lowercase string
         status_options=status_options,  # {"approved": "Approved", ...}
         counts=counts,
+        is_moderator=current_user.has_global_role('moderator'),
     )
 
 
@@ -1837,4 +1895,139 @@ def admin_debug_counts():
         })
     except Exception as e:
         logger.error(f"admin_debug_counts error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================================
+# MODERATOR ROUTES
+# ============================================================================
+
+@events_bp.route("/moderate")
+@login_required
+@require_moderator
+def moderate():
+    """Show all events for moderators (same data as admin view)"""
+    
+    # Use the same query as admin_events – show all non-deleted events
+    events = Event.query.filter_by(is_deleted=False).order_by(
+        Event.created_at.desc()
+    ).all()
+    
+    # Build status options and counts (same as admin_events)
+    status_options = {s.value: s.value.replace("_", " ").title()
+                      for s in EventStatus}
+    
+    try:
+        count_all = Event.query.filter_by(is_deleted=False).count()
+        def cnt(status):
+            return Event.query.filter_by(status=status, is_deleted=False).count()
+        counts = {
+            'all': count_all,
+            'published': cnt(EventStatus.PUBLISHED),
+            'approved': cnt(EventStatus.APPROVED),
+            'pending_approval': cnt(EventStatus.PENDING_APPROVAL),
+            'suspended': cnt(EventStatus.SUSPENDED),
+            'paused': cnt(EventStatus.PAUSED),
+            'rejected': cnt(EventStatus.REJECTED),
+            'completed': cnt(EventStatus.COMPLETED),
+            'cancelled': cnt(EventStatus.CANCELLED),
+            'archived': cnt(EventStatus.ARCHIVED),
+            'taken_down': (
+                Event.query
+                .filter(
+                    Event.status == EventStatus.ARCHIVED,
+                    Event.is_deleted.is_(True),
+                    Event.takedown_category.isnot(None)
+                )
+                .count()
+            ),
+        }
+    except Exception:
+        counts = {}
+    
+    # Audit log for moderator viewing
+    from app.audit.comprehensive_audit import AuditService
+    AuditService.security(
+        event_type="moderator_view_events",
+        severity="info",
+        description=f"Moderator {current_user.id} viewed all events via moderate route",
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+    )
+    
+    return render_template(
+        'events/admin/events.html',
+        events=events,
+        current_filter='all',
+        status_options=status_options,
+        counts=counts,
+        is_moderator=True,
+    )
+
+
+@events_bp.route("/moderate/<int:id>")
+@login_required
+@require_moderator
+def moderate_detail(id):
+    """Show single event for moderation review"""
+    
+    event = Event.query.get_or_404(id)
+    
+    return render_template('events/moderate_detail.html', event=event)
+
+
+@events_bp.route("/moderate/<int:id>/<action>", methods=['POST'])
+@login_required
+@require_moderator
+def moderate_action(id, action):
+    """Approve, reject, or flag an event"""
+    
+    event = Event.query.get_or_404(id)
+    
+    if action == 'approve':
+        if can_approve_event(current_user, event):
+            event.status = EventStatus.PUBLISHED
+            event.approved_at = datetime.utcnow()
+            event.approved_by_id = current_user.id
+            db.session.commit()
+            flash('Event approved successfully.', 'success')
+        else:
+            flash('You do not have permission to approve this event.', 'danger')
+    
+    elif action == 'reject':
+        if can_reject_event(current_user, event):
+            reason = request.form.get('reason', '').strip()
+            if not reason:
+                flash('Rejection reason is required.', 'warning')
+                return redirect(url_for('events.moderate_detail', id=id))
+            
+            event.status = EventStatus.REJECTED
+            event.rejected_at = datetime.utcnow()
+            event.rejection_reason = reason
+            db.session.commit()
+            flash('Event rejected successfully.', 'success')
+        else:
+            flash('You do not have permission to reject this event.', 'danger')
+    
+    elif action == 'flag':
+        from app.admin.services import create_flag
+        reason = request.form.get('reason', '').strip()
+        priority = request.form.get('priority', 'medium')
+        
+        if not reason:
+            flash('Reason required for flagging.', 'warning')
+            return redirect(url_for('events.moderate_detail', id=id))
+        
+        ok, flag = create_flag(
+            user=current_user,
+            entity_type='event',
+            entity_id=id,
+            reason=reason,
+            priority=priority
+        )
+        
+        if ok:
+            flash(f'Event flagged for review (Priority: {priority})', 'warning')
+        else:
+            flash(f'Failed to flag: {flag}', 'danger')
+    
+    return redirect(url_for('events.moderate'))

@@ -117,36 +117,29 @@ def verify_permission(user: object, permission: str, resource: Optional[object] 
     """
     Verify if a user has a specific permission.
 
+    Uses app/auth/helpers.py which queries the database directly — safe to call
+    even on detached user objects loaded by Flask-Login in a previous session.
+
     Args:
-        user: User object with permissions
+        user: User object (Flask-Login current_user is safe)
         permission: Permission string to check (e.g., 'transport.booking.create')
         resource: Optional resource object for context-specific permissions
 
     Returns:
         Boolean indicating if permission is granted
     """
-    # Basic implementation - extend based on your user/permission model
     if not user or not permission:
         return False
 
-    # Check if user is admin
-    if hasattr(user, 'is_admin') and user.is_admin:
+    # Import here to avoid circular imports at module load time
+    from app.auth.helpers import has_global_permission, is_owner
+
+    # Owner bypass
+    if is_owner(user):
         return True
 
-    # Check user permissions
-    if hasattr(user, 'permissions'):
-        user_permissions = getattr(user, 'permissions', [])
-        if isinstance(user_permissions, list) and permission in user_permissions:
-            return True
-
-    # Check role-based permissions
-    if hasattr(user, 'roles'):
-        for role in getattr(user, 'roles', []):
-            role_permissions = getattr(role, 'permissions', [])
-            if isinstance(role_permissions, list) and permission in role_permissions:
-                return True
-
-    return False
+    # Use the DB-querying helper — never walks lazy-loaded relationships
+    return has_global_permission(user, permission)
 
 
 # Add this function to app/utils/security.py

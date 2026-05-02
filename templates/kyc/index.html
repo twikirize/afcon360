@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KYC Dashboard - AFCON 360</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <!-- Theme System CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+    <style>
+        /* ── DESIGN TOKENS ── */
+        :root {
+            --bg:         var(--bg-body, #f5f4f1);
+            --bg-2:       #edecea;
+            --surface:    var(--bg-surface, #ffffff);
+            --surface-2:  var(--bg-surface-alt, #fafaf9);
+            --border:     var(--border-light, #e2e0db);
+            --border-2:   var(--border-medium, #d0cec8);
+
+            --ink:        var(--text-primary, #1a1916);
+            --ink-2:      var(--text-secondary, #3d3b36);
+            --muted:      var(--text-muted, #8a8880);
+            --muted-2:    #b5b3ae;
+
+            --accent:     var(--brand-primary, #16a34a);
+            --accent-lt:  var(--brand-primary-light, #dcfce7);
+            --accent-dk:  var(--brand-primary-dark, #166534);
+
+            --radius:     8px;
+            --radius-lg:  12px;
+            --shadow:     0 1px 3px rgba(26,25,22,0.08), 0 1px 2px rgba(26,25,22,0.04);
+            --shadow-md:  0 4px 12px rgba(26,25,22,0.08), 0 2px 4px rgba(26,25,22,0.04);
+
+            --font-body:  'Lato', sans-serif;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--ink);
+            font-family: var(--font-body);
+            font-size: 14px;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Breadcrumb */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0;
+            margin-bottom: 24px;
+            font-size: 13px;
+        }
+        .breadcrumb-item {
+            color: var(--muted);
+        }
+        .breadcrumb-item a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .breadcrumb-item a:hover {
+            text-decoration: underline;
+        }
+        .breadcrumb-item.active {
+            color: var(--ink);
+        }
+
+        /* Headings */
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: var(--ink);
+        }
+
+        h4, h5, h6 {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--ink);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-2);
+            border-radius: var(--radius) var(--radius) 0 0;
+        }
+
+        .card-body {
+            padding: 20px;
+        }
+
+        .card-header.bg-primary {
+            background: var(--accent);
+            border-color: var(--accent-dk);
+        }
+
+        .card-header.bg-primary h4 {
+            color: white;
+            margin: 0;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius);
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: var(--accent-dk);
+        }
+
+        .btn-secondary {
+            background: var(--surface-2);
+            color: var(--ink);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background: var(--border-2);
+        }
+
+        .btn-info {
+            background: var(--blue, #2563eb);
+            color: white;
+        }
+        .btn-info:hover {
+            background: var(--blue-dk, #1d4ed8);
+        }
+
+        .btn-outline-secondary {
+            background: transparent;
+            color: var(--ink);
+            border: 1px solid var(--border);
+        }
+        .btn-outline-secondary:hover {
+            background: var(--surface-2);
+        }
+
+        .btn-success {
+            background: var(--green, #16a34a);
+            color: white;
+        }
+        .btn-success:hover {
+            background: var(--green-dk, #166534);
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 12px;
+        }
+
+        .badge-success {
+            background: var(--green-lt);
+            color: var(--green);
+        }
+
+        .badge-warning {
+            background: var(--orange-lt);
+            color: var(--orange);
+        }
+
+        .badge-info {
+            background: var(--blue-lt);
+            color: var(--blue);
+        }
+
+        .badge-light {
+            background: white;
+            color: var(--ink);
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 14px 18px;
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            border: 1px solid;
+        }
+
+        .alert-success {
+            background: var(--green-lt);
+            border-color: var(--green);
+            color: var(--green-dk);
+        }
+
+        .alert-danger {
+            background: var(--red-lt);
+            border-color: var(--red);
+            color: var(--red-dk);
+        }
+
+        .alert-warning {
+            background: var(--orange-lt);
+            border-color: var(--orange);
+            color: var(--orange-dk);
+        }
+
+        /* List Group */
+        .list-group {
+            list-style: none;
+        }
+
+        .list-group-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .list-group-item:last-child {
+            border-bottom: none;
+        }
+
+        .text-muted {
+            color: var(--muted);
+        }
+
+        /* Row */
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin: -12px;
+        }
+
+        .col-md-4, .col-md-6 {
+            padding: 12px;
+            flex: 1;
+        }
+
+        @media (min-width: 768px) {
+            .col-md-4 {
+                max-width: 33.333%;
+            }
+            .col-md-6 {
+                max-width: 50%;
+            }
+        }
+
+        .mb-2 {
+            margin-bottom: 8px;
+        }
+        .mb-3 {
+            margin-bottom: 12px;
+        }
+        .mt-2 {
+            margin-top: 8px;
+        }
+        .mt-3 {
+            margin-top: 12px;
+        }
+        .mt-4 {
+            margin-top: 16px;
+        }
+        .small {
+            font-size: 12px;
+        }
+
+        .float-right {
+            float: right;
+        }
+
+        .border-primary {
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fa-solid fa-house"></i></a></li>
+                <li class="breadcrumb-item active">KYC Dashboard</li>
+            </ol>
+        </nav>
+
+        <h1><i class="fa-solid fa-shield-halved" style="color: var(--accent);"></i> KYC Verification Status</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Current Tier: <strong>{{ kyc_info.tier_name }} (Tier {{ kyc_info.tier }})</strong></h4>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">Account Status</h5>
+                <p class="card-text">Your current verification level determines your account limits and features.</p>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6>Verification Status</h6>
+                        {% if kyc_info.is_verified %}
+                            <span class="badge badge-success">Verified</span>
+                        {% else %}
+                            <span class="badge badge-warning">Not Verified</span>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Documents Submitted</h6>
+                        <span class="badge badge-info">{{ records|length }} document(s)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Available Actions</h5>
+                    </div>
+                    <div class="card-body">
+                        <a href="{{ url_for('kyc.upgrade') }}" class="btn btn-primary btn-block mb-2">
+                            Upgrade Verification Level
+                        </a>
+                        <a href="{{ url_for('auth.complete_profile') }}" class="btn btn-secondary btn-block mb-2">
+                            Complete Profile
+                        </a>
+                        <a href="{{ url_for('kyc.verify_national_id_page') }}" class="btn btn-info btn-block mb-2">
+                            Verify National ID
+                        </a>
+                        <a href="{{ url_for('kyc.limits') }}" class="btn btn-outline-secondary btn-block">
+                            View Account Limits
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">KYC Records</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if records %}
+                            <ul class="list-group">
+                                {% for record in records %}
+                                <li class="list-group-item">
+                                    <strong>{{ record.document_type|title }}</strong>
+                                    <br>
+                                    <small class="text-muted">Status: {{ record.status|title }}</small>
+                                    {% if record.submitted_at %}
+                                    <br>
+                                    <small class="text-muted">Submitted: {{ record.submitted_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted">No KYC records found.</p>
+                            <a href="{{ url_for('auth.complete_profile') }}" class="btn btn-sm btn-primary">Start Verification</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Tier Requirements</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for tier, info in tier_requirements.items() %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card {% if tier == kyc_info.tier %}border-primary{% endif %}">
+                            <div class="card-header {% if tier == kyc_info.tier %}bg-primary text-white{% endif %}">
+                                <strong>Tier {{ tier }}: {{ info.name }}</strong>
+                                {% if tier == kyc_info.tier %}
+                                <span class="badge badge-light float-right">Current</span>
+                                {% endif %}
+                            </div>
+                            <div class="card-body">
+                                <h6>Requirements:</h6>
+                                <ul class="small">
+                                    {% for req in info.requirements %}
+                                    <li>{{ req }}</li>
+                                    {% endfor %}
+                                </ul>
+                                {% if tier > kyc_info.tier %}
+                                <a href="{{ url_for('kyc.upgrade') }}" class="btn btn-sm btn-success btn-block mt-2">Upgrade</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Manager -->
+    <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof ThemeManager !== 'undefined') {
+                window.themeManager = new ThemeManager();
+            }
+        });
+    </script>
+</body>
+</html>

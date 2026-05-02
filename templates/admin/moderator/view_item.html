@@ -1,0 +1,184 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}View Item #{{ item.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}View Item #{{ item.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.items_list') }}">Items</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ item.id }}</span>
+</div>
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:40px;height:40px;border-radius:8px;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--accent-dk);">{{ item.name[0] }}</div>
+    <h1 class="page-heading" style="margin:0;">{{ item.name }}</h1>
+    <span class="badge {% if item.is_active %}badge-active{% else %}badge-inactive{% endif %}">{{ 'Active' if item.is_active else 'Inactive' }}</span>
+    <span class="badge {% if item.is_approved %}badge-verified{% else %}badge-unverified{% endif %}">{{ 'Approved' if item.is_approved else 'Pending' }}</span>
+    {% if item.is_featured %}
+    <span class="badge badge-featured"><i class="fas fa-star"></i> Featured</span>
+    {% endif %}
+  </div>
+  <div class="action-buttons">
+    {% if not item.is_approved %}
+    <form method="POST" action="{{ url_for('admin.moderator.approve_item', item_id=item.id) }}" style="display:inline;">
+      <button type="submit" class="btn btn-success" onclick="return confirm('Approve this item?')">
+        <i class="fas fa-check"></i> Approve
+      </button>
+    </form>
+    {% endif %}
+    {% if item.is_approved %}
+    <form method="POST" action="{{ url_for('admin.moderator.reject_item', item_id=item.id) }}" style="display:inline;">
+      <button type="submit" class="btn btn-danger" onclick="return confirm('Reject this item?')">
+        <i class="fas fa-times"></i> Reject
+      </button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('admin.moderator.toggle_item_featured', item_id=item.id) }}" style="display:inline;">
+      <button type="submit" class="btn {% if item.is_featured %}btn-warning{% else %}btn-outline{% endif %}">
+        <i class="fas fa-star"></i> {% if item.is_featured %}Unfeature{% else %}Feature{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: ITEM DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-box" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Item Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Item ID</label>
+          <div class="mono">#{{ item.id }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <div style="font-weight:600;">{{ item.name }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Slug</label>
+          <div class="mono">{{ item.slug }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <div>{{ item.description or 'No description provided' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <div>
+            {% for category in categories %}
+              {% if category.id == item.category_id %}
+                <span class="badge badge-role">{{ category.name }}</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <div>
+            <span class="badge {% if item.is_active %}badge-active{% else %}badge-inactive{% endif %}">{{ 'Active' if item.is_active else 'Inactive' }}</span>
+            <span class="badge {% if item.is_approved %}badge-verified{% else %}badge-unverified{% endif %}">{{ 'Approved' if item.is_approved else 'Pending' }}</span>
+            {% if item.is_featured %}
+            <span class="badge badge-featured"><i class="fas fa-star"></i> Featured</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Created At</label>
+          <div class="mono">{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Created By</label>
+          <div class="mono">#{{ item.created_by or 'System' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item Data Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-database" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Item Data (JSON)
+        </div>
+      </div>
+      <div class="panel-body">
+        <pre class="code-block">{{ item.data | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: FLAGS & ACTIONS -->
+  <div>
+    <!-- Quick Actions -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-bolt" style="background:var(--orange-lt);color:var(--orange);"></i>
+          Quick Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        <form method="POST" action="{{ url_for('admin.moderator.approve_item', item_id=item.id) }}" style="margin-bottom:8px;">
+          <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Approve this item?')">
+            <i class="fas fa-check"></i> Approve Item
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.moderator.reject_item', item_id=item.id) }}" style="margin-bottom:8px;">
+          <button type="submit" class="btn btn-danger" style="width:100%;" onclick="return confirm('Reject this item?')">
+            <i class="fas fa-times"></i> Reject Item
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.moderator.toggle_item_featured', item_id=item.id) }}" style="margin-bottom:8px;">
+          <button type="submit" class="btn {% if item.is_featured %}btn-warning{% else %}btn-outline{% endif %}" style="width:100%;">
+            <i class="fas fa-star"></i> {% if item.is_featured %}Unfeature Item{% else %}Feature Item{% endif %}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Flags Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Flags ({{ flags|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if flags %}
+          {% for flag in flags %}
+          <div class="flag-item" style="padding:12px;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span class="badge {% if flag.priority == 'high' %}badge-danger{% elif flag.priority == 'medium' %}badge-warning{% else %}badge-info{% endif %}">
+                {{ flag.priority|title }} Priority
+              </span>
+              <span class="mono" style="font-size:11px;color:var(--muted);">{{ flag.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+            </div>
+            <div style="font-size:13px;">{{ flag.reason }}</div>
+            {% if flag.notes %}
+            <div style="margin-top:4px;font-size:12px;color:var(--muted);">{{ flag.notes }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="empty-state" style="padding:20px;text-align:center;">
+          <i class="fas fa-flag" style="font-size:24px;color:var(--muted-2);margin-bottom:8px;"></i>
+          <p style="margin:0;font-size:13px;color:var(--muted);">No flags reported</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

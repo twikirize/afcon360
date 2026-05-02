@@ -305,4 +305,168 @@
       document.head.appendChild(style);
     }
   });
+
+  // ──────────────────────────────────────────────────────────────
+  // CLAIM SUBMISSION (Phase 3)
+  // ──────────────────────────────────────────────────────────────
+
+  window.claimSubmission = async function(submissionId) {
+    try {
+      const response = await fetch(`/moderator/claim/${submissionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+      });
+      const data = await response.json();
+      if (data.ok) {
+        showToast('Submission claimed successfully', 'success');
+        // Refresh dashboard panels
+        if (typeof Dashboard !== 'undefined' && Dashboard.refreshAllData) {
+          Dashboard.refreshAllData();
+        }
+        if (typeof loadMyQueue === 'function') loadMyQueue();
+        // Update the claim button in the DOM
+        const btn = document.querySelector(`[data-claim-id="${submissionId}"]`);
+        if (btn) {
+          btn.textContent = 'In Progress';
+          btn.disabled = true;
+          btn.classList.remove('btn-claim');
+          btn.classList.add('btn-in-progress');
+        }
+      } else {
+        showToast(`Error: ${data.error}`, 'error');
+      }
+    } catch (e) {
+      console.error('Claim failed:', e);
+      showToast('Claim failed. Please try again.', 'error');
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // MODERATE SUBMISSION (Phase 3)
+  // ──────────────────────────────────────────────────────────────
+
+  window.moderateSubmission = async function(submissionId, action) {
+    let notes = '';
+    if (action === 'reject') {
+      notes = prompt('Reason for rejection:');
+      if (!notes) return;
+    }
+    try {
+      const response = await fetch(`/moderator/moderate/${submissionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action: action, notes: notes })
+      });
+      const data = await response.json();
+      if (data.ok) {
+        showToast(`${action.charAt(0).toUpperCase() + action.slice(1)}d successfully`, 'success');
+        // Refresh dashboard panels
+        if (typeof Dashboard !== 'undefined' && Dashboard.refreshAllData) {
+          Dashboard.refreshAllData();
+        }
+        if (typeof loadMyQueue === 'function') loadMyQueue();
+        // Remove the row from the table
+        const row = document.getElementById(`row-${submissionId}`);
+        if (row) {
+          row.style.transition = 'opacity .4s, transform .4s';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(20px)';
+          setTimeout(() => row.remove(), 400);
+        }
+      } else {
+        showToast(`Error: ${data.error}`, 'error');
+      }
+    } catch (e) {
+      console.error('Moderation failed:', e);
+      showToast('Action failed. Please try again.', 'error');
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // LOAD MY QUEUE (Phase 3)
+  // ──────────────────────────────────────────────────────────────
+
+  window.loadMyQueue = async function() {
+    try {
+      const response = await fetch('/moderator/my_queue', {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+      });
+      const data = await response.json();
+      const container = document.getElementById('myQueuePanel');
+      if (!container) return;
+
+      if (!data || !data.submissions || data.submissions.length === 0) {
+        container.innerHTML = `<div class="empty"><i class="fas fa-inbox"></i><p>No items in your queue</p></div>`;
+        return;
+      }
+
+      let html = `<table class="tbl"><thead><tr><th>Name</th><th>Category</th><th>Claimed</th><th>Actions</th></tr></thead><tbody>`;
+      data.submissions.forEach(s => {
+        const claimed = s.claimed_at ? new Date(s.claimed_at).toLocaleString() : '—';
+        html += `<tr id="row-${s.id}">
+          <td>${s.name}</td>
+          <td>${s.category_slug || '—'}</td>
+          <td>${claimed}</td>
+          <td>
+            <button class="btn btn-sm btn-success" onclick="moderateSubmission(${s.id}, 'approve')">Approve</button>
+            <button class="btn btn-sm btn-danger" onclick="moderateSubmission(${s.id}, 'reject')">Reject</button>
+          </td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+      container.innerHTML = html;
+    } catch (e) {
+      console.error('Failed to load my queue:', e);
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // Expose unified queue functions globally for dashboard template
+  // ──────────────────────────────────────────────────────────────
+
+  window.loadUnifiedQueue = async function() {
+    try {
+      const response = await fetch('/moderator/api/unified-queue', {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+      });
+      const data = await response.json();
+      // The template will handle rendering; this function can be called from inline scripts
+      return data;
+    } catch (e) {
+      console.error('Failed to load unified queue:', e);
+      return null;
+    }
+  };
+
+  window.moderateItem = async function(entityType, entityId, action, flagId) {
+    let notes = '';
+    if (action === 'reject') {
+      notes = prompt('Reason for rejection:');
+      if (!notes) return;
+    }
+    try {
+      const response = await fetch(`/moderator/api/moderate/${entityType}/${entityId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ notes: notes })
+      });
+      const data = await response.json();
+      if (data.ok) {
+        showToast(`${action.charAt(0).toUpperCase() + action.slice(1)}d successfully`, 'success');
+        // Trigger refresh of any queue panels
+        if (typeof loadUnifiedQueue === 'function') loadUnifiedQueue();
+        if (typeof loadMyQueue === 'function') loadMyQueue();
+      } else {
+        showToast(`Error: ${data.error}`, 'error');
+      }
+    } catch (e) {
+      console.error('Moderation failed:', e);
+      showToast('Action failed. Please try again.', 'error');
+    }
+  };
 })();

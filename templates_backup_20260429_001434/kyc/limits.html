@@ -1,0 +1,172 @@
+{# templates/kyc/limits.html #}
+{% extends "base.html" %}
+{% block title %}KYC Transaction Limits{% endblock %}
+
+{% block content %}
+<div class="kyc-limits-wrapper">
+
+  <div class="kyc-header">
+    <div class="kyc-badge">Transaction Limits</div>
+    <h1>KYC Tier Limits</h1>
+    <p class="kyc-subtitle">Bank of Uganda regulated transaction limits by verification tier</p>
+  </div>
+
+  {% if limits %}
+  <div class="current-limits-card">
+    <h3>Your Current Usage</h3>
+    <div class="limits-grid">
+      <div class="limit-item">
+        <div class="limit-label">Daily Limit</div>
+        <div class="limit-value">UGX {{ "{:,.0f}".format(limits.daily) if limits.daily else 'Unlimited' }}</div>
+        {% if limits.daily_used is not none %}
+        <div class="limit-progress">
+          <div class="progress-bar" style="width: {{ (limits.daily_used / limits.daily * 100) if limits.daily else 0 }}%"></div>
+        </div>
+        <div class="limit-details">
+          Used: UGX {{ "{:,.0f}".format(limits.daily_used) }} |
+          Remaining: UGX {{ "{:,.0f}".format(limits.daily_remaining) if limits.daily_remaining is not none else 'Unlimited' }}
+        </div>
+        {% endif %}
+      </div>
+      <div class="limit-item">
+        <div class="limit-label">Monthly Limit</div>
+        <div class="limit-value">UGX {{ "{:,.0f}".format(limits.monthly) if limits.monthly else 'Unlimited' }}</div>
+        {% if limits.monthly_used is not none %}
+        <div class="limit-progress">
+          <div class="progress-bar" style="width: {{ (limits.monthly_used / limits.monthly * 100) if limits.monthly else 0 }}%"></div>
+        </div>
+        <div class="limit-details">
+          Used: UGX {{ "{:,.0f}".format(limits.monthly_used) }} |
+          Remaining: UGX {{ "{:,.0f}".format(limits.monthly_remaining) if limits.monthly_remaining is not none else 'Unlimited' }}
+        </div>
+        {% endif %}
+      </div>
+      <div class="limit-item">
+        <div class="limit-label">Per Transaction Limit</div>
+        <div class="limit-value">UGX {{ "{:,.0f}".format(limits.transaction) if limits.transaction else 'Unlimited' }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="limits-footer">
+    <a href="{{ url_for('auth_kyc.upgrade') }}" class="btn btn--primary">Upgrade My Tier →</a>
+    <a href="{{ url_for('auth_kyc.overview') }}" class="btn btn--secondary">Back to Overview</a>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+  .kyc-limits-wrapper { max-width: 760px; margin: 2.5rem auto; padding: 0 1rem; font-family: 'Georgia', serif; }
+  .kyc-badge { display: inline-block; background: #1a3a2a; color: #7fffb0; font-size: 0.7rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.25rem 0.75rem; border-radius: 2px; margin-bottom: 0.75rem; }
+  .kyc-header h1 { font-size: 1.75rem; font-weight: 700; color: #0f1f14; margin: 0 0 0.4rem; }
+  .kyc-subtitle { color: #556b5e; font-size: 0.95rem; margin: 0 0 1.75rem; }
+
+  .current-limits-card {
+    background: #f8f9fa;
+    border: 1px solid #e2ede7;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .current-limits-card h3 {
+    color: #1a3a2a;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+  }
+
+  .limits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .limit-item {
+    background: white;
+    border: 1px solid #d1e7dd;
+    border-radius: 6px;
+    padding: 1rem;
+  }
+
+  .limit-label {
+    font-size: 0.85rem;
+    color: #556b5e;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  .limit-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1a3a2a;
+    margin-bottom: 1rem;
+  }
+
+  .limit-progress {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+
+  .limit-progress .progress-bar {
+    height: 100%;
+    background: #2d7a4f;
+    transition: width 0.3s ease;
+  }
+
+  .limit-details {
+    font-size: 0.8rem;
+    color: #6c757d;
+  }
+
+  .limits-footer {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .btn--primary {
+    display: inline-block;
+    background: #1a3a2a;
+    color: #fff;
+    text-decoration: none;
+    padding: 0.7rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 5px;
+    transition: background 0.15s;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn--primary:hover {
+    background: #2d7a4f;
+  }
+
+  .btn--secondary {
+    display: inline-block;
+    background: #6c757d;
+    color: #fff;
+    text-decoration: none;
+    padding: 0.7rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 5px;
+    transition: background 0.15s;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn--secondary:hover {
+    background: #5a6268;
+  }
+</style>
+{% endblock %}

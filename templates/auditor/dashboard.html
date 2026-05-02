@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -35,9 +35,9 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('admin.auditor_dashboard') }}">AFCON 360 Auditor</a>
+            <a class="navbar-brand" href="{{ url_for('admin.auditor.dashboard') }}">AFCON 360 Auditor</a>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('admin.auditor_dashboard') }}">Dashboard</a>
+                <a class="nav-link" href="{{ url_for('admin.auditor.dashboard') }}">Dashboard</a>
                 <a class="nav-link" href="{{ url_for('admin.super_dashboard') }}">Admin Home</a>
                 <a class="nav-link" href="{{ url_for('auth.logout') }}">Logout</a>
             </div>
@@ -55,7 +55,7 @@
                         <i class="bi bi-funnel me-2"></i>Filter Logs
                     </div>
                     <div class="card-body">
-                        <form method="get" action="{{ url_for('admin.auditor_dashboard') }}" class="filter-form">
+                        <form method="get" action="{{ url_for('admin.auditor.dashboard') }}" class="filter-form">
                             <div class="row">
                                 <div class="col-md-3">
                                     <label class="form-label">Start Date</label>
@@ -71,7 +71,7 @@
                                 </div>
                                 <div class="col-md-3 d-flex align-items-end">
                                     <button type="submit" class="btn btn-primary me-2">Apply Filters</button>
-                                    <a href="{{ url_for('admin.auditor_dashboard') }}" class="btn btn-secondary">Clear</a>
+                                    <a href="{{ url_for('admin.auditor.dashboard') }}" class="btn btn-secondary">Clear</a>
                                 </div>
                             </div>
                         </form>

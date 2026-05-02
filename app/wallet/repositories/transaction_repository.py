@@ -1,91 +1,118 @@
 """
 app/wallet/repositories/transaction_repository.py
-Database operations for Transaction model.
+Transaction repository with atomic idempotency (DB-enforced).
 """
 
-from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
+from uuid import UUID
 from datetime import datetime
-from sqlalchemy import select, func
+from decimal import Decimal
+from sqlalchemy import select, and_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from app.extensions import db
-from app.wallet.models import Transaction as TransactionModel
+from app.wallet.models.transaction import TransactionModel, TransactionType, TransactionStatus
 from app.wallet.exceptions import DuplicateTransactionError
 
 
 class TransactionRepository:
     """
     Repository for transaction database operations.
+    
+    Idempotency is enforced at the database level via UNIQUE constraint
+    on client_request_id - no TOCTOU races possible.
     """
 
     def __init__(self, db_session: Session = None):
         self.db = db_session or db.session
 
-    def create(
-            self,
-            wallet_id: int,
-            transaction_type: str,
-            amount: Decimal,
-            currency: str,
-            tx_id: Optional[str] = None,
-            client_request_id: Optional[str] = None,
-            meta: Optional[Dict] = None
+    def get_or_create(
+        self,
+        client_request_id: str,
+        tx_type: TransactionType,
+        amount: Decimal,
+        currency: str,
+        user_id: Optional[int] = None,
+        recipient_user_id: Optional[int] = None,
+        metadata: Optional[dict] = None
     ) -> TransactionModel:
         """
-        Create a new transaction record.
-
+        Get or create transaction atomically.
+        
+        Uses PostgreSQL ON CONFLICT to eliminate TOCTOU race conditions.
+        If client_request_id already exists, returns the existing transaction.
+        Otherwise, creates a new one.
+        
         Args:
-            wallet_id: Wallet ID
-            transaction_type: deposit, withdraw, send, receive
+            client_request_id: Unique idempotency key
+            tx_type: Transaction type
             amount: Transaction amount
             currency: Currency code
-            tx_id: Optional transaction reference (generated if not provided)
-            client_request_id: Idempotency key
-            meta: Additional metadata
-
+            user_id: Primary user ID
+            recipient_user_id: Recipient user ID (for transfers)
+            metadata: Additional metadata
+            
         Returns:
-            Created TransactionModel
-
-        Raises:
-            DuplicateTransactionError: If client_request_id already exists
+            TransactionModel (existing or newly created)
         """
-        # Check for duplicate idempotency key
-        if client_request_id:
-            existing = self.get_by_client_request_id(client_request_id)
-            if existing:
-                raise DuplicateTransactionError(
-                    client_request_id,
-                    str(existing.tx_id or existing.id)
-                )
-
-        # Generate tx_id if not provided
-        if not tx_id:
-            import uuid
-            tx_id = str(uuid.uuid4())
-
-        transaction = TransactionModel(
-            wallet_id=wallet_id,
-            tx_id=tx_id,
+        # Try to insert with ON CONFLICT DO NOTHING
+        stmt = pg_insert(TransactionModel).values(
             client_request_id=client_request_id,
-            type=transaction_type,
+            tx_type=tx_type,
+            status=TransactionStatus.PENDING,
             amount=amount,
             currency=currency,
-            meta=meta or {},
+            user_id=user_id,
+            recipient_user_id=recipient_user_id,
+            tx_metadata=metadata or {},
             created_at=datetime.utcnow()
+        ).on_conflict_do_nothing(
+            index_elements=['client_request_id']
+        ).returning(TransactionModel)
+        
+        result = self.db.execute(stmt)
+        self.db.flush()
+        
+        # If insert succeeded, return the new transaction
+        new_tx = result.scalar_one_or_none()
+        if new_tx:
+            return new_tx
+        
+        # Transaction already exists - fetch it
+        existing = self.get_by_client_request_id(client_request_id)
+        if existing:
+            return existing
+        
+        # Should never reach here if ON CONFLICT worked correctly
+        raise DuplicateTransactionError(
+            client_request_id,
+            "unknown"
         )
 
-        self.db.add(transaction)
-        self.db.flush()  # Get ID without committing
+    def get_by_id(self, tx_id: UUID) -> Optional[TransactionModel]:
+        """
+        Get transaction by ID.
+        
+        Args:
+            tx_id: Transaction UUID
+            
+        Returns:
+            TransactionModel or None
+        """
+        return self.db.execute(
+            select(TransactionModel).where(TransactionModel.id == tx_id)
+        ).scalar_one_or_none()
 
-        return transaction
-
-    def get_by_client_request_id(self, client_request_id: str) -> Optional[TransactionModel]:
+    def get_by_client_request_id(
+        self, 
+        client_request_id: str
+    ) -> Optional[TransactionModel]:
         """
         Get transaction by idempotency key.
-
+        
         Args:
-            client_request_id: Idempotency key from client
-
+            client_request_id: Idempotency key
+            
         Returns:
             TransactionModel or None
         """
@@ -95,100 +122,122 @@ class TransactionRepository:
             )
         ).scalar_one_or_none()
 
-    def get_by_tx_id(self, tx_id: str) -> Optional[TransactionModel]:
+    def get_by_external_reference(
+        self, 
+        external_reference: str
+    ) -> Optional[TransactionModel]:
         """
-        Get transaction by transaction reference.
-
+        Get transaction by external payment provider reference.
+        
         Args:
-            tx_id: Transaction reference (UUID)
-
+            external_reference: Provider's transaction ID
+            
         Returns:
             TransactionModel or None
         """
         return self.db.execute(
-            select(TransactionModel).where(TransactionModel.tx_id == tx_id)
+            select(TransactionModel).where(
+                TransactionModel.external_reference == external_reference
+            )
         ).scalar_one_or_none()
 
-    def get_by_wallet_id(
-            self,
-            wallet_id: int,
-            limit: int = 50,
-            offset: int = 0,
-            transaction_type: Optional[str] = None
+    def update_status(
+        self,
+        tx_id: UUID,
+        status: TransactionStatus,
+        failure_reason: Optional[str] = None
+    ) -> bool:
+        """
+        Update transaction status.
+        
+        Args:
+            tx_id: Transaction UUID
+            status: New status
+            failure_reason: Optional failure reason if status is FAILED
+            
+        Returns:
+            True if updated, False if not found
+        """
+        tx = self.get_by_id(tx_id)
+        if not tx:
+            return False
+        
+        tx.status = status
+        
+        if status == TransactionStatus.COMPLETED:
+            tx.completed_at = datetime.utcnow()
+        elif status == TransactionStatus.FAILED:
+            tx.failed_at = datetime.utcnow()
+            tx.failure_reason = failure_reason
+        
+        return True
+
+    def get_user_transactions(
+        self,
+        user_id: int,
+        tx_type: Optional[TransactionType] = None,
+        status: Optional[TransactionStatus] = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> List[TransactionModel]:
         """
-        Get transactions for a wallet with pagination.
-
+        Get transactions for a user.
+        
         Args:
-            wallet_id: Wallet ID
-            limit: Maximum number of transactions
+            user_id: User ID
+            tx_type: Optional transaction type filter
+            status: Optional status filter
+            limit: Maximum transactions
             offset: Pagination offset
-            transaction_type: Optional filter by transaction type
-
+            
         Returns:
-            List of TransactionModel
+            List of TransactionModel ordered by created_at DESC
         """
         query = select(TransactionModel).where(
-            TransactionModel.wallet_id == wallet_id
+            TransactionModel.user_id == user_id
         )
-
-        if transaction_type:
-            query = query.where(TransactionModel.type == transaction_type)
-
-        query = query.order_by(TransactionModel.created_at.desc())
-        query = query.offset(offset).limit(limit)
-
+        
+        if tx_type:
+            query = query.where(TransactionModel.tx_type == tx_type)
+        
+        if status:
+            query = query.where(TransactionModel.status == status)
+        
+        query = (
+            query.order_by(TransactionModel.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        
         return self.db.execute(query).scalars().all()
 
     def get_transaction_count(
-            self,
-            wallet_id: int,
-            transaction_type: Optional[str] = None
+        self,
+        user_id: int,
+        tx_type: Optional[TransactionType] = None,
+        status: Optional[TransactionStatus] = None
     ) -> int:
         """
-        Get total transaction count for a wallet.
-
+        Get total transaction count for a user.
+        
         Args:
-            wallet_id: Wallet ID
-            transaction_type: Optional filter by transaction type
-
+            user_id: User ID
+            tx_type: Optional transaction type filter
+            status: Optional status filter
+            
         Returns:
             Total count
         """
+        from sqlalchemy import func
+        
         query = select(func.count()).select_from(TransactionModel).where(
-            TransactionModel.wallet_id == wallet_id
+            TransactionModel.user_id == user_id
         )
-
-        if transaction_type:
-            query = query.where(TransactionModel.type == transaction_type)
-
+        
+        if tx_type:
+            query = query.where(TransactionModel.tx_type == tx_type)
+        
+        if status:
+            query = query.where(TransactionModel.status == status)
+        
         return self.db.execute(query).scalar() or 0
-
-    def get_volume_by_currency(
-            self,
-            wallet_id: int,
-            currency: str,
-            since: datetime
-    ) -> Decimal:
-        """
-        Get total transaction volume for a currency since a given time.
-
-        Args:
-            wallet_id: Wallet ID
-            currency: Currency code
-            since: Start datetime
-
-        Returns:
-            Total volume (sum of amounts)
-        """
-        result = self.db.execute(
-            select(func.sum(TransactionModel.amount))
-            .where(
-                TransactionModel.wallet_id == wallet_id,
-                TransactionModel.currency == currency,
-                TransactionModel.created_at >= since,
-                TransactionModel.type.in_(['deposit', 'send'])  # Outgoing volume
-            )
-        ).scalar()
-
-        return result or Decimal("0")

@@ -1,0 +1,175 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}View User #{{ user.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}View User #{{ user.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.user_moderation') }}">Users</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ user.id }}</span>
+</div>
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:40px;height:40px;border-radius:50%;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--accent-dk);text-transform:uppercase;">{{ user.username[0] }}</div>
+    <h1 class="page-heading" style="margin:0;">{{ user.username }}</h1>
+    <span class="badge {% if user.is_active %}badge-active{% else %}badge-inactive{% endif %}">{{ 'Active' if user.is_active else 'Inactive' }}</span>
+    <span class="badge {% if user.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">{{ 'Verified' if user.is_verified else 'Unverified' }}</span>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: USER DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-user" style="background:var(--blue-lt);color:var(--blue);"></i>
+          User Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <div style="font-weight:600;">{{ user.username }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <div>{{ user.email }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">User ID</label>
+          <div class="mono">#{{ user.id }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <div><span class="badge {% if user.is_active %}badge-active{% else %}badge-inactive{% endif %}">{{ 'Active' if user.is_active else 'Inactive' }}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Verified</label>
+          <div><span class="badge {% if user.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">{{ 'Verified' if user.is_verified else 'Unverified' }}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Created At</label>
+          <div class="mono">{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Login</label>
+          <div class="mono">{{ user.last_login.strftime('%Y-%m-%d %H:%M:%S') if user.last_login else 'Never' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Roles</label>
+          <div>
+            {% for role in user.roles %}
+            <span class="badge badge-role">{{ role.name }}</span>
+            {% else %}
+            <span class="mono">—</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Organisation Panel -->
+    {% if user.organisation %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-building" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Organisation
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Organisation Name</label>
+          <div style="font-weight:600;">{{ user.organisation.name }}</div>
+        </div>
+        <div class="form-group">
+          <a href="{{ url_for('admin.moderator.view_org', org_id=user.organisation.id) }}" class="btn btn-outline btn-sm">
+            <i class="fas fa-external-link-alt"></i> View Organisation
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Moderation Notes -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-sticky-note" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Moderation Notes
+        </div>
+      </div>
+      <div class="panel-body">
+        <form method="POST" action="{{ url_for('admin.moderator.add_user_note', user_id=user.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="note" class="form-control" rows="4" placeholder="Add internal moderation notes..."></textarea>
+          <button type="submit" class="btn btn-primary btn-sm">Add Note</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: ACTION PANEL -->
+  <div style="position:sticky;top:76px;">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-gavel" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        <!-- Approve Verification -->
+        {% if not user.is_verified %}
+        <form action="{{ url_for('admin.moderator.approve_verification', user_id=user.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Approve user verification?');">
+            <i class="fas fa-check"></i> Approve Verification
+          </button>
+        </form>
+        {% endif %}
+
+        <!-- Reject Verification -->
+        {% if not user.is_verified %}
+        <form action="{{ url_for('admin.moderator.reject_verification', user_id=user.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="reason" class="form-control" rows="3" placeholder="Explain why verification was rejected..." required></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-times"></i> Reject Verification
+          </button>
+        </form>
+        {% endif %}
+
+        <!-- Suspend User -->
+        {% if user.is_active %}
+        <form action="{{ url_for('admin.moderator.suspend_user', user_id=user.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Suspension Reason *</label>
+          <textarea name="reason" class="form-control" rows="3" placeholder="Explain why user is being suspended..." required></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-ban"></i> Suspend User
+          </button>
+        </form>
+        {% endif %}
+
+        <!-- Activate User -->
+        {% if not user.is_active %}
+        <form action="{{ url_for('admin.moderator.activate_user', user_id=user.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Activate this user?');">
+            <i class="fas fa-check-circle"></i> Activate User
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

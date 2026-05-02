@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block styles %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<!-- ── SEARCH BAR ─────────────────────────────────────── -->
+<section class="top-search">
+  <div class="search-inner">
+    <div class="search-select-wrap">
+      <select>
+        <option>All Regions</option>
+        <option>Africa</option>
+        <option>Asia</option>
+        <option>Europe</option>
+        <option>North America</option>
+      </select>
+    </div>
+    <div class="search-select-wrap">
+      <select>
+        <option>Event Type</option>
+        <option>Sports</option>
+        <option>Music</option>
+        <option>Business</option>
+        <option>Religious</option>
+        <option>Cultural</option>
+      </select>
+    </div>
+    <div class="search-select-wrap">
+      <select>
+        <option>Any Date</option>
+        <option>This Week</option>
+        <option>This Month</option>
+        <option>This Year</option>
+      </select>
+    </div>
+    <button class="search-btn">🔍 Search</button>
+    <button class="search-btn-arrow">▼</button>
+  </div>
+  <div class="trending-tags">
+    <span class="trending-label">🔥 Trending:</span>
+    <a href="{{ url_for('events.landing', identifier='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
+    <a href="#" class="trending-tag">CHOGM 2026</a>
+    <a href="#" class="trending-tag">World Cup Qualifiers</a>
+    <a href="#" class="trending-tag">East Africa Crusade</a>
+  </div>
+</section>
+
+<!-- ── 3-COLUMN LAYOUT ───────────────────────────────── -->
+<div class="home-layout">
+
+  <!-- ====== LEFT SIDEBAR ====== -->
+  <aside class="home-left">
+
+    <a href="{{ url_for('accommodation.guest.search') }}" class="left-nav-item">
+      <div class="left-nav-icon">🏨</div>
+      Accommodation
+    </a>
+    <a href="{{ url_for('transport.home') }}" class="left-nav-item">
+      <div class="left-nav-icon">🚌</div>
+      Transport
+    </a>
+    <a href="{{ url_for('tourism.home') }}" class="left-nav-item">
+      <div class="left-nav-icon">🌴</div>
+      Tourism
+    </a>
+    <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
+      <div class="left-nav-icon">👛</div>
+      Wallet
+    </a>
+    <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
+      <div class="left-nav-icon">🎟️</div>
+      Tickets
+    </a>
+
+    <!-- Hotel Ad -->
+    <div class="left-ad">
+      <div class="left-ad-placeholder hotel" style="position:relative;">
+        <div style="font-size:2.5rem;margin-bottom:0.4rem;">🏨✨</div>
+        <div class="left-ad-overlay">
+          <div class="left-ad-title">Stay at Hotel XYZ</div>
+          <div class="left-ad-sub">Get Exclusive Rates</div>
+          <a href="#" class="left-ad-btn">Book Now →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Airline Ad -->
+    <div class="left-ad">
+      <div class="left-ad-placeholder airline" style="position:relative;">
+        <div style="font-size:2.5rem;margin-bottom:0.4rem;">✈️⭐</div>
+        <div class="left-ad-overlay">
+          <div class="left-ad-title">Fly with WERT</div>
+          <div class="left-ad-sub">Great deals on flights</div>
+          <a href="#" class="left-ad-btn">Book Flights →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Host CTA -->
+    {% if session.get('user_id') %}
+    <a href="{{ url_for('events.create_event') }}" class="left-host-cta">
+    {% else %}
+    <a href="{{ url_for('auth.login') }}" class="left-host-cta">
+    {% endif %}
+      <div class="left-host-cta-icon">⚙️</div>
+      <div class="left-host-cta-text">
+        <strong>Host Your Event</strong>
+        <span>Manage &amp; Promote Your Event</span>
+      </div>
+    </a>
+
+  </aside>
+  <!-- ====== END LEFT SIDEBAR ====== -->
+
+
+  <!-- ====== MAIN CONTENT ====== -->
+  <main class="home-main">
+
+    <!-- Featured Events -->
+    <section>
+      <div class="section-head">
+        <h2 class="section-title">Featured Events</h2>
+        <a href="{{ url_for('events.list') }}" class="section-link">View All →</a>
+      </div>
+
+      <div class="featured-grid">
+
+        <!-- AFCON 2027 -->
+        <a href="{{ url_for('events.landing', identifier='afcon-2027') }}" class="feat-card afcon">
+          <div class="feat-card-bg"></div>
+          <div class="feat-card-icon">🏟️</div>
+          <div class="feat-card-overlay"></div>
+          <div class="feat-card-body">
+            <span class="feat-badge">Premier Event</span>
+            <div class="feat-title">AFCON <span class="feat-gold">2027</span></div>
+            <div class="feat-meta">📅 Sept 19 – Oct 18, 2027<br>📍 Nairobi / Kampala / Dar es Salaam</div>
+            <span class="feat-explore-btn">Explore Event &rsaquo;</span>
+          </div>
+        </a>
+
+        <!-- CHOGM 2026 -->
+        <a href="#" class="feat-card chogm">
+          <div class="feat-card-bg"></div>
+          <div class="feat-card-icon">🏛️</div>
+          <div class="feat-card-overlay"></div>
+          <div class="feat-card-body">
+            <span class="feat-badge">Summit</span>
+            <div class="feat-title">CHOGM <span class="feat-gold">2026</span></div>
+            <div class="feat-meta">📅 June 2026<br>📍 Kuala Lumpur, Malaysia</div>
+            <span class="feat-explore-btn">Explore Event &rsaquo;</span>
+          </div>
+        </a>
+
+        <!-- World Cup Qualifiers -->
+        <a href="#" class="feat-card wcup">
+          <div class="feat-card-bg"></div>
+          <div class="feat-card-icon">⚽</div>
+          <div class="feat-card-overlay"></div>
+          <div class="feat-card-body">
+            <span class="feat-badge">Football</span>
+            <div class="feat-title">World Cup <span class="feat-gold">Qualifiers</span></div>
+            <div class="feat-meta">📅 Road to 2026<br>📍 Coming Soon!</div>
+            <span class="feat-explore-btn">View Details &rsaquo;</span>
+          </div>
+        </a>
+
+        <!-- East Africa Revival Crusade -->
+        <a href="#" class="feat-card crusade">
+          <div class="feat-card-bg"></div>
+          <div class="feat-card-icon">✝️</div>
+          <div class="feat-card-overlay"></div>
+          <div class="feat-card-body">
+            <span class="feat-badge">Religious</span>
+            <div class="feat-title">East Africa <span class="feat-gold">Revival Crusade</span></div>
+            <div class="feat-meta">📅 2026<br>📍 East Africa</div>
+            <span class="feat-explore-btn">View Details &rsaquo;</span>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Live & Upcoming -->
+    <section>
+      <div class="section-head">
+        <h2 class="section-title">Live &amp; Upcoming <span>Events</span></h2>
+        <span style="font-size:0.72rem;color:#888;">What's happening now</span>
+      </div>
+
+      <div class="live-scroll">
+
+        <a href="#" class="live-card summit">
+          <div class="live-card-bg"></div>
+          <div class="live-card-overlay"></div>
+          <div class="live-card-body">
+            <span class="live-badge">🔥 Happening Now!</span>
+            <div class="live-card-title">Pan-African Tech Summit</div>
+            <span class="live-action-btn">Join Live &rsaquo;</span>
+          </div>
+        </a>
+
+        <a href="#" class="live-card chogm2">
+          <div class="live-card-bg"></div>
+          <div class="live-card-overlay"></div>
+          <div class="live-card-body">
+            <span class="upcoming-badge">⏰ In 5 Days</span>
+            <div class="live-card-title">CHOGM <span class="live-gold">2026</span></div>
+            <div class="live-card-sub">li 3 Days</div>
+            <span class="live-action-btn">Get Ready &rsaquo;</span>
+          </div>
+        </a>
+
+        <a href="#" class="live-card expo">
+          <div class="live-card-bg"></div>
+          <div class="live-card-overlay"></div>
+          <div class="live-card-body">
+            <span class="upcoming-badge">📅 Sept 15–18</span>
+            <div class="live-card-title">Global Business Expo</div>
+            <div class="live-card-sub">Dubai, UAE</div>
+            <span class="live-action-btn">View Details &rsaquo;</span>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Quick Actions -->
+    <section>
+      <div class="quick-actions">
+        <a href="{{ url_for('transport.home') }}" class="quick-action">
+          <span class="quick-action-icon">✈️</span>
+          <span>Book Flights</span>
+        </a>
+        <a href="{{ url_for('accommodation.guest.search') }}" class="quick-action">
+          <span class="quick-action-icon">🏨</span>
+          <span>Find Accommodation</span>
+        </a>
+        <a href="{{ url_for('tourism.home') }}" class="quick-action">
+          <span class="quick-action-icon">🗺️</span>
+          <span>Explore Tourism</span>
+        </a>
+        <a href="{{ url_for('tourism.home') }}" class="quick-action">
+          <span class="quick-action-icon">🌍</span>
+          <span>Explore Tourism</span>
+        </a>
+        <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="quick-action">
+          <span class="quick-action-icon">🎟️</span>
+          <span>Buy Tickets &amp; Open Wallet</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- Host Your Event Banner -->
+    <section>
+      <div class="host-banner">
+        <div class="host-banner-title">Host Your Event on <span>AFCON360</span></div>
+        <div class="host-banner-sub">Reach Millions &amp; Make Your Event a Success!</div>
+        {% if session.get('user_id') %}
+        <a href="{{ url_for('events.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        {% else %}
+        <a href="{{ url_for('auth.login') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        {% endif %}
+      </div>
+    </section>
+
+  </main>
+  <!-- ====== END MAIN ====== -->
+
+
+  <!-- ====== RIGHT SIDEBAR ====== -->
+  <aside class="home-right">
+
+    <!-- Luxury Hotel Ad -->
+    <div class="right-ad">
+      <div class="right-ad-img-wrap">🏨✨</div>
+      <div class="right-ad-head">
+        <div class="right-ad-title">Luxury Stay at Hotel XYZ</div>
+        <div class="right-ad-sub">Get Exclusive Rates, Book Now!</div>
+      </div>
+      <div class="right-ad-foot">
+        <a href="#" class="right-ad-btn">Book Now <span>&rsaquo;</span></a>
+      </div>
+    </div>
+
+    <!-- Airline Ad -->
+    <div class="right-ad">
+      <div class="right-ad-img-wrap airline">✈️⭐</div>
+      <div class="right-ad-head">
+        <div class="right-ad-title">Fly with WERT Airlines</div>
+        <div class="right-ad-sub">Great Deals on Flights!</div>
+      </div>
+      <div class="right-ad-foot">
+        <a href="#" class="right-ad-btn">Book Flights <span>&rsaquo;</span></a>
+      </div>
+    </div>
+
+  </aside>
+  <!-- ====== END RIGHT SIDEBAR ====== -->
+
+</div>
+<!-- ====== END 3-COLUMN LAYOUT ====== -->
+
+{% endblock %}

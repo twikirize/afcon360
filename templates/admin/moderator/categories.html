@@ -1,0 +1,174 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Manage Categories — AFCON360{% endblock %}
+
+{% block topbar_title %}Manage Categories{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Categories</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Manage Categories</h1>
+    <p class="page-subheading">Create and manage manageable item categories</p>
+  </div>
+  <button class="btn btn-primary" onclick="showCreateModal()">
+    <i class="fas fa-plus"></i> New Category
+  </button>
+</div>
+
+<!-- Categories Grid -->
+<div class="panel">
+  <div class="panel-body">
+    {% if categories %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 60px;">#</th>
+            <th>Name</th>
+            <th>Slug</th>
+            <th>Description</th>
+            <th>Items Count</th>
+            <th>Status</th>
+            <th style="width: 120px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category in categories %}
+          <tr>
+            <td class="mono">{{ category.id }}</td>
+            <td style="font-weight:600;">{{ category.name }}</td>
+            <td class="mono">{{ category.slug }}</td>
+            <td style="color:var(--muted);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              {{ category.description or '-' }}
+            </td>
+            <td class="mono">{{ category.items|length if category.items else 0 }}</td>
+            <td>
+              <span class="badge {% if category.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                {{ 'Active' if category.is_active else 'Inactive' }}
+              </span>
+            </td>
+            <td>
+              <div class="action-buttons">
+                <a href="{{ url_for('admin.moderator.view_category', cat_id=category.id) }}" class="btn btn-outline btn-xs" title="View">
+                  <i class="fas fa-eye"></i>
+                </a>
+                <form method="POST" action="{{ url_for('admin.moderator.toggle_category_active', cat_id=category.id) }}" style="display:inline;">
+                  <button type="submit" class="btn btn-outline btn-xs" title="{% if category.is_active %}Deactivate{% else %}Activate{% endif %}">
+                    <i class="fas fa-{% if category.is_active %}toggle-off{% else %}toggle-on{% endif %}"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty-state" style="padding:60px;text-align:center;">
+        <i class="fas fa-tags" style="font-size:48px;color:var(--muted-2);margin-bottom:16px;"></i>
+        <p style="margin:0;font-size:16px;color:var(--muted);">No categories found</p>
+        <p style="margin:4px 0 0 0;font-size:13px;color:var(--muted-2);">Create your first category to get started</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Create Category Modal -->
+<div id="createModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:var(--radius-lg);width:500px;max-width:90%;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);">
+    <div style="padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="font-size:18px;font-weight:700;margin:0;">Create New Category</h3>
+      <button onclick="hideCreateModal()" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;">&times;</button>
+    </div>
+    <div style="padding:20px;">
+      <form id="createForm" method="POST" action="{{ url_for('admin.moderator.create_category') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label" style="display:block;font-weight:500;margin-bottom:6px;">Name</label>
+          <input type="text" name="name" class="form-control" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;" required placeholder="Category name">
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label" style="display:block;font-weight:500;margin-bottom:6px;">Slug</label>
+          <input type="text" name="slug" class="form-control" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;" required placeholder="category-slug">
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label" style="display:block;font-weight:500;margin-bottom:6px;">Description</label>
+          <textarea name="description" class="form-control" rows="3" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;" placeholder="Category description"></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:20px;">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+            <input type="checkbox" name="is_active" checked>
+            Active
+          </label>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button type="button" onclick="hideCreateModal()" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Category</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+.form-control {
+  font-family: var(--font-body);
+}
+.form-control:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-lt);
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.btn-ghost:hover {
+  background: var(--bg);
+  border-color: var(--border-2);
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--surface);
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.btn-primary:hover {
+  background: var(--accent-dk);
+}
+</style>
+
+<script>
+function showCreateModal() {
+  document.getElementById('createModal').style.display = 'flex';
+}
+
+function hideCreateModal() {
+  document.getElementById('createModal').style.display = 'none';
+}
+
+// Auto-generate slug from name
+document.querySelector('input[name="name"]')?.addEventListener('input', function(e) {
+  const slug = e.target.value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  document.querySelector('input[name="slug"]').value = slug;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,167 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}KYC Queue — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}KYC Review Queue{% endblock %}
+
+{% block content %}
+<!-- Filters & Actions -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-body">
+    <form method="GET" action="{{ url_for('compliance.kyc_queue') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-control">
+          <option value="">All Statuses</option>
+          <option value="pending" {% if request.args.get('status') == 'pending' %}selected{% endif %}>Pending</option>
+          <option value="in_review" {% if request.args.get('status') == 'in_review' %}selected{% endif %}>In Review</option>
+          <option value="approved" {% if request.args.get('status') == 'approved' %}selected{% endif %}>Approved</option>
+          <option value="rejected" {% if request.args.get('status') == 'rejected' %}selected{% endif %}>Rejected</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+        <label class="form-label">Priority</label>
+        <select name="priority" class="form-control">
+          <option value="">All Priorities</option>
+          <option value="critical" {% if request.args.get('priority') == 'critical' %}selected{% endif %}>Critical</option>
+          <option value="high" {% if request.args.get('priority') == 'high' %}selected{% endif %}>High</option>
+          <option value="medium" {% if request.args.get('priority') == 'medium' %}selected{% endif %}>Medium</option>
+          <option value="low" {% if request.args.get('priority') == 'low' %}selected{% endif %}>Low</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 2; min-width: 250px; margin-bottom: 0;">
+        <label class="form-label">Search</label>
+        <input type="text" name="search" class="form-control" placeholder="User name, email, or ID..." value="{{ request.args.get('search', '') }}">
+      </div>
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-filter"></i> Filter
+      </button>
+      <a href="{{ url_for('compliance.kyc_queue') }}" class="btn btn-secondary">Clear</a>
+    </form>
+  </div>
+</div>
+
+<!-- KYC Items Table -->
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-id-card"></i> KYC Submissions</div>
+    <span class="badge badge-blue">{{ items|length }} items</span>
+  </div>
+  <div class="card-body">
+    {% if items %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>User</th>
+            <th>Type</th>
+            <th>Submitted</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Assigned To</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
+            <td><a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
+            <td>
+              <div class="user-cell">
+                <div class="av">{{ item.user.username[0] if item.user else '?' }}</div>
+                <div>
+                  <div class="u-name">{{ item.user.username if item.user else 'Unknown' }}</div>
+                  <div class="u-sub">{{ item.user.email if item.user else '' }}</div>
+                </div>
+              </div>
+            </td>
+            <td>{{ item.verification_type or 'Standard' }}</td>
+            <td class="mono">{{ item.submitted_at.strftime('%Y-%m-%d %H:%M') if item.submitted_at else '-' }}</td>
+            <td>
+              {% if item.priority == 'critical' %}
+                <span class="badge badge-red">Critical</span>
+              {% elif item.priority == 'high' %}
+                <span class="badge badge-orange">High</span>
+              {% elif item.priority == 'medium' %}
+                <span class="badge badge-blue">Medium</span>
+              {% else %}
+                <span class="badge badge-gray">Low</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.status == 'pending' %}
+                <span class="badge badge-orange">Pending</span>
+              {% elif item.status == 'in_review' %}
+                <span class="badge badge-blue">In Review</span>
+              {% elif item.status == 'approved' %}
+                <span class="badge badge-green">Approved</span>
+              {% elif item.status == 'rejected' %}
+                <span class="badge badge-red">Rejected</span>
+              {% else %}
+                <span class="badge badge-gray">{{ item.status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.assigned_to %}
+                {{ item.assignee.username if item.assignee else 'Unknown' }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="action-group">
+                <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                {% if item.status == 'pending' %}
+                <form method="POST" action="{{ url_for('compliance.kyc_action', kyc_id=item.id) }}" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="assign_to_me">
+                  <button type="submit" class="btn btn-sm btn-secondary">Assign</button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination and pagination.pages > 1 %}
+    <div class="pagination">
+      {% if pagination.has_prev %}
+        <a href="{{ url_for('compliance.kyc_queue', page=pagination.prev_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+      {% else %}
+        <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+      {% endif %}
+      
+      {% for page_num in pagination.iter_pages(left_current=2, right_current=2, left_edge=1, right_edge=1) %}
+        {% if page_num %}
+          {% if page_num == pagination.page %}
+            <span class="pg-btn active">{{ page_num }}</span>
+          {% else %}
+            <a href="{{ url_for('compliance.kyc_queue', page=page_num, **request.args) }}" class="pg-btn">{{ page_num }}</a>
+          {% endif %}
+        {% else %}
+          <span class="pg-btn disabled">...</span>
+        {% endif %}
+      {% endfor %}
+      
+      {% if pagination.has_next %}
+        <a href="{{ url_for('compliance.kyc_queue', page=pagination.next_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+      {% else %}
+        <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+      {% endif %}
+      <span class="pg-info">{{ pagination.total }} total</span>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+      <p>No KYC items found matching your criteria.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

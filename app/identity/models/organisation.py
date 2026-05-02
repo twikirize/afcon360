@@ -65,6 +65,21 @@ class Organisation(BaseModel):
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(String(128), nullable=True)
 
+    # Internal moderation notes (separate from verification notes which go to org)
+    moderation_notes = Column(Text, nullable=True)
+
+    # -------------------
+    # Compliance Integration (KYB)
+    # -------------------
+    compliance_case_id = Column(BigInteger, ForeignKey("compliance_cases.id"), nullable=True, index=True)
+    compliance_status = Column(String(50), nullable=True, index=True)  # pending, approved, rejected, escalated
+    compliance_notes = Column(Text, nullable=True)
+    compliance_reviewed_at = Column(DateTime, nullable=True)
+    compliance_reviewed_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    referred_to_compliance = Column(Boolean, default=False, nullable=False, index=True)
+    referred_at = Column(DateTime, nullable=True)
+    referred_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+
     # -------------------
     # Lifecycle
     # -------------------
@@ -133,7 +148,6 @@ class Organisation(BaseModel):
     # Relationships
     # -------------------
     users = relationship("OrganisationMember", back_populates="organisation", cascade="all, delete-orphan")
-    wallet = relationship("Wallet", back_populates="organisation", uselist=False)
     licenses = relationship("OrganisationLicense", back_populates="organisation", cascade="all, delete-orphan")
     documents = relationship("OrganisationDocument", back_populates="organisation", cascade="all, delete-orphan")
     audit_logs = relationship("OrganisationAuditLog", back_populates="organisation", cascade="all, delete-orphan")
@@ -147,6 +161,16 @@ class Organisation(BaseModel):
     default_users = relationship("User", foreign_keys="User.default_org_id", back_populates="default_org")
     primary_contact_user = relationship("User", foreign_keys=[primary_contact_user_id])
     custom_roles = relationship("OrgRole", back_populates="organisation", cascade="all, delete-orphan")
+
+    # -------------------
+    # Wallet Account Relationships
+    # -------------------
+    accounts = relationship(
+        'AccountModel',
+        primaryjoin='Organisation.id == foreign(AccountModel.user_id)',
+        viewonly=True,
+        lazy='dynamic'
+    )
 
     # -------------------
     # Methods
@@ -187,6 +211,30 @@ class Organisation(BaseModel):
     @property
     def has_expired_document(self):
         return any(doc.expires_at and doc.expires_at < date.today() for doc in self.documents)
+
+    # -------------------
+    # Wallet Account Properties
+    # -------------------
+    @property
+    def primary_account(self):
+        """Get the primary account for this organisation."""
+        from app.wallet.models.ledger import AccountModel
+        return AccountModel.query.filter_by(user_id=self.id).first()
+
+    @property
+    def wallet_balance(self):
+        """Get current wallet balance (derived from ledger)."""
+        account = self.primary_account
+        if not account:
+            from decimal import Decimal
+            return Decimal('0')
+
+        from app.wallet.services.wallet_service import WalletService
+        try:
+            return WalletService.get_balance(account.id)
+        except Exception:
+            from decimal import Decimal
+            return Decimal('0')
 
 # -------------------------------
 # Organisation Duplicates

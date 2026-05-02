@@ -1,0 +1,144 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}View KYC #{{ kyc.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}View KYC #{{ kyc.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.kyc_verification') }}">KYC Verification</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ kyc.id }}</span>
+</div>
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span class="mono" style="background:var(--bg);padding:6px 10px;border-radius:6px;">#{{ kyc.id }}</span>
+    <h1 class="page-heading" style="margin:0;">KYC Verification</h1>
+    <span class="badge badge-{{ kyc.status }}">{{ kyc.status }}</span>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: KYC DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-id-card" style="background:var(--accent-lt);color:var(--accent);"></i>
+          KYC Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">User</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:12px;color:var(--accent-dk);text-transform:uppercase;">{{ kyc.user.username[0] }}</div>
+            <div style="font-weight:600;">{{ kyc.user.username }}</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Document Type</label>
+          <div>{{ kyc.document_type or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Document Number</label>
+          <div class="mono">{{ kyc.document_number or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <div>{{ kyc.full_name or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date of Birth</label>
+          <div class="mono">{{ kyc.date_of_birth.strftime('%Y-%m-%d') if kyc.date_of_birth else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Submitted At</label>
+          <div class="mono">{{ kyc.created_at.strftime('%Y-%m-%d %H:%M:%S') if kyc.created_at else '-' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Images Panel -->
+    {% if kyc.document_front_url or kyc.document_back_url %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-image" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Document Images
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if kyc.document_front_url %}
+        <div class="form-group">
+          <label class="form-label">Front of Document</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);">
+            <a href="{{ kyc.document_front_url }}" target="_blank" class="btn btn-outline btn-sm">View Document</a>
+          </div>
+        </div>
+        {% endif %}
+        {% if kyc.document_back_url %}
+        <div class="form-group">
+          <label class="form-label">Back of Document</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);">
+            <a href="{{ kyc.document_back_url }}" target="_blank" class="btn btn-outline btn-sm">View Document</a>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: ACTION PANEL -->
+  <div style="position:sticky;top:76px;">
+    {% if kyc.status == 'pending' %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-gavel" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Decision
+        </div>
+      </div>
+      <div class="panel-body">
+        <form action="{{ url_for('admin.moderator.approve_kyc', kyc_id=kyc.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Approve this KYC verification?');">
+            <i class="fas fa-check"></i> Approve KYC
+          </button>
+        </form>
+        <form action="{{ url_for('admin.moderator.reject_kyc', kyc_id=kyc.id) }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="reason" class="form-control" rows="3" placeholder="Provide a clear reason for rejection..." required></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-times"></i> Reject KYC
+          </button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-check-circle" style="background:var(--green-lt);color:var(--green);"></i>
+          Review Complete
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Status</label>
+          <span class="badge badge-{{ kyc.status }}">{{ kyc.status }}</span>
+        </div>
+        <a href="{{ url_for('admin.moderator.kyc_verification') }}" class="btn btn-outline" style="width:100%;">
+          <i class="fas fa-arrow-left"></i> Back to List
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

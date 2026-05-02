@@ -8,12 +8,12 @@ from flask import Blueprint, current_app
 # Create single blueprint
 events_bp = Blueprint('events', __name__, url_prefix='/events')
 
-# ✅ STEP 1: Register settings routes FIRST (before importing routes)
+# STEP 1: Register settings routes FIRST (before importing routes)
 from app.events.settings_routes import register_settings_routes
 register_settings_routes(events_bp)
-print("✅ Settings routes registered to events blueprint")  # Debug line
+print("Settings routes registered to events blueprint")  # Debug line
 
-# ✅ STEP 2: Now import routes (which will add the rest of the routes)
+# STEP 2: Now import routes (which will add the rest of the routes)
 from app.events import routes
 from app.events.settings_model import EventSettings  # noqa: F401
 
@@ -40,7 +40,10 @@ except ImportError as e:
     __all__ = ['events_bp', 'EventService', 'routes']
 
 try:
-    from app.admin.moderation.registry import register_module
-    register_module("event", "Events", lambda eid: f"/events/{eid}")
+    from app.admin.moderator.registry import register_module
+    from flask import url_for
+    register_module('event', 'Event',
+                   review_url_fn=lambda id: url_for('events.moderate_detail', id=id),
+                   module_name='Events', icon='fa-calendar')
 except Exception:
     pass

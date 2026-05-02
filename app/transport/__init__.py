@@ -118,7 +118,16 @@ __all__ = [
 ]
 
 try:
-    from app.admin.moderation.registry import register_module
-    register_module("transport", "Transport", lambda eid: f"/transport/admin/{eid}")
+    from app.admin.moderator.registry import register_module
+    from flask import url_for
+    register_module('transport_booking', 'Transport Booking',
+                   review_url_fn=lambda id: url_for('transport.moderate_booking', id=id),
+                   module_name='Transport', icon='fa-bus')
+    register_module('vehicle', 'Vehicle',
+                   review_url_fn=lambda id: url_for('transport.moderate_vehicle', id=id),
+                   module_name='Transport', icon='fa-truck')
+    register_module('driver', 'Driver',
+                   review_url_fn=lambda id: url_for('transport.moderate_driver', id=id),
+                   module_name='Transport', icon='fa-id-card')
 except Exception:
     pass

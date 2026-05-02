@@ -264,45 +264,48 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
 
     try:
         # Try to import Transaction model
-        from app.wallet.models import Transaction
+        from app.wallet.models.transaction import TransactionModel
         today = date.today()
 
-        # Check if Transaction has user_id field
-        if hasattr(Transaction, 'user_id'):
+        # Check if TransactionModel has account_id field
+        if hasattr(TransactionModel, 'account_id'):
             # Calculate daily usage
-            # RULE: Transaction.user_id is BigInteger FK — use user.id NOT public_id
-            daily_total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                Transaction.user_id == user.id,
-                db.func.date(Transaction.created_at) == today,
-                Transaction.status == "completed"
+            # RULE: TransactionModel.account_id references AccountModel
+            daily_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
+                TransactionModel.account_id.in_(
+                    db.session.query(AccountModel.id).filter_by(user_id=user.id)
+                ),
+                db.func.date(TransactionModel.created_at) == today,
+                TransactionModel.status == "completed"
             ).scalar() or 0
 
             # Calculate monthly usage
-            # RULE: Transaction.user_id is BigInteger FK — use user.id NOT public_id
             month_start = date(today.year, today.month, 1)
-            monthly_total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                Transaction.user_id == user.id,
-                Transaction.created_at >= month_start,
-                Transaction.status == "completed"
+            monthly_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
+                TransactionModel.account_id.in_(
+                    db.session.query(AccountModel.id).filter_by(user_id=user.id)
+                ),
+                TransactionModel.created_at >= month_start,
+                TransactionModel.status == "completed"
             ).scalar() or 0
         else:
-            # Try to get wallet first, then transactions
-            from app.wallet.models import Wallet
-            wallet = Wallet.query.filter_by(user_id=user.id).first()
-            if wallet:
-                # Calculate daily usage via wallet
-                daily_total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                    Transaction.wallet_id == wallet.id,
-                    db.func.date(Transaction.created_at) == today,
-                    Transaction.status == "completed"
+            # Try to get account first, then transactions
+            from app.wallet.models.ledger import AccountModel
+            account = AccountModel.query.filter_by(user_id=user.id).first()
+            if account:
+                # Calculate daily usage via account
+                daily_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
+                    TransactionModel.account_id == account.id,
+                    db.func.date(TransactionModel.created_at) == today,
+                    TransactionModel.status == "completed"
                 ).scalar() or 0
 
                 # Calculate monthly usage
                 month_start = date(today.year, today.month, 1)
-                monthly_total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                    Transaction.wallet_id == wallet.id,
-                    Transaction.created_at >= month_start,
-                    Transaction.status == "completed"
+                monthly_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
+                    TransactionModel.account_id == account.id,
+                    TransactionModel.created_at >= month_start,
+                    TransactionModel.status == "completed"
                 ).scalar() or 0
     except Exception as e:
         # Log error but continue without usage tracking

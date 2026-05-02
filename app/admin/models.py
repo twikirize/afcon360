@@ -4,7 +4,7 @@ Dynamic Content Management Models
 Allows frontend management of cities, vehicles, hotels, etc.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, ForeignKey, Text
+from sqlalchemy import Column, BigInteger, Integer, String, Boolean, DateTime, JSON, ForeignKey, Text
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
@@ -46,7 +46,7 @@ class ManageableItem(BaseModel):
     """
     __tablename__ = "manageable_items"
 
-    category_id = Column(Integer, ForeignKey("manageable_categories.id"), nullable=False)
+    category_id = Column(BigInteger, ForeignKey("manageable_categories.id"), nullable=False)
     name = Column(String(200), nullable=False)
     slug = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -60,8 +60,8 @@ class ManageableItem(BaseModel):
     is_featured = Column(Boolean, default=False)
 
     # Ownership
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    owned_by_org = Column(Integer, ForeignKey("organisations.id"), nullable=True)
+    created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    owned_by_org = Column(BigInteger, ForeignKey("organisations.id"), nullable=True)
 
     # Metadata
     views = Column(Integer, default=0)
@@ -88,30 +88,51 @@ class ContentSubmission(BaseModel):
     """
     __tablename__ = "content_submissions"
 
-    item_id = Column(Integer, ForeignKey("manageable_items.id"), nullable=True)
-    category_id = Column(Integer, ForeignKey("manageable_categories.id"), nullable=False)
+    item_id = Column(BigInteger, ForeignKey("manageable_items.id"), nullable=True)
+    category_id = Column(BigInteger, ForeignKey("manageable_categories.id"), nullable=False)
 
     # Submission data
     name = Column(String(200), nullable=False)
     data = Column(JSON, nullable=False, default=dict)
 
     # Status
-    status = Column(String(20), default="pending")  # pending, approved, rejected
-    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String(20), default="pending")  # pending, approved, rejected, changes_requested
+    reviewed_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     review_notes = Column(Text, nullable=True)
 
     # Submitted by
-    submitted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-    submitted_by_org = Column(Integer, ForeignKey("organisations.id"), nullable=True)
+    submitted_by = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    submitted_by_org = Column(BigInteger, ForeignKey("organisations.id"), nullable=True)
 
     reviewed_at = Column(DateTime, nullable=True)
+
+    # Phase 3: Claim / assignment fields
+    assigned_to_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    claimed_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    processing_time_seconds = Column(Integer, nullable=True)  # seconds
+
+    # SLA tracking
+    sla_due_at = Column(DateTime, nullable=True)  # When this submission should be reviewed by
+
+    # Internal moderation notes (separate from review_notes which go to submitter)
+    moderation_notes = Column(Text, nullable=True)
 
     # Relationships
     category = relationship("ManageableCategory")
     item = relationship("ManageableItem")
     submitter = relationship("User", foreign_keys=[submitted_by])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+    assignee = relationship("User", foreign_keys=[assigned_to_id])
     organization = relationship("Organisation", foreign_keys=[submitted_by_org])
+    moderation_logs = relationship("ModerationLog", back_populates="submission", cascade="all, delete-orphan")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Set SLA due time on creation (72 hours for standard submissions)
+        from datetime import datetime, timedelta
+        if not self.sla_due_at:
+            self.sla_due_at = datetime.utcnow() + timedelta(hours=72)
 
     def __repr__(self):
         return f"<ContentSubmission {self.name}>"
@@ -123,7 +144,7 @@ class UserDashboardConfig(BaseModel):
     """
     __tablename__ = "user_dashboard_configs"
 
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), unique=True, nullable=False)
 
     # Dashboard preferences
     layout = Column(String(50), default="grid")  # grid, list, cards
@@ -151,10 +172,10 @@ class ContentFlag(BaseModel):
 
     # Polymorphic target
     entity_type = Column(String(50), nullable=False, index=True)  # e.g., "event", "manageable_item"
-    entity_id = Column(Integer, nullable=False, index=True)
+    entity_id = Column(BigInteger, nullable=False, index=True)
 
     # Who flagged it
-    flagged_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    flagged_by = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
 
     # Reason + context
     reason = Column(Text, nullable=False)
@@ -166,13 +187,22 @@ class ContentFlag(BaseModel):
 
     # Escalation routing
     escalated_to_role = Column(String(50), nullable=True)
-    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_to = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # Resolution
-    resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    resolved_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     resolution_action = Column(String(50), nullable=True)
     resolution_notes = Column(Text, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
+
+    # SLA tracking
+    sla_due_at = Column(DateTime, nullable=True)  # When this flag should be resolved by
+
+    # Compliance integration
+    compliance_case_id = Column(BigInteger, ForeignKey("compliance_cases.id"), nullable=True, index=True)
+    referred_to_compliance = Column(Boolean, default=False, nullable=False, index=True)
+    referred_at = Column(DateTime, nullable=True)
+    referred_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # Relationships
     flagger = relationship("User", foreign_keys=[flagged_by])
@@ -186,3 +216,24 @@ class ContentFlag(BaseModel):
 
     def __repr__(self):
         return f"<ContentFlag {self.entity_type}:{self.entity_id} status={self.status}>"
+
+
+class ModerationLog(BaseModel):
+    """
+    Audit log for moderation actions (approve, reject, claim, etc.)
+    """
+    __tablename__ = "moderation_logs"
+
+    id = Column(BigInteger, primary_key=True)
+    submission_id = Column(BigInteger, ForeignKey("content_submissions.id"), nullable=False, index=True)
+    moderator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String(20), nullable=False)  # approve | reject | claim
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    notes = Column(Text, nullable=True)
+
+    # Relationships
+    submission = relationship("ContentSubmission", back_populates="moderation_logs")
+    moderator = relationship("User", foreign_keys=[moderator_id])
+
+    def __repr__(self):
+        return f"<ModerationLog {self.action} submission={self.submission_id} by moderator={self.moderator_id}>"

@@ -21,7 +21,7 @@
       </a>
     </div>
     <div class="header-logo">
-      <span class="crown-icon">👑</span>
+      <span class="crown-icon">??</span>
       <span>Owner Panel</span>
     </div>
     <div class="header-right">
@@ -30,6 +30,9 @@
       </a>
       <a href="{{ url_for('admin.owner.settings') }}" class="nav-link">
         <i class="bi bi-gear"></i> Settings
+      </a>
+      <a href="{{ url_for('owner.wallet_capabilities') }}" class="nav-link">
+        <i class="bi bi-wallet2"></i> Wallet Capabilities
       </a>
       <a href="{{ url_for('admin.super_dashboard') }}" class="btn-switch">
         <i class="bi bi-shield-fill"></i>
@@ -61,7 +64,7 @@
           <a href="{{ url_for('admin.owner.users') }}" class="nav-item">
             <i class="bi bi-people"></i> Users
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('admin.manage_orgs') }}" class="nav-item">
             <i class="bi bi-building"></i> Organizations
           </a>
         </div>
@@ -71,32 +74,32 @@
           <a href="{{ url_for('events.admin_dashboard') }}" class="nav-item">
             <i class="bi bi-calendar-event"></i> Events
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('transport_admin.dashboard') }}" class="nav-item">
             <i class="bi bi-bus-front"></i> Transport
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('tourism.home') }}" class="nav-item">
             <i class="bi bi-tree"></i> Tourism
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('accommodation.admin.dashboard') }}" class="nav-item">
             <i class="bi bi-hotel"></i> Accommodation
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('wallet.wallet_dashboard') }}" class="nav-item">
             <i class="bi bi-wallet2"></i> Wallet
           </a>
         </div>
 
         <div class="nav-section">
           <div class="nav-title">WALLET MANAGEMENT</div>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('admin.wallet_list') }}" class="nav-item">
             <i class="bi bi-wallet"></i> All Wallets
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('admin.wallet_stats') }}" class="nav-item">
             <i class="bi bi-graph-up"></i> Wallet Analytics
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('admin.wallet_control') }}" class="nav-item">
             <i class="bi bi-shield-exclamation"></i> Emergency Controls
           </a>
-          <a href="#" class="nav-item">
+          <a href="{{ url_for('wallet.agent_payout_history') }}" class="nav-item">
             <i class="bi bi-cash-stack"></i> Payout Requests
           </a>
         </div>
@@ -273,7 +276,7 @@
             <div class="stat-value">{{ pending_reviews_count or 0 }}</div>
             <div class="stat-label">PENDING REVIEWS</div>
             <div class="stat-meta">
-              <a href="{{ url_for('admin.owner.compliance_dashboard') }}">View Compliance →</a>
+              <a href="{{ url_for('admin.owner.compliance_dashboard') }}">View Compliance ?</a>
             </div>
           </div>
         </div>
@@ -353,14 +356,14 @@
           <div class="card">
             <div class="card-header">
               <h3><i class="bi bi-calendar-check"></i> Events Pending Approval</h3>
-              <a href="{{ url_for('events.admin_events', status='pending') }}" class="link-view">View all →</a>
+              <a href="{{ url_for('events.admin_events', status='pending') }}" class="link-view">View all ?</a>
             </div>
             <div class="card-body p-0">
               <div class="activity-list" id="pendingEventsList">
                 {% if pending_events_list and pending_events_list|length > 0 %}
                   {% for event in pending_events_list %}
                   <div class="activity-item">
-                    <div class="activity-icon">📅</div>
+                    <div class="activity-icon">??</div>
                     <div class="activity-details">
                       <div class="activity-action"><strong>{{ event.name }}</strong></div>
                       <div class="activity-time">
@@ -385,19 +388,19 @@
           <div class="card">
             <div class="card-header">
               <h3><i class="bi bi-clock-history"></i> Recent Owner Activity</h3>
-              <a href="{{ url_for('admin.owner.audit_logs') }}" class="link-view">View all →</a>
+              <a href="{{ url_for('admin.owner.audit_logs') }}" class="link-view">View all ?</a>
             </div>
             <div class="card-body p-0">
               <div class="activity-list">
                 {% for log in recent_logs %}
                 <div class="activity-item">
                   <div class="activity-icon {{ log.category }}">
-                    {% if log.category == 'navigation' %}🔍
-                    {% elif log.category == 'security' %}🛡️
-                    {% elif log.category == 'danger' %}⚠️
-                    {% elif log.category == 'settings' %}⚙️
-                    {% elif log.category == 'user_management' %}👥
-                    {% else %}📝{% endif %}
+                    {% if log.category == 'navigation' %}??
+                    {% elif log.category == 'security' %}???
+                    {% elif log.category == 'danger' %}??
+                    {% elif log.category == 'settings' %}??
+                    {% elif log.category == 'user_management' %}??
+                    {% else %}??{% endif %}
                   </div>
                   <div class="activity-details">
                     <div class="activity-action">{{ log.action }}</div>
@@ -418,13 +421,13 @@
           <div class="card">
             <div class="card-header">
               <h3><i class="bi bi-person-plus"></i> Recent Signups</h3>
-              <a href="{{ url_for('admin.owner.users') }}" class="link-view">View all →</a>
+              <a href="{{ url_for('admin.owner.users') }}" class="link-view">View all ?</a>
             </div>
             <div class="card-body p-0">
               <div class="activity-list">
                 {% for user in recent_users %}
                 <div class="activity-item">
-                  <div class="activity-icon user">👤</div>
+                  <div class="activity-icon user">??</div>
                   <div class="activity-details">
                     <div class="activity-action">{{ user.username }}</div>
                     <div class="activity-time">
@@ -502,7 +505,7 @@
           Last updated: {{ now().strftime('%H:%M:%S') }}
         </div>
         <a href="{{ url_for('admin.owner.system_health') }}" class="link-view">
-          Full health report →
+          Full health report ?
         </a>
       </div>
 
