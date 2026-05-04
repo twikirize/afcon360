@@ -1,0 +1,93 @@
+{# templates/kyc/verify_address.html #}
+{% extends "base.html" %}
+
+{% block title %}Verify Address — KYC{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+
+      <div class="d-flex align-items-center mb-4">
+        <a href="{{ url_for('kyc.index') }}" class="btn btn-outline-secondary btn-sm me-3">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <h2 class="mb-0">Address Verification</h2>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <p class="text-muted mb-3">
+            Provide a proof-of-address document and your current residential details.
+            This is required for <strong>Tier 3 — Enhanced</strong> KYC status.
+          </p>
+
+          <form method="POST" action="{{ url_for('kyc.verify_address') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="mb-3">
+              <label for="document_url" class="form-label">Proof of Address Document URL <span class="text-danger">*</span></label>
+              <input type="url" class="form-control" id="document_url" name="document_url"
+                     placeholder="https://storage.example.com/address/utility-bill.pdf" required>
+              <div class="form-text">Utility bill, bank statement, or tenancy agreement (not older than 3 months).</div>
+            </div>
+
+            <div class="mb-3">
+              <label for="address_line1" class="form-label">Address Line 1 <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="address_line1" name="address_line1"
+                     placeholder="Plot 12, Kampala Road" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="address_line2" class="form-label">Address Line 2</label>
+              <input type="text" class="form-control" id="address_line2" name="address_line2"
+                     placeholder="Suite 4B, Nakasero">
+            </div>
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label for="city" class="form-label">City <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="city" name="city" placeholder="Kampala" required>
+              </div>
+              <div class="col-md-6">
+                <label for="state" class="form-label">State / Region</label>
+                <input type="text" class="form-control" id="state" name="state" placeholder="Central Region">
+              </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <label for="postal_code" class="form-label">Postal Code</label>
+                <input type="text" class="form-control" id="postal_code" name="postal_code" placeholder="256">
+              </div>
+              <div class="col-md-6">
+                <label for="country" class="form-label">Country <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="country" name="country" value="UG" maxlength="2" required>
+                <div class="form-text">2-letter ISO code (e.g. UG, KE, TZ)</div>
+              </div>
+            </div>
+
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check2-circle me-1"></i> Submit Address Verification
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

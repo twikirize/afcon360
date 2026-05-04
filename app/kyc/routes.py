@@ -18,6 +18,8 @@ from app.extensions import db
 from app.kyc.nira_verification import verify_national_id, check_id_against_watchlist, generate_nira_report
 from app.kyc.models import KycRecord
 from app.kyc.services import KycService
+from app.identity.models.kyb import OrganisationKYBDocument
+import hashlib
 from app.auth.kyc_compliance import (
     TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD,
     calculate_kyc_tier
@@ -434,37 +436,91 @@ def status():
 @kyc_bp.route('/verify/upload', methods=['GET', 'POST'])
 @login_required
 def verify_upload():
-    """Upload KYC documents with multiple file support."""
+    """Upload KYC documents for individuals or organization KYB."""
+    # Collect active organisations the user belongs to (explicit query avoids
+    # DetachedInstanceError when current_user is not bound to a session).
+    from app.identity.models.organisation_member import OrganisationMember
+    user_orgs = [
+        m.organisation
+        for m in OrganisationMember.query.filter_by(
+            user_id=current_user.id, is_active=True
+        ).options(
+            db.joinedload(OrganisationMember.organisation)
+        ).all()
+        if m.organisation and m.organisation.is_active
+    ]
+
     if request.method == 'POST':
-        # Handle file uploads
-        # This is a simplified version - in production, use proper file handling
-        id_type = request.form.get('id_type')
-        id_number = request.form.get('id_number')
+        kyc_type = request.form.get('kyc_type', 'individual')
 
-        # Get file URLs (in production, these would be uploaded to cloud storage)
-        document_url = request.form.get('document_url')
-        selfie_url = request.form.get('selfie_url')
+        if kyc_type == 'organization':
+            # ── Organization KYB ────────────────────────────────────────────
+            org_id = request.form.get('org_id')
+            org_doc_type = request.form.get('org_doc_type')
+            org_doc_number = request.form.get('org_doc_number', '')
+            org_document_url = request.form.get('org_document_url')
 
-        if not all([id_type, id_number, document_url]):
-            flash('ID type, ID number, and document are required', 'error')
-            return redirect(url_for('kyc.verify_upload'))
+            if not all([org_id, org_doc_type, org_document_url]):
+                flash('Organization, document type, and document URL are required', 'error')
+                return redirect(url_for('kyc.verify_upload'))
 
-        try:
-            record = KycService.submit_kyc(
-                user_id=current_user.id,
-                id_type=id_type,
-                id_number=id_number,
-                document_url=document_url,
-                selfie_url=selfie_url,
-                record_type=f"{id_type}_verification"
-            )
-            flash('Documents uploaded successfully! They will be reviewed shortly.', 'success')
-            return redirect(url_for('kyc.status'))
-        except Exception as e:
-            flash(f'Error uploading documents: {str(e)}', 'error')
-            return redirect(url_for('kyc.verify_upload'))
+            # Verify user belongs to the org
+            org_id_int = int(org_id)
+            if not any(o.id == org_id_int for o in user_orgs):
+                flash('You are not authorized to submit documents for this organization.', 'error')
+                return redirect(url_for('kyc.verify_upload'))
 
-    return render_template('kyc/verify_upload.html')
+            try:
+                checksum = hashlib.md5(org_document_url.encode()).hexdigest()
+                kyb_doc = OrganisationKYBDocument(
+                    organisation_id=org_id_int,
+                    document_type=org_doc_type,
+                    storage_key=org_document_url,
+                    checksum=checksum,
+                    verification_status="pending"
+                )
+                db.session.add(kyb_doc)
+                db.session.commit()
+                flash('Organization KYB document submitted successfully! It will be reviewed shortly.', 'success')
+                return redirect(url_for('kyc.status'))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error submitting organization document: {str(e)}', 'error')
+                return redirect(url_for('kyc.verify_upload'))
+
+        else:
+            # ── Individual KYC ──────────────────────────────────────────────
+            id_type = request.form.get('id_type')
+            id_number = request.form.get('id_number')
+            document_url = request.form.get('document_url')
+            selfie_url = request.form.get('selfie_url')
+
+            if not all([id_type, id_number, document_url]):
+                flash('ID type, ID number, and document are required', 'error')
+                return redirect(url_for('kyc.verify_upload'))
+
+            try:
+                record = KycService.submit_kyc(
+                    user_id=current_user.id,
+                    id_type=id_type,
+                    id_number=id_number,
+                    document_url=document_url,
+                    selfie_url=selfie_url,
+                    record_type=f"{id_type}_verification",
+                    address_line1=request.form.get('address_line1'),
+                    address_line2=request.form.get('address_line2'),
+                    city=request.form.get('city'),
+                    state=request.form.get('state'),
+                    postal_code=request.form.get('postal_code'),
+                    country=request.form.get('country'),
+                )
+                flash('Documents uploaded successfully! They will be reviewed shortly.', 'success')
+                return redirect(url_for('kyc.status'))
+            except Exception as e:
+                flash(f'Error uploading documents: {str(e)}', 'error')
+                return redirect(url_for('kyc.verify_upload'))
+
+    return render_template('kyc/verify_upload.html', user_orgs=user_orgs)
 
 
 # ============================================================================
