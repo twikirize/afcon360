@@ -49,6 +49,36 @@ def app():
                 )
 
             print(f"✅ Test database ready with {len(tables)} tables")
+            # Optional: seed the test database with minimal users/roles for integration runs
+            if os.getenv('SEED_TEST_DB', '') == '1':
+                try:
+                    from app.identity.models.roles_permission import get_or_create_role
+                    from app.identity.models.user import User, UserRole
+                    # Ensure owner and admin roles exist
+                    owner_role = get_or_create_role('owner', level=1)
+                    admin_role = get_or_create_role('admin', level=3)
+
+                    # Create a test admin user if missing
+                    admin_email = os.getenv('TEST_ADMIN_EMAIL', 'test_admin@example.com')
+                    admin = User.query.filter_by(email=admin_email).first()
+                    if not admin:
+                        admin = User(username='test_admin', email=admin_email, is_verified=True, is_active=True)
+                        # set a default password unless overridden
+                        admin.set_password(os.getenv('TEST_ADMIN_PASSWORD', 'Password123!'))
+                        db.session.add(admin)
+                        db.session.flush()
+
+                    # Assign owner role to the admin user if not already assigned
+                    if not any(getattr(ur, 'role_id', None) == owner_role.id for ur in admin.roles):
+                        user_role = UserRole(user_id=admin.id, role_id=owner_role.id)
+                        db.session.add(user_role)
+
+                    db.session.commit()
+                    print(f"✅ Seeded test admin {admin_email} with owner role")
+                except Exception as e:
+                    # Don't fail the test runner if seeding fails — log and continue
+                    print(f"⚠️ Failed to seed test DB: {e}")
+
             yield app
 
 @pytest.fixture(scope='session')

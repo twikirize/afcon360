@@ -265,11 +265,14 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
     try:
         # Try to import Transaction model
         from app.wallet.models.transaction import TransactionModel
-        from app.wallet.models.ledger import AccountModel
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType
         today = date.today()
 
-        # Get user's account first
-        account = AccountModel.query.filter_by(user_id=user.id).first()
+        # Get user's account first (filter by owner_type for users)
+        account = AccountModel.query.filter_by(
+            user_id=user.id,
+            owner_type=AccountOwnerType.USER
+        ).first()
         if account:
             # Calculate daily usage via account.id
             daily_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(

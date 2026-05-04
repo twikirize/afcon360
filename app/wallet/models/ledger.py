@@ -102,20 +102,26 @@ class LedgerEntryModel(BaseModel):
         )
 
 
+class AccountOwnerType(str, enum.Enum):
+    """Account owner types - can be individual user or organisation."""
+    USER = 'user'
+    ORGANISATION = 'organisation'
+
+
 class AccountModel(BaseModel):
     """
-    Financial account for a user.
+    Financial account for a user or organisation.
     
-    One account per user per currency (or one multi-currency account).
+    One account per owner (user or organisation) per currency (or one multi-currency account).
     Balance is NEVER stored here - always derived from ledger_entries.
     """
     __tablename__ = 'accounts'
     __table_args__ = (
-        # Ensure one account per user per currency
-        # Or use unique constraint on user_id if single multi-currency account
+        # Ensure one account per owner per currency
         Index('ix_accounts_user_id', 'user_id'),
         Index('ix_accounts_currency', 'currency'),
         Index('ix_accounts_user_currency', 'user_id', 'currency', unique=True),
+        Index('ix_accounts_owner_type', 'owner_type'),
     )
 
     id = Column(
@@ -124,12 +130,20 @@ class AccountModel(BaseModel):
         default=uuid.uuid4
     )
     
-    # Owner - one account per user (can support org accounts later)
+    # Owner type - distinguishes between user and organisation accounts
+    owner_type = Column(
+        SQLEnum(AccountOwnerType, name='account_owner_type_enum', create_type=True),
+        nullable=False,
+        default=AccountOwnerType.USER
+    )
+    
+    # Owner - one account per user or organisation
+    # For users: user_id references users.id
+    # For organisations: user_id references organisations.id (BIGINT)
     user_id = Column(
         db.BigInteger,
-        ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
-        unique=True  # One account per user for now
+        unique=True  # One account per owner for now
     )
     
     # Currency this account operates in
@@ -175,6 +189,19 @@ class AccountModel(BaseModel):
     )
     
     monthly_volume_reset_at = Column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    
+    # Activation status
+    verified = Column(
+        db.Boolean,
+        nullable=False,
+        default=False
+    )
+    
+    # Terms acceptance
+    terms_accepted_at = Column(
         DateTime(timezone=True),
         nullable=True
     )

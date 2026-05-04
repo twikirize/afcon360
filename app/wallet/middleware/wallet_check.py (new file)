@@ -1,0 +1,58 @@
+"""
+Middleware decorators for wallet feature access control.
+"""
+from functools import wraps
+from flask import flash, redirect, url_for, current_app
+from flask_login import current_user
+from app.wallet.services.wallet_status_service import WalletStatusService, WalletFeature
+
+
+def require_wallet_for_feature(feature=None, redirect_to='wallet.wallet_create_page'):
+    """
+    Decorator that checks wallet status before allowing access.
+    
+    Args:
+        feature: Optional WalletFeature enum to check
+        redirect_to: Where to redirect if feature not available
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                flash("Please log in to access this feature.", "warning")
+                return redirect(url_for("auth.login"))
+            
+            status = WalletStatusService.get_wallet_status(current_user)
+            
+            # Check if feature is accessible
+            if feature and not status.feature_access.get(feature, False):
+                if not status.exists:
+                    flash("Please create a wallet to access this feature.", "warning")
+                    return redirect(url_for("wallet.wallet_create_page"))
+                elif status.requires_activation:
+                    flash("Please activate your wallet to access this feature.", "warning")
+                    return redirect(url_for("wallet.wallet_activate"))
+                elif status.requires_kyc:
+                    flash("Please complete KYC verification to access this feature.", "warning")
+                    return redirect(url_for("kyc.verify"))
+                else:
+                    flash("You don't have permission to access this feature.", "warning")
+                    return redirect(url_for("wallet.wallet_dashboard"))
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+# Specific decorators for common features
+def require_deposit_access(f):
+    return require_wallet_for_feature(feature=WalletFeature.MAKE_DEPOSIT)(f)
+
+def require_send_access(f):
+    return require_wallet_for_feature(feature=WalletFeature.SEND_MONEY)(f)
+
+def require_withdraw_access(f):
+    return require_wallet_for_feature(feature=WalletFeature.WITHDRAW_MONEY)(f)
+
+def require_payout_access(f):
+    return require_wallet_for_feature(feature=WalletFeature.CREATE_PAYOUT)(f)

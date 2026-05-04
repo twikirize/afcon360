@@ -84,3 +84,9 @@ class AdminAuditLog(db.Model):
         """Backward-compatible alias: some code expects `user_id` column."""
         return self.admin_id
 
+    # Backwards compatibility: older code/tests expect a `timestamp` attribute.
+    # Provide a read-only alias to `created_at` so those callers keep working.
+    @property
+    def timestamp(self):
+        return self.created_at
+

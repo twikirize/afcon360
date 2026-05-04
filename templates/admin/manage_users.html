@@ -277,7 +277,7 @@
                     <td><a href="{{ url_for('admin.view_user_by_username', username=user.username) }}">{{ user.username }}</a></td>
                     <td>{{ user.email or '-' }}</td>
                     <td class="role-cell">
-                        {% set roles_list = user_roles_map.get(user.id, []) %}
+                        {% set roles_list = user_roles_map.get(user.public_id, []) %}
                         {% if roles_list %}
                             {% for role in roles_list %}
                                 <span class="badge badge-{{ role|replace('_', '-') }}">{{ role|replace('_', ' ')|title }}</span>

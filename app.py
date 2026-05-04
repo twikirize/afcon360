@@ -19,7 +19,7 @@ if __name__ == "__main__":
     import os
     # SECURITY: Never run with debug=True in production
     # Set FLASK_DEBUG=true only in development environment
-    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
+    debug_mode = os.getenv('FLASK_DEBUG', 'true').lower() in ('true', '1', 'yes')
     if debug_mode and os.getenv('FLASK_ENV', 'production') == 'production':
         print("WARNING: FLASK_DEBUG is enabled but FLASK_ENV is production. Disabling debug mode for safety.")
         debug_mode = False

@@ -91,7 +91,11 @@ def remove_role(user_uuid, role_name):
 
 
 def get_user_roles_map(users):
-    """Helper to get role names for a list of users."""
+    """Helper to get role names for a list of users.
+    
+    Note: Uses public_id as key to comply with identity policies.
+    Internal ID usage is only for database operations.
+    """
     roles_map = {}
     for user in users:
         role_names = []
@@ -99,7 +103,7 @@ def get_user_roles_map(users):
             for user_role in user.roles:
                 if user_role.role and hasattr(user_role.role, 'name'):
                     role_names.append(user_role.role.name)
-        roles_map[user.id] = role_names
+        roles_map[user.public_id] = role_names
     return roles_map
 
 
@@ -697,7 +701,7 @@ def view_user(user_id):
     # Get user roles using the helper function
     user_roles_map = get_user_roles_map([user])
     print(f"DEBUG view_user: user_roles_map = {user_roles_map}")
-    user_roles = user_roles_map.get(user.id, [])
+    user_roles = user_roles_map.get(user.public_id, [])
     print(f"DEBUG view_user: user_roles = {user_roles}")
 
     # Ensure user_roles is always a list
@@ -728,7 +732,7 @@ def view_user_by_username(username):
 
     user = User.query.filter_by(username=username).first_or_404()
     profile = get_profile_by_user(user)
-    user_roles = get_user_roles_map([user]).get(user.id, [])
+    user_roles = get_user_roles_map([user]).get(user.public_id, [])
 
     # Get KYC tier information
     try:

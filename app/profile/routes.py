@@ -166,7 +166,7 @@ def account_overview():
     wallet_currency = None
     try:
         wallet_service = WalletService()
-        wallet_info = wallet_service.get_balance(user.id, requesting_user_id=user.id)
+        wallet_info = wallet_service.get_balance(user.id)
         if wallet_info.get("exists"):
             wallet_balance = wallet_info.get("balance_home", "0.00")
             wallet_currency = wallet_info.get("home_currency", "USD")
@@ -175,24 +175,8 @@ def account_overview():
         wallet_balance = "0.00"
         wallet_currency = "USD"
 
-    # Calculate profile completion percentage
-    profile_completion = 0
-    if profile:
-        # Count completed fields
-        completed_fields = 0
-        total_fields = 7  # Adjust based on important fields
-
-        important_fields = [
-            'full_name', 'date_of_birth', 'gender',
-            'nationality', 'address', 'phone_number', 'email'
-        ]
-
-        for field in important_fields:
-            value = getattr(profile, field, None)
-            if value:
-                completed_fields += 1
-
-        profile_completion = int((completed_fields / total_fields) * 100)
+    # Calculate profile completion percentage (use model's method for consistency)
+    profile_completion = profile.get_completion_percentage() if profile else 0
 
     # Get recent bookings count (placeholder - would need actual query)
     recent_bookings_count = 0
@@ -280,6 +264,8 @@ def profile_overview():
 @login_required
 def edit_profile():
     """Edit profile page with form for updating personal information"""
+    from app.profile.models import IMMUTABLE_AFTER_VERIFICATION
+
     # Get current user's profile
     profile = get_profile_by_user(current_user.public_id)
 
@@ -310,26 +296,115 @@ def edit_profile():
     completion_percentage = profile.get_completion_percentage()
 
     if request.method == "POST":
-        # Update profile fields from form data
-        profile.full_name = request.form.get("full_name", "").strip()
+        # Track which fields were attempted to be changed
+        attempted_changes = {}
+        errors = []
+
+        # Check if profile is verified for immutability enforcement
+        is_verified = profile.verification_status == "verified"
+
+        # Update mutable fields (can always be changed)
         profile.phone_number = request.form.get("phone_number", "").strip()
         profile.address = request.form.get("address", "").strip()
         profile.city = request.form.get("city", "").strip()
         profile.country = request.form.get("country", "").strip()
 
-        # Save changes
-        try:
-            db.session.commit()
-            flash("Profile updated successfully!", "success")
-            return redirect(url_for("profile.account_overview"))
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Error updating profile: {str(e)}", "danger")
+        # Update email (always save the value, verification is separate)
+        new_email = request.form.get("email", "").strip()
+        if new_email and new_email != profile.email:
+            if is_verified:
+                errors.append("Email cannot be changed after verification. Please contact support.")
+            else:
+                profile.email = new_email
+                profile.email_verified = False  # Require re-verification
+        elif new_email and not profile.email:
+            # Setting email for the first time
+            profile.email = new_email
+            profile.email_verified = False
+
+        # Handle immutable fields (only if not verified)
+        if not is_verified:
+            profile.full_name = request.form.get("full_name", "").strip()
+            
+            # Handle date_of_birth
+            dob_str = request.form.get("date_of_birth", "").strip()
+            if dob_str:
+                try:
+                    from datetime import datetime
+                    profile.date_of_birth = datetime.strptime(dob_str, "%Y-%m-%d").date()
+                except ValueError:
+                    errors.append("Invalid date format for date of birth. Use YYYY-MM-DD.")
+            
+            profile.gender = request.form.get("gender", "").strip() or None
+            profile.nationality = request.form.get("nationality", "").strip()
+        else:
+            # For verified profiles, check if user tried to change immutable fields
+            old_full_name = profile.full_name
+            new_full_name = request.form.get("full_name", "").strip()
+            if new_full_name != old_full_name:
+                attempted_changes["full_name"] = {"old": old_full_name, "new": new_full_name}
+            
+            old_dob = profile.date_of_birth.isoformat() if profile.date_of_birth else None
+            new_dob = request.form.get("date_of_birth", "").strip()
+            if new_dob != old_dob:
+                attempted_changes["date_of_birth"] = {"old": old_dob, "new": new_dob}
+            
+            old_gender = profile.gender
+            new_gender = request.form.get("gender", "").strip() or None
+            if new_gender != old_gender:
+                attempted_changes["gender"] = {"old": old_gender, "new": new_gender}
+            
+            old_nationality = profile.nationality
+            new_nationality = request.form.get("nationality", "").strip()
+            if new_nationality != old_nationality:
+                attempted_changes["nationality"] = {"old": old_nationality, "new": new_nationality}
+
+        # If there were attempted changes to immutable fields, log and error
+        if attempted_changes:
+            from app.audit.forensic_audit import ForensicAuditService
+            for field, change in attempted_changes.items():
+                ForensicAuditService.log_blocked(
+                    entity_type="user_profile",
+                    entity_id=str(profile.id),
+                    action=f"update_{field}",
+                    user_id=current_user.id,
+                    reason=f"{field} cannot be changed after verification",
+                    attempted_value=change["new"],
+                    old_value=change["old"]
+                )
+            errors.append(f"Cannot change immutable fields after verification: {', '.join(attempted_changes.keys())}")
+
+        # Save changes if no errors
+        if not errors:
+            try:
+                db.session.commit()
+                
+                # Recalculate completion percentage
+                new_completion = profile.get_completion_percentage()
+                
+                # Update profile_completed flag
+                if new_completion >= 100:
+                    profile.profile_completed = True
+                else:
+                    profile.profile_completed = False
+                
+                db.session.commit()
+                
+                flash(f"Profile updated successfully! Completion: {new_completion}%", "success")
+                return redirect(url_for("profile.account_overview"))
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error updating profile: {str(e)}", "danger")
+        else:
+            for error in errors:
+                flash(error, "danger")
 
     # Prepare context for template
     context = {
         "profile": profile,
         "completion_percentage": completion_percentage,
+        "is_verified": profile.verification_status == "verified",
+        "immutable_fields": IMMUTABLE_AFTER_VERIFICATION,
     }
 
     return render_template("profile/edit.html", **context)

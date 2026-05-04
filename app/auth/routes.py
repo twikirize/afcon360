@@ -486,7 +486,7 @@ def login():
                 if require_mfa:
                     # Owners MUST have MFA enabled when requirement is active
                     if not getattr(user, 'mfa_enabled', False):
-                        current_app.logger.warning(f"Owner {user.id} attempted login without MFA enabled (MFA required)")
+                        current_app.logger.warning(f"Owner {user.public_id} attempted login without MFA enabled (MFA required)")
                         flash("Owner accounts require Multi-Factor Authentication. Please set up MFA.", "error")
                         return redirect(url_for("auth.setup_mfa"))
                     
@@ -498,7 +498,7 @@ def login():
                     
                     # Validate MFA token
                     if not _verify_mfa_token(user, mfa_code):
-                        current_app.logger.warning(f"Failed MFA attempt for owner {user.id}")
+                        current_app.logger.warning(f"Failed MFA attempt for owner {user.public_id}")
                         flash("Invalid MFA code. Please try again.", "error")
                         return render_template("login.html", username=identifier, require_mfa=True)
                     
@@ -539,7 +539,7 @@ def login():
                 })
 
                 mfa_status = "with MFA" if session.get("mfa_verified") else "(MFA not required)"
-                current_app.logger.info(f"Owner {user.id} logged in successfully {mfa_status}")
+                current_app.logger.info(f"Owner {user.public_id} logged in successfully {mfa_status}")
                 flash("Welcome back, owner!", "success")
 
                 # Redirect to owner dashboard

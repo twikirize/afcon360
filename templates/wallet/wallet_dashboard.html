@@ -6,6 +6,18 @@
 {% block topbar_title %}Wallet Dashboard{% endblock %}
 
 {% block content %}
+{% if no_wallet %}
+<!-- No Wallet Banner -->
+<div class="panel" style="margin-bottom:24px;background:linear-gradient(135deg,var(--blue),#1d4ed8);color:#fff;">
+  <div style="padding:40px;text-align:center;">
+    <h2 style="font-family:var(--font-display);font-weight:700;margin-bottom:12px;">Welcome to Your Wallet</h2>
+    <p style="font-size:16px;opacity:0.9;margin-bottom:24px;">You don't have a wallet yet. Create one to start sending and receiving money.</p>
+    <a href="{{ url_for('wallet.wallet_create_page') }}" class="btn btn-lg" style="background:#fff;color:var(--blue);font-weight:600;">
+      <i class="fas fa-wallet"></i> Create Wallet
+    </a>
+  </div>
+</div>
+{% else %}
 <!-- Balance Overview -->
 <div class="heading-row">
   <div>
@@ -181,4 +193,5 @@
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}

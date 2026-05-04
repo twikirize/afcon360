@@ -111,8 +111,8 @@ class TransactionModel(BaseModel):
     
     # Account reference (for KYC limit queries)
     account_id = Column(
-        db.BigInteger,
-        ForeignKey('accounts.id', ondelete='SET NULL'),
+        UUID(as_uuid=True),
+        ForeignKey('accounts.id'),
         nullable=True,
         index=True
     )

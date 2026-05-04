@@ -84,6 +84,21 @@ def flutterwave_webhook():
         data = request.get_json() or {}
         event = data.get('event')
         raw_body = payload.decode('utf-8', errors='replace') if payload else None
+
+
+        # Optional: encrypt raw payload before persisting when a key is configured.
+        # We prefix stored encrypted values with 'ENCRYPTED:' so the worker can
+        # detect and decrypt them at processing time. If encryption fails we
+        # fallback to storing the plaintext to avoid dropping events.
+        enc_key = current_app.config.get('WEBHOOK_PAYLOAD_ENCRYPTION_KEY')
+        if raw_body and enc_key:
+            try:
+                from cryptography.fernet import Fernet
+                f = Fernet(enc_key if isinstance(enc_key, bytes) else enc_key.encode())
+                token = f.encrypt(raw_body.encode('utf-8'))
+                raw_body = 'ENCRYPTED:' + token.decode('utf-8')
+            except Exception:
+                current_app.logger.exception('Failed to encrypt webhook raw_body; storing plaintext')
         data_scrubbed = _scrub_sensitive(data)
 
         # Enqueue webhook for background processing (store scrubbed JSON and raw body)
@@ -120,6 +135,15 @@ def paystack_webhook():
         data = request.get_json() or {}
         event = data.get('event')
         raw_body = payload.decode('utf-8', errors='replace') if payload else None
+        enc_key = current_app.config.get('WEBHOOK_PAYLOAD_ENCRYPTION_KEY')
+        if raw_body and enc_key:
+            try:
+                from cryptography.fernet import Fernet
+                f = Fernet(enc_key if isinstance(enc_key, bytes) else enc_key.encode())
+                token = f.encrypt(raw_body.encode('utf-8'))
+                raw_body = 'ENCRYPTED:' + token.decode('utf-8')
+            except Exception:
+                current_app.logger.exception('Failed to encrypt webhook raw_body; storing plaintext')
         data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(
@@ -154,6 +178,15 @@ def mtn_momo_webhook():
         data = request.get_json() or {}
         event = data.get('event') or data.get('status')
         raw_body = request.get_data().decode('utf-8', errors='replace')
+        enc_key = current_app.config.get('WEBHOOK_PAYLOAD_ENCRYPTION_KEY')
+        if raw_body and enc_key:
+            try:
+                from cryptography.fernet import Fernet
+                f = Fernet(enc_key if isinstance(enc_key, bytes) else enc_key.encode())
+                token = f.encrypt(raw_body.encode('utf-8'))
+                raw_body = 'ENCRYPTED:' + token.decode('utf-8')
+            except Exception:
+                current_app.logger.exception('Failed to encrypt webhook raw_body; storing plaintext')
         data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(
@@ -187,6 +220,15 @@ def airtel_money_webhook():
         data = request.get_json() or {}
         event = data.get('status') or data.get('event')
         raw_body = request.get_data().decode('utf-8', errors='replace')
+        enc_key = current_app.config.get('WEBHOOK_PAYLOAD_ENCRYPTION_KEY')
+        if raw_body and enc_key:
+            try:
+                from cryptography.fernet import Fernet
+                f = Fernet(enc_key if isinstance(enc_key, bytes) else enc_key.encode())
+                token = f.encrypt(raw_body.encode('utf-8'))
+                raw_body = 'ENCRYPTED:' + token.decode('utf-8')
+            except Exception:
+                current_app.logger.exception('Failed to encrypt webhook raw_body; storing plaintext')
         data_scrubbed = _scrub_sensitive(data)
 
         we = WebhookEvent(

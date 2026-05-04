@@ -21,6 +21,7 @@ from app.admin.owner.decorators import owner_required
 from app.admin.owner.utils import log_owner_action, get_system_health
 from app.auth.roles import assign_global_role, revoke_global_role
 from app.profile.models import get_profile_by_user
+from app.auth.config_model import AuthConfiguration
 
 # Import audit decorators
 from app.admin.owner.audit import audit_owner_action
@@ -73,7 +74,7 @@ def wallet_capabilities():
     except Exception as e:
         current_app.logger.error(f"Wallet capabilities error: {e}")
         flash('Error loading wallet capabilities', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/admin-audit-log')
 @owner_login_required
@@ -90,7 +91,7 @@ def admin_audit_log():
     except Exception as e:
         current_app.logger.error(f"Admin audit log error: {e}")
         flash('Error loading admin audit log', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/manage-aggregators', methods=['GET', 'POST'])
 @owner_login_required
@@ -122,7 +123,7 @@ def manage_aggregators():
             )
             
             flash('Aggregator created successfully', 'success')
-            return redirect(url_for('owner.manage_aggregators'))
+            return redirect(url_for('admin.owner.manage_aggregators'))
         
         # GET request - show list
         aggregators = AggregatorService.get_all_aggregators()
@@ -130,7 +131,7 @@ def manage_aggregators():
     except Exception as e:
         current_app.logger.error(f"Manage aggregators error: {e}")
         flash('Error managing aggregators', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/aggregator/<int:aggregator_id>/suspend', methods=['POST'])
 @owner_login_required
@@ -151,11 +152,11 @@ def suspend_aggregator(aggregator_id):
         )
         
         flash('Aggregator suspended successfully', 'success')
-        return redirect(url_for('owner.manage_aggregators'))
+        return redirect(url_for('admin.owner.manage_aggregators'))
     except Exception as e:
         current_app.logger.error(f"Suspend aggregator error: {e}")
         flash('Error suspending aggregator', 'error')
-        return redirect(url_for('owner.manage_aggregators'))
+        return redirect(url_for('admin.owner.manage_aggregators'))
 
 @owner_bp.route('/aggregator/<int:aggregator_id>/activate', methods=['POST'])
 @owner_login_required
@@ -176,11 +177,11 @@ def activate_aggregator(aggregator_id):
         )
         
         flash('Aggregator activated successfully', 'success')
-        return redirect(url_for('owner.manage_aggregators'))
+        return redirect(url_for('admin.owner.manage_aggregators'))
     except Exception as e:
         current_app.logger.error(f"Activate aggregator error: {e}")
         flash('Error activating aggregator', 'error')
-        return redirect(url_for('owner.manage_aggregators'))
+        return redirect(url_for('admin.owner.manage_aggregators'))
 
 @owner_bp.route('/dashboard')
 @owner_login_required
@@ -1396,6 +1397,154 @@ def api_suspicious_patterns():
     except Exception as e:
         logger.error(f"API suspicious patterns error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# AUTH SETTINGS ROUTES
+# ============================================================================
+
+@owner_bp.route('/owner/settings/auth', methods=['GET', 'POST'])
+@owner_login_required
+@audit_owner_action('view_auth_settings')
+def auth_settings():
+    """
+    Authentication and verification service settings.
+    Only accessible by app owner.
+    """
+    config = AuthConfiguration.get_config()
+    
+    if request.method == 'POST':
+        # Update configuration
+        try:
+            # Service enable/disable toggles
+            config.google_oauth_enabled = request.form.get('google_oauth_enabled') == 'on'
+            config.sendgrid_enabled = request.form.get('sendgrid_enabled') == 'on'
+            config.twilio_enabled = request.form.get('twilio_enabled') == 'on'
+            config.africa_talking_enabled = request.form.get('africa_talking_enabled') == 'on'
+            
+            # API credentials
+            config.google_client_id = request.form.get('google_client_id', '').strip()
+            config.google_client_secret = request.form.get('google_client_secret', '').strip()
+            config.sendgrid_api_key = request.form.get('sendgrid_api_key', '').strip()
+            config.sendgrid_from_email = request.form.get('sendgrid_from_email', '').strip()
+            config.sendgrid_from_name = request.form.get('sendgrid_from_name', 'AFCON360').strip()
+            config.twilio_account_sid = request.form.get('twilio_account_sid', '').strip()
+            config.twilio_auth_token = request.form.get('twilio_auth_token', '').strip()
+            config.twilio_phone_number = request.form.get('twilio_phone_number', '').strip()
+            config.africa_talking_username = request.form.get('africa_talking_username', '').strip()
+            config.africa_talking_api_key = request.form.get('africa_talking_api_key', '').strip()
+            
+            # SMS routing
+            config.sms_provider_preference = request.form.get('sms_provider_preference', 'auto')
+            
+            # Feature flags
+            config.email_verification_required = request.form.get('email_verification_required') == 'on'
+            config.phone_verification_required = request.form.get('phone_verification_required') == 'on'
+            config.google_oauth_required = request.form.get('google_oauth_required') == 'on'
+            
+            # KYC requirements
+            config.kyc_required_for_tier_2 = request.form.get('kyc_required_for_tier_2') == 'on'
+            config.kyc_required_for_tier_3 = request.form.get('kyc_required_for_tier_3') == 'on'
+            
+            # Signup restrictions
+            config.allow_email_password_signup = request.form.get('allow_email_password_signup') == 'on'
+            config.allow_google_oauth_signup = request.form.get('allow_google_oauth_signup') == 'on'
+            
+            # Rate limits
+            config.email_verification_rate_limit = int(request.form.get('email_verification_rate_limit', 5))
+            config.sms_verification_rate_limit = int(request.form.get('sms_verification_rate_limit', 3))
+            
+            # Audit
+            config.updated_by = current_user.id
+            config.updated_at = datetime.now(timezone.utc)
+            
+            db.session.commit()
+            
+            log_owner_action('update_auth_settings', current_user.id, 
+                           {'changes': 'Authentication settings updated'})
+            flash('Authentication settings updated successfully!', 'success')
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error updating auth settings: {str(e)}")
+            flash(f'Error updating settings: {str(e)}', 'danger')
+        
+        return redirect(url_for('admin.owner.auth_settings'))
+    
+    return render_template('admin/owner/auth_settings.html', config=config)
+
+
+@owner_bp.route('/owner/settings/auth/test/<service>', methods=['POST'])
+@owner_login_required
+def test_auth_service(service):
+    """
+    Test connectivity to authentication services.
+    """
+    config = AuthConfiguration.get_config()
+    result = {'success': False, 'message': ''}
+    
+    try:
+        if service == 'sendgrid':
+            if not config.sendgrid_enabled or not config.sendgrid_api_key:
+                result['message'] = 'SendGrid is disabled or API key not configured'
+            else:
+                # Test SendGrid API
+                from sendgrid import SendGridAPIClient
+                sg = SendGridAPIClient(config.sendgrid_api_key)
+                response = sg.client.api_keys.get()
+                if response.status_code == 200:
+                    result['success'] = True
+                    result['message'] = 'SendGrid API connection successful'
+                else:
+                    result['message'] = f'SendGrid API error: {response.status_code}'
+        
+        elif service == 'twilio':
+            if not config.twilio_enabled or not config.twilio_account_sid:
+                result['message'] = 'Twilio is disabled or credentials not configured'
+            else:
+                # Test Twilio API
+                from twilio.rest import Client
+                client = Client(config.twilio_account_sid, config.twilio_auth_token)
+                account = client.api.accounts(config.twilio_account_sid).fetch()
+                if account:
+                    result['success'] = True
+                    result['message'] = 'Twilio API connection successful'
+                else:
+                    result['message'] = 'Twilio API authentication failed'
+        
+        elif service == 'africa_talking':
+            if not config.africa_talking_enabled or not config.africa_talking_api_key:
+                result['message'] = 'Africa\'s Talking is disabled or credentials not configured'
+            else:
+                # Test Africa's Talking API
+                from africastalking.AfricasTalking import AfricasTalking
+                at = AfricasTalking(config.africa_talking_username, config.africa_talking_api_key)
+                result['success'] = True
+                result['message'] = 'Africa\'s Talking API connection successful'
+        
+        else:
+            result['message'] = f'Unknown service: {service}'
+    
+    except Exception as e:
+        logger.error(f"Error testing {service}: {str(e)}")
+        result['message'] = f'Error: {str(e)}'
+    
+    return jsonify(result)
+
+
+@owner_bp.route('/owner/settings/auth/preview', methods=['GET'])
+@owner_login_required
+def auth_settings_preview():
+    """
+    Get current auth configuration (without secrets) for preview.
+    """
+    config = AuthConfiguration.get_config()
+    return jsonify(config.to_dict(include_secrets=False))
+
+
+# ============================================================================
+# END AUTH SETTINGS ROUTES
+# ============================================================================
 
 # ============================================================================
 # Initialize Security Dashboard Routes

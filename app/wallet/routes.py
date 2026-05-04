@@ -14,6 +14,14 @@ from app.wallet.models.transaction import TransactionModel, TransactionType, Tra
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.currency_service import CurrencyService
 from app.wallet.exceptions import InsufficientBalanceError, WalletNotFoundError, LimitExceededError
+from app.wallet.middleware.wallet_check import (
+    require_wallet_for_feature,
+    require_deposit_access,
+    require_send_access,
+    require_withdraw_access,
+    require_payout_access
+)
+from app.wallet.services.wallet_status_service import WalletFeature
 from uuid import UUID
 from uuid import uuid4
 
@@ -31,30 +39,90 @@ def calculate_transaction_usage(user_id):
     ).count()
 
 
+def get_account(user_id, currency='UGX', owner_type=None):
+    """Helper to get existing account (does NOT create one).
+    
+    Args:
+        user_id: Can be either internal BIGINT id or public_id (UUID string)
+        currency: Currency code (default: UGX) – ignored, kept for signature compatibility
+        owner_type: AccountOwnerType (USER or ORGANISATION). If None, defaults to USER.
+    """
+    from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountOwnerType
+    
+    if owner_type is None:
+        owner_type = AccountOwnerType.USER
+    
+    if isinstance(user_id, str):
+        if owner_type == AccountOwnerType.USER:
+            user = User.query.filter_by(public_id=user_id).first()
+            if user:
+                internal_id = user.id
+            else:
+                return None
+        else:
+            # For organisations, user_id is expected to be internal BIGINT
+            internal_id = int(user_id) if user_id.isdigit() else None
+            if not internal_id:
+                return None
+    else:
+        internal_id = user_id
+    
+    account = AccountModel.query.filter_by(
+        user_id=internal_id,
+        owner_type=owner_type
+    ).first()
+    return account
+
+
 def get_or_create_account(user_id, currency='UGX'):
-    """Helper to get or create user account.
+    """
+    Get existing account OR create one if it doesn't exist.
+    This is the main function for wallet access - creates wallet on first use.
     
     Args:
         user_id: Can be either internal BIGINT id or public_id (UUID string)
         currency: Currency code (default: UGX)
+    
+    Returns:
+        Account object (existing or newly created)
     """
-    # If user_id looks like a UUID (public_id), query to get internal id
     from app.identity.models.user import User
-    user = User.query.filter_by(public_id=str(user_id)).first()
-    if user:
+    from app.wallet.models.ledger import AccountModel
+    from app.extensions import db
+    from uuid import uuid4
+    from decimal import Decimal
+    
+    # Handle both internal BIGINT and external UUID (public_id)
+    if isinstance(user_id, str):
+        # It's a public_id (UUID string) - convert to internal
+        user = User.query.filter_by(public_id=user_id).first()
+        if not user:
+            return None
         internal_id = user.id
     else:
-        # Assume it's already the internal ID
         internal_id = user_id
     
+    # Try to find existing account (one account per user - unique constraint)
     account = AccountModel.query.filter_by(user_id=internal_id).first()
+    
     if not account:
+        # Create new account (verified defaults to False in model)
         account = AccountModel(
+            id=str(uuid4()),
             user_id=internal_id,
-            currency=currency
+            currency=currency,
+            is_frozen=False,
+            frozen_reason=None,
+            frozen_at=None,
+            daily_volume=Decimal('0'),
+            daily_volume_reset_at=None,
+            monthly_volume=Decimal('0'),
+            monthly_volume_reset_at=None
         )
         db.session.add(account)
         db.session.commit()
+        
     return account
 
 
@@ -81,8 +149,19 @@ def wallet_home():
 def wallet_dashboard():
     """Main wallet dashboard page"""
     try:
-        # Get or create account
-        account = get_or_create_account(current_user.id)
+        # Get existing account (do NOT auto-create)
+        account = get_account(current_user.id)
+        if not account:
+            # No wallet yet – show zero balance and prompt to create
+            return render_template(
+                'wallet/wallet_dashboard.html',
+                account=None,
+                balance=Decimal('0'),
+                recent_transactions=[],
+                commission=Decimal('0'),
+                transaction_count=0,
+                no_wallet=True
+            )
         
         # Get balance using WalletService (pass user_id, not account.id)
         service = WalletService()
@@ -110,12 +189,13 @@ def wallet_dashboard():
             balance=balance,
             recent_transactions=recent_transactions,
             commission=commission,
-            transaction_count=transaction_count
+            transaction_count=transaction_count,
+            no_wallet=False
         )
     except Exception as e:
         current_app.logger.error(f"Wallet dashboard error: {e}")
         flash('Error loading wallet dashboard', 'error')
-        return render_template('wallet/wallet_dashboard.html', balance=Decimal('0'), recent_transactions=[], commission=Decimal('0'))
+        return render_template('wallet/wallet_dashboard.html', balance=Decimal('0'), recent_transactions=[], commission=Decimal('0'), no_wallet=True)
 
 
 @wallet_bp.route('/overview')
@@ -152,16 +232,86 @@ def overview():
 # DEPOSIT ROUTES
 # =============================================================================
 
+@wallet_bp.route('/create', methods=['GET'])
+@login_required
+def wallet_create_page():
+    """Show wallet creation page"""
+    account = get_account(current_user.id)
+    if account:
+        flash('You already have a wallet.', 'info')
+        return redirect(url_for('wallet.wallet_dashboard'))
+    return render_template('wallet/wallet_create.html')
+
+
+@wallet_bp.route('/create', methods=['POST'])
+@login_required
+def wallet_create():
+    """Create a new wallet for the current user"""
+    from flask_wtf.csrf import validate_csrf
+    
+    # Validate CSRF
+    csrf_token = request.form.get('csrf_token')
+    if not csrf_token:
+        flash('CSRF token missing', 'error')
+        return redirect(url_for('wallet.wallet_create_page'))
+    try:
+        validate_csrf(csrf_token)
+    except Exception:
+        flash('Invalid CSRF token', 'error')
+        return redirect(url_for('wallet.wallet_create_page'))
+    
+    # Check KYC level before wallet creation (must be at least Tier 0 - email and phone verified)
+    if not current_user.email_verified:
+        flash('Please verify your email address before creating a wallet.', 'error')
+        return redirect(url_for('wallet.wallet_create_page'))
+    
+    if not current_user.phone_verified:
+        flash('Please verify your phone number before creating a wallet.', 'error')
+        return redirect(url_for('wallet.wallet_create_page'))
+    
+    # Check terms acceptance
+    accept_terms = request.form.get('accept_terms') == '1'
+    if not accept_terms:
+        flash('You must accept the Terms and Conditions to create a wallet', 'error')
+        return redirect(url_for('wallet.wallet_create_page'))
+    
+    try:
+        # Check if wallet already exists
+        account = get_account(current_user.id)
+        if account:
+            flash('You already have a wallet.', 'info')
+            return redirect(url_for('wallet.wallet_dashboard'))
+        
+        # Get currency from form (default to UGX)
+        currency = request.form.get('currency', 'UGX')
+        
+        # Create account using get_or_create_account with selected currency
+        account = get_or_create_account(current_user.id, currency=currency)
+        
+        flash('Wallet created successfully! Please activate your wallet.', 'success')
+        return redirect(url_for('wallet.wallet_activate'))
+        
+    except Exception as e:
+        current_app.logger.error(f"Wallet creation error: {e}")
+        flash('Error creating wallet', 'error')
+        return redirect(url_for('wallet.wallet_create_page'))
+
+
 @wallet_bp.route('/deposit')
 @login_required
+@require_deposit_access
 def deposit_page():
     """GET: Show deposit form"""
-    account = get_or_create_account(current_user.id)
+    account = get_account(current_user.id)
+    if not account:
+        flash('You need to create a wallet first.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
     return render_template('wallet/deposit.html', account=account, balance=Decimal('0'))
 
 
 @wallet_bp.route('/deposit', methods=['POST'])
 @login_required
+@require_deposit_access
 def deposit_form():
     """POST: Process deposit request"""
     try:
@@ -182,8 +332,11 @@ def deposit_form():
             flash('Amount must be greater than zero', 'error')
             return redirect(url_for('wallet.deposit_page'))
         
-        # Get account
-        account = get_or_create_account(current_user.id, currency)
+        # Get existing account (do NOT auto-create)
+        account = get_account(current_user.id, currency)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         # Process deposit using WalletService
         service = WalletService()
@@ -213,14 +366,19 @@ def deposit_form():
 
 @wallet_bp.route('/send')
 @login_required
+@require_send_access
 def send_page():
     """GET: Show send funds form"""
-    account = get_or_create_account(current_user.id)
+    account = get_account(current_user.id)
+    if not account:
+        flash('You need to create a wallet first.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
     return render_template('wallet/send.html', account=account, balance=Decimal('0'))
 
 
 @wallet_bp.route('/send', methods=['POST'])
 @login_required
+@require_send_access
 def send_funds():
     """POST: Process send/transfer request"""
     try:
@@ -244,8 +402,11 @@ def send_funds():
             flash('Amount must be greater than zero', 'error')
             return redirect(url_for('wallet.send_page'))
         
-        # Get sender account
-        sender_account = get_or_create_account(current_user.id, currency)
+        # Get sender account (do NOT auto-create)
+        sender_account = get_account(current_user.id, currency)
+        if not sender_account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         # Get receiver account (by user_id or public_id)
         from app.identity.models.user import User
@@ -257,8 +418,8 @@ def send_funds():
             flash('Receiver not found', 'error')
             return redirect(url_for('wallet.send_page'))
         
-        # Ensure receiver has an account
-        receiver_account = get_or_create_account(receiver.id, currency)
+        # Check if receiver has an account (do NOT auto-create)
+        receiver_account = get_account(receiver.id, currency)
         if not receiver_account:
             flash('Receiver does not have a wallet account. Please ask them to create one first.', 'error')
             current_app.logger.warning(
@@ -303,14 +464,19 @@ def send_funds():
 
 @wallet_bp.route('/withdraw')
 @login_required
+@require_withdraw_access
 def withdraw_page():
     """GET: Show withdraw form"""
-    account = get_or_create_account(current_user.id)
+    account = get_account(current_user.id)
+    if not account:
+        flash('You need to create a wallet first.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
     return render_template('wallet/withdraw.html', account=account, balance=Decimal('0'))
 
 
 @wallet_bp.route('/withdraw', methods=['POST'])
 @login_required
+@require_withdraw_access
 def withdraw_funds():
     """POST: Process withdrawal request"""
     try:
@@ -333,8 +499,11 @@ def withdraw_funds():
             flash('Amount must be greater than zero', 'error')
             return redirect(url_for('wallet.withdraw_page'))
         
-        # Get account
-        account = get_or_create_account(current_user.id, currency)
+        # Get existing account (do NOT auto-create)
+        account = get_account(current_user.id, currency)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         # Process withdrawal using WalletService
         service = WalletService()
@@ -370,7 +539,10 @@ def withdraw_funds():
 def wallet_transactions():
     """View all transactions"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         # Get all transactions where current user is sender or recipient
         transactions = TransactionModel.query.filter(
@@ -413,10 +585,14 @@ def wallet_transactions():
 
 @wallet_bp.route('/agent/payout/history')
 @login_required
+@require_wallet_for_feature(feature=WalletFeature.VIEW_PAYOUT_HISTORY)
 def agent_payout_history():
     """View agent payout history"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         # Fetch commission summary & payouts
         from app.wallet.services.commission_service import CommissionService
         from app.wallet.services.payout_service import PayoutService
@@ -439,7 +615,10 @@ def agent_payout_history():
 def agent_payout_request_page():
     """Show agent payout request form"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         # Commission summary and history
         from app.wallet.services.commission_service import CommissionService
         from app.wallet.services.payout_service import PayoutService
@@ -506,8 +685,11 @@ def payout_request_form():
 def wallet_activate():
     """Wallet activation page"""
     try:
-        account = get_or_create_account(current_user.id)
-        return render_template('wallet/wallet_activate.html', account=account)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
+        return render_template('wallet/wallet_activate.html', account=account, action='verify')
     except Exception as e:
         current_app.logger.error(f"Wallet activation error: {e}")
         flash('Error loading wallet activation page', 'error')
@@ -525,9 +707,31 @@ def wallet_terms():
 @login_required
 def wallet_activate_submit():
     """Submit wallet activation"""
+    from flask_wtf.csrf import validate_csrf
+    from datetime import datetime, timezone
+    
+    # Validate CSRF
+    csrf_token = request.form.get('csrf_token')
+    if not csrf_token:
+        flash('CSRF token missing', 'error')
+        return redirect(url_for('wallet.wallet_activate'))
+    try:
+        validate_csrf(csrf_token)
+    except Exception:
+        flash('Invalid CSRF token', 'error')
+        return redirect(url_for('wallet.wallet_activate'))
+    
     try:
         # Get account
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
+        
+        # Check if already activated
+        if account.verified:
+            flash('Your wallet is already activated.', 'info')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         # Accept terms
         accept_terms = request.form.get('accept_terms')
@@ -535,7 +739,11 @@ def wallet_activate_submit():
             flash('You must accept the terms to activate your wallet', 'error')
             return redirect(url_for('wallet.wallet_activate'))
         
-        # Activate account (update status if needed)
+        # Activate account - set verified=True and record terms acceptance
+        account.verified = True
+        account.terms_accepted_at = datetime.now(timezone.utc)
+        db.session.commit()
+        
         flash('Wallet activated successfully!', 'success')
         return redirect(url_for('wallet.wallet_dashboard'))
     except Exception as e:
@@ -549,7 +757,10 @@ def wallet_activate_submit():
 def wallet_settings():
     """Wallet settings page"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         service = WalletService()
         balance_data = service.get_balance(account.user_id)
         balance = balance_data.get('balance', Decimal('0'))
@@ -576,7 +787,10 @@ def wallet_settings():
 def wallet_settings_update():
     """Update wallet settings"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         # Update currency preference if provided
         new_currency = request.form.get('currency')
@@ -604,7 +818,10 @@ def wallet_settings_update():
 def pin_page():
     """Show PIN management page — forward to template if available."""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         has_pin = bool(getattr(current_user, 'transaction_pin_hash', None))
         return render_template('wallet/pin.html', account=account, has_pin=has_pin)
     except Exception as e:
@@ -668,7 +885,10 @@ def fx_rates():
 def compliance_status():
     """View compliance status page"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         
         return render_template('wallet/compliance.html', account=account, balance=Decimal('0'))
     except Exception as e:
@@ -682,7 +902,10 @@ def compliance_status():
 def transaction_history():
     """Detailed transaction history page"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            flash('You need to create a wallet first.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
         service = WalletService()
         
         # Get transaction history with filters
@@ -716,7 +939,9 @@ def transaction_history():
 def api_balance():
     """API: Get current balance"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            return jsonify({'success': False, 'error': 'No wallet account'}), 404
         service = WalletService()
         balance = service.get_balance(account.user_id)
         
@@ -735,7 +960,9 @@ def api_balance():
 def api_transactions():
     """API: Get transaction history"""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if not account:
+            return jsonify({'success': False, 'error': 'No wallet account'}), 404
         limit = request.args.get('limit', 50, type=int)
         
         transactions = TransactionModel.query.filter(

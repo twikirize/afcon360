@@ -403,7 +403,7 @@
             <div class="alert-icon">⚠️</div>
             <div>
                 <strong>Complete your profile!</strong> Your profile is only {{ profile_completion }}% complete.
-                <a href="#" style="color: inherit; text-decoration: underline; margin-left: 5px;">Complete it now</a> to unlock all features.
+                <a href="{{ url_for('profile.edit_profile') }}" style="color: inherit; text-decoration: underline; margin-left: 5px;">Complete it now</a> to unlock all features.
             </div>
         </div>
         {% endif %}
@@ -609,7 +609,7 @@
                 <div class="profile-completion">
                     <h3>Complete Your Profile</h3>
                     <p>Your profile is {{ profile_completion }}% complete. Complete your profile to improve your account security and access more features.</p>
-                    <a href="#" class="btn">Complete Profile</a>
+                    <a href="{{ url_for('profile.edit_profile') }}" class="btn">Complete Profile</a>
                 </div>
                 {% endif %}
             </div>

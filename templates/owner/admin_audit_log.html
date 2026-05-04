@@ -1,4 +1,4 @@
-{% extends "owner/admin.html" %}
+{% extends "admin/admin.html" %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -9,7 +9,7 @@
             <p class="text-muted">System-level audit trail for all admin actions</p>
         </div>
         <div>
-            <a href="{{ url_for('owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+            <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Capabilities
             </a>
         </div>

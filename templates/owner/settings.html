@@ -3,78 +3,248 @@
 {% block title %}Owner Settings - AFCON360{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='owner.css') }}">
+<style>
+  .owner-settings-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .settings-header {
+    margin-bottom: 2rem;
+  }
+  .settings-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  .settings-header p {
+    color: #6b7280;
+    margin-top: 0.5rem;
+  }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+  .settings-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+  }
+  .settings-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+    border-color: #667eea;
+  }
+  .card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+  }
+  .card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+  }
+  .card-description {
+    color: #6b7280;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .card-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.75rem;
+  }
+  .badge-security {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .badge-auth {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .badge-wallet {
+    background: #d1fae5;
+    color: #065f46;
+  }
+  .badge-kyc {
+    background: #fce7f3;
+    color: #9d174d;
+  }
+  .badge-audit {
+    background: #e0e7ff;
+    color: #3730a3;
+  }
+  .badge-system {
+    background: #f3f4f6;
+    color: #374151;
+  }
+  .section-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 2rem 0 1rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e5e7eb;
+  }
+</style>
 {% endblock %}
 
-{% block body %}
-<div class="owner-shell owner-theme">
-  <div class="owner-topbar">
-    <a href="{{ url_for('admin.owner.dashboard') }}" class="owner-back-link">
-      <i class="bi bi-arrow-left"></i>
-      <span>Back to Dashboard</span>
-    </a>
-    <div class="owner-topbar-brand">
-      <span class="owner-crown">👑</span>
-      <span>Owner Settings</span>
-    </div>
+{% block content %}
+<div class="owner-settings-container">
+  <div class="settings-header">
+    <h1>👑 Owner Settings</h1>
+    <p>Central hub for all platform configuration and settings</p>
   </div>
 
-  <div class="owner-wrapper">
-    <div class="owner-container">
-      <div class="owner-header">
-        <h1><span class="owner-crown">👑</span> Owner Settings</h1>
-        <p>Configure your owner preferences and security settings</p>
+  <!-- Authentication Section -->
+  <h3 class="section-title">Authentication & Verification</h3>
+  <div class="settings-grid">
+    <a href="{{ url_for('admin.owner.auth_settings') }}" class="settings-card">
+      <div class="card-icon">🔐</div>
+      <div class="card-title">Authentication Services</div>
+      <div class="card-description">
+        Configure Google OAuth, SendGrid, Twilio, and Africa's Talking for email/SMS verification
       </div>
+      <span class="card-badge badge-auth">Authentication</span>
+    </a>
 
-      <div class="settings-section">
-        <h3>Security Settings</h3>
-        <form method="POST" action="{{ url_for('admin.owner.settings') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-          <div class="form-group">
-            <label for="session_timeout">Session Timeout (minutes)</label>
-            <input type="number" id="session_timeout" name="session_timeout"
-                   value="{{ settings.session_timeout_minutes if settings else 120 }}"
-                   class="owner-input" min="5" max="1440">
-            <small>How long until you're automatically logged out</small>
-          </div>
-
-          <hr style="margin: 20px 0; border: 1px solid #e0e0e0;">
-
-          <!-- MFA Toggle for Owner Login -->
-          <div class="form-group" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-              <div>
-                <label for="require_owner_mfa" style="font-weight: bold; margin-bottom: 5px; display: block;">
-                  🔐 Require MFA for Owner Login
-                </label>
-                <small style="color: #666;">
-                  When enabled, owner accounts must use Multi-Factor Authentication to log in.
-                  <strong style="color: #d9534f;">Recommended for production.</strong>
-                </small>
-              </div>
-              <div class="toggle-switch">
-                <input type="checkbox" id="require_owner_mfa" name="require_owner_mfa" 
-                       {% if require_owner_mfa %}checked{% endif %}
-                       style="width: 50px; height: 26px; cursor: pointer;">
-              </div>
-            </div>
-            
-            <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; font-size: 13px;">
-              <strong>Current Status:</strong> 
-              {% if require_owner_mfa %}
-                <span style="color: #28a745;">✅ ENABLED</span> - Owners must provide MFA code to log in
-              {% else %}
-                <span style="color: #ffc107;">⚠️ DISABLED</span> - Owners can log in without MFA (for setup/development)
-              {% endif %}
-            </div>
-          </div>
-
-          <button type="submit" class="owner-btn-primary" style="margin-top: 20px;">Save Settings</button>
-        </form>
+    <a href="{{ url_for('admin.owner.settings') }}" class="settings-card">
+      <div class="card-icon">🔒</div>
+      <div class="card-title">Security Settings</div>
+      <div class="card-description">
+        Session timeout, MFA requirements, and owner security preferences
       </div>
-    </div>
+      <span class="card-badge badge-security">Security</span>
+    </a>
+  </div>
+
+  <!-- Wallet Section -->
+  <h3 class="section-title">Wallet & Financial</h3>
+  <div class="settings-grid">
+    <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="settings-card">
+      <div class="card-icon">💰</div>
+      <div class="card-title">Wallet Capabilities</div>
+      <div class="card-description">
+        Configure wallet system features, limits, and financial operations
+      </div>
+      <span class="card-badge badge-wallet">Wallet</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.manage_aggregators') }}" class="settings-card">
+      <div class="card-icon">🔗</div>
+      <div class="card-title">Aggregator Management</div>
+      <div class="card-description">
+        Manage third-party aggregators for bulk wallet operations
+      </div>
+      <span class="card-badge badge-wallet">Wallet</span>
+    </a>
+  </div>
+
+  <!-- KYC Section -->
+  <h3 class="section-title">KYC & Compliance</h3>
+  <div class="settings-grid">
+    <a href="{{ url_for('admin.owner.kyc_tiers') }}" class="settings-card">
+      <div class="card-icon">🆔</div>
+      <div class="card-title">KYC Tiers</div>
+      <div class="card-description">
+        Configure KYC verification tiers and requirements
+      </div>
+      <span class="card-badge badge-kyc">KYC</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.compliance_dashboard') }}" class="settings-card">
+      <div class="card-icon">📋</div>
+      <div class="card-title">Compliance Dashboard</div>
+      <div class="card-description">
+        Monitor compliance, suspicious activity, and audit reports
+      </div>
+      <span class="card-badge badge-kyc">Compliance</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.kyc_compliance_reports') }}" class="settings-card">
+      <div class="card-icon">📊</div>
+      <div class="card-title">Compliance Reports</div>
+      <div class="card-description">
+        Generate and view compliance reports and audits
+      </div>
+      <span class="card-badge badge-kyc">Compliance</span>
+    </a>
+  </div>
+
+  <!-- User Management Section -->
+  <h3 class="section-title">User & Role Management</h3>
+  <div class="settings-grid">
+    <a href="{{ url_for('admin.owner.manage_roles') }}" class="settings-card">
+      <div class="card-icon">👥</div>
+      <div class="card-title">Role Management</div>
+      <div class="card-description">
+        Assign and manage user roles and permissions
+      </div>
+      <span class="card-badge badge-system">Users</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.users') }}" class="settings-card">
+      <div class="card-icon">👤</div>
+      <div class="card-title">User Management</div>
+      <div class="card-description">
+        View and manage platform users
+      </div>
+      <span class="card-badge badge-system">Users</span>
+    </a>
+  </div>
+
+  <!-- Audit Section -->
+  <h3 class="section-title">Audit & Logging</h3>
+  <div class="settings-grid">
+    <a href="{{ url_for('admin.owner.audit_logs') }}" class="settings-card">
+      <div class="card-icon">📝</div>
+      <div class="card-title">Audit Logs</div>
+      <div class="card-description">
+        View system-wide audit logs and activity history
+      </div>
+      <span class="card-badge badge-audit">Audit</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.admin_audit_log') }}" class="settings-card">
+      <div class="card-icon">🔍</div>
+      <div class="card-title">Admin Audit Log</div>
+      <div class="card-description">
+        System-level audit trail for all admin actions
+      </div>
+      <span class="card-badge badge-audit">Audit</span>
+    </a>
+  </div>
+
+  <!-- System Section -->
+  <h3 class="section-title">System & Danger Zone</h3>
+  <div class="settings-grid">
+    <a href="{{ url_for('admin.owner.system_health') }}" class="settings-card">
+      <div class="card-icon">🖥️</div>
+      <div class="card-title">System Health</div>
+      <div class="card-description">
+        Monitor system performance and health metrics
+      </div>
+      <span class="card-badge badge-system">System</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.danger_zone') }}" class="settings-card" style="border-color: #ef4444;">
+      <div class="card-icon">⚠️</div>
+      <div class="card-title" style="color: #ef4444;">Danger Zone</div>
+      <div class="card-description">
+        Critical system operations - use with extreme caution
+      </div>
+      <span class="card-badge" style="background: #fee2e2; color: #dc2626;">Danger</span>
+    </a>
   </div>
 </div>
 {% endblock %}

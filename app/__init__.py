@@ -707,6 +707,40 @@ def create_app(config_object=None) -> Flask:
                 return str(value)
         return {'intcomma': intcomma}
 
+    @app.context_processor
+    def wallet_utility_processor():
+        """Make wallet status available in all templates"""
+        from flask import current_app
+        from flask_login import current_user
+        from app.wallet.services.wallet_status_service import WalletStatusService
+        
+        def get_wallet_status():
+            if current_user.is_authenticated:
+                return WalletStatusService.get_wallet_status(current_user)
+            return None
+        
+        def get_sidebar_items():
+            if current_user.is_authenticated:
+                return WalletStatusService.get_visible_sidebar_items(current_user)
+            return []
+        
+        def get_action_buttons():
+            if current_user.is_authenticated:
+                return WalletStatusService.get_action_buttons(current_user)
+            return []
+        
+        def get_wallet_banner():
+            if current_user.is_authenticated:
+                return WalletStatusService.get_wallet_banner(current_user)
+            return None
+        
+        return {
+            'get_wallet_status': get_wallet_status,
+            'get_sidebar_items': get_sidebar_items,
+            'get_action_buttons': get_action_buttons,
+            'get_wallet_banner': get_wallet_banner
+        }
+
     # Add format_number template filter
     @app.template_filter('format_number')
     def format_number_filter(value):
@@ -1069,3 +1103,6 @@ def create_app(config_object=None) -> Flask:
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app
+
+    # Diagnostic routes for identity separation testing
+    

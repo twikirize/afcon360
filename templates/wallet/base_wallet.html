@@ -757,53 +757,26 @@
     </div>
 
     <div class="sidebar-section">WALLET</div>
-    <a href="{{ url_for('wallet.wallet_dashboard') }}"
-       class="nav-item {% if request.endpoint == 'wallet.wallet_dashboard' %}active{% endif %}">
-      <i class="fas fa-gauge-high"></i> Dashboard
-    </a>
-    <a href="{{ url_for('wallet.deposit_page') }}"
-       class="nav-item {% if request.endpoint == 'wallet.deposit_page' %}active{% endif %}">
-      <i class="fas fa-arrow-down"></i> Deposit Funds
-    </a>
-    <a href="{{ url_for('wallet.send_page') }}"
-       class="nav-item {% if request.endpoint == 'wallet.send_page' %}active{% endif %}">
-      <i class="fas fa-paper-plane"></i> Send Funds
-    </a>
-    <a href="{{ url_for('wallet.withdraw_page') }}"
-       class="nav-item {% if request.endpoint == 'wallet.withdraw_page' %}active{% endif %}">
-      <i class="fas fa-arrow-up"></i> Withdraw Funds
-    </a>
 
-    <div class="sidebar-section">ACTIVITY</div>
-    <a href="{{ url_for('wallet.wallet_transactions') }}"
-       class="nav-item {% if request.endpoint == 'wallet.wallet_transactions' %}active{% endif %}">
-      <i class="fas fa-list"></i> Transaction History
-    </a>
-    <a href="{{ url_for('wallet.fx_rates') }}"
-       class="nav-item {% if request.endpoint == 'wallet.fx_rates' %}active{% endif %}">
-      <i class="fas fa-exchange-alt"></i> FX Rates
-    </a>
-    {% if is_agent %}
-    <a href="{{ url_for('wallet.agent_payout_history') }}"
-       class="nav-item {% if request.endpoint == 'wallet.agent_payout_history' %}active{% endif %}">
-      <i class="fas fa-coins"></i> Agent Payout
-      {% if pending_payout_count is defined and pending_payout_count %}<span class="nav-badge amber">{{ pending_payout_count }}</span>{% endif %}
-    </a>
+    {% set wallet_status = get_wallet_status() %}
+    {% set sidebar_items = get_sidebar_items() %}
+
+    {% for item in sidebar_items %}
+      {% if item.feature is none or (wallet_status and wallet_status.feature_access.get(item.feature, true)) %}
+        <a href="{{ url_for(item.url) }}"
+           class="nav-item {% if request.endpoint == item.url %}active{% endif %}">
+          <i class="fas {{ item.icon }}"></i> {{ item.name }}
+        </a>
+      {% endif %}
+    {% endfor %}
+
+    <!-- Show pending badge if needed -->
+    {% if wallet_status and wallet_status.requires_activation %}
+      <div class="alert alert-warning" style="margin:16px;padding:12px;font-size:12px;">
+        <i class="fas fa-exclamation-triangle"></i>
+        Please activate your wallet to use all features.
+      </div>
     {% endif %}
-
-    <div class="sidebar-section">ACCOUNT</div>
-    <a href="{{ url_for('wallet.compliance_status') }}"
-       class="nav-item {% if request.endpoint == 'wallet.compliance_status' %}active{% endif %}">
-      <i class="fas fa-shield-alt"></i> Compliance
-    </a>
-    <a href="{{ url_for('wallet.wallet_settings') }}"
-       class="nav-item {% if request.endpoint == 'wallet.wallet_settings' %}active{% endif %}">
-      <i class="fas fa-cog"></i> Settings
-    </a>
-    <a href="{{ url_for('wallet.wallet_terms') }}"
-       class="nav-item {% if request.endpoint == 'wallet.wallet_terms' %}active{% endif %}">
-      <i class="fas fa-file-contract"></i> Terms & Conditions
-    </a>
 
 
     <div class="sidebar-footer">

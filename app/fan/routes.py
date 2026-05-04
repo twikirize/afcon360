@@ -30,10 +30,14 @@ def dashboard():
     # Get wallet balance using AccountModel
     # current_user.id is public_id (UUID), need internal id (BIGINT)
     from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountOwnerType
     user = User.query.filter_by(public_id=str(current_user.id)).first()
     internal_id = user.id if user else current_user.id
     
-    account = AccountModel.query.filter_by(user_id=internal_id).first()
+    account = AccountModel.query.filter_by(
+        user_id=internal_id,
+        owner_type=AccountOwnerType.USER
+    ).first()
     if account:
         service = WalletService()
         wallet_balance = service.get_balance(internal_id)
@@ -146,13 +150,17 @@ def wallet():
     """View wallet and transaction history"""
     from app.wallet.models.transaction import TransactionModel
     from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountOwnerType
     
     # Get account using new AccountModel
     # current_user.id is public_id (UUID), need internal id (BIGINT)
     user = User.query.filter_by(public_id=str(current_user.id)).first()
     internal_id = user.id if user else current_user.id
     
-    account = AccountModel.query.filter_by(user_id=internal_id).first()
+    account = AccountModel.query.filter_by(
+        user_id=internal_id,
+        owner_type=AccountOwnerType.USER
+    ).first()
     
     # Get balance
     if account:

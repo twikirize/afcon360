@@ -46,9 +46,9 @@ def send_verification_email(user: User) -> bool:
 
         return success
     except Exception as e:
-        # Log the error
+        # Log the error - use public_id for security
         from flask import current_app
-        current_app.logger.error(f"Failed to send verification email to user {user.id}: {e}")
+        current_app.logger.error(f"Failed to send verification email to user {user.public_id}: {e}")
         return False
 
 def verify_email_code(user_id: int, code: str) -> Tuple[bool, str]:

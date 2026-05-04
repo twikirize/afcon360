@@ -2,7 +2,7 @@
 
 {% block title %}{{ user.username }} - Public Profile{% endblock %}
 
-{% block extra_css %}
+{% block styles %}
 <style>
     .profile-cover {
         height: 280px;
@@ -183,6 +183,24 @@
                     </div>
                     {% endif %}
 
+                    <!-- KYC Status -->
+                    {% if profile %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">KYC Verification</h6>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge 
+                                {% if profile.verification_status == 'verified' %}bg-success
+                                {% elif profile.verification_status == 'pending' %}bg-warning text-dark
+                                {% elif profile.verification_status == 'rejected' %}bg-danger
+                                {% else %}bg-secondary{% endif %}
+                                me-2">
+                                {{ profile.verification_status|title }}
+                            </span>
+                            <span class="text-muted small">{{ profile.kyc_level|title }} Level</span>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <!-- Member Since -->
                     {% if public_info.joined_date %}
                     <div class="member-since mb-4">
@@ -298,6 +316,47 @@
                             {{ role|title }}
                         </span>
                         {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Personal Information -->
+            {% if profile %}
+            <div class="card border-0 shadow-lg mb-4">
+                <div class="card-body">
+                    <h3 class="section-title">Personal Information</h3>
+                    <div class="row">
+                        {% if profile.date_of_birth %}
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted">Date of Birth</small>
+                            <div class="fw-semibold">{{ profile.date_of_birth.strftime('%B %d, %Y') }}</div>
+                        </div>
+                        {% endif %}
+                        {% if profile.gender %}
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted">Gender</small>
+                            <div class="fw-semibold">{{ profile.gender|title }}</div>
+                        </div>
+                        {% endif %}
+                        {% if profile.nationality %}
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted">Nationality</small>
+                            <div class="fw-semibold">{{ profile.nationality }}</div>
+                        </div>
+                        {% endif %}
+                        {% if profile.email %}
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted">Email</small>
+                            <div class="fw-semibold">{{ profile.email }}</div>
+                        </div>
+                        {% endif %}
+                        {% if profile.phone_number %}
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted">Phone</small>
+                            <div class="fw-semibold">{{ profile.phone_number }}</div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

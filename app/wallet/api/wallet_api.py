@@ -117,6 +117,71 @@ def validate_csrf_token(f):
 
 
 # ============================================================================
+# WALLET CREATION ENDPOINT
+# ============================================================================
+
+@wallet_api_bp.route('/create', methods=['POST'])
+@login_required
+@validate_csrf_token
+def create_wallet():
+    """
+    Create a new wallet for the current user.
+
+    POST /api/wallet/create
+
+    Response:
+    {
+        "status": "success",
+        "data": {
+            "account_id": "uuid",
+            "currency": "UGX",
+            "created_at": "2025-01-01T00:00:00+00:00"
+        }
+    }
+    """
+    try:
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        from app.extensions import db
+
+        # Check if wallet already exists (filter by owner_type for users)
+        existing = AccountModel.query.filter_by(
+            user_id=current_user.id,
+            owner_type=AccountOwnerType.USER
+        ).first()
+        if existing:
+            return jsonify({
+                "status": "error",
+                "code": "WALLET_ALREADY_EXISTS",
+                "message": "You already have a wallet account."
+            }), 409
+
+        # Create new account
+        account = AccountModel(
+            user_id=current_user.id,
+            currency='UGX'
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "account_id": str(account.id),
+                "currency": account.currency,
+                "created_at": account.created_at.isoformat() if account.created_at else None
+            }
+        }), 201
+
+    except Exception as e:
+        current_app.logger.error(f"Wallet creation error for user {current_user.public_id}: {e}")
+        return jsonify({
+            "status": "error",
+            "code": "INTERNAL_ERROR",
+            "message": "Unable to create wallet. Please try again."
+        }), 500
+
+
+# ============================================================================
 # WALLET BALANCE ENDPOINTS
 # ============================================================================
 
@@ -270,6 +335,13 @@ def deposit():
             "current": float(e.current)
         }), 429
 
+    except WalletNotFoundError as e:
+        return jsonify({
+            "status": "error",
+            "code": "WALLET_NOT_FOUND",
+            "message": str(e)
+        }), 404
+
     except WalletFrozenError as e:
         return jsonify({
             "status": "error",
@@ -285,7 +357,7 @@ def deposit():
         }), 400
 
     except Exception as e:
-        current_app.logger.error(f"Deposit error for user {current_user.id}: {e}")
+        current_app.logger.error(f"Deposit error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
@@ -395,6 +467,13 @@ def withdraw():
             "message": str(e)
         }), 409
 
+    except WalletNotFoundError as e:
+        return jsonify({
+            "status": "error",
+            "code": "WALLET_NOT_FOUND",
+            "message": str(e)
+        }), 404
+
     except WalletFrozenError as e:
         return jsonify({
             "status": "error",
@@ -403,7 +482,7 @@ def withdraw():
         }), 403
 
     except Exception as e:
-        current_app.logger.error(f"Withdrawal error for user {current_user.id}: {e}")
+        current_app.logger.error(f"Withdrawal error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
@@ -537,6 +616,13 @@ def transfer():
             "message": str(e)
         }), 409
 
+    except WalletNotFoundError as e:
+        return jsonify({
+            "status": "error",
+            "code": "WALLET_NOT_FOUND",
+            "message": str(e)
+        }), 404
+
     except ValueError as e:
         return jsonify({
             "status": "error",
@@ -551,7 +637,7 @@ def transfer():
             "message": str(e)
         }), 403
     except Exception as e:
-        current_app.logger.error(f"Transfer error from user {current_user.id}: {e}")
+        current_app.logger.error(f"Transfer error from user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
@@ -608,7 +694,7 @@ def get_transactions():
         })
 
     except Exception as e:
-        current_app.logger.error(f"Transaction history error for user {current_user.id}: {e}")
+        current_app.logger.error(f"Transaction history error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
@@ -660,7 +746,7 @@ def get_commissions():
         })
 
     except Exception as e:
-        current_app.logger.error(f"Commissions error for user {current_user.id}: {e}")
+        current_app.logger.error(f"Commissions error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
@@ -748,7 +834,7 @@ def create_payout():
             "message": str(e)
         }), 400
     except Exception as e:
-        current_app.logger.error(f"Payout creation error for user {current_user.id}: {e}")
+        current_app.logger.error(f"Payout creation error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
@@ -793,7 +879,7 @@ def list_payouts():
         })
 
     except Exception as e:
-        current_app.logger.error(f"Payout list error for user {current_user.id}: {e}")
+        current_app.logger.error(f"Payout list error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",

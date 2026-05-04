@@ -134,6 +134,17 @@ def test_kyc_flow() -> bool:
     No fixture arguments are needed; the app is bootstrapped internally.
     """
 
+    # Allow skipping this long-running integration when SKIP_TEST_DB_CHECK is set
+    # (useful for fast unit test runs that don't have a seeded test DB).
+    import os
+    try:
+        if os.environ.get('SKIP_TEST_DB_CHECK'):
+            import pytest
+            pytest.skip("Skipping full KYC integration flow because SKIP_TEST_DB_CHECK is set")
+    except Exception:
+        # In case pytest isn't available or other issues, fall through
+        pass
+
     # App must be created FIRST; config updates come immediately after.
     app = create_app()
     app.config.update({

@@ -178,13 +178,30 @@ def _handle_flutterwave(event, payload, db):
         secret = current_app.config.get("FLUTTERWAVE_SECRET_KEY", "")
         # Use the original raw_body stored at enqueue time if available. This
         # preserves the exact byte ordering used by the provider when signing
-        # the payload. Fall back to re-serialising the JSON if raw_body is
-        # missing (older events).
-        raw_payload = (
-            event.raw_body.encode()
-            if getattr(event, "raw_body", None)
-            else json.dumps(payload, separators=(",", ":")).encode()
-        )
+        # the payload. If the raw body was encrypted at enqueue time, decrypt
+        # it using the configured key. Fall back to re-serialising the JSON
+        # if raw_body is missing or decryption fails (older events).
+        raw_payload = None
+        raw_body_val = getattr(event, "raw_body", None)
+        if raw_body_val:
+            try:
+                if isinstance(raw_body_val, str) and raw_body_val.startswith('ENCRYPTED:'):
+                    key = current_app.config.get('WEBHOOK_PAYLOAD_ENCRYPTION_KEY')
+                    if key:
+                        try:
+                            from cryptography.fernet import Fernet
+                            f = Fernet(key if isinstance(key, bytes) else key.encode())
+                            token = raw_body_val.split('ENCRYPTED:', 1)[1]
+                            raw_payload = f.decrypt(token.encode())
+                        except Exception:
+                            current_app.logger.exception('Failed to decrypt webhook raw_body; falling back to JSON')
+                if raw_payload is None:
+                    raw_payload = raw_body_val.encode()
+            except Exception:
+                raw_payload = None
+
+        if raw_payload is None:
+            raw_payload = json.dumps(payload, separators=(",", ":")).encode()
         expected = hmac.new(secret.encode(), raw_payload, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, event.signature):
             raise ValueError("Flutterwave signature re-verification failed")
@@ -222,11 +239,28 @@ def _handle_paystack(event, payload, db):
     if event.signature:
         secret = current_app.config.get("PAYSTACK_SECRET_KEY", "")
         # Prefer stored raw_body when available for reliable signature checks.
-        raw_payload = (
-            event.raw_body.encode()
-            if getattr(event, "raw_body", None)
-            else json.dumps(payload, separators=(",", ":")).encode()
-        )
+        # Support decrypting values stored with the ENCRYPTED: prefix.
+        raw_payload = None
+        raw_body_val = getattr(event, "raw_body", None)
+        if raw_body_val:
+            try:
+                if isinstance(raw_body_val, str) and raw_body_val.startswith('ENCRYPTED:'):
+                    key = current_app.config.get('WEBHOOK_PAYLOAD_ENCRYPTION_KEY')
+                    if key:
+                        try:
+                            from cryptography.fernet import Fernet
+                            f = Fernet(key if isinstance(key, bytes) else key.encode())
+                            token = raw_body_val.split('ENCRYPTED:', 1)[1]
+                            raw_payload = f.decrypt(token.encode())
+                        except Exception:
+                            current_app.logger.exception('Failed to decrypt webhook raw_body; falling back to JSON')
+                if raw_payload is None:
+                    raw_payload = raw_body_val.encode()
+            except Exception:
+                raw_payload = None
+
+        if raw_payload is None:
+            raw_payload = json.dumps(payload, separators=(",", ":")).encode()
         expected = hmac.new(secret.encode(), raw_payload, hashlib.sha512).hexdigest()
         if not hmac.compare_digest(expected, event.signature):
             raise ValueError("Paystack signature re-verification failed")

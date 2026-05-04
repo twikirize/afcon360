@@ -188,8 +188,10 @@ class WalletService:
 
         # SINGLE TRANSACTION - everything or nothing
         with self.db.begin():
-            # 1. Get account with lock
-            account = self.account_repo.get_or_create(user_id)
+            # 1. Get account with lock (do NOT auto-create)
+            account = self.account_repo.get_by_user_id(user_id, for_update=True)
+            if not account:
+                raise WalletNotFoundError(user_id=user_id)
             
             # 2. Freeze check
             if account.is_frozen:
@@ -477,14 +479,14 @@ class WalletService:
 
     def ensure_account_exists(self, user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
         """
-        Ensure a user has a wallet account, creating one if necessary.
+        Check if a user has a wallet account (does NOT create one).
         
         Args:
             user_id: User ID
-            currency: Currency code
+            currency: Currency code (ignored, kept for signature compatibility)
             
         Returns:
-            AccountModel or None if user not found
+            AccountModel or None if user not found or no account exists
         """
         from app.identity.models.user import User
         
@@ -492,7 +494,8 @@ class WalletService:
         if not user:
             return None
         
-        return self.account_repo.get_or_create(user_id, currency)
+        # Only get existing account, do NOT create
+        return self.account_repo.get_by_user_id(user_id)
 
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def transfer(

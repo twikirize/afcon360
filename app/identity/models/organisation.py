@@ -218,8 +218,11 @@ class Organisation(BaseModel):
     @property
     def primary_account(self):
         """Get the primary account for this organisation."""
-        from app.wallet.models.ledger import AccountModel
-        return AccountModel.query.filter_by(user_id=self.id).first()
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        return AccountModel.query.filter_by(
+            user_id=self.id,
+            owner_type=AccountOwnerType.ORGANISATION
+        ).first()
 
     @property
     def wallet_balance(self):

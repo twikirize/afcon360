@@ -9,7 +9,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
 {% endblock %}
 
-{% block body %}
+{% block content %}
 <div class="owner-dashboard">
 
   <!-- TOP NAVIGATION BAR -->
@@ -31,7 +31,7 @@
       <a href="{{ url_for('admin.owner.settings') }}" class="nav-link">
         <i class="bi bi-gear"></i> Settings
       </a>
-      <a href="{{ url_for('owner.wallet_capabilities') }}" class="nav-link">
+      <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="nav-link">
         <i class="bi bi-wallet2"></i> Wallet Capabilities
       </a>
       <a href="{{ url_for('admin.super_dashboard') }}" class="btn-switch">

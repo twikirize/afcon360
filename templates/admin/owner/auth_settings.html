@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}Authentication Settings - AFCON360{% endblock %}
+
+{% block styles %}
+<style>
+    .auth-settings-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+    .settings-section {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+        overflow: hidden;
+    }
+    .section-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem 2rem;
+    }
+    .section-header h3 {
+        margin: 0;
+        font-weight: 600;
+    }
+    .section-body {
+        padding: 2rem;
+    }
+    .service-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        transition: all 0.2s ease;
+    }
+    .service-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .service-card.enabled {
+        border-left: 4px solid #10b981;
+    }
+    .service-card.disabled {
+        border-left: 4px solid #ef4444;
+        opacity: 0.7;
+    }
+    .service-icon {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+    }
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 26px;
+    }
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 26px;
+    }
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+    input:checked + .slider {
+        background-color: #667eea;
+    }
+    input:checked + .slider:before {
+        transform: translateX(24px);
+    }
+    .form-label {
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 0.5rem;
+    }
+    .form-control:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .test-btn {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border: none;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    .test-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+    .cost-badge {
+        background: #fef3c7;
+        color: #92400e;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    .free-badge {
+        background: #d1fae5;
+        color: #065f46;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-settings-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3">Authentication Settings</h1>
+            <p class="text-muted">Configure authentication and verification services</p>
+        </div>
+        <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+        </a>
+    </div>
+
+    <form method="POST" action="{{ url_for('owner.auth_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Google OAuth Section -->
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>🔐 Google OAuth</h3>
+            </div>
+            <div class="section-body">
+                <div class="service-card {% if config.google_oauth_enabled %}enabled{% else %}disabled{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="service-icon">🌐</div>
+                            <h5>Google OAuth 2.0</h5>
+                            <p class="text-muted mb-2">Allow users to sign up/login with Google account</p>
+                            <span class="free-badge">FREE</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="google_oauth_enabled" {% if config.google_oauth_enabled %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <hr class="my-3">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Google Client ID</label>
+                            <input type="text" class="form-control" name="google_client_id" 
+                                   value="{{ config.google_client_id or '' }}" 
+                                   placeholder="Enter Google OAuth Client ID">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Google Client Secret</label>
+                            <input type="password" class="form-control" name="google_client_secret" 
+                                   value="{{ config.google_client_secret or '' }}" 
+                                   placeholder="Enter Google OAuth Client Secret">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SendGrid Section -->
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>📧 SendGrid Email Service</h3>
+            </div>
+            <div class="section-body">
+                <div class="service-card {% if config.sendgrid_enabled %}enabled{% else %}disabled{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="service-icon">✉️</div>
+                            <h5>SendGrid Email</h5>
+                            <p class="text-muted mb-2">Send email verification codes and notifications</p>
+                            <span class="free-badge">FREE: 100 emails/day</span>
+                            <span class="cost-badge ms-2">PAID: $15/month (40,000 emails)</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="sendgrid_enabled" {% if config.sendgrid_enabled %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <hr class="my-3">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">SendGrid API Key</label>
+                            <input type="password" class="form-control" name="sendgrid_api_key" 
+                                   value="{{ config.sendgrid_api_key or '' }}" 
+                                   placeholder="Enter SendGrid API Key">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">From Email</label>
+                            <input type="email" class="form-control" name="sendgrid_from_email" 
+                                   value="{{ config.sendgrid_from_email or '' }}" 
+                                   placeholder="noreply@afcon360.com">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">From Name</label>
+                            <input type="text" class="form-control" name="sendgrid_from_name" 
+                                   value="{{ config.sendgrid_from_name or 'AFCON360' }}" 
+                                   placeholder="AFCON360">
+                        </div>
+                        <div class="col-md-6 mb-3 d-flex align-items-end">
+                            <button type="button" class="test-btn" onclick="testService('sendgrid')">
+                                <i class="fas fa-plug me-2"></i>Test Connection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SMS Services Section -->
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>📱 SMS Verification Services</h3>
+            </div>
+            <div class="section-body">
+                <!-- Twilio -->
+                <div class="service-card {% if config.twilio_enabled %}enabled{% else %}disabled{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="service-icon">🌍</div>
+                            <h5>Twilio (Global SMS)</h5>
+                            <p class="text-muted mb-2">SMS verification for global users</p>
+                            <span class="cost-badge">$0.0079 per SMS to Uganda</span>
+                            <span class="cost-badge ms-2">Free Trial: $15 credit</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="twilio_enabled" {% if config.twilio_enabled %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <hr class="my-3">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Account SID</label>
+                            <input type="text" class="form-control" name="twilio_account_sid" 
+                                   value="{{ config.twilio_account_sid or '' }}" 
+                                   placeholder="ACxxxxxxxxxxx">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Auth Token</label>
+                            <input type="password" class="form-control" name="twilio_auth_token" 
+                                   value="{{ config.twilio_auth_token or '' }}" 
+                                   placeholder="Your Auth Token">
+                        </div>
+                        <div class="col-md-4 mb-3 d-flex align-items-end">
+                            <button type="button" class="test-btn" onclick="testService('twilio')">
+                                <i class="fas fa-plug me-2"></i>Test Connection
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Phone Number</label>
+                            <input type="text" class="form-control" name="twilio_phone_number" 
+                                   value="{{ config.twilio_phone_number or '' }}" 
+                                   placeholder="+1234567890">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Africa's Talking -->
+                <div class="service-card {% if config.africa_talking_enabled %}enabled{% else %}disabled{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="service-icon">🌍</div>
+                            <h5>Africa's Talking (African SMS)</h5>
+                            <p class="text-muted mb-2">SMS verification for African users</p>
+                            <span class="cost-badge">$0.004 per SMS to Uganda</span>
+                            <span class="cost-badge ms-2">Best rates in Africa</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="africa_talking_enabled" {% if config.africa_talking_enabled %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <hr class="my-3">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="africa_talking_username" 
+                                   value="{{ config.africa_talking_username or '' }}" 
+                                   placeholder="Your username">
+                        </div>
+                        <div class="col-md-6 mb-3 d-flex align-items-end">
+                            <button type="button" class="test-btn" onclick="testService('africa_talking')">
+                                <i class="fas fa-plug me-2"></i>Test Connection
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">API Key</label>
+                            <input type="password" class="form-control" name="africa_talking_api_key" 
+                                   value="{{ config.africa_talking_api_key or '' }}" 
+                                   placeholder="Your API Key">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMS Routing -->
+                <div class="mt-4 p-4" style="background: #f8fafc; border-radius: 8px;">
+                    <h6 class="mb-3">SMS Routing Strategy</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Provider Preference</label>
+                        <select class="form-control" name="sms_provider_preference">
+                            <option value="auto" {% if config.sms_provider_preference == 'auto' %}selected{% endif %}>
+                                Auto (Route based on user location)
+                            </option>
+                            <option value="twilio" {% if config.sms_provider_preference == 'twilio' %}selected{% endif %}>
+                                Twilio Only (Global)
+                            </option>
+                            <option value="africa_talking" {% if config.sms_provider_preference == 'africa_talking' %}selected{% endif %}>
+                                Africa's Talking Only (Africa)
+                            </option>
+                        </select>
+                        <small class="text-muted">
+                            Auto routing uses Africa's Talking for African countries and Twilio for others.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature Flags Section -->
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>⚙️ Feature Flags</h3>
+            </div>
+            <div class="section-body">
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Verification Requirements</h6>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="email_verification_required" 
+                                           id="email_verification_required" {% if config.email_verification_required %}checked{% endif %}>
+                                    <label class="form-check-label" for="email_verification_required">
+                                        Require Email Verification
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="phone_verification_required" 
+                                           id="phone_verification_required" {% if config.phone_verification_required %}checked{% endif %}>
+                                    <label class="form-check-label" for="phone_verification_required">
+                                        Require Phone Verification
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="google_oauth_required" 
+                                           id="google_oauth_required" {% if config.google_oauth_required %}checked{% endif %}>
+                                    <label class="form-check-label" for="google_oauth_required">
+                                        Require Google OAuth Only
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Signup Options</h6>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="allow_email_password_signup" 
+                                           id="allow_email_password_signup" {% if config.allow_email_password_signup %}checked{% endif %}>
+                                    <label class="form-check-label" for="allow_email_password_signup">
+                                        Allow Email/Password Signup
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="allow_google_oauth_signup" 
+                                           id="allow_google_oauth_signup" {% if config.allow_google_oauth_signup %}checked{% endif %}>
+                                    <label class="form-check-label" for="allow_google_oauth_signup">
+                                        Allow Google OAuth Signup
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">KYC Requirements</h6>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="kyc_required_for_tier_2" 
+                                           id="kyc_required_for_tier_2" {% if config.kyc_required_for_tier_2 %}checked{% endif %}>
+                                    <label class="form-check-label" for="kyc_required_for_tier_2">
+                                        KYC Required for Tier 2
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" name="kyc_required_for_tier_3" 
+                                           id="kyc_required_for_tier_3" {% if config.kyc_required_for_tier_3 %}checked{% endif %}>
+                                    <label class="form-check-label" for="kyc_required_for_tier_3">
+                                        KYC Required for Tier 3
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Rate Limits</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Email Verification (per hour)</label>
+                                    <input type="number" class="form-control" name="email_verification_rate_limit" 
+                                           value="{{ config.email_verification_rate_limit }}" min="1" max="20">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">SMS Verification (per hour)</label>
+                                    <input type="number" class="form-control" name="sms_verification_rate_limit" 
+                                           value="{{ config.sms_verification_rate_limit }}" min="1" max="10">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="d-flex justify-content-end gap-2">
+            <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
+                <i class="fas fa-save me-2"></i>Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function testService(service) {
+    fetch(`{{ url_for('owner.test_auth_service', service='SERVICE') }}`.replace('SERVICE', service), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error testing service: ' + error);
+    });
+}
+</script>
+{% endblock %}
