@@ -214,20 +214,18 @@ def check_transaction_limit():
 @login_required
 def view_fan_profile():
     """View fan profile"""
-    from app.wallet import get_or_create_account
     from app.fan.services.registry import get_or_create_fan
     from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountOwnerType
     
     # Get internal user ID
     user = User.query.filter_by(public_id=str(current_user.id)).first()
     internal_id = user.id if user else current_user.id
     
-    account = get_or_create_account(internal_id)
-    if not account:
-        # Create account if doesn't exist
-        account = AccountModel(user_id=internal_id, currency='UGX')
-        db.session.add(account)
-        db.session.commit()
+    account = AccountModel.query.filter_by(
+        user_id=internal_id,
+        owner_type=AccountOwnerType.USER,
+    ).first()
     
     profile = get_or_create_fan(internal_id)
     
@@ -238,7 +236,6 @@ def view_fan_profile():
 @login_required
 def update_fan_profile_route():
     """Update fan profile"""
-    from app.wallet import get_or_create_account
     from app.fan.services.registry import update_fan_profile
     from app.identity.models.user import User
     

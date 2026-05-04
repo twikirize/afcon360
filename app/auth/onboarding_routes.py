@@ -280,14 +280,14 @@ def organisation_onboarding(step: int = 1):
 
                 # Switch context to the new org immediately
                 session["current_context"] = "organization"
-                session["current_org_id"] = org.id
+                session["current_org_id"] = org.org_id
                 session["current_org_name"] = org.legal_name
 
                 flash(
                     f"Organisation '{org.legal_name}' registered successfully!",
                     "success",
                 )
-                return redirect(url_for("org.dashboard", org_id=org.id))
+                return redirect(url_for("org.dashboard", org_id=org.org_id))
             except ValueError as e:
                 flash(str(e), "danger")
             except Exception as e:
@@ -342,9 +342,10 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
         db.session.flush()
 
         # Assign org_owner role
+        internal_org_id = org.id
         assign_org_role(
             user_id=user.id,
-            org_id=org.id,
+            org_id=internal_org_id,
             role_name="org_owner",
             assigned_by_id=user.id,
         )

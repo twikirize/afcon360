@@ -722,76 +722,11 @@ def payout_request_form():
 # ADDITIONAL WALLET ROUTES
 # =============================================================================
 
-@wallet_bp.route('/activate')
-@login_required
-def wallet_activate():
-    """Wallet activation page"""
-    try:
-        account = get_account(current_user.id)
-        if not account:
-            flash('You need to create a wallet first.', 'warning')
-            return redirect(url_for('wallet.wallet_dashboard'))
-        return render_template('wallet/wallet_activate.html', account=account, action='verify')
-    except Exception as e:
-        current_app.logger.error(f"Wallet activation error: {e}")
-        flash('Error loading wallet activation page', 'error')
-        return redirect(url_for('wallet.wallet_dashboard'))
-
-
 @wallet_bp.route('/terms')
 @login_required
 def wallet_terms():
     """Wallet terms and conditions page"""
     return render_template('wallet/wallet_terms.html')
-
-
-@wallet_bp.route('/activate', methods=['POST'])
-@login_required
-def wallet_activate_submit():
-    """Submit wallet activation"""
-    from flask_wtf.csrf import validate_csrf
-    from datetime import datetime, timezone
-    
-    # Validate CSRF
-    csrf_token = request.form.get('csrf_token')
-    if not csrf_token:
-        flash('CSRF token missing', 'error')
-        return redirect(url_for('wallet.wallet_activate'))
-    try:
-        validate_csrf(csrf_token)
-    except Exception:
-        flash('Invalid CSRF token', 'error')
-        return redirect(url_for('wallet.wallet_activate'))
-    
-    try:
-        # Get account
-        account = get_account(current_user.id)
-        if not account:
-            flash('You need to create a wallet first.', 'warning')
-            return redirect(url_for('wallet.wallet_dashboard'))
-        
-        # Check if already activated
-        if account.verified:
-            flash('Your wallet is already activated.', 'info')
-            return redirect(url_for('wallet.wallet_dashboard'))
-        
-        # Accept terms
-        accept_terms = request.form.get('accept_terms')
-        if not accept_terms:
-            flash('You must accept the terms to activate your wallet', 'error')
-            return redirect(url_for('wallet.wallet_activate'))
-        
-        # Activate account - set verified=True and record terms acceptance
-        account.verified = True
-        account.terms_accepted_at = datetime.now(timezone.utc)
-        db.session.commit()
-        
-        flash('Wallet activated successfully!', 'success')
-        return redirect(url_for('wallet.wallet_dashboard'))
-    except Exception as e:
-        current_app.logger.error(f"Wallet activation error: {e}")
-        flash('Error activating wallet', 'error')
-        return redirect(url_for('wallet.wallet_activate'))
 
 
 @wallet_bp.route('/settings')
