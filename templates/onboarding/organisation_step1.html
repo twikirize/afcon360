@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}
+{% set step_current=1 %}{% set step_total=2 %}{% set step_labels=['Details', 'Confirm'] %}
+<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Organisation Step1</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.organisation_onboarding', step=1) }}" class='ob-form' enctype='multipart/form-data'><input name='legal_name' required><input name='country' required><input name='registration_no'><input name='tax_id'><input type='email' name='contact_email'><input name='contact_phone'><input name='website'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}

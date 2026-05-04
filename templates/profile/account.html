@@ -411,8 +411,13 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <h4>Wallet Balance</h4>
+                {% if wallet_balance is not none %}
                 <div class="value">{{ wallet_balance }} {{ wallet_currency }}</div>
                 <div class="subtext">Available funds</div>
+                {% else %}
+                <div class="subtext">No wallet yet.</div>
+                <a href="{{ url_for('wallet.activate_wallet') }}" class="btn">Activate Wallet</a>
+                {% endif %}
             </div>
             <div class="stat-card">
                 <h4>KYC Tier</h4>

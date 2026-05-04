@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}
+{% set step_current=2 %}{% set step_total=2 %}{% set step_labels=['Identity', 'Property'] %}
+<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Host Step2</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.host_onboarding', step=2) }}" class='ob-form' enctype='multipart/form-data'><input name='property_name' required><input name='address' required><input name='city' required><input name='country' required><select name='property_type'><option>Apartment</option><option>House</option><option>Room</option><option>Villa</option></select><input type='number' name='number_of_rooms' min='1' value='1'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}
