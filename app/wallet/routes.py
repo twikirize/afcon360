@@ -9,6 +9,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from sqlalchemy import or_
 from app.extensions import db
+from app.utils.transactions import db_transaction
 from app.wallet.models.ledger import AccountModel, LedgerEntryModel
 from app.wallet.models.transaction import TransactionModel, TransactionType, TransactionStatus
 from app.wallet.services.wallet_service import WalletService
@@ -124,6 +125,47 @@ def get_or_create_account(user_id, currency='UGX'):
         db.session.commit()
         
     return account
+
+
+@wallet_bp.route("/activate", methods=["GET", "POST"])
+@login_required
+def activate_wallet():
+    """User explicitly opts in to wallet activation with terms acceptance."""
+    from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountOwnerType
+
+    db_user = User.query.filter_by(public_id=str(current_user.public_id)).first()
+    if not db_user:
+        flash("User not found.", "danger")
+        return redirect(url_for("fan.dashboard"))
+
+    existing = AccountModel.query.filter_by(
+        user_id=db_user.id,
+        owner_type=AccountOwnerType.USER,
+    ).first()
+
+    if existing:
+        flash("You already have a wallet.", "info")
+        return redirect(url_for("wallet.wallet_dashboard"))
+
+    if request.method == "POST":
+        if not request.form.get("accept_terms"):
+            flash("You must accept the terms to activate your wallet.", "warning")
+            return render_template("wallet/wallet_activate.html")
+
+        with db_transaction("Wallet activation"):
+            account = AccountModel(
+                user_id=db_user.id,
+                owner_type=AccountOwnerType.USER,
+                currency="UGX",
+                balance=0,
+            )
+            db.session.add(account)
+
+        flash("Your wallet has been activated!", "success")
+        return redirect(url_for("wallet.wallet_dashboard"))
+
+    return render_template("wallet/wallet_activate.html")
 
 
 # =============================================================================

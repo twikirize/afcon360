@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.onboarding-choose{min-height:100vh;background:#0a0a0a;color:#fff;padding:2rem 1rem;}
+.onboarding-header{text-align:center;max-width:780px;margin:0 auto 2rem;}
+.onboarding-header h1{font-size:clamp(2rem,5vw,3rem);margin-bottom:.5rem;color:#00d4ff;}
+.path-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;max-width:1200px;margin:0 auto;}
+.path-card{display:flex;flex-direction:column;gap:.7rem;padding:1.2rem;border:1px solid #1f3f4a;border-radius:14px;background:#111;text-decoration:none;color:#fff;transition:.2s;}
+.path-card:hover{transform:translateY(-3px);box-shadow:0 0 0 1px #00d4ff,0 8px 24px rgba(0,212,255,.25);} .path-icon{font-size:2rem}
+.kyc-badge{display:inline-block;font-size:.8rem;color:#8deaff}.path-cta{color:#00d4ff;font-weight:700}
+.onboarding-footer{text-align:center;margin-top:2rem}
+</style>
+<div class="onboarding-choose">
+  <header class="onboarding-header"><h1>What brings you to AFCON 360?</h1><p>Choose your path. You can always add more later.</p></header>
+  <div class="path-grid">
+    <a href="{{ url_for('onboarding.fan_onboarding') }}" class="path-card"><span class="path-icon">🎟️</span><h3>I'm here to explore</h3><p>Book events, accommodation and transport as an individual. No business registration needed.</p><span class="kyc-badge">KYC Required: Phone verified (already done at signup)</span><span class="path-cta">Get Started →</span></a>
+    <a href="{{ url_for('onboarding.driver_onboarding') }}" class="path-card"><span class="path-icon">🚗</span><h3>I want to offer transport</h3><p>Register yourself as a driver. Provide your licence and vehicle details. Get matched with passengers.</p><span class="kyc-badge">KYC Required: National ID + Driver's Licence + Vehicle registration</span><span class="path-cta">Become a Driver →</span></a>
+    <a href="{{ url_for('onboarding.organisation_onboarding', type='transport') }}" class="path-card"><span class="path-icon">🚌</span><h3>I run a transport business</h3><p>Register your company, add multiple vehicles and drivers. Manage bookings at scale.</p><span class="kyc-badge">KYC Required: Business registration + Fleet documents</span><span class="path-cta">Register Fleet →</span></a>
+    <a href="{{ url_for('onboarding.host_onboarding') }}" class="path-card"><span class="path-icon">🏠</span><h3>I want to list a property</h3><p>List your home, apartment or rooms for short-term lets. Set your own pricing and availability.</p><span class="kyc-badge">KYC Required: National ID + Proof of ownership/tenancy</span><span class="path-cta">List My Property →</span></a>
+    <a href="{{ url_for('onboarding.organisation_onboarding', type='accommodation') }}" class="path-card"><span class="path-icon">🏨</span><h3>I run an accommodation business</h3><p>Register your hotel, lodge or guesthouse. Manage multiple rooms, bookings and staff.</p><span class="kyc-badge">KYC Required: Business registration + Operating licence</span><span class="path-cta">Register Establishment →</span></a>
+    <a href="{{ url_for('onboarding.event_organiser_onboarding') }}" class="path-card"><span class="path-icon">🎪</span><h3>I want to host events</h3><p>Create and manage events. Sell tickets, manage attendees and coordinate with venues.</p><span class="kyc-badge">KYC Required: National ID (individual) OR Business registration (company)</span><span class="path-cta">Start Organising →</span></a>
+    <a href="{{ url_for('onboarding.organisation_onboarding', type='consumer') }}" class="path-card"><span class="path-icon">🏢</span><h3>We're a company using these services</h3><p>Register your organisation to book transport, accommodation and events at scale. Manage team access and central billing.</p><span class="kyc-badge">KYC Required: Business registration + Contact details</span><span class="path-cta">Register Organisation →</span></a>
+  </div>
+  <footer class="onboarding-footer"><a href="{{ url_for('onboarding.fan_onboarding') }}">Not sure? Start as a Fan →</a></footer>
+</div>
+{% endblock %}
