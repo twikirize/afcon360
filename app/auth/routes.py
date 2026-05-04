@@ -71,9 +71,20 @@ def _dashboard_for_user(user) -> str:
     """
     Return the URL for this user's home dashboard based on their
     HIGHEST-PRIVILEGE role (role hierarchy aware) and current context.
+
+    RULE: If the user has NOT completed onboarding, redirect to the
+    onboarding landing page regardless of roles.
     """
-    # First, check if user is an owner using the is_app_owner() method
-    # This is consistent with the login function's owner check
+    # STEP 1: Check onboarding completion
+    try:
+        from app.profile.models import get_profile_by_user
+        profile = get_profile_by_user(user.public_id)
+        if not profile or not profile.profile_completed:
+            return url_for("onboarding.choose")
+    except Exception as e:
+        current_app.logger.warning(f"Profile check error in dashboard routing: {e}")
+
+    # STEP 2: Owner check
     if hasattr(user, 'is_app_owner') and callable(user.is_app_owner):
         try:
             if user.is_app_owner():
@@ -81,58 +92,49 @@ def _dashboard_for_user(user) -> str:
         except Exception as e:
             current_app.logger.warning(f"Error calling is_app_owner(): {e}")
 
-    # Get user's role names safely
+    # STEP 3: Build role set
     role_names = set()
     try:
-        # Try different possible attribute names for roles
         if hasattr(user, 'roles'):
             for user_role in user.roles:
                 if hasattr(user_role, 'role') and user_role.role:
                     role_names.add(user_role.role.name)
                 elif hasattr(user_role, 'name'):
                     role_names.add(user_role.name)
-        # Also check if user has a direct 'role_names' attribute
         if hasattr(user, 'role_names'):
             try:
                 names = user.role_names
                 if isinstance(names, (list, set, tuple)):
                     role_names.update(names)
-            except Exception as e:
-                current_app.logger.warning(f"Error getting role_names: {e}")
+            except Exception:
+                pass
     except Exception as e:
         current_app.logger.warning(f"Error getting user roles: {e}")
 
-    # Check for owner role in role_names as well (for consistency)
-    # Also check for variations like 'app_owner', 'system_owner', etc.
+    # STEP 4: Owner role in names
     owner_roles = {'owner', 'app_owner', 'system_owner', 'platform_owner'}
     if any(owner_role in role_names for owner_role in owner_roles):
         return url_for("admin.owner.dashboard")
 
-    # Check if user is in organization context (only for non-owners)
+    # STEP 5: Org context
     from flask import session
     current_context = session.get("current_context", "individual")
     current_org_id = session.get("current_org_id")
 
     if current_context == "organization" and current_org_id:
-        # User is acting as an organization
         try:
             return url_for("org.dashboard", org_id=current_org_id)
         except:
-            # Fall back to individual dashboard if org dashboard doesn't exist
             pass
 
-    # Individual context or organization context failed
-    # Check remaining roles in priority order (highest first)
+    # STEP 6: System admin roles
     if "super_admin" in role_names or "admin" in role_names:
         return url_for("admin.super_dashboard")
 
     if "org_admin" in role_names:
-        # Even if user has org_admin role, they're in individual context
-        # Redirect to organization selection or individual dashboard
         try:
-            return url_for("auth.select_organization")  # Page to select which organization to act as
+            return url_for("auth.select_organization")
         except:
-            # Fall back to fan dashboard
             pass
 
     if "moderator" in role_names:
@@ -147,7 +149,23 @@ def _dashboard_for_user(user) -> str:
         except:
             return url_for("index")
 
-    # Default for regular users
+    # STEP 7: Check for driver profile
+    try:
+        from app.transport.models import DriverProfile
+        driver = DriverProfile.query.filter_by(user_id=user.id).first()
+        if driver and driver.verification_status == "verified":
+            return url_for("transport.driver_dashboard")
+    except Exception:
+        pass
+
+    # STEP 8: Event organiser role
+    if "event_manager" in role_names:
+        try:
+            return url_for("events.organizer_dashboard")
+        except:
+            pass
+
+    # STEP 9: Default fan dashboard
     try:
         return url_for("fan.dashboard")
     except:

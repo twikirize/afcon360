@@ -420,6 +420,7 @@ def create_app(config_object=None) -> Flask:
 
     # Core Web Blueprints
     from app.auth.routes import auth_bp
+    from app.auth.onboarding_routes import onboarding_bp
     from app.fan.routes import fan_bp
     # from app.wallet.routes import wallet_bp  # DELETED - will be rebuilt
     from app.admin import admin_bp
@@ -484,6 +485,7 @@ def create_app(config_object=None) -> Flask:
     core_blueprints = [
         (admin_bp, None),
         (auth_bp, None),
+        (onboarding_bp, None),
         (fan_bp, None),
         # (wallet_bp, None),  # DELETED - routes.py removed
         (events_bp, None),
