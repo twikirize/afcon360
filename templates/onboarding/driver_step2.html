@@ -1,1 +1,5 @@
-{% extends 'base.html' %}{% block content %}{% include 'onboarding/_progress_bar.html' %}<h1>Driver onboarding: step 2</h1><form method='post' enctype='multipart/form-data'><input name='licence_number' required><input type='date' name='licence_expiry'><input name='licence_class'><input type='file' name='licence_document'><button type='submit'>Next</button></form>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+{% set step_current=2 %}{% set step_total=3 %}{% set step_labels=['Your Details', 'Licence', 'Vehicle'] %}
+<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Driver Step2</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.driver_onboarding', step=2) }}" class='ob-form' enctype='multipart/form-data'><input name='licence_number' required><input type='date' name='licence_expiry'><select name='licence_class'><option>A</option><option>B</option><option>C</option><option>D</option></select><input type='file' name='licence_document'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}

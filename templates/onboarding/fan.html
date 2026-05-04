@@ -1,1 +1,5 @@
-{% extends 'base.html' %}{% block content %}<h1>Fan onboarding</h1><form method='post'><input name='full_name' placeholder='Full name' required><input name='city' placeholder='City'><input name='country' placeholder='Country'><button type='submit'>Continue</button></form>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+{% set step_current=1 %}{% set step_total=1 %}{% set step_labels=['Profile'] %}
+<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Fan</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.fan_onboarding') }}" class='ob-form' enctype='multipart/form-data'><input name='full_name' required><input name='city'><input name='country' required><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}

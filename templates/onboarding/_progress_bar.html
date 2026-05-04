@@ -1,1 +1,12 @@
-<div style='margin-bottom:1rem'>Step {{ step }} of 3</div>
+<div class="ob-progress">
+  {% for i in range(1, step_total + 1) %}
+    <div class="ob-progress-step {% if i < step_current %}ob-step--done{% elif i == step_current %}ob-step--active{% endif %}">
+      <div class="ob-step-dot">{% if i < step_current %}✓{% else %}{{ i }}{% endif %}</div>
+      {% if step_labels is defined and step_labels[i-1] is defined %}<span class="ob-step-label">{{ step_labels[i-1] }}</span>{% endif %}
+    </div>
+    {% if not loop.last %}<div class="ob-progress-line {% if i < step_current %}ob-line--done{% endif %}"></div>{% endif %}
+  {% endfor %}
+</div>
+<style>
+.ob-progress{display:flex;align-items:center;justify-content:center;padding:24px 0 32px}.ob-progress-step{display:flex;flex-direction:column;align-items:center;gap:6px}.ob-step-dot{width:32px;height:32px;border-radius:50%;background:#1e2830;border:2px solid #2a3540;display:flex;align-items:center;justify-content:center;color:#7a8a9a}.ob-step--done .ob-step-dot{background:#003d2a;border-color:#00ff9d;color:#00ff9d}.ob-step--active .ob-step-dot{background:#001f33;border-color:#00c2ff;color:#00c2ff}.ob-step-label{font-size:11px;color:#7a8a9a}.ob-progress-line{flex:1;height:2px;background:#1e2830;min-width:40px;max-width:80px;margin-bottom:18px}.ob-line--done{background:#00ff9d}
+</style>

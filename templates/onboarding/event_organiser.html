@@ -1,1 +1,5 @@
-{% extends 'base.html' %}{% block content %}<h1>Event organiser onboarding</h1><form method='post'><input name='full_name' required><input name='organisation_name'><input name='contact_email' type='email'><button type='submit'>Complete</button></form>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+{% set step_current=1 %}{% set step_total=1 %}{% set step_labels=['Profile'] %}
+<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Event Organiser</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.event_organiser_onboarding') }}" class='ob-form' enctype='multipart/form-data'><input name='full_name' required><label><input type='radio' name='organiser_type' value='individual' checked>Individual</label><label><input type='radio' name='organiser_type' value='company'>Company</label><input name='company_name'><input type='email' name='contact_email'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}

@@ -1,1 +1,5 @@
-{% extends 'base.html' %}{% block content %}{% include 'onboarding/_progress_bar.html' %}<h1>Host onboarding: step 1</h1><form method='post'><input name='full_name' required><input name='national_id' required><input name='proof_of_address'><button type='submit'>Next</button></form>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+{% set step_current=1 %}{% set step_total=2 %}{% set step_labels=['Identity', 'Property'] %}
+<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Host Step1</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.host_onboarding', step=1) }}" class='ob-form' enctype='multipart/form-data'><input name='full_name' required><input name='national_id_number' required><input type='file' name='id_document'><input type='file' name='proof_of_address'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}
