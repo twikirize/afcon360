@@ -71,6 +71,8 @@ def choose():
 def fan_onboarding():
     """Simple 1-step fan onboarding."""
     from app.profile.models import get_profile_by_user
+    from app.fan.services.registry import get_or_create_fan
+    from app.identity.models.user import User
 
     if request.method == "POST":
         full_name = request.form.get("full_name", "").strip()
@@ -81,21 +83,27 @@ def fan_onboarding():
             flash("Full name is required.", "danger")
             return render_template("onboarding/fan.html")
 
-        profile = get_profile_by_user(current_user.public_id)
-        if not profile:
-            flash("Profile not found. Please contact support.", "danger")
-            return redirect(url_for("onboarding.choose"))
+        db_user = User.query.filter_by(public_id=str(current_user.public_id)).first()
+        if not db_user:
+            flash("Session error. Please log in again.", "danger")
+            return redirect(url_for("auth.login"))
 
-        with db_transaction("Fan onboarding completion"):
-            profile.full_name = full_name
-            profile.city = city
-            profile.country = country
-            profile.profile_completed = True
+        with db_transaction("Fan onboarding — profile + fan record"):
+            profile = get_profile_by_user(current_user.public_id)
+            if profile:
+                profile.full_name = full_name
+                profile.city = city or profile.city
+                profile.country = country or profile.country
+                profile.profile_completed = True
+            fan = get_or_create_fan(db_user.id)
+            if fan and not getattr(fan, "display_name", None):
+                fan.display_name = full_name
 
-        flash("Welcome to AFCON 360!", "success")
+        flash("Welcome to AFCON 360! Your account is ready.", "success")
         return redirect(url_for("fan.dashboard"))
 
-    return render_template("onboarding/fan.html")
+    profile = get_profile_by_user(current_user.public_id)
+    return render_template("onboarding/fan.html", profile=profile)
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +171,7 @@ def driver_onboarding(step: int = 1):
                     "Driver registration submitted! We will verify your documents within 24 hours.",
                     "success",
                 )
-                return redirect(url_for("transport.driver_dashboard"))
+                return redirect(url_for("fan.dashboard"))
             except Exception as e:
                 current_app.logger.error(f"Driver onboarding error: {e}")
                 flash("Something went wrong. Please try again.", "danger")
@@ -177,7 +185,7 @@ def driver_onboarding(step: int = 1):
 
 def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
     """Atomic commit of all driver onboarding data."""
-    from app.profile.models import get_profile_by_user
+    from app.fan.services.registry import get_or_create_fan
     from app.transport.models import DriverProfile, Vehicle, VerificationTier, ComplianceStatus, VehicleClass
     from app.extensions import db
     from app.utils.transactions import db_transaction
@@ -191,9 +199,13 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
         profile = _get_or_create_profile(user)
         profile.full_name = step1.get("full_name", profile.full_name)
         profile.nationality = step1.get("nationality")
+        profile.date_of_birth = step1.get("date_of_birth") or getattr(profile, "date_of_birth", None)
         profile.id_type = "national_id"
         profile.id_number = step1.get("national_id_number")
         profile.profile_completed = True
+        fan = get_or_create_fan(user.id)
+        if fan and not getattr(fan, "display_name", None):
+            fan.display_name = step1.get("full_name", "")
 
         # Create DriverProfile using existing model fields
         driver = DriverProfile(
@@ -359,6 +371,8 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
         # Mark profile complete
         profile = _get_or_create_profile(user)
         profile.profile_completed = True
+        from app.fan.services.registry import get_or_create_fan
+        get_or_create_fan(user.id)
 
     return org
 

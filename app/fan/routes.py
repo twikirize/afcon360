@@ -31,7 +31,7 @@ def dashboard():
     # current_user.id is public_id (UUID), need internal id (BIGINT)
     from app.identity.models.user import User
     from app.wallet.models.ledger import AccountOwnerType
-    user = User.query.filter_by(public_id=str(current_user.id)).first()
+    user = User.query.filter_by(public_id=str(current_user.public_id)).first()
     internal_id = user.id if user else current_user.id
     
     account = AccountModel.query.filter_by(
@@ -75,6 +75,16 @@ def dashboard():
     # 🆕 Recommended items (placeholder)
     recommended = []
 
+    driver_status = None
+    try:
+        from app.transport.models import DriverProfile
+        if user:
+            driver_profile = DriverProfile.query.filter_by(user_id=user.id).first()
+            if driver_profile:
+                driver_status = getattr(driver_profile, "verification_status", None)
+    except Exception:
+        pass
+
     return render_template(
         "fan/dashboard.html",
         user=current_user,
@@ -87,7 +97,8 @@ def dashboard():
         upcoming_events=upcoming_events,
         recent_stays=recent_stays,
         recommended=recommended,
-        stats=stats
+        stats=stats,
+        driver_status=driver_status,
     )
 
 # ============================================================================
