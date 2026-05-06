@@ -55,7 +55,13 @@ def choose():
     profile = get_profile_by_user(current_user.public_id)
 
     if profile and profile.profile_completed:
-        # Already onboarded — go to their dashboard
+        # Already onboarded — check for saved deep-link redirect
+        post_redirect = session.pop("post_onboarding_redirect", None)
+        if post_redirect:
+            from app.auth.routes import is_safe_url
+            if is_safe_url(post_redirect):
+                return redirect(post_redirect)
+        # Go to their dashboard
         from app.auth.routes import _dashboard_for_user
         return redirect(_dashboard_for_user(current_user))
 
@@ -71,7 +77,6 @@ def choose():
 def fan_onboarding():
     """Simple 1-step fan onboarding."""
     from app.profile.models import get_profile_by_user
-    from app.fan.services.registry import get_or_create_fan
     from app.identity.models.user import User
 
     if request.method == "POST":
@@ -88,16 +93,15 @@ def fan_onboarding():
             flash("Session error. Please log in again.", "danger")
             return redirect(url_for("auth.login"))
 
-        with db_transaction("Fan onboarding — profile + fan record"):
+        with db_transaction("Fan onboarding — profile update"):
             profile = get_profile_by_user(current_user.public_id)
             if profile:
                 profile.full_name = full_name
                 profile.city = city or profile.city
                 profile.country = country or profile.country
                 profile.profile_completed = True
-            fan = get_or_create_fan(db_user.id)
-            if fan and not getattr(fan, "display_name", None):
-                fan.display_name = full_name
+                if not profile.display_name:
+                    profile.display_name = full_name
 
         flash("Welcome to AFCON 360! Your account is ready.", "success")
         return redirect(url_for("fan.dashboard"))
@@ -171,7 +175,7 @@ def driver_onboarding(step: int = 1):
                     "Driver registration submitted! We will verify your documents within 24 hours.",
                     "success",
                 )
-                return redirect(url_for("fan.dashboard"))
+                return redirect(url_for("transport.driver_dashboard"))
             except Exception as e:
                 current_app.logger.error(f"Driver onboarding error: {e}")
                 flash("Something went wrong. Please try again.", "danger")
@@ -185,8 +189,8 @@ def driver_onboarding(step: int = 1):
 
 def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
     """Atomic commit of all driver onboarding data."""
-    from app.fan.services.registry import get_or_create_fan
     from app.transport.models import DriverProfile, Vehicle, VerificationTier, ComplianceStatus, VehicleClass
+    from app.auth.roles import assign_global_role
     from app.extensions import db
     from app.utils.transactions import db_transaction
 
@@ -203,9 +207,8 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
         profile.id_type = "national_id"
         profile.id_number = step1.get("national_id_number")
         profile.profile_completed = True
-        fan = get_or_create_fan(user.id)
-        if fan and not getattr(fan, "display_name", None):
-            fan.display_name = step1.get("full_name", "")
+        if not profile.display_name:
+            profile.display_name = step1.get("full_name", "")
 
         # Create DriverProfile using existing model fields
         driver = DriverProfile(
@@ -247,6 +250,16 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
             is_available=True,
         )
         db.session.add(vehicle)
+
+        # Assign driver global role if it exists in the database
+        try:
+            assign_global_role(
+                user_id=user.id,
+                role_name="driver",
+                assigned_by_id=user.id,
+            )
+        except ValueError:
+            current_app.logger.warning("'driver' role not found in DB — skipping role assignment")
 
 
 # ---------------------------------------------------------------------------
@@ -371,10 +384,17 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
         # Mark profile complete
         profile = _get_or_create_profile(user)
         profile.profile_completed = True
-        from app.fan.services.registry import get_or_create_fan
-        get_or_create_fan(user.id)
 
     return org
+
+
+def _generate_unique_slug(base: str) -> str:
+    """Generate a URL-safe unique slug from a title."""
+    import re, uuid
+    slug = re.sub(r"[^\w\s-]", "", base).strip().lower()
+    slug = re.sub(r"[-\s]+", "-", slug)
+    suffix = str(uuid.uuid4())[:8]
+    return f"{slug}-{suffix}"[:220]
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +424,7 @@ def host_onboarding(step: int = 1):
         elif step == 2:
             data["step2"] = {
                 "property_name": request.form.get("property_name", "").strip(),
+                "description": request.form.get("description", "").strip(),
                 "address": request.form.get("address", "").strip(),
                 "city": request.form.get("city", "").strip(),
                 "country": request.form.get("country", "").strip(),
@@ -415,7 +436,7 @@ def host_onboarding(step: int = 1):
                 _commit_host_onboarding(current_user, data)
                 session.pop("host_onboarding", None)
                 flash("Property listed successfully! We will verify your details.", "success")
-                return redirect(url_for("accommodation.host_dashboard"))
+                return redirect(url_for("accommodation.host.dashboard"))
             except Exception as e:
                 current_app.logger.error(f"Host onboarding error: {e}")
                 flash("Something went wrong. Please try again.", "danger")
@@ -462,8 +483,10 @@ def _commit_host_onboarding(user, data: Dict[str, Any]) -> None:
         )
 
         # Create Property record using correct model fields
+        title = step2.get("property_name", "")
         property_record = Property(
-            title=step2.get("property_name", ""),
+            title=title,
+            slug=_generate_unique_slug(title),
             address_line1=step2.get("address", ""),
             city=step2.get("city", ""),
             country=step2.get("country", ""),
@@ -474,7 +497,7 @@ def _commit_host_onboarding(user, data: Dict[str, Any]) -> None:
             status=AccommodationPropertyStatus.DRAFT,
             base_price_per_night=Decimal('0'),
             max_guests=int(step2.get("number_of_rooms", 1)) * 2,
-            description="",
+            description=step2.get("description") or f"Property hosted by {step1.get('full_name', '')}",
         )
         db.session.add(property_record)
 
@@ -512,7 +535,7 @@ def event_organiser_onboarding():
                 )
 
             flash("You are now an event organiser!", "success")
-            return redirect(url_for("events.organizer_dashboard"))
+            return redirect(url_for("events.my_events"))
         except Exception as e:
             current_app.logger.error(f"Event organiser onboarding error: {e}")
             flash("Something went wrong. Please try again.", "danger")

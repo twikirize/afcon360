@@ -134,7 +134,7 @@ function eventModerationAction(action, slug, extraData = {}) {
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 7.5h5M7.5 5v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         Emergency Controls
       </a>
-      <a href="{{ url_for('admin_wallet_api.admin_list_payouts') }}" class="sad-nav-item">
+      <a href="{{ url_for('wallet_admin_api.admin_list_payouts') }}" class="sad-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 8a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0z" fill="currentColor"/></svg>
         Payout Requests
       </a>
@@ -331,13 +331,21 @@ function eventModerationAction(action, slug, extraData = {}) {
               </div>
               <span class="sad-tag">{{ modules|length }} modules</span>
             </div>
+            {% if not super_admin_can_toggle_modules %}
+            <div class="sad-card-body" style="padding-bottom:0">
+              <div class="sad-alert warn" style="font-size:12px;margin-bottom:0.5rem">
+                <strong>🔒 Owner-controlled:</strong> Module toggling is restricted to the platform owner.
+                Contact the owner to request changes.
+              </div>
+            </div>
+            {% endif %}
             <div class="sad-card-body flush">
               <table class="sad-table">
                 <thead>
                   <tr>
                     <th style="width:42%">Module</th>
                     <th>Status</th>
-                    <th>Toggle</th>
+                    <th>{% if super_admin_can_toggle_modules %}Toggle{% else %}Control{% endif %}</th>
                     <th>Access</th>
                   </tr>
                 </thead>
@@ -370,6 +378,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                       {% else %}<span class="sad-badge off">Disabled</span>{% endif %}
                     </td>
                     <td>
+                      {% if super_admin_can_toggle_modules %}
                       <!-- UPDATED: Enhanced toggle with kill switch for wallet -->
                       <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}"
                             id="toggle-form-{{ name }}" style="display:inline">
@@ -382,6 +391,11 @@ function eventModerationAction(action, slug, extraData = {}) {
                           <span class="sad-toggle-slider"></span>
                         </label>
                       </form>
+                      {% else %}
+                      <span style="color:var(--sad-text3);font-size:11px" title="Restricted to owner">
+                        🔒 Owner only
+                      </span>
+                      {% endif %}
                     </td>
                     <td>
                       {% if name == 'transport' %}

@@ -1,5 +1,42 @@
 {% extends 'base.html' %}
+{% block title %}Driver Onboarding — Step 2 — AFCON 360{% endblock %}
 {% block content %}
 {% set step_current=2 %}{% set step_total=3 %}{% set step_labels=['Your Details', 'Licence', 'Vehicle'] %}
-<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Driver Step2</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.driver_onboarding', step=2) }}" class='ob-form' enctype='multipart/form-data'><input name='licence_number' required><input type='date' name='licence_expiry'><select name='licence_class'><option>A</option><option>B</option><option>C</option><option>D</option></select><input type='file' name='licence_document'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+<div class="onboarding-root ob-wizard">
+  <div class="ob-wizard-inner">
+    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
+    <h2 class="ob-wizard-title">Driver — Licence</h2>
+    <p class="ob-wizard-sub">Upload your driving licence details.</p>
+    {% include 'onboarding/_progress_bar.html' %}
+    <form method="POST" action="{{ url_for('onboarding.driver_onboarding', step=2) }}" class="ob-form" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="ob-field">
+        <label>Licence Number <span class="ob-req">*</span></label>
+        <input type="text" name="licence_number" required>
+      </div>
+      <div class="ob-field">
+        <label>Licence Expiry</label>
+        <input type="date" name="licence_expiry">
+      </div>
+      <div class="ob-field">
+        <label>Licence Class</label>
+        <select name="licence_class">
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
+        </select>
+      </div>
+      <div class="ob-field">
+        <label>Licence Document</label>
+        <input type="file" name="licence_document">
+        <span class="ob-hint">Upload a clear photo or scan of your licence.</span>
+      </div>
+      <div class="ob-form-footer">
+        <button class="ob-btn ob-btn--primary" type="submit">Continue →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% include 'onboarding/_wizard_styles.html' %}
 {% endblock %}

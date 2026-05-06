@@ -60,7 +60,7 @@ GLOBAL_ROLE_DEFS: List[RoleDef] = [
     RoleDef("wallet_admin", 10, "Wallet and transaction management"),
     RoleDef("accommodation_admin", 11, "Accommodation property management"),
     RoleDef("tourism_admin", 12, "Tourism content and destination management"),
-    RoleDef("fan", 13, "Default end-user; no admin access"),
+    RoleDef("user", 13, "Default registered user — can browse and book services"),
 ]
 
 ORG_ROLE_DEFS: List[RoleDef] = [
@@ -176,11 +176,11 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
 
     # Accommodation
     PermDef("accommodation.search", "Search and view listings",
-            ["owner", "super_admin", "admin", "fan"]),
+            ["owner", "super_admin", "admin", "user"]),
     PermDef("accommodation.view", "View property details",
-            ["owner", "super_admin", "admin", "fan"]),
+            ["owner", "super_admin", "admin", "user"]),
     PermDef("accommodation.book", "Create bookings",
-            ["owner", "super_admin", "admin", "fan"]),
+            ["owner", "super_admin", "admin", "user"]),
     PermDef("accommodation.host", "Create and manage own listings",
             ["owner", "super_admin", "admin"]),
     PermDef("accommodation.manage", "Platform-wide listing management",

@@ -9,12 +9,12 @@
 <body class="container py-4">
   <h2>Fan Profile</h2>
   <form method="POST" action="{{ url_for('fan.update_fan_profile_route') }}">
-    <label>Name:</label>
-    <input type="text" name="name" value="{{ profile.name }}" class="form-control">
+    <label>Display Name:</label>
+    <input type="text" name="name" value="{{ profile.display_name or '' }}" class="form-control">
     <label>Nationality:</label>
-    <input type="text" name="nationality" value="{{ profile.nationality }}" class="form-control">
+    <input type="text" name="nationality" value="{{ profile.nationality or '' }}" class="form-control">
     <label>Favorite Team:</label>
-    <input type="text" name="favorite_team" value="{{ profile.favorite_team }}" class="form-control">
+    <input type="text" name="favorite_team" value="{{ profile.fan_team or '' }}" class="form-control">
     <label>Avatar URL:</label>
     <input type="text" name="avatar_url" value="{{ profile.avatar_url or '' }}" class="form-control">
     <button type="submit" class="btn btn-primary mt-2">Update Profile</button>

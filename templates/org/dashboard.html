@@ -1,78 +1,731 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Organization Dashboard</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f0f2f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #2c3e50;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 15px;
-        }
-        .placeholder {
-            padding: 50px;
-            text-align: center;
-            background-color: #ecf0f1;
-            border: 2px dashed #7f8c8d;
-            border-radius: 10px;
-            margin: 30px 0;
-            color: #34495e;
-        }
-        .stats {
-            display: flex;
-            gap: 20px;
-            margin-top: 30px;
-        }
-        .stat-box {
-            flex: 1;
-            padding: 20px;
-            background: #3498db;
-            color: white;
-            border-radius: 8px;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Organization Dashboard</h1>
-        <p>Manage your organization's profile, members, and settings.</p>
+{% extends "base.html" %}
 
-        <div class="stats">
-            <div class="stat-box">
-                <h3>Members</h3>
-                <p>0</p>
-            </div>
-            <div class="stat-box">
-                <h3>Active Projects</h3>
-                <p>0</p>
-            </div>
-            <div class="stat-box">
-                <h3>Storage</h3>
-                <p>0 GB</p>
-            </div>
-        </div>
+{% block title %}{{ org.legal_name }} - Organization Dashboard{% endblock %}
 
-        <div class="placeholder">
-            <h2>Organization Management</h2>
-            <p>Team management, billing, analytics, and configuration will appear here.</p>
-            <p><strong>This is a placeholder template.</strong> Replace with actual organization dashboard components.</p>
+{% block extra_css %}
+<style>
+/* Modern Dashboard Styles */
+.dashboard-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    color: white;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.dashboard-header .org-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    overflow: hidden;
+    position: relative;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.stat-card .stat-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.stat-card.primary .stat-icon { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+.stat-card.success .stat-icon { background: linear-gradient(135deg, #11998e, #38ef7d); color: white; }
+.stat-card.info .stat-icon { background: linear-gradient(135deg, #2196F3, #21CBF3); color: white; }
+.stat-card.warning .stat-icon { background: linear-gradient(135deg, #F2994A, #F2C94C); color: white; }
+
+.module-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.module-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+.module-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.module-card .module-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin: 0 auto 1rem;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.quick-action-btn {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.quick-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.activity-item {
+    padding: 1rem;
+    border-left: 3px solid #667eea;
+    margin-bottom: 1rem;
+    background: #f8f9fa;
+    border-radius: 0 8px 8px 0;
+    transition: all 0.3s ease;
+}
+
+.activity-item:hover {
+    background: #e9ecef;
+    transform: translateX(5px);
+}
+
+.capability-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin: 0.25rem;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.progress-ring {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 1rem;
+}
+
+.progress-ring circle {
+    transition: stroke-dashoffset 0.5s ease;
+}
+
+.metric-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid #e9ecef;
+}
+
+.metric-card .metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #495057;
+}
+
+.metric-card .metric-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.floating-action-btn {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.floating-action-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+
+@media (max-width: 768px) {
+    .dashboard-header {
+        padding: 1.5rem;
+    }
+    
+    .stat-card {
+        margin-bottom: 1rem;
+    }
+    
+    .module-card {
+        margin-bottom: 1rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Organization Header -->
+    <div class="dashboard-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center">
+                    <div class="org-avatar">
+                        <i class="bi bi-building"></i>
+                    </div>
+                    <div class="ms-4">
+                        <h1 class="mb-2 fw-bold">{{ org.legal_name }}</h1>
+                        <p class="mb-1 opacity-90">{{ org.org_id }} • {{ org.contact_email }}</p>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <span class="badge bg-white text-dark px-3 py-2">
+                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                            </span>
+                            <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }} px-3 py-2">
+                                <i class="bi bi-shield-check me-1"></i> {{ org.verification_status.title() }}
+                            </span>
+                            {% if org.is_operational %}
+                            <span class="badge bg-info px-3 py-2">
+                                <i class="bi bi-lightning me-1"></i> Operational
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
+                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.settings', org_id=org.id) }}'">
+                        <i class="bi bi-gear me-2"></i> Settings
+                    </button>
+                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.members', org_id=org.id) }}'">
+                        <i class="bi bi-people me-2"></i> Members
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-</body>
-</html>
+
+    <!-- Key Metrics -->
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card primary">
+                <div class="card-body text-center">
+                    <div class="stat-icon">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <h3 class="card-title mb-1">{{ stats.total_members }}</h3>
+                    <p class="card-text text-muted">Total Members</p>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-primary" style="width: 75%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card success">
+                <div class="card-body text-center">
+                    <div class="stat-icon">
+                        <i class="bi bi-grid-3x3-gap"></i>
+                    </div>
+                    <h3 class="card-title mb-1">{{ stats.active_modules|length }}</h3>
+                    <p class="card-text text-muted">Active Modules</p>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-success" style="width: 60%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card info">
+                <div class="card-body text-center">
+                    <div class="stat-icon">
+                        <i class="bi bi-wallet2"></i>
+                    </div>
+                    <h3 class="card-title mb-1">UGX 0</h3>
+                    <p class="card-text text-muted">Wallet Balance</p>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-info" style="width: 30%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card warning">
+                <div class="card-body text-center">
+                    <div class="stat-icon">
+                        <i class="bi bi-calendar-event"></i>
+                    </div>
+                    <h3 class="card-title mb-1">0</h3>
+                    <p class="card-text text-muted">Active Events</p>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-warning" style="width: 45%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Module Access Grid -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="fw-bold">
+                    <i class="bi bi-grid-3x3-gap me-2"></i> Organization Modules
+                </h4>
+                <span class="text-muted">Access based on your organization type and permissions</span>
+            </div>
+        </div>
+        
+        <!-- Staff Management -->
+        {% if 'staff' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-people-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Staff Management</h5>
+                    <p class="card-text text-muted small mb-3">Manage team members, roles, and permissions</p>
+                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.members', org_id=org.id) }}'">
+                        Manage Staff
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Events -->
+        {% if stats.can_create_events and 'events' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-calendar-event-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Events</h5>
+                    <p class="card-text text-muted small mb-3">Create and manage events, conferences, and meetings</p>
+                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.events', org_id=org.id) }}'">
+                        Manage Events
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Accommodation -->
+        {% if stats.can_manage_accommodation and 'accommodation' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-building-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Accommodation</h5>
+                    <p class="card-text text-muted small mb-3">Manage properties, rooms, and bookings</p>
+                    <button class="btn btn-info btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.accommodation', org_id=org.id) }}'">
+                        Manage Properties
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Transport -->
+        {% if stats.can_manage_transport and 'transport' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-truck-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Transport</h5>
+                    <p class="card-text text-muted small mb-3">Manage fleet, scheduling, and logistics</p>
+                    <button class="btn btn-warning btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.transport', org_id=org.id) }}'">
+                        Manage Fleet
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Tourism -->
+        {% if stats.can_manage_tourism and 'tourism' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-map-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Tourism</h5>
+                    <p class="card-text text-muted small mb-3">Manage tours, packages, and attractions</p>
+                    <button class="btn btn-secondary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.tourism', org_id=org.id) }}'">
+                        Manage Tours
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Wallet -->
+        {% if 'wallet' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-wallet-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Wallet</h5>
+                    <p class="card-text text-muted small mb-3">Manage finances, payments, and transactions</p>
+                    <button class="btn btn-dark btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.wallet', org_id=org.id) }}'">
+                        Manage Wallet
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Reports -->
+        {% if 'reports' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-graph-up"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Reports</h5>
+                    <p class="card-text text-muted small mb-3">View analytics, insights, and performance metrics</p>
+                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.reports', org_id=org.id) }}'">
+                        View Reports
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Settings -->
+        {% if 'settings' in accessible_modules %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="module-card">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">
+                        <i class="bi bi-gear-fill"></i>
+                    </div>
+                    <h5 class="card-title mb-2">Settings</h5>
+                    <p class="card-text text-muted small mb-3">Configure organization preferences and policies</p>
+                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.settings', org_id=org.id) }}'">
+                        Manage Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Organization Insights -->
+    <div class="row mb-4">
+        <div class="col-lg-8 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-graph-up me-2"></i> Organization Performance
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="performanceChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-lightning me-2"></i> Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        {% if stats.can_create_events and 'events' in accessible_modules %}
+                        <button class="btn btn-outline-primary" onclick="createNewEvent()">
+                            <i class="bi bi-plus-circle me-2"></i> Create New Event
+                        </button>
+                        {% endif %}
+                        {% if 'staff' in accessible_modules %}
+                        <button class="btn btn-outline-success" onclick="inviteNewMember()">
+                            <i class="bi bi-person-plus me-2"></i> Invite Team Member
+                        </button>
+                        {% endif %}
+                        {% if 'wallet' in accessible_modules %}
+                        <button class="btn btn-outline-info" onclick="viewTransactions()">
+                            <i class="bi bi-clock-history me-2"></i> Recent Transactions
+                        </button>
+                        {% endif %}
+                        <button class="btn btn-outline-secondary" onclick="downloadReport()">
+                            <i class="bi bi-download me-2"></i> Download Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity & Capabilities -->
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-clock-history me-2"></i> Recent Activity
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox display-1"></i>
+                        <h5 class="mt-3">No recent activity</h5>
+                        <p class="text-muted">Your organization activity will appear here once you start using the system.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-shield-check me-2"></i> Organization Capabilities
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if stats.can_create_events %}
+                        <span class="capability-badge">
+                            <i class="bi bi-calendar-event me-1"></i> Event Creation
+                        </span>
+                        {% endif %}
+                        {% if stats.can_manage_accommodation %}
+                        <span class="capability-badge">
+                            <i class="bi bi-building me-1"></i> Accommodation
+                        </span>
+                        {% endif %}
+                        {% if stats.can_manage_transport %}
+                        <span class="capability-badge">
+                            <i class="bi bi-truck me-1"></i> Transport
+                        </span>
+                        {% endif %}
+                        {% if stats.can_manage_tourism %}
+                        <span class="capability-badge">
+                            <i class="bi bi-map me-1"></i> Tourism
+                        </span>
+                        {% endif %}
+                        {% if stats.can_process_payments %}
+                        <span class="capability-badge">
+                            <i class="bi bi-credit-card me-1"></i> Payment Processing
+                        </span>
+                        {% endif %}
+                        {% if stats.can_manage_staff %}
+                        <span class="capability-badge">
+                            <i class="bi bi-people me-1"></i> Staff Management
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    {% if stats.requires_license or stats.requires_insurance %}
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <h6 class="alert-heading">
+                            <i class="bi bi-exclamation-triangle me-2"></i> Compliance Requirements
+                        </h6>
+                        <p class="mb-2">
+                            {% if stats.requires_license %}
+                            <i class="bi bi-file-text me-1"></i> Business License Required<br>
+                            {% endif %}
+                            {% if stats.requires_insurance %}
+                            <i class="bi bi-shield me-1"></i> Insurance Certificate Required
+                            {% endif %}
+                        </p>
+                        <button class="btn btn-sm btn-warning" onclick="uploadDocuments()">
+                            <i class="bi bi-upload me-1"></i> Upload Documents
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Action Button -->
+<button class="floating-action-btn" onclick="openQuickActions()">
+    <i class="bi bi-plus"></i>
+</button>
+
+<!-- Quick Actions Modal -->
+<div class="modal fade" id="quickActionsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Quick Actions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-grid gap-2">
+                    {% if stats.can_create_events and 'events' in accessible_modules %}
+                    <button class="btn btn-primary" onclick="createNewEvent()">
+                        <i class="bi bi-calendar-event me-2"></i> Create New Event
+                    </button>
+                    {% endif %}
+                    {% if 'staff' in accessible_modules %}
+                    <button class="btn btn-success" onclick="inviteNewMember()">
+                        <i class="bi bi-person-plus me-2"></i> Invite Team Member
+                    </button>
+                    {% endif %}
+                    {% if 'wallet' in accessible_modules %}
+                    <button class="btn btn-info" onclick="addFunds()">
+                        <i class="bi bi-wallet2 me-2"></i> Add Funds to Wallet
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-secondary" onclick="generateReport()">
+                        <i class="bi bi-file-text me-2"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Initialize performance chart
+const ctx = document.getElementById('performanceChart');
+if (ctx) {
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+            datasets: [{
+                label: 'Revenue',
+                data: [0, 0, 0, 0, 0, 0],
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4
+            }, {
+                label: 'Active Users',
+                data: [0, 0, 0, 0, 0, 0],
+                borderColor: '#764ba2',
+                backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+// Quick action functions
+function openQuickActions() {
+    const modal = new bootstrap.Modal(document.getElementById('quickActionsModal'));
+    modal.show();
+}
+
+function createNewEvent() {
+    window.location.href = '{{ url_for("org.events", org_id=org.id) }}';
+}
+
+function inviteNewMember() {
+    window.location.href = '{{ url_for("org.members", org_id=org.id) }}';
+}
+
+function viewTransactions() {
+    window.location.href = '{{ url_for("org.wallet", org_id=org.id) }}';
+}
+
+function downloadReport() {
+    window.location.href = '{{ url_for("org.reports", org_id=org.id) }}';
+}
+
+function uploadDocuments() {
+    window.location.href = '{{ url_for("org.settings", org_id=org.id) }}';
+}
+
+function addFunds() {
+    window.location.href = '{{ url_for("org.wallet", org_id=org.id) }}';
+}
+
+function generateReport() {
+    window.location.href = '{{ url_for("org.reports", org_id=org.id) }}';
+}
+
+// Add smooth scrolling and animations
+document.addEventListener('DOMContentLoaded', function() {
+    // Animate stats on scroll
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+
+    document.querySelectorAll('.stat-card, .module-card').forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+});
+</script>
+{% endblock %}

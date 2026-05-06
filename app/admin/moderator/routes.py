@@ -34,10 +34,12 @@ from app.auth.decorators import require_role, require_permission
 
 from app.extensions import db
 from app.identity.models.user import User
+# Import all models from the models package to avoid circular imports
 from app.admin.models import (
-    ContentSubmission, ManageableItem,
-    ManageableCategory, ContentFlag, ModerationLog
+    ContentFlag, ContentSubmission, ModerationLog,
+    ManageableItem, ManageableCategory
 )
+from app.admin.moderator import moderator_bp
 from app.admin.services import create_flag, resolve_flag
 from app.admin.moderator.registry import get_review_url
 from app.admin.compliance.services import ComplianceCaseService

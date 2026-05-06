@@ -75,6 +75,17 @@ class User(UserMixin, ProtectedModel):
     security_answer_hash = Column(String(255), nullable=True)
     recovery_code = Column(String(255), nullable=True)
 
+    # Protected account fields (for executives, security personnel)
+    is_protected = Column(Boolean, default=False, nullable=False, index=True)
+    protection_reason = Column(String(255), nullable=True)  # "Executive", "Security", "Compliance"
+    can_be_deleted_by = Column(String(50), nullable=True, default="owner_only")  # "owner_only" or "secops_approval"
+
+    # Emergency Access Tracking (for break-glass procedures)
+    emergency_access_granted = Column(DateTime, nullable=True)  # When emergency access was granted
+    emergency_access_granted_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)  # Who granted it
+    emergency_access_reason = Column(String(255), nullable=True)  # Why access was granted
+    emergency_access_expires = Column(DateTime, nullable=True)  # When access expires
+
     # Default organisation — use_alter=True prevents circular dependency on table creation
     default_org_id = Column(
         BigInteger,
@@ -93,7 +104,7 @@ class User(UserMixin, ProtectedModel):
     # ---------------------------
     profile = relationship(
         "UserProfile",
-        primaryjoin="foreign(UserProfile.user_id) == User.public_id",
+        primaryjoin="foreign(UserProfile.user_id) == User.id",
         back_populates="user",
         uselist=False
     )
@@ -141,6 +152,9 @@ class User(UserMixin, ProtectedModel):
         cascade="all, delete-orphan",
         foreign_keys="[OrganisationController.user_id]"
     )
+    
+    # Emergency access grantor relationship
+    emergency_access_grantor = relationship('User', foreign_keys=[emergency_access_granted_by], remote_side='User.id')
 
     # ---------------------------
     # Dual ID Helpers
@@ -613,6 +627,93 @@ class User(UserMixin, ProtectedModel):
         except Exception as e:
             import logging
             logging.error(f"Failed to audit MFA disablement: {e}")
+
+    # ---------------------------
+    # Tenure-based Protection Methods
+    # ---------------------------
+    def can_be_deleted_by_user(self, acting_user) -> tuple[bool, str]:
+        """
+        Check if this user can be deleted by the acting user based on tenure and protection rules.
+        
+        Returns:
+            (can_delete, reason)
+        """
+        from datetime import datetime, timedelta
+        from app.auth.helpers import is_owner, is_system_admin
+        
+        # Check protected account status
+        if self.is_protected:
+            if self.can_be_deleted_by == "owner_only" and not is_owner(acting_user):
+                return False, "Protected account - only owner can delete"
+            elif self.can_be_deleted_by == "secops_approval" and not is_owner(acting_user):
+                return False, "Protected account - requires security operations approval"
+        
+        # Check tenure-based protections
+        if self.created_at:
+            account_age = datetime.now(timezone.utc) - self.created_at
+            if account_age < timedelta(days=7):
+                return False, "Account too new (less than 7 days old)"
+        
+        # Check admin tenure protection
+        if self.has_global_role("admin", "super_admin"):
+            # Get the role assignment date (this would need to be tracked in UserRole model)
+            # For now, use account creation date as proxy
+            if self.created_at:
+                admin_tenure = datetime.now(timezone.utc) - self.created_at
+                if admin_tenure > timedelta(days=30):
+                    if not is_owner(acting_user):
+                        return False, "Admin tenure protection (30+ days) - requires owner approval"
+        
+        # Self-deletion protection
+        if acting_user and acting_user.id == self.id:
+            return False, "Cannot delete your own account"
+        
+        return True, "Deletion allowed"
+
+    def can_be_suspended_by_user(self, acting_user) -> tuple[bool, str]:
+        """
+        Check if this user can be suspended by the acting user.
+        
+        Returns:
+            (can_suspend, reason)
+        """
+        from app.auth.helpers import is_owner, is_system_admin, has_global_role
+        
+        # Protected accounts cannot be suspended by non-owners
+        if self.is_protected and not is_owner(acting_user):
+            return False, "Protected account - only owner can suspend"
+        
+        # Users cannot suspend themselves
+        if acting_user and acting_user.id == self.id:
+            return False, "Cannot suspend your own account"
+        
+        # Only owner can suspend other admins/super_admins
+        if has_global_role(self, "admin", "super_admin") and not is_owner(acting_user):
+            return False, "Only owner can suspend admin-level accounts"
+        
+        return True, "Suspension allowed"
+
+    def requires_approval_for_deletion(self) -> bool:
+        """Check if account requires approval for deletion based on tenure/role."""
+        from datetime import datetime, timedelta
+        
+        # New accounts (< 7 days) require approval
+        if self.created_at:
+            account_age = datetime.now(timezone.utc) - self.created_at
+            if account_age < timedelta(days=7):
+                return True
+        
+        # Long-tenured admins (> 30 days) require approval
+        if self.has_global_role("admin", "super_admin") and self.created_at:
+            admin_tenure = datetime.now(timezone.utc) - self.created_at
+            if admin_tenure > timedelta(days=30):
+                return True
+        
+        # Protected accounts always require approval
+        if self.is_protected:
+            return True
+        
+        return False
 
     # ---------------------------
     # Validators

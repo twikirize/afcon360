@@ -4,7 +4,7 @@
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">Owner Audit Logs</h1>
-        <a href="{{ url_for('owner.export_audit_logs') }}" class="btn btn-primary">
+        <a href="{{ url_for('admin.owner.audit_logs') }}" class="btn btn-primary">
             Export CSV
         </a>
     </div>
@@ -78,7 +78,7 @@
                     {% for page in logs.iter_pages() %}
                         {% if page %}
                             <li class="page-item {{ 'active' if page == logs.page else '' }}">
-                                <a class="page-link" href="{{ url_for('owner.audit_logs', page=page, category=current_category) }}">
+                                <a class="page-link" href="{{ url_for('admin.owner.audit_logs', page=page, category=current_category) }}">
                                     {{ page }}
                                 </a>
                             </li>

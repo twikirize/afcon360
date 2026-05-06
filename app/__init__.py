@@ -447,7 +447,7 @@ def create_app(config_object=None) -> Flask:
     from importlib import import_module
 
     optional_blueprints = [
-        ('org_bp', 'app.org.routes'),
+        ('org_bp', 'app.identity.routes'),
         ('compliance_bp', 'app.admin.compliance.routes'),
         ('auditor_bp', 'app.admin.auditor.routes'),
         ('support_bp', 'app.admin.support.routes'),
@@ -509,7 +509,7 @@ def create_app(config_object=None) -> Flask:
 
     # Register organization blueprint
     try:
-        from app.org.routes import org_bp
+        from app.identity.routes import org_bp
         app.register_blueprint(org_bp)
     except ImportError as e:
         logger.warning(f"Organization blueprint not found: {e}")
@@ -640,6 +640,7 @@ def create_app(config_object=None) -> Flask:
             "year": current_app.config.get("YEAR", 2025),
             "require_email_verification": current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False),
             "allow_username_login": current_app.config.get("ALLOW_USERNAME_LOGIN", True),
+            "tournament_mode": current_app.config.get("MODULE_FLAGS", {}).get("tournament", False),
         }
 
     @app.context_processor

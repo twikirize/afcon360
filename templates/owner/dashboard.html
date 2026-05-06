@@ -15,7 +15,7 @@
   <!-- TOP NAVIGATION BAR -->
   <header class="dashboard-header">
     <div class="header-left">
-      <a href="{{ url_for('index') }}" class="back-btn">
+      <a href="{{ url_for('transport.home') }}" class="back-btn">
         <i class="bi bi-arrow-left"></i>
         <span>Back to AFCON 360</span>
       </a>
@@ -268,6 +268,22 @@
           </div>
         </div>
 
+        <div class="stat-card" style="border-left: 4px solid {{ '#10b981' if org_registration_mode == 'testing' else '#f59e0b' }};">
+          <div class="stat-icon {{ 'green-bg' if org_registration_mode == 'testing' else 'orange-bg' }}">
+            <i class="bi bi-{{ 'check-circle' if org_registration_mode == 'testing' else 'shield-check' }}"></i>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" style="font-size: 1.1rem; text-transform: uppercase;">{{ org_registration_mode or 'TESTING' }}</div>
+            <div class="stat-label">ORG REGISTRATION</div>
+            <div class="stat-meta">
+              <a href="{{ url_for('admin.owner.settings') }}" style="color: inherit; text-decoration: none;">
+                {{ 'Minimal requirements' if org_registration_mode == 'testing' else 'Full compliance required' }}
+                <i class="bi bi-gear" style="margin-left: 0.25rem;"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+
         <div class="stat-card gradient-dark">
           <div class="stat-icon white-bg">
             <i class="bi bi-shield-check"></i>
@@ -292,6 +308,62 @@
           </div>
         </div>
       </div>
+
+      <!-- MODULE CONTROL (Owner Only) -->
+      <div class="section-header" style="margin-top:2rem">
+        <h2><i class="bi bi-sliders"></i> Module Control</h2>
+        <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.75rem;padding:0.25rem 0.75rem;border-radius:20px;">
+          <i class="bi bi-shield-lock"></i> Owner Only
+        </span>
+      </div>
+
+      <div class="stats-row">
+        {% for module_name, module_status in modules.items() %}
+        <div class="stat-card" style="flex-direction:column;align-items:flex-start;gap:0.75rem;">
+          <div style="display:flex;align-items:center;gap:0.75rem;width:100%;">
+            <div class="stat-icon {{ 'green-bg' if module_status else 'orange-bg' }}">
+              <i class="bi bi-{{ 'check-circle' if module_status else 'x-circle' }}"></i>
+            </div>
+            <div class="stat-info" style="flex:1;">
+              <div class="stat-value" style="font-size:1.25rem;text-transform:capitalize;">{{ module_name }}</div>
+              <div class="stat-label">{{ 'ENABLED' if module_status else 'DISABLED' }}</div>
+            </div>
+          </div>
+          <form method="POST" action="{{ url_for('admin.toggle_module', module=module_name) }}"
+                id="owner-toggle-form-{{ module_name }}" style="width:100%;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="reason" id="owner-reason-{{ module_name }}" value="">
+            <input type="hidden" name="confirm" id="owner-confirm-{{ module_name }}" value="">
+            <label class="sad-toggle" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;width:100%;">
+              <input type="checkbox" {{ 'checked' if module_status else '' }}
+                     onchange="ownerPrepareModuleToggle('{{ module_name }}', this)"
+                     style="width:18px;height:18px;cursor:pointer;">
+              <span style="font-size:0.875rem;color:#6b7280;">
+                {{ 'Disable' if module_status else 'Enable' }} module
+              </span>
+            </label>
+          </form>
+        </div>
+        {% else %}
+        <div class="stat-card">
+          <div class="stat-icon orange-bg"><i class="bi bi-exclamation-triangle"></i></div>
+          <div class="stat-info">
+            <div class="stat-value">—</div>
+            <div class="stat-label">NO MODULES CONFIGURED</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if super_admin_can_toggle_modules %}
+      <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.5rem;">
+        <i class="bi bi-info-circle" style="color:#1e40af;"></i>
+        <span style="font-size:0.875rem;color:#1e40af;">
+          Super admins are <strong>authorized</strong> to toggle modules. You can revoke this in
+          <a href="{{ url_for('admin.owner.settings') }}" style="text-decoration:underline;color:#1e40af;font-weight:600;">Settings</a>.
+        </span>
+      </div>
+      {% endif %}
 
       <!-- TWO COLUMN LAYOUT -->
       <div class="two-columns">
@@ -372,7 +444,7 @@
                       <div class="action-buttons">
                         <button onclick="eventModerationAction('approve', '{{ event.slug }}')" class="btn-approve">Approve</button>
                         <button onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})" class="btn-reject">Reject</button>
-                        <a href="/events/{{ event.slug }}" class="btn-view">View</a>
+                        <a href="{{ url_for('events.event_detail', slug=event.slug) }}" class="btn-view">View</a>
                       </div>
                     </div>
                   </div>
@@ -531,10 +603,45 @@ function eventModerationAction(action, slug, extraData = {}) {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
     })
-    .catch(err => { 
-        console.error(err); 
-        alert('Network error'); 
+    .catch(err => {
+        console.error(err);
+        alert('Network error');
     });
+}
+
+function ownerPrepareModuleToggle(moduleName, checkbox) {
+    const isDisabling = !checkbox.checked;
+
+    if (moduleName === 'wallet' && isDisabling) {
+        const reason = prompt('You are about to DISABLE the Wallet module.\nThis is a critical action. Please provide a reason:');
+        if (!reason) {
+            checkbox.checked = true;
+            return;
+        }
+        const confirmMsg = 'Type "yes" to confirm disabling the wallet module:';
+        const confirm = prompt(confirmMsg);
+        if (confirm !== 'yes') {
+            checkbox.checked = true;
+            return;
+        }
+
+        const reasonInput = document.getElementById(`owner-reason-${moduleName}`);
+        const confirmInput = document.getElementById(`owner-confirm-${moduleName}`);
+        if (reasonInput) reasonInput.value = reason;
+        if (confirmInput) confirmInput.value = 'yes';
+
+        document.getElementById(`owner-toggle-form-${moduleName}`).submit();
+        return;
+    }
+
+    const action = checkbox.checked ? 'enable' : 'disable';
+    const message = `Are you sure you want to ${action} the ${moduleName} module?`;
+
+    if (confirm(message)) {
+        document.getElementById(`owner-toggle-form-${moduleName}`).submit();
+    } else {
+        checkbox.checked = !checkbox.checked;
+    }
 }
 </script>
 

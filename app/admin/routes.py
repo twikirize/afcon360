@@ -21,6 +21,11 @@ from app.auth.decorators import (
     require_permission,
     require_role
 )
+from app.admin.decorators import (
+    require_emergency_access_or_role,
+    emergency_access_required,
+    owner_or_emergency_access_required
+)
 from app.profile.models import get_profile_by_user
 from app.admin.models import ContentFlag
 from app.wallet.services.commission_service import CommissionService
@@ -154,6 +159,10 @@ def super_dashboard():
             except Exception as e:
                 logger.warning(f"Could not load event statistics: {e}")
 
+        # Owner authorization for super_admin module toggles
+        from app.admin.owner.models import SystemSetting
+        super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+
         return render_template(
             "super_admindashboard.html",
             total_users=total_users,
@@ -174,6 +183,7 @@ def super_dashboard():
             pending_events=pending_events,
             total_registrations=total_registrations,
             pending_events_list=pending_events_list,
+            super_admin_can_toggle_modules=super_admin_can_toggle_modules,
         )
     except Exception as e:
         db.session.rollback()
@@ -300,20 +310,26 @@ def deactivate_user(user_id):
 @login_required
 @admin_required
 def suspend_user(user_id):
-    """Suspend a user account (temporary deactivation with reason)."""
+    """Suspend a user account with tenure-based protections."""
     from app.identity.models.user import User
     try:
         user = User.query.filter_by(public_id=user_id).first()
-        if user:
-            if user.user_id == current_user.user_id:
-                flash("You cannot suspend your own account.", "danger")
-                return redirect(url_for("admin.manage_users"))
+        if not user:
+            flash("User not found.", "danger")
+            return redirect(url_for("admin.manage_users"))
 
-            reason = request.form.get("reason", "No reason provided")
-            user.is_active = False
-            db.session.commit()
-            flash(f"User {user.username} suspended successfully. Reason: {reason}", "warning")
-            logger.info(f"User {user.username} suspended by {current_user.username}. Reason: {reason}")
+        # Check tenure-based protections
+        can_suspend, reason = user.can_be_suspended_by_user(current_user)
+        if not can_suspend:
+            flash(f"Cannot suspend user: {reason}", "danger")
+            logger.warning(f"Suspend user blocked: {reason} for user {user.username} by {current_user.username}")
+            return redirect(url_for("admin.manage_users"))
+
+        reason = request.form.get("reason", "No reason provided")
+        user.is_active = False
+        db.session.commit()
+        flash(f"User {user.username} suspended successfully. Reason: {reason}", "warning")
+        logger.info(f"User {user.username} suspended by {current_user.username}. Reason: {reason}")
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error suspending user: {e}")
@@ -323,22 +339,34 @@ def suspend_user(user_id):
 
 @admin_bp.route("/users/<string:user_id>/delete", methods=["POST"], endpoint="delete_user")
 @login_required
-@admin_required
+@require_emergency_access_or_role("owner", action="delete_user")
 def delete_user(user_id):
-    """Permanently delete a user account."""
+    """Permanently delete a user account with tenure-based protections."""
     from app.identity.models.user import User
     try:
         user = User.query.filter_by(public_id=user_id).first()
-        if user:
-            if user.user_id == current_user.user_id:
-                flash("You cannot delete your own account.", "danger")
-                return redirect(url_for("admin.manage_users"))
+        if not user:
+            flash("User not found.", "danger")
+            return redirect(url_for("admin.manage_users"))
 
-            username = user.username
-            db.session.delete(user)
-            db.session.commit()
-            flash(f"User {username} deleted permanently.", "success")
-            logger.info(f"User {username} deleted by {current_user.username}")
+        # Check tenure-based protections
+        can_delete, reason = user.can_be_deleted_by_user(current_user)
+        if not can_delete:
+            flash(f"Cannot delete user: {reason}", "danger")
+            logger.warning(f"Delete user blocked: {reason} for user {user.username} by {current_user.username}")
+            return redirect(url_for("admin.manage_users"))
+
+        # If approval is required, create approval request instead
+        if user.requires_approval_for_deletion():
+            flash(f"User deletion requires approval: {reason}. Please contact the platform owner.", "warning")
+            logger.info(f"Delete approval required for user {user.username} by {current_user.username}")
+            return redirect(url_for("admin.manage_users"))
+
+        username = user.username
+        db.session.delete(user)
+        db.session.commit()
+        flash(f"User {username} deleted permanently.", "success")
+        logger.info(f"User {username} deleted by {current_user.username}")
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting user: {e}")
@@ -461,7 +489,7 @@ def demote_user(user_id):
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
 
-        if user.user_id == current_user.user_id:
+        if user.id == current_user.id:
             flash("You cannot demote yourself.", "danger")
             return redirect(url_for("admin.manage_users"))
 
@@ -935,7 +963,7 @@ def remove_user_role(user_id, role_name):
             flash("User not found.", "danger")
             return redirect(url_for("admin.manage_users"))
 
-        if role_name == 'admin' and user.user_id == current_user.user_id:
+        if role_name == 'admin' and user.id == current_user.id:
             flash("You cannot remove the admin role from yourself.", "danger")
             return redirect(url_for("admin.view_user", user_id=user.public_id))
 
@@ -1003,9 +1031,21 @@ def toggle_email_verification():
 # -----------------------------
 @admin_bp.route("/toggle/<module>", methods=["POST"], endpoint="toggle_module")
 @login_required
-@owner_only
 def toggle_module(module):
+    # Permission: owner always allowed; super_admin only if owner explicitly authorized them
+    is_owner_user = current_user.is_app_owner()
+    if not is_owner_user:
+        if not current_user.is_super_admin():
+            flash("Owner access required for this action.", "danger")
+            return redirect(url_for("admin.super_dashboard"))
+        from app.admin.owner.models import SystemSetting
+        if not SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False):
+            flash("Module toggling is restricted to the platform owner.", "danger")
+            return redirect(url_for("admin.super_dashboard"))
+
     def _redirect_after_toggle():
+        if is_owner_user:
+            return redirect(url_for("admin.owner.dashboard"))
         return redirect(url_for("admin.super_dashboard"))
 
     try:

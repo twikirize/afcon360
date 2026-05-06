@@ -106,6 +106,40 @@
     <p>Central hub for all platform configuration and settings</p>
   </div>
 
+  <!-- Module Permissions Section -->
+  <h3 class="section-title">Module Permissions</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #f59e0b;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">⚡</div>
+        <span class="card-badge badge-security">Owner Control</span>
+      </div>
+      <div class="card-title">Super Admin Module Access</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        By default, <strong>only the owner</strong> can enable or disable system modules (wallet, transport, tourism, etc.).
+        Use the toggle below to authorize super admins to perform these actions.
+      </div>
+      <form method="POST" action="{{ url_for('admin.owner.toggle_super_admin_module_access') }}" style="margin-top:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+          <input type="checkbox" name="authorize" onchange="this.form.submit()"
+                 {{ 'checked' if super_admin_can_toggle_modules else '' }}
+                 style="width:20px;height:20px;cursor:pointer;">
+          <span style="font-weight:600;color:#1a1a1a;">
+            Allow super admins to toggle modules
+          </span>
+        </label>
+      </form>
+      <div style="margin-top:1rem;font-size:0.8125rem;color:#6b7280;background:#f9fafb;border-radius:8px;padding:0.75rem 1rem;">
+        <i class="bi bi-info-circle"></i>
+        Current status:
+        <strong style="color:{{ '#065f46' if super_admin_can_toggle_modules else '#dc2626' }};">
+          {{ 'Authorized' if super_admin_can_toggle_modules else 'Restricted to Owner Only' }}
+        </strong>
+      </div>
+    </div>
+  </div>
+
   <!-- Authentication Section -->
   <h3 class="section-title">Authentication & Verification</h3>
   <div class="settings-grid">
@@ -181,6 +215,64 @@
     </a>
   </div>
 
+  <!-- Organization Registration Section -->
+  <h3 class="section-title">Organization Registration</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #8b5cf6;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">🏢</div>
+        <span class="card-badge badge-system">Registration Control</span>
+      </div>
+      <div class="card-title">Organization Registration Requirements</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        Control the requirements for new organization registrations. Toggle between <strong>Testing Mode</strong> (minimal requirements) and <strong>Standard Mode</strong> (full compliance).
+      </div>
+      
+      <div style="background:#f8fafc;border-radius:8px;padding:1rem;margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+          <span style="font-weight:600;color:#374151;">Current Mode:</span>
+          <span class="badge" style="background:{{ '#dcfce7' if org_registration_mode == 'testing' else '#fef3c7' }};color:{{ '#166534' if org_registration_mode == 'testing' else '#92400e' }};">
+            {{ org_registration_mode.title() }}
+          </span>
+        </div>
+        <div style="font-size:0.8125rem;color:#6b7280;">
+          {% if org_registration_mode == 'testing' %}
+            <i class="bi bi-check-circle" style="color:#16a34a;"></i> Only name, type, and email required
+          {% else %}
+            <i class="bi bi-shield-check" style="color:#ca8a04;"></i> Full KYC and compliance required
+          {% endif %}
+        </div>
+      </div>
+      
+      <form method="POST" action="{{ url_for('admin.owner.toggle_org_registration_mode') }}" style="margin-top:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+          <input type="checkbox" name="testing_mode" onchange="this.form.submit()"
+                 {{ 'checked' if org_registration_mode == 'testing' else '' }}
+                 style="width:20px;height:20px;cursor:pointer;">
+          <span style="font-weight:600;color:#1a1a1a;">
+            Enable Testing Mode (Minimal Requirements)
+          </span>
+        </label>
+      </form>
+      
+      <div style="margin-top:1rem;">
+        <button onclick="showOrgRegistrationDetails()" class="btn-ghost" style="font-size:0.875rem;padding:0.5rem 1rem;">
+          <i class="bi bi-info-circle"></i> View Requirements Details
+        </button>
+      </div>
+    </div>
+    
+    <a href="{{ url_for('admin.manage_orgs') }}" class="settings-card">
+      <div class="card-icon">📊</div>
+      <div class="card-title">Organization Management</div>
+      <div class="card-description">
+        View and manage all registered organizations
+      </div>
+      <span class="card-badge badge-system">Organizations</span>
+    </a>
+  </div>
+
   <!-- User Management Section -->
   <h3 class="section-title">User & Role Management</h3>
   <div class="settings-grid">
@@ -247,4 +339,69 @@
     </a>
   </div>
 </div>
+
+<script>
+function showOrgRegistrationDetails() {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background:white;border-radius:12px;padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                <h3 style="margin:0;color:#1a1a1a;">📋 Organization Registration Requirements</h3>
+                <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#6b7280;">×</button>
+            </div>
+            
+            <div style="margin-bottom:2rem;">
+                <h4 style="color:#16a34a;margin-bottom:1rem;">🧪 Testing Mode (Minimal Requirements)</h4>
+                <ul style="list-style:none;padding:0;margin:0;">
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Organization Name</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Organization Type</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Contact Email</li>
+                    <li style="padding:0.5rem 0;color:#6b7280;"><i class="bi bi-x-circle" style="color:#6b7280;margin-right:0.5rem;"></i> No KYC requirements</li>
+                </ul>
+            </div>
+            
+            <div style="margin-bottom:2rem;">
+                <h4 style="color:#ca8a04;margin-bottom:1rem;">🛡️ Standard Mode (Full Compliance)</h4>
+                <ul style="list-style:none;padding:0;margin:0;">
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Organization Name</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Organization Type</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Contact Email</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Country/Region</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Business Address</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Phone Number</li>
+                    <li style="padding:0.5rem 0;border-bottom:1px solid #f3f4f6;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Website (optional)</li>
+                    <li style="padding:0.5rem 0;color:#6b7280;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Full KYC verification enabled</li>
+                </ul>
+            </div>
+            
+            <div style="background:#f8fafc;border-radius:8px;padding:1rem;">
+                <p style="margin:0;color:#6b7280;font-size:0.875rem;">
+                    <strong>💡 Tip:</strong> Use Testing Mode during development and testing. Switch to Standard Mode for production use when full compliance is required.
+                </p>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+</script>
+
 {% endblock %}

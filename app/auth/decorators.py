@@ -76,7 +76,7 @@ def get_highest_role(user) -> str:
         "org_admin",
         "moderator",
         "support",
-        "fan"
+        "user"
     ]
 
     try:
@@ -91,7 +91,7 @@ def get_highest_role(user) -> str:
     except Exception as e:
         log.warning(f"Error getting highest role: {e}")
 
-    return "fan"  # Default
+    return "user"  # Default
 
 
 # ---------------------------------------------------------------------------

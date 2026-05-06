@@ -7,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import BaseModel
+from app.identity.models.organization_types import OrganizationType, get_organization_capabilities
 
 
 # -------------------------------
@@ -111,9 +112,12 @@ class Organisation(BaseModel):
     # -------------------
     industry_code = Column(String(32), index=True)
     business_category = Column(
-        Enum("merchant", "service_provider", "marketplace_seller", "non_profit", name="org_business_category"),
+        Enum(OrganizationType, name="org_business_category"),
         index=True
     )
+    
+    # Organization-specific settings
+    org_settings = Column(JSON, nullable=False, default=dict)  # Store org-specific configurations
 
     # -------------------
     # Contact Info
@@ -203,6 +207,76 @@ class Organisation(BaseModel):
     def has_partial_verification(self):
         latest = max(self.verifications, key=lambda v: v.requested_at, default=None)
         return latest and latest.status in ["pending", "manual_review"]
+    
+    # -------------------
+    # Organization Type Methods
+    # -------------------
+    
+    def get_capabilities(self):
+        """Get capabilities based on organization type"""
+        if not self.business_category:
+            return get_organization_capabilities(OrganizationType.MERCHANT)
+        return get_organization_capabilities(self.business_category)
+    
+    def can_manage_staff(self):
+        """Check if organization can manage staff"""
+        return self.get_capabilities().can_manage_staff
+    
+    def can_create_events(self):
+        """Check if organization can create events"""
+        return self.get_capabilities().can_create_events
+    
+    def can_manage_accommodation(self):
+        """Check if organization can manage accommodation"""
+        return self.get_capabilities().can_manage_accommodation
+    
+    def can_manage_transport(self):
+        """Check if organization can manage transport"""
+        return self.get_capabilities().can_manage_transport
+    
+    def can_manage_tourism(self):
+        """Check if organization can manage tourism"""
+        return self.get_capabilities().can_manage_tourism
+    
+    def can_process_payments(self):
+        """Check if organization can process payments"""
+        return self.get_capabilities().can_process_payments
+    
+    def requires_license(self):
+        """Check if organization requires license"""
+        return self.get_capabilities().requires_license
+    
+    def requires_insurance(self):
+        """Check if organization requires insurance"""
+        return self.get_capabilities().requires_insurance
+    
+    def get_setting(self, key, default=None):
+        """Get organization-specific setting"""
+        return self.org_settings.get(key, default)
+    
+    def set_setting(self, key, value):
+        """Set organization-specific setting"""
+        if not self.org_settings:
+            self.org_settings = {}
+        self.org_settings[key] = value
+    
+    def get_active_modules(self):
+        """Get list of active modules for this organization"""
+        capabilities = self.get_capabilities()
+        modules = []
+        
+        if capabilities.integrates_with_events:
+            modules.append('events')
+        if capabilities.integrates_with_accommodation:
+            modules.append('accommodation')
+        if capabilities.integrates_with_transport:
+            modules.append('transport')
+        if capabilities.integrates_with_wallet:
+            modules.append('wallet')
+        if capabilities.can_manage_tourism:
+            modules.append('tourism')
+            
+        return modules
 
     @property
     def has_expired_license(self):

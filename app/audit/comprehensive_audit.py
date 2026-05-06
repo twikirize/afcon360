@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from decimal import Decimal
 from enum import Enum
+import uuid
 from sqlalchemy import Column, BigInteger, String,Integer, DateTime, JSON, Numeric, Enum as SQLEnum, Index, Boolean, Text
 from sqlalchemy.orm import Session
 from app.extensions import db
@@ -454,6 +455,8 @@ class DataChangeLog(BaseModel):
     """
     __tablename__ = "data_change_logs"
 
+    # ADD THIS LINE - public_id for IDGuard compliance
+    public_id = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
 
     entity_type = Column(String(64), nullable=False, index=True)
     entity_id = Column(String(128), nullable=False, index=True)
@@ -471,6 +474,7 @@ class DataChangeLog(BaseModel):
     __table_args__ = (
         Index('idx_dc_entity', 'entity_type', 'entity_id'),
         Index('idx_dc_changed_by', 'changed_by', 'created_at'),
+        Index('idx_dc_public_id', 'public_id'),  # ADD THIS INDEX
     )
 
     @staticmethod

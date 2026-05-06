@@ -52,7 +52,7 @@ ROLE_HIERARCHY: tuple[str, ...] = (
     "admin",
     "moderator",
     "support",
-    "fan",
+    "user",
 )
 
 
@@ -340,15 +340,14 @@ def has_org_permission(
         return False
 
     from app.extensions import db
-    from app.identity.models.role import Role          # adjust path if needed
-    from app.identity.models.permission import Permission  # adjust path if needed
+    from app.identity.models.roles_permission import Permission, RolePermission
 
     match = (
         db.session.query(Permission)
-        .join(Permission.role_permissions)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
         .filter(
             Permission.name == permission_name,
-            Role.id.in_(org_role_ids),
+            RolePermission.role_id.in_(org_role_ids),
         )
         .first()
     )

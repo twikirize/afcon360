@@ -1,5 +1,35 @@
 {% extends 'base.html' %}
+{% block title %}Organisation Onboarding — Step 2 — AFCON 360{% endblock %}
 {% block content %}
 {% set step_current=2 %}{% set step_total=2 %}{% set step_labels=['Details', 'Confirm'] %}
-<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Organisation Step2</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.organisation_onboarding', step=2) }}" class='ob-form' enctype='multipart/form-data'><textarea readonly>{{ data.get('step1', {}) }}</textarea><input type='file' name='registration_document'><label><input type='checkbox' name='confirm' required> Confirm accuracy</label><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+<div class="onboarding-root ob-wizard">
+  <div class="ob-wizard-inner">
+    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
+    <h2 class="ob-wizard-title">Organisation — Confirm</h2>
+    <p class="ob-wizard-sub">Review and confirm your organisation details.</p>
+    {% include 'onboarding/_progress_bar.html' %}
+    <form method="POST" action="{{ url_for('onboarding.organisation_onboarding', step=2) }}" class="ob-form" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="ob-field">
+        <label>Review Details</label>
+        <textarea readonly rows="6">{{ data.get('step1', {}) }}</textarea>
+      </div>
+      <div class="ob-field">
+        <label>Registration Document</label>
+        <input type="file" name="registration_document">
+        <span class="ob-hint">Optional: upload incorporation certificate or equivalent.</span>
+      </div>
+      <div class="ob-field">
+        <label>
+          <input type="checkbox" name="confirm" required>
+          I confirm that the information provided is accurate.
+        </label>
+      </div>
+      <div class="ob-form-footer">
+        <button class="ob-btn ob-btn--primary" type="submit">Register Organisation →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% include 'onboarding/_wizard_styles.html' %}
 {% endblock %}

@@ -209,6 +209,9 @@ def remove_permission_from_role(
     if not link:
         return False
 
+    # Clear permission cache for all users with this role BEFORE deleting
+    _clear_permission_cache_for_role(role)
+
     db.session.delete(link)
 
     if commit:
@@ -217,6 +220,51 @@ def remove_permission_from_role(
         db.session.flush()
 
     return True
+
+
+def _clear_permission_cache_for_role(role: "Role"):
+    """
+    Clear permission cache for all users who have the given role.
+    
+    This prevents the security hole where users retain permissions after
+    they're revoked from a role due to stale cache.
+    """
+    try:
+        # Import here to avoid circular imports
+        from app.identity.models.organisation_member import OrganisationMember
+        from app.identity.models import UserRole, User
+        from app.extensions import cache
+        
+        if role.scope == "global":
+            # Find all users with this global role
+            user_ids = (
+                db.session.query(UserRole.user_id)
+                .filter(UserRole.role_id == role.id)
+                .all()
+            )
+            
+            # Clear cache for each user
+            for (user_id,) in user_ids:
+                cache.delete(f"user_perms:{user_id}")
+                
+        elif role.scope == "org":
+            # Find all organisation members with this org role
+            member_ids = (
+                db.session.query(OrganisationMember.id)
+                .join(OrganisationMember.roles)
+                .filter(OrganisationMember.roles.any(role_id=role.id))
+                .all()
+            )
+            
+            # Clear cache for each member
+            for (member_id,) in member_ids:
+                cache.delete(f"org_member_perms:{member_id}")
+                
+    except Exception as e:
+        # Log error but don't fail the permission removal
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to clear permission cache for role {role.name}: {e}")
 
 
 # ---------------------------------------------------------------------------

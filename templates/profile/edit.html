@@ -268,6 +268,35 @@
                     </div>
                 </div>
 
+                <!-- Fan team declaration — shown always, relevant during tournament -->
+                <div class="mb-3">
+                  <label for="fan_team" class="form-label">
+                    AFCON team you support
+                    <span class="text-muted small">(optional)</span>
+                  </label>
+                  <select class="form-select" id="fan_team" name="fan_team">
+                    <option value="">Not declared</option>
+                    <option value="Algeria"   {% if profile.fan_team == 'Algeria' %}selected{% endif %}>Algeria</option>
+                    <option value="Angola"    {% if profile.fan_team == 'Angola' %}selected{% endif %}>Angola</option>
+                    <option value="Cameroon"  {% if profile.fan_team == 'Cameroon' %}selected{% endif %}>Cameroon</option>
+                    <option value="DR Congo"  {% if profile.fan_team == 'DR Congo' %}selected{% endif %}>DR Congo</option>
+                    <option value="Egypt"     {% if profile.fan_team == 'Egypt' %}selected{% endif %}>Egypt</option>
+                    <option value="Ghana"     {% if profile.fan_team == 'Ghana' %}selected{% endif %}>Ghana</option>
+                    <option value="Ivory Coast" {% if profile.fan_team == 'Ivory Coast' %}selected{% endif %}>Ivory Coast</option>
+                    <option value="Kenya"     {% if profile.fan_team == 'Kenya' %}selected{% endif %}>Kenya</option>
+                    <option value="Mali"      {% if profile.fan_team == 'Mali' %}selected{% endif %}>Mali</option>
+                    <option value="Morocco"   {% if profile.fan_team == 'Morocco' %}selected{% endif %}>Morocco</option>
+                    <option value="Nigeria"   {% if profile.fan_team == 'Nigeria' %}selected{% endif %}>Nigeria</option>
+                    <option value="Senegal"   {% if profile.fan_team == 'Senegal' %}selected{% endif %}>Senegal</option>
+                    <option value="South Africa" {% if profile.fan_team == 'South Africa' %}selected{% endif %}>South Africa</option>
+                    <option value="Tanzania"  {% if profile.fan_team == 'Tanzania' %}selected{% endif %}>Tanzania</option>
+                    <option value="Tunisia"   {% if profile.fan_team == 'Tunisia' %}selected{% endif %}>Tunisia</option>
+                    <option value="Uganda"    {% if profile.fan_team == 'Uganda' %}selected{% endif %}>Uganda</option>
+                    <option value="Other"     {% if profile.fan_team == 'Other' %}selected{% endif %}>Other / Neutral</option>
+                  </select>
+                  <div class="form-text">Used to personalise your tournament experience.</div>
+                </div>
+
                 <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
                     <a href="{{ url_for('profile.account_overview') }}" class="btn btn-outline-secondary me-md-2">
                         Cancel

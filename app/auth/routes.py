@@ -151,9 +151,9 @@ def _dashboard_for_user(user) -> str:
 
     # STEP 7: Check for driver profile
     try:
-        from app.transport.models import DriverProfile
+        from app.transport.models import DriverProfile, VerificationTier
         driver = DriverProfile.query.filter_by(user_id=user.id).first()
-        if driver and driver.verification_status == "verified":
+        if driver and driver.verification_tier == VerificationTier.PLATFORM_VERIFIED:
             return url_for("transport.driver_dashboard")
     except Exception:
         pass
@@ -161,7 +161,7 @@ def _dashboard_for_user(user) -> str:
     # STEP 8: Event organiser role
     if "event_manager" in role_names:
         try:
-            return url_for("events.organizer_dashboard")
+            return url_for("events.my_events")
         except:
             pass
 
@@ -646,6 +646,10 @@ def login():
             next_page = request.args.get("next") or session.pop("next_url", None)
             if not next_page or not is_safe_url(next_page):
                 next_page = _dashboard_for_user(user)
+            elif profile and not profile.profile_completed:
+                # Profile incomplete — save intended destination and go to onboarding
+                session["post_onboarding_redirect"] = next_page
+                next_page = url_for("onboarding.choose")
 
             return redirect(next_page)
 

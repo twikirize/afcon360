@@ -157,6 +157,12 @@
                     </h1>
                     <p class="text-muted mb-3">@{{ user.username }}</p>
 
+                    {% if tournament_mode and profile.fan_team %}
+                    <span class="badge" style="background:#E1F5EE;color:#085041;font-size:12px;padding:4px 10px;border-radius:20px;">
+                      AFCON fan — {{ profile.fan_team }}
+                    </span>
+                    {% endif %}
+
                     <!-- Location -->
                     {% if public_info.city or public_info.country %}
                     <div class="location-text mb-3">

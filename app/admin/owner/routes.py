@@ -4,7 +4,7 @@ Owner routes - Highest privilege level
 Includes Master Key Impersonation by Role and Security Dashboard
 """
 
-from datetime import datetime, timezone, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 from flask import (
     render_template, redirect, url_for, flash,
@@ -265,6 +265,10 @@ def dashboard():
         maintenance_enabled = SystemSetting.get('MAINTENANCE_MODE', False)
         wallet_enabled = SystemSetting.get('ENABLE_WALLET', True)
 
+        # Module flags
+        modules = current_app.config.get("MODULE_FLAGS", {})
+        super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+
         # Compliance metrics
         pending_reviews_count = 0
         try:
@@ -311,6 +315,15 @@ def dashboard():
         except Exception as e:
             logger.warning(f"Could not load event statistics: {e}")
 
+        # Get organization registration mode setting
+        from app.admin.models import SystemConfiguration
+        org_registration_config = SystemConfiguration.query.filter_by(
+            key='org_registration_mode'
+        ).first()
+        org_registration_mode = (
+            org_registration_config.value if org_registration_config else 'testing'
+        )
+
         return render_template('owner/dashboard.html',
                                # User stats
                                total_users=total_users,
@@ -343,6 +356,10 @@ def dashboard():
                                owner_username=current_user.username,
                                owner_is_verified=current_user.is_verified,
 
+                               # Module controls
+                               modules=modules,
+                               super_admin_can_toggle_modules=super_admin_can_toggle_modules,
+
                                # Compliance metrics
                                pending_reviews_count=pending_reviews_count,
 
@@ -354,7 +371,10 @@ def dashboard():
                                active_events=active_events,
                                pending_events=pending_events,
                                total_registrations=total_registrations,
-                               pending_events_list=pending_events_list)
+                               pending_events_list=pending_events_list,
+
+                               # Organization registration mode
+                               org_registration_mode=org_registration_mode)
     except Exception as e:
         logger.error(f"Owner dashboard error: {e}")
         return render_template('owner/dashboard.html',
@@ -368,13 +388,18 @@ def dashboard():
                                wallet_enabled=True,
                                owner_username=current_user.username,
                                owner_is_verified=current_user.is_verified,
+                               modules={},
+                               super_admin_can_toggle_modules=False,
                                total_revenue=0,
                                # Event statistics with defaults
                                total_events=0,
                                active_events=0,
                                pending_events=0,
                                total_registrations=0,
-                               pending_events_list=[])
+                               pending_events_list=[],
+                               
+                               # Organization registration mode
+                               org_registration_mode='testing')
 
 # ============================================================================
 # Master Key: Impersonate by Role
@@ -481,7 +506,7 @@ def exit_impersonation():
     except Exception as e:
         current_app.logger.warning(f"Exit impersonation error: {e}")
 
-    return redirect(url_for('index'))
+    return redirect(url_for('transport.home'))
 
 # Keep existing user-specific impersonation for fine-grained testing
 @owner_bp.route('/impersonate/<string:user_id>', methods=['POST'])
@@ -489,7 +514,7 @@ def exit_impersonation():
 def impersonate_user(user_id):
     """Impersonate a specific user (session-based; does not swap login)."""
     try:
-        target_user = User.query.get(user_id)
+        target_user = User.query.filter_by(public_id=user_id).first()
         if not target_user:
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
@@ -506,7 +531,7 @@ def impersonate_user(user_id):
         )
 
         flash(f"🎭 You are now acting as {target_user.username}", "success")
-        return redirect(url_for('index'))
+        return redirect(url_for('admin.owner.dashboard'))
 
     except Exception as e:
         logger.error(f"User impersonation error: {e}")
@@ -528,6 +553,7 @@ def audit_logs():
         event_type = request.args.get('event_type')
         severity = request.args.get('severity')
         days = int(request.args.get('days', 7))
+        page = request.args.get('page', 1, type=int)
 
         query = SecurityEventLog.query
 
@@ -540,15 +566,23 @@ def audit_logs():
         since_date = datetime.now(timezone.utc) - timedelta(days=days)
         query = query.filter(SecurityEventLog.created_at >= since_date)
 
-        logs = query.order_by(SecurityEventLog.created_at.desc()).limit(100).all()
+        # Use pagination
+        logs = query.order_by(SecurityEventLog.created_at.desc()).paginate(
+            page=page, per_page=50, error_out=False
+        )
 
         # Get unique event types for filter dropdown
         event_types = db.session.query(SecurityEventLog.event_type).distinct().all()
         event_types = [et[0] for et in event_types if et[0]]
 
+        # Use event_types as categories for the filter dropdown
+        categories = event_types
+
         return render_template('owner/audit_logs.html',
                                logs=logs,
                                event_types=event_types,
+                               categories=categories,
+                               current_category=event_type,
                                current_filters={'event_type': event_type, 'severity': severity, 'days': days})
     except Exception as e:
         logger.error(f"Audit logs error: {e}")
@@ -599,14 +633,109 @@ def settings():
         
         # Get current MFA requirement status
         require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+
+        # Get super admin module toggle permission
+        super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+        
+        # Get organization registration mode setting
+        from app.admin.models import SystemConfiguration
+        org_registration_config = SystemConfiguration.query.filter_by(
+            key='org_registration_mode'
+        ).first()
+        org_registration_mode = (
+            org_registration_config.value if org_registration_config else 'testing'
+        )
         
         return render_template('owner/settings.html', 
                              settings=owner_settings, 
-                             require_owner_mfa=require_mfa)
+                             require_owner_mfa=require_mfa,
+                             super_admin_can_toggle_modules=super_admin_can_toggle_modules,
+                             org_registration_mode=org_registration_mode)
     except Exception as e:
         logger.error(f"Settings error: {e}")
         flash("Error loading settings", "danger")
         return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/settings/toggle-org-registration-mode', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_org_registration_mode', 'settings')
+def toggle_org_registration_mode():
+    """Toggle organization registration requirements mode"""
+    try:
+        testing_mode = request.form.get('testing_mode') == 'on'
+        
+        # Store the setting in a system-wide configuration
+        from app.admin.models import SystemConfiguration
+        config = SystemConfiguration.query.filter_by(key='org_registration_mode').first()
+        
+        if not config:
+            config = SystemConfiguration(
+                key='org_registration_mode',
+                value='testing' if testing_mode else 'standard',
+                description='Organization registration requirements mode'
+            )
+            db.session.add(config)
+        else:
+            config.value = 'testing' if testing_mode else 'standard'
+            config.updated_at = datetime.now(timezone.utc)
+        
+        db.session.commit()
+        
+        mode = 'Testing Mode' if testing_mode else 'Standard Mode'
+        log_owner_action(
+            f'toggled_org_registration_mode_to_{config.value}',
+            f'Organization registration mode changed to {mode}',
+            details={'testing_mode': testing_mode}
+        )
+        
+        flash(f'Organization registration mode changed to {mode}', 'success')
+        
+    except Exception as e:
+        logger.error(f"Error toggling organization registration mode: {e}")
+        db.session.rollback()
+        flash('Error updating registration mode', 'error')
+    
+    return redirect(url_for('admin.owner.settings'))
+
+
+@owner_bp.route('/settings/toggle-super-admin-module-access', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_super_admin_module_access', 'settings')
+def toggle_super_admin_module_access():
+    """Toggle whether super admins are allowed to enable/disable modules"""
+    try:
+        from app.admin.owner.models import SystemSetting
+        current_value = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+        new_value = not current_value
+
+        SystemSetting.set(
+            key='SUPER_ADMIN_CAN_TOGGLE_MODULES',
+            value=new_value,
+            value_type='bool',
+            category='permissions',
+            description='Allow super_admins to toggle system modules',
+            updated_by=current_user.id
+        )
+
+        flash(
+            f"Super admins are now {'authorized' if new_value else 'restricted'} to toggle modules.",
+            "success" if new_value else "info"
+        )
+
+        log_owner_action(
+            action='toggled_super_admin_module_access',
+            category='settings',
+            details={
+                'new_value': new_value,
+                'previous_value': current_value
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error toggling super admin module access: {e}")
+        flash("Failed to update permission.", "danger")
+
+    return redirect(url_for('admin.owner.settings'))
+
 
 @owner_bp.route('/users')
 @owner_login_required

@@ -76,6 +76,20 @@ class UserProfile(BaseModel):
     phone_number = Column(String(32), nullable=True, index=True)
     email = Column(String(128), nullable=True, index=True)
 
+    # ── Fan / tournament identity (optional, tournament skin uses these) ──
+    fan_team = Column(String(64), nullable=True, index=True)
+    # Which AFCON team this user supports e.g. "Nigeria", "Ghana", "Uganda"
+    # NULL means not declared. Not a role. Not a permission. Just a preference.
+
+    display_name = Column(String(128), nullable=True)
+    # Public-facing name shown on profile cards. Falls back to full_name if null.
+
+    avatar_url = Column(String(512), nullable=True)
+    # Profile photo URL. Stored externally (S3/Cloudinary). Null = use initials.
+
+    bio = Column(Text, nullable=True)
+    # Short personal description shown on public profile. Max 500 chars.
+
     # Identity documents
     id_type = Column(SAEnum(*ID_TYPES, name="id_type_enum"), nullable=True)
     id_number = Column(String(64), nullable=True, index=True)
@@ -289,6 +303,7 @@ class UserProfileAudit(BaseModel):
     field_name = Column(String(64), nullable=False)
     old_value = Column(Text, nullable=True)
     attempted_value = Column(Text, nullable=True)
+    attempted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     attempted_by_user_id = Column(BigInteger, nullable=True)
 
     user_profile = relationship("UserProfile", backref="audit_logs")

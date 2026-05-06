@@ -13,6 +13,7 @@ from app.wallet.models.transaction import TransactionModel, TransactionStatus, T
 from app.wallet.models.ledger import AccountModel, LedgerEntryModel
 from app.wallet.models.audit import AuditLogModel
 from app.wallet.models.fx import FXRateModel, FXTransactionModel
+from app.wallet.models.payout import PayoutRequest
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.compliance_engine import check_transaction, get_country_requirements
 from app.wallet.services.regulatory_reporting import generate_str_report, generate_ctr_report
@@ -265,6 +266,156 @@ def system_health():
     return jsonify({
         "status": "healthy" if db_healthy else "unhealthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+# ============== ADMIN PAYOUT APIs ==============
+
+@admin_api_bp.route('/payouts', methods=['GET'])
+@login_required
+@require_any_role('admin', 'super_admin', 'compliance_officer')
+def admin_list_payouts():
+    """List all payout requests (admin view)."""
+    status = request.args.get('status')
+    limit = request.args.get('limit', 50, type=int)
+    offset = request.args.get('offset', 0, type=int)
+
+    query = PayoutRequest.query.filter(PayoutRequest.is_deleted == False)
+    if status:
+        query = query.filter(PayoutRequest.status == status)
+
+    total = query.count()
+    payouts = query.order_by(PayoutRequest.created_at.desc()).limit(limit).offset(offset).all()
+
+    return jsonify({
+        "status": "success",
+        "data": [
+            {
+                "id": p.id,
+                "request_ref": p.request_ref,
+                "agent_id": p.agent_id,
+                "amount": float(p.amount),
+                "currency": p.currency,
+                "method": p.payment_method,
+                "status": p.status,
+                "requested_at": p.created_at.isoformat() if p.created_at else None,
+                "approved_by": p.approved_by,
+                "approved_at": p.approved_at.isoformat() if p.approved_at else None,
+                "paid_by": p.paid_by,
+                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+                "notes": p.notes,
+            }
+            for p in payouts
+        ],
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    })
+
+
+@admin_api_bp.route('/payouts/<int:req_id>/process', methods=['POST'])
+@login_required
+@require_any_role('admin', 'super_admin', 'compliance_officer')
+def admin_process_payout(req_id):
+    """Approve, reject, or mark paid a payout request."""
+    data = request.get_json() or {}
+    action = data.get('action') or request.form.get('action')
+    notes = data.get('notes') or request.form.get('notes', '')
+
+    if action not in ('approve', 'reject', 'mark_paid'):
+        return jsonify({"error": "action must be one of: approve, reject, mark_paid"}), 400
+
+    payout = PayoutRequest.query.get(req_id)
+    if not payout or payout.is_deleted:
+        return jsonify({"error": "Payout request not found"}), 404
+
+    try:
+        if action == 'approve':
+            if payout.status != 'pending':
+                return jsonify({"error": f"Cannot approve payout with status: {payout.status}"}), 400
+            payout.status = 'approved'
+            payout.approved_by = current_user.id
+            payout.approved_at = datetime.now(timezone.utc)
+            payout.notes = (payout.notes or '') + f"\n[Approved by admin {current_user.id}] {notes}"
+
+        elif action == 'reject':
+            if payout.status not in ('pending', 'approved'):
+                return jsonify({"error": f"Cannot reject payout with status: {payout.status}"}), 400
+            payout.status = 'rejected'
+            payout.rejection_reason = notes
+            payout.notes = (payout.notes or '') + f"\n[Rejected by admin {current_user.id}] {notes}"
+
+        elif action == 'mark_paid':
+            if payout.status != 'approved':
+                return jsonify({"error": f"Cannot mark as paid with status: {payout.status}"}), 400
+            payout.status = 'paid'
+            payout.paid_by = current_user.id
+            payout.paid_at = datetime.now(timezone.utc)
+            payout.notes = (payout.notes or '') + f"\n[Marked paid by admin {current_user.id}] {notes}"
+
+        db.session.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"Payout {action}d successfully",
+            "payout": {
+                "id": payout.id,
+                "request_ref": payout.request_ref,
+                "status": payout.status,
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Admin payout process error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============== ADMIN WALLET APIs ==============
+
+@admin_api_bp.route('/wallets', methods=['GET'])
+@login_required
+@require_any_role('admin', 'super_admin', 'auditor', 'regulator')
+def list_wallets():
+    """List all wallets with basic info."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    search = request.args.get('search', '')
+
+    query = AccountModel.query
+    if search:
+        query = query.filter(
+            db.or_(
+                AccountModel.user_id.ilike(f"%{search}%"),
+            )
+        )
+
+    pagination = query.order_by(AccountModel.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": [
+            {
+                "id": str(a.id),
+                "user_id": a.user_id,
+                "currency": a.currency,
+                "is_frozen": a.is_frozen,
+                "frozen_reason": a.frozen_reason,
+                "frozen_at": a.frozen_at.isoformat() if a.frozen_at else None,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            }
+            for a in pagination.items
+        ],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": pagination.total,
+            "pages": pagination.pages,
+        }
     })
 
 

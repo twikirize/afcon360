@@ -1,5 +1,50 @@
 {% extends 'base.html' %}
+{% block title %}Driver Onboarding — Step 3 — AFCON 360{% endblock %}
 {% block content %}
 {% set step_current=3 %}{% set step_total=3 %}{% set step_labels=['Your Details', 'Licence', 'Vehicle'] %}
-<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Driver Step3</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.driver_onboarding', step=3) }}" class='ob-form' enctype='multipart/form-data'><input name='vehicle_make' required><input name='vehicle_model' required><input type='number' min='1990' max='2026' name='vehicle_year'><input name='plate_number' required><select name='vehicle_type'><option>Sedan</option><option>SUV</option><option>Minibus</option><option>Truck</option></select><input type='file' name='insurance_document'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+<div class="onboarding-root ob-wizard">
+  <div class="ob-wizard-inner">
+    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
+    <h2 class="ob-wizard-title">Driver — Vehicle</h2>
+    <p class="ob-wizard-sub">Add your vehicle information.</p>
+    {% include 'onboarding/_progress_bar.html' %}
+    <form method="POST" action="{{ url_for('onboarding.driver_onboarding', step=3) }}" class="ob-form" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="ob-field">
+        <label>Make <span class="ob-req">*</span></label>
+        <input type="text" name="vehicle_make" required>
+      </div>
+      <div class="ob-field">
+        <label>Model <span class="ob-req">*</span></label>
+        <input type="text" name="vehicle_model" required>
+      </div>
+      <div class="ob-field">
+        <label>Year</label>
+        <input type="number" min="1990" max="2026" name="vehicle_year">
+      </div>
+      <div class="ob-field">
+        <label>Plate Number <span class="ob-req">*</span></label>
+        <input type="text" name="plate_number" required>
+      </div>
+      <div class="ob-field">
+        <label>Vehicle Type</label>
+        <select name="vehicle_type">
+          <option value="sedan">Sedan</option>
+          <option value="suv">SUV</option>
+          <option value="minibus">Minibus</option>
+          <option value="truck">Truck</option>
+        </select>
+      </div>
+      <div class="ob-field">
+        <label>Insurance Document</label>
+        <input type="file" name="insurance_document">
+        <span class="ob-hint">Optional: upload insurance certificate.</span>
+      </div>
+      <div class="ob-form-footer">
+        <button class="ob-btn ob-btn--primary" type="submit">Submit Registration →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% include 'onboarding/_wizard_styles.html' %}
 {% endblock %}

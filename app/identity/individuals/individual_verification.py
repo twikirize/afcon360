@@ -19,10 +19,10 @@ from app.models.base import BaseModel
 # Dependency direction is one-way:
 #   feature modules (fan, tickets, etc.) → identity module
 #
-# If you need to navigate from IndividualVerification → FanProfile,
+# If you need to navigate from IndividualVerification → user profile,
 # do it with an explicit query in the calling service:
 #
-#   fan = FanProfile.query.filter_by(verification_id=verification.id).first()
+#   profile = UserProfile.query.filter_by(user_id=user.public_id).first()
 #
 # Do NOT add a relationship here. This boundary is intentional and permanent.
 # ─────────────────────────────────────────────────────────────────

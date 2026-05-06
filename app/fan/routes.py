@@ -225,7 +225,7 @@ def check_transaction_limit():
 @login_required
 def view_fan_profile():
     """View fan profile"""
-    from app.fan.services.registry import get_or_create_fan
+    from app.profile.models import get_profile_by_user
     from app.identity.models.user import User
     from app.wallet.models.ledger import AccountOwnerType
     
@@ -238,7 +238,7 @@ def view_fan_profile():
         owner_type=AccountOwnerType.USER,
     ).first()
     
-    profile = get_or_create_fan(internal_id)
+    profile = get_profile_by_user(current_user.public_id)
     
     # For template compatibility, use account as wallet
     return render_template("fan_profile.html", profile=profile, wallet=account)
@@ -246,18 +246,18 @@ def view_fan_profile():
 @fan_bp.route("/profile/update", methods=["POST"])
 @login_required
 def update_fan_profile_route():
-    """Update fan profile"""
-    from app.fan.services.registry import update_fan_profile
-    from app.identity.models.user import User
+    """Update fan profile via UserProfile"""
+    from app.profile.models import get_profile_by_user
+    from app.extensions import db
     
-    # Get internal user ID
-    user = User.query.filter_by(public_id=str(current_user.id)).first()
-    internal_id = user.id if user else current_user.id
-    
-    name = request.form.get("name")
-    nationality = request.form.get("nationality")
-    favorite_team = request.form.get("favorite_team")
-    avatar_url = request.form.get("avatar_url")
-    update_fan_profile(internal_id, name, nationality, favorite_team, avatar_url)
-    flash("Profile updated.", "success")
+    profile = get_profile_by_user(current_user.public_id)
+    if profile:
+        profile.display_name = request.form.get("name") or profile.display_name
+        profile.nationality = request.form.get("nationality") or profile.nationality
+        profile.fan_team = request.form.get("favorite_team") or profile.fan_team
+        profile.avatar_url = request.form.get("avatar_url") or profile.avatar_url
+        db.session.commit()
+        flash("Profile updated.", "success")
+    else:
+        flash("Profile not found.", "danger")
     return redirect(url_for("fan.view_fan_profile"))

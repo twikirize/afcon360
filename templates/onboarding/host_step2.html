@@ -1,5 +1,53 @@
 {% extends 'base.html' %}
+{% block title %}Host Onboarding — Step 2 — AFCON 360{% endblock %}
 {% block content %}
 {% set step_current=2 %}{% set step_total=2 %}{% set step_labels=['Identity', 'Property'] %}
-<div class='onboarding-root ob-wizard'><div class='ob-wizard-inner'><a href='{{ url_for('onboarding.choose') }}' class='ob-back'>← Back to paths</a><h2 class='ob-wizard-title'>Host Step2</h2>{% include 'onboarding/_progress_bar.html' %}<form method='POST' action="{{ url_for('onboarding.host_onboarding', step=2) }}" class='ob-form' enctype='multipart/form-data'><input name='property_name' required><input name='address' required><input name='city' required><input name='country' required><select name='property_type'><option>Apartment</option><option>House</option><option>Room</option><option>Villa</option></select><input type='number' name='number_of_rooms' min='1' value='1'><div class='ob-form-footer'><button class='ob-btn ob-btn--primary' type='submit'>Continue →</button></div></form></div></div>{% include 'onboarding/_wizard_styles.html' %}
+<div class="onboarding-root ob-wizard">
+  <div class="ob-wizard-inner">
+    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
+    <h2 class="ob-wizard-title">Host — Property</h2>
+    <p class="ob-wizard-sub">Tell us about the property you want to list.</p>
+    {% include 'onboarding/_progress_bar.html' %}
+    <form method="POST" action="{{ url_for('onboarding.host_onboarding', step=2) }}" class="ob-form" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="ob-field">
+        <label>Property Name <span class="ob-req">*</span></label>
+        <input type="text" name="property_name" required>
+      </div>
+      <div class="ob-field">
+        <label>Description</label>
+        <textarea name="description" rows="3"></textarea>
+      </div>
+      <div class="ob-field">
+        <label>Address <span class="ob-req">*</span></label>
+        <input type="text" name="address" required>
+      </div>
+      <div class="ob-field">
+        <label>City <span class="ob-req">*</span></label>
+        <input type="text" name="city" required>
+      </div>
+      <div class="ob-field">
+        <label>Country (2-letter code) <span class="ob-req">*</span></label>
+        <input type="text" name="country" placeholder="UG" required>
+      </div>
+      <div class="ob-field">
+        <label>Property Type</label>
+        <select name="property_type">
+          <option value="apartment">Apartment</option>
+          <option value="house">House</option>
+          <option value="room">Room</option>
+          <option value="villa">Villa</option>
+        </select>
+      </div>
+      <div class="ob-field">
+        <label>Number of Rooms</label>
+        <input type="number" name="number_of_rooms" min="1" value="1">
+      </div>
+      <div class="ob-form-footer">
+        <button class="ob-btn ob-btn--primary" type="submit">List Property →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% include 'onboarding/_wizard_styles.html' %}
 {% endblock %}

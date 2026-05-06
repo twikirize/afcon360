@@ -1,0 +1,1522 @@
+{% extends "base.html" %}
+
+{% block title %}Organization Settings - {{ org.legal_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Modern Settings Styles */
+.settings-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    color: white;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.settings-nav {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    margin-bottom: 2rem;
+}
+
+.nav-item {
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.nav-item:hover {
+    background: #f8f9fa;
+}
+
+.nav-item.active {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.nav-item.active .nav-link {
+    color: white;
+}
+
+.settings-section {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    margin-bottom: 2rem;
+    border: 1px solid #e9ecef;
+}
+
+.settings-section h5 {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.settings-section h5 i {
+    margin-right: 0.75rem;
+    color: #667eea;
+}
+
+.form-control, .form-select {
+    border-radius: 8px;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.form-label {
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(30px);
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-badge.verified {
+    background: linear-gradient(135deg, #11998e, #38ef7d);
+    color: white;
+}
+
+.status-badge.pending {
+    background: linear-gradient(135deg, #f2994a, #f2c94c);
+    color: white;
+}
+
+.status-badge.inactive {
+    background: linear-gradient(135deg, #eb3349, #f45c43);
+    color: white;
+}
+
+.document-upload {
+    border: 2px dashed #e9ecef;
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.document-upload:hover {
+    border-color: #667eea;
+    background: #f8f9fa;
+}
+
+.document-upload.dragover {
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+}
+
+.save-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem 2rem;
+    color: white;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.save-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+}
+
+.progress-indicator {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+
+.progress-step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+}
+
+.progress-step::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    right: -50%;
+    height: 2px;
+    background: #e9ecef;
+    z-index: 0;
+}
+
+.progress-step:last-child::before {
+    display: none;
+}
+
+.progress-step.completed::before {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.progress-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 0.5rem;
+    position: relative;
+    z-index: 1;
+    transition: all 0.3s ease;
+}
+
+.progress-step.completed .progress-icon {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.progress-step.active .progress-icon {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+}
+
+.alert-modern {
+    border: none;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.alert-modern.alert-info {
+    background: linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(33, 150, 243, 0.05));
+    color: #1976d2;
+    border-left: 4px solid #2196f3;
+}
+
+.alert-modern.alert-warning {
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.05));
+    color: #f57c00;
+    border-left: 4px solid #ff9800;
+}
+
+.alert-modern.alert-success {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.05));
+    color: #388e3c;
+    border-left: 4px solid #4caf50;
+}
+
+@media (max-width: 768px) {
+    .settings-nav {
+        margin-bottom: 1rem;
+    }
+    
+    .settings-section {
+        padding: 1.5rem;
+    }
+    
+    .progress-indicator {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .progress-step::before {
+        display: none;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Settings Header -->
+    <div class="settings-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center">
+                    <div class="me-4">
+                        <i class="bi bi-gear-fill fs-1"></i>
+                    </div>
+                    <div>
+                        <h1 class="mb-2 fw-bold">Organization Settings</h1>
+                        <p class="mb-1 opacity-90">{{ org.legal_name }} • {{ org.org_id }}</p>
+                        <div class="d-flex gap-2 flex-wrap mt-2">
+                            <span class="badge bg-white text-dark px-3 py-2">
+                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                            </span>
+                            <span class="status-badge {{ org.verification_status }}">
+                                <i class="bi bi-shield-check me-1"></i> {{ org.verification_status.title() }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
+                    <button class="btn btn-light" onclick="previewProfile()">
+                        <i class="bi bi-eye me-2"></i> Preview Profile
+                    </button>
+                    <button class="btn btn-light" onclick="exportSettings()">
+                        <i class="bi bi-download me-2"></i> Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Progress -->
+    {% if org.verification_status != 'verified' %}
+    <div class="alert-modern alert-info">
+        <h6 class="alert-heading">
+            <i class="bi bi-info-circle me-2"></i> Complete Your Organization Setup
+        </h6>
+        <p class="mb-3">Complete these steps to fully activate your organization:</p>
+        <div class="progress-indicator">
+            <div class="progress-step completed">
+                <div class="progress-icon">
+                    <i class="bi bi-check"></i>
+                </div>
+                <small>Basic Info</small>
+            </div>
+            <div class="progress-step active">
+                <div class="progress-icon">
+                    <i class="bi bi-2"></i>
+                </div>
+                <small>Documents</small>
+            </div>
+            <div class="progress-step">
+                <div class="progress-icon">
+                    <i class="bi bi-3"></i>
+                </div>
+                <small>Verification</small>
+            </div>
+            <div class="progress-step">
+                <div class="progress-icon">
+                    <i class="bi bi-4"></i>
+                </div>
+                <small>Go Live</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <!-- Settings Navigation -->
+        <div class="col-md-3">
+            <div class="settings-nav">
+                <nav class="nav flex-column">
+                    <a class="nav-link active" href="#basic" data-bs-toggle="pill">
+                        <i class="bi bi-building me-2"></i> Basic Information
+                    </a>
+                    <a class="nav-link" href="#business" data-bs-toggle="pill">
+                        <i class="bi bi-briefcase me-2"></i> Business Details
+                    </a>
+                    <a class="nav-link" href="#compliance" data-bs-toggle="pill">
+                        <i class="bi bi-shield-check me-2"></i> Compliance
+                    </a>
+                    <a class="nav-link" href="#notifications" data-bs-toggle="pill">
+                        <i class="bi bi-bell me-2"></i> Notifications
+                    </a>
+                    <a class="nav-link" href="#privacy" data-bs-toggle="pill">
+                        <i class="bi bi-lock me-2"></i> Privacy
+                    </a>
+                    <a class="nav-link" href="#kyc" data-bs-toggle="pill">
+                        <i class="bi bi-shield-check me-2"></i> KYC Management
+                    </a>
+                    <a class="nav-link" href="#integrations" data-bs-toggle="pill">
+                        <i class="bi bi-link-45deg me-2"></i> Integrations
+                    </a>
+                    <a class="nav-link" href="#danger" data-bs-toggle="pill">
+                        <i class="bi bi-exclamation-triangle me-2"></i> Danger Zone
+                    </a>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Settings Content -->
+        <div class="col-md-9">
+            <div class="tab-content">
+                <!-- Basic Information -->
+                <div class="tab-pane fade show active" id="basic">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        <div class="settings-section">
+                            <h5><i class="bi bi-building"></i> Organization Details</h5>
+                            
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div class="mb-3">
+                                        {{ form.legal_name.label(class="form-label") }}
+                                        {{ form.legal_name(class="form-control") }}
+                                        {% if form.legal_name.errors %}
+                                            <div class="text-danger">
+                                                {% for error in form.legal_name.errors %}
+                                                    <small>{{ error }}</small>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label class="form-label">Organization ID</label>
+                                        <input type="text" class="form-control" value="{{ org.org_id }}" readonly>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        {{ form.contact_email.label(class="form-label") }}
+                                        {{ form.contact_email(class="form-control") }}
+                                        {% if form.contact_email.errors %}
+                                            <div class="text-danger">
+                                                {% for error in form.contact_email.errors %}
+                                                    <small>{{ error }}</small>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        {{ form.contact_phone.label(class="form-label") }}
+                                        {{ form.contact_phone(class="form-control") }}
+                                        {% if form.contact_phone.errors %}
+                                            <div class="text-danger">
+                                                {% for error in form.contact_phone.errors %}
+                                                    <small>{{ error }}</small>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                {{ form.headquarters_address.label(class="form-label") }}
+                                {{ form.headquarters_address(class="form-control", rows="3") }}
+                                {% if form.headquarters_address.errors %}
+                                    <div class="text-danger">
+                                        {% for error in form.headquarters_address.errors %}
+                                            <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mb-3">
+                                {{ form.website.label(class="form-label") }}
+                                {{ form.website(class="form-control") }}
+                                {% if form.website.errors %}
+                                    <div class="text-danger">
+                                        {% for error in form.website.errors %}
+                                            <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h5><i class="bi bi-globe"></i> Location Information</h5>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Country</label>
+                                        <input type="text" class="form-control" value="{{ org.country }}" readonly>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Region/State</label>
+                                        <input type="text" class="form-control" value="{{ org.region or '' }}" readonly>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-end">
+                            <button type="submit" class="save-btn">
+                                <i class="bi bi-check-circle me-2"></i> Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Business Details -->
+                <div class="tab-pane fade" id="business">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-briefcase"></i> Business Information</h5>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Business Description</label>
+                            <textarea class="form-control" rows="4" placeholder="Tell us about your organization...">{{ org.get_setting('business_description', '') }}</textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Registration Number</label>
+                                    <input type="text" class="form-control" value="{{ org.registration_no or '' }}">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Tax ID</label>
+                                    <input type="text" class="form-control" value="{{ org.tax_id or '' }}">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">VAT Number</label>
+                                    <input type="text" class="form-control" value="{{ org.vat_number or '' }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Industry Code</label>
+                                    <input type="text" class="form-control" value="{{ org.industry_code or '' }}">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Data Residency Country</label>
+                                    <input type="text" class="form-control" value="{{ org.data_residency_country or '' }}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h5><i class="bi bi-graph-up"></i> Business Metrics</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <h3 class="text-primary">{{ stats.total_members }}</h3>
+                                    <p class="text-muted">Total Members</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <h3 class="text-success">{{ stats.active_modules|length }}</h3>
+                                    <p class="text-muted">Active Modules</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <h3 class="text-info">{{ org.created_at.strftime('%Y') if org.created_at else 'N/A' }}</h3>
+                                    <p class="text-muted">Member Since</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compliance -->
+                <div class="tab-pane fade" id="compliance">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-shield-check"></i> Compliance Requirements</h5>
+                        
+                        {% if stats.requires_license or stats.requires_insurance %}
+                        <div class="alert-modern alert-warning">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-exclamation-triangle me-2"></i> Required Documents
+                            </h6>
+                            <p class="mb-2">Your organization type requires the following documents:</p>
+                            <ul class="mb-3">
+                                {% if stats.requires_license %}
+                                <li>Business License</li>
+                                {% endif %}
+                                {% if stats.requires_insurance %}
+                                <li>Insurance Certificate</li>
+                                {% endif %}
+                            </ul>
+                            <button class="btn btn-warning btn-sm" onclick="uploadDocuments()">
+                                <i class="bi bi-upload me-2"></i> Upload Documents
+                            </button>
+                        </div>
+                        {% else %}
+                        <div class="alert-modern alert-success">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-check-circle me-2"></i> No Special Requirements
+                            </h6>
+                            <p class="mb-0">Your organization type doesn't require additional compliance documents.</p>
+                        </div>
+                        {% endif %}
+
+                        <div class="mb-4">
+                            <h6>Document Upload</h6>
+                            <div class="document-upload" id="documentUpload">
+                                <i class="bi bi-cloud-upload fs-1 text-muted mb-3"></i>
+                                <h5>Drop files here or click to upload</h5>
+                                <p class="text-muted">Supported formats: PDF, DOC, DOCX, JPG, PNG (Max 10MB)</p>
+                                <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style="display: none;">
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Uploaded Documents</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-file-pdf text-danger me-2"></i>
+                                            <strong>Business License.pdf</strong>
+                                            <small class="text-muted d-block">Uploaded on 2024-01-15</small>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-success">Verified</span>
+                                            <button class="btn btn-sm btn-outline-secondary ms-2">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h5><i class="bi bi-clock-history"></i> Verification Status</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="text-center p-4">
+                                    <div class="mb-3">
+                                        {% if org.verification_status == 'verified' %}
+                                        <i class="bi bi-check-circle-fill text-success fs-1"></i>
+                                        {% elif org.verification_status == 'pending' %}
+                                        <i class="bi bi-hourglass-split text-warning fs-1"></i>
+                                        {% else %}
+                                        <i class="bi bi-x-circle-fill text-danger fs-1"></i>
+                                        {% endif %}
+                                    </div>
+                                    <h5>{{ org.verification_status.title() }}</h5>
+                                    <p class="text-muted">
+                                        {% if org.verification_status == 'verified' %}
+                                        Your organization is fully verified
+                                        {% elif org.verification_status == 'pending' %}
+                                        Verification in progress
+                                        {% else %}
+                                        Verification required
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="text-center p-4">
+                                    <div class="mb-3">
+                                        {% if org.is_operational %}
+                                        <i class="bi bi-lightning-fill text-info fs-1"></i>
+                                        {% else %}
+                                        <i class="bi bi-lightning fs-1 text-muted"></i>
+                                        {% endif %}
+                                    </div>
+                                    <h5>{{ 'Operational' if org.is_operational else 'Not Operational' }}</h5>
+                                    <p class="text-muted">
+                                        {% if org.is_operational %}
+                                        Your organization is operational
+                                        {% else %}
+                                        Organization not yet operational
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications -->
+                <div class="tab-pane fade" id="notifications">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-bell"></i> Notification Preferences</h5>
+                        
+                        <div class="mb-4">
+                            <h6>Email Notifications</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>General Updates</strong>
+                                            <p class="text-muted small mb-0">Receive important updates about your organization</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" {{ 'checked' if org.get_setting('email_notifications', True) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>New Members</strong>
+                                            <p class="text-muted small mb-0">Get notified when new members join</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Financial Updates</strong>
+                                            <p class="text-muted small mb-0">Wallet transactions and payment notifications</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>SMS Notifications</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Security Alerts</strong>
+                                            <p class="text-muted small mb-0">Important security notifications</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" {{ 'checked' if org.get_setting('sms_notifications', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Payment Confirmations</strong>
+                                            <p class="text-muted small mb-0">Payment and transaction confirmations</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Notification Frequency</h6>
+                            <select class="form-select">
+                                <option>Real-time</option>
+                                <option>Daily Digest</option>
+                                <option>Weekly Summary</option>
+                                <option>Never</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Privacy -->
+                <div class="tab-pane fade" id="privacy">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-lock"></i> Privacy Settings</h5>
+                        
+                        <div class="mb-4">
+                            <h6>Profile Visibility</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Public Profile</strong>
+                                            <p class="text-muted small mb-0">Make your organization profile visible to the public</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" {{ 'checked' if org.get_setting('public_profile', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Member Directory</strong>
+                                            <p class="text-muted small mb-0">Show member list in public profile</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Contact Information</strong>
+                                            <p class="text-muted small mb-0">Display contact details publicly</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Member Permissions</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Allow Member Invites</strong>
+                                            <p class="text-muted small mb-0">Members can invite others to join</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" {{ 'checked' if org.get_setting('allow_member_invites', True) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Member Profile Editing</strong>
+                                            <p class="text-muted small mb-0">Members can edit their own profiles</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Data Sharing</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Analytics Data</strong>
+                                            <p class="text-muted small mb-0">Share anonymized usage data for improvements</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Third-party Integrations</strong>
+                                            <p class="text-muted small mb-0">Allow data sharing with integrated services</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KYC Management -->
+                <div class="tab-pane fade" id="kyc">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-shield-check"></i> KYC Requirements Management</h5>
+                        
+                        <div class="alert-modern alert-info">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-info-circle me-2"></i> KYC Level Control
+                            </h6>
+                            <p class="mb-0">As the organization owner, you can toggle KYC requirements for your organization. This affects what information members need to provide during registration and verification.</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Current KYC Mode</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Enable KYC Requirements</strong>
+                                            <p class="text-muted small mb-0">Require members to complete KYC verification</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="kycEnabled" {{ 'checked' if org.get_setting('kyc_enabled', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Strict KYC Mode</strong>
+                                            <p class="text-muted small mb-0">Enforce all KYC requirements (documents, verification, etc.)</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="kycStrict" {{ 'checked' if org.get_setting('kyc_strict', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Auto-approve Members</strong>
+                                            <p class="text-muted small mb-0">Automatically approve members without manual review</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="kycAutoApprove" {{ 'checked' if org.get_setting('kyc_auto_approve', True) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>KYC Requirements</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Identity Verification</strong>
+                                            <p class="text-muted small mb-0">Require government ID verification</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="kyc-requirement" data-requirement="identity" {{ 'checked' if org.get_setting('kyc_require_identity', True) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Address Verification</strong>
+                                            <p class="text-muted small mb-0">Require proof of address document</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="kyc-requirement" data-requirement="address" {{ 'checked' if org.get_setting('kyc_require_address', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Business Documents</strong>
+                                            <p class="text-muted small mb-0">Require business registration documents</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="kyc-requirement" data-requirement="business" {{ 'checked' if org.get_setting('kyc_require_business', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Financial Information</strong>
+                                            <p class="text-muted small mb-0">Require bank account or financial details</p>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="kyc-requirement" data-requirement="financial" {{ 'checked' if org.get_setting('kyc_require_financial', False) else '' }}>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>KYC Level Configuration</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Default KYC Level for New Members</label>
+                                        <select class="form-select" id="defaultKycLevel">
+                                            <option value="0" {{ 'selected' if org.get_setting('default_kyc_level', 0) == 0 else '' }}>Level 0 - Basic (No KYC)</option>
+                                            <option value="1" {{ 'selected' if org.get_setting('default_kyc_level', 0) == 1 else '' }}>Level 1 - Email Verified</option>
+                                            <option value="2" {{ 'selected' if org.get_setting('default_kyc_level', 0) == 2 else '' }}>Level 2 - Identity Verified</option>
+                                            <option value="3" {{ 'selected' if org.get_setting('default_kyc_level', 0) == 3 else '' }}>Level 3 - Full KYC</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Maximum KYC Level Allowed</label>
+                                        <select class="form-select" id="maxKycLevel">
+                                            <option value="0" {{ 'selected' if org.get_setting('max_kyc_level', 3) == 0 else '' }}>Level 0 - Basic (No KYC)</option>
+                                            <option value="1" {{ 'selected' if org.get_setting('max_kyc_level', 3) == 1 else '' }}>Level 1 - Email Verified</option>
+                                            <option value="2" {{ 'selected' if org.get_setting('max_kyc_level', 3) == 2 else '' }}>Level 2 - Identity Verified</option>
+                                            <option value="3" {{ 'selected' if org.get_setting('max_kyc_level', 3) == 3 else '' }}>Level 3 - Full KYC</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Registration Mode</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">
+                                                <i class="bi bi-shield-slash text-warning me-2"></i>
+                                                Testing Mode
+                                            </h6>
+                                            <p class="card-text small">Minimal requirements - just organization name and basic details</p>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio" name="registrationMode" id="testingMode" value="testing" {{ 'checked' if org.get_setting('registration_mode', 'standard') == 'testing' else '' }}>
+                                                <label class="form-check-label" for="testingMode">
+                                                    Enable Testing Mode
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">
+                                                <i class="bi bi-shield-check text-success me-2"></i>
+                                                Standard Mode
+                                            </h6>
+                                            <p class="card-text small">Full requirements - complete verification and compliance</p>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio" name="registrationMode" id="standardMode" value="standard" {{ 'checked' if org.get_setting('registration_mode', 'standard') == 'standard' else '' }}>
+                                                <label class="form-check-label" for="standardMode">
+                                                    Enable Standard Mode
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-end">
+                            <button type="button" class="save-btn" onclick="saveKycSettings()">
+                                <i class="bi bi-check-circle me-2"></i> Save KYC Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Integrations -->
+                <div class="tab-pane fade" id="integrations">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-link-45deg"></i> Connected Services</h5>
+                        
+                        <div class="mb-4">
+                            <h6>Payment Gateways</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-credit-card text-primary me-2"></i>
+                                            <strong>Stripe</strong>
+                                            <p class="text-muted small mb-0">Credit card processing</p>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-success">Connected</span>
+                                            <button class="btn btn-sm btn-outline-secondary ms-2">Configure</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-phone text-success me-2"></i>
+                                            <strong>Mobile Money</strong>
+                                            <p class="text-muted small mb-0">Mobile payment integration</p>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-secondary">Not Connected</span>
+                                            <button class="btn btn-sm btn-primary ms-2">Connect</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Communication</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-envelope text-info me-2"></i>
+                                            <strong>Email Service</strong>
+                                            <p class="text-muted small mb-0">Transactional emails</p>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-success">Connected</span>
+                                            <button class="btn btn-sm btn-outline-secondary ms-2">Configure</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-chat-dots text-warning me-2"></i>
+                                            <strong>SMS Service</strong>
+                                            <p class="text-muted small mb-0">SMS notifications</p>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-secondary">Not Connected</span>
+                                            <button class="btn btn-sm btn-primary ms-2">Connect</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Analytics</h6>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-graph-up text-success me-2"></i>
+                                            <strong>Google Analytics</strong>
+                                            <p class="text-muted small mb-0">Website and app analytics</p>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-secondary">Not Connected</span>
+                                            <button class="btn btn-sm btn-primary ms-2">Connect</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="tab-pane fade" id="danger">
+                    <div class="settings-section">
+                        <h5><i class="bi bi-exclamation-triangle"></i> Danger Zone</h5>
+                        
+                        <div class="alert-modern alert-warning">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-exclamation-triangle me-2"></i> Caution
+                            </h6>
+                            <p class="mb-0">These actions are irreversible. Please be certain before proceeding.</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Transfer Ownership</h6>
+                            <p class="text-muted">Transfer organization ownership to another member</p>
+                            <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#transferModal">
+                                <i class="bi bi-arrow-right-left me-2"></i> Transfer Ownership
+                            </button>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Deactivate Organization</h6>
+                            <p class="text-muted">Temporarily disable your organization (can be reactivated later)</p>
+                            <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#deactivateModal">
+                                <i class="bi bi-pause-circle me-2"></i> Deactivate Organization
+                            </button>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Delete Organization</h6>
+                            <p class="text-danger">Permanently delete your organization and all associated data</p>
+                            <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                                <i class="bi bi-trash me-2"></i> Delete Organization
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Ownership Modal -->
+<div class="modal fade" id="transferModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Transfer Ownership</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Select a member to transfer ownership to:</p>
+                <select class="form-select">
+                    <option>Choose a member...</option>
+                    <!-- Members would be populated here -->
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning">Transfer Ownership</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deactivate Modal -->
+<div class="modal fade" id="deactivateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Deactivate Organization</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to deactivate your organization?</p>
+                <p class="text-muted">You can reactivate it later by contacting support.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning">Deactivate</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger">Delete Organization</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <h6 class="alert-heading">⚠️ This action cannot be undone!</h6>
+                    <p>This will permanently delete your organization and all associated data including:</p>
+                    <ul>
+                        <li>All member accounts and roles</li>
+                        <li>Financial data and transactions</li>
+                        <li>Documents and files</li>
+                        <li>Event and booking history</li>
+                    </ul>
+                </p>
+                <p>Type <strong>{{ org.legal_name }}</strong> to confirm:</p>
+                <input type="text" class="form-control" placeholder="Type organization name here">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" disabled>Delete Organization</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Document upload functionality
+const documentUpload = document.getElementById('documentUpload');
+const fileInput = document.getElementById('fileInput');
+
+documentUpload.addEventListener('click', () => fileInput.click());
+
+documentUpload.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    documentUpload.classList.add('dragover');
+});
+
+documentUpload.addEventListener('dragleave', () => {
+    documentUpload.classList.remove('dragover');
+});
+
+documentUpload.addEventListener('drop', (e) => {
+    e.preventDefault();
+    documentUpload.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+});
+
+function handleFiles(files) {
+    console.log('Files uploaded:', files);
+    // Handle file upload logic here
+}
+
+// Navigation active state
+document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', function() {
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        this.classList.add('active');
+    });
+});
+
+// Delete confirmation
+document.querySelector('#deleteModal input[type="text"]').addEventListener('input', function() {
+    const deleteBtn = document.querySelector('#deleteModal .btn-danger');
+    if (this.value === '{{ org.legal_name }}') {
+        deleteBtn.disabled = false;
+    } else {
+        deleteBtn.disabled = true;
+    }
+});
+
+// Preview profile
+function previewProfile() {
+    window.open(`/org/{{ org.id }}/profile/preview`, '_blank');
+}
+
+// Export settings
+function exportSettings() {
+    const settings = {
+        organization: {
+            name: '{{ org.legal_name }}',
+            id: '{{ org.org_id }}',
+            type: '{{ org.business_category.value }}',
+            email: '{{ org.contact_email }}',
+            phone: '{{ org.contact_phone }}',
+            website: '{{ org.website }}'
+        },
+        settings: {
+            email_notifications: {{ org.get_setting('email_notifications', True)|lower }},
+            sms_notifications: {{ org.get_setting('sms_notifications', False)|lower }},
+            public_profile: {{ org.get_setting('public_profile', False)|lower }},
+            allow_member_invites: {{ org.get_setting('allow_member_invites', True)|lower }}
+        }
+    };
+    
+    const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'organization-settings.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+// Upload documents
+function uploadDocuments() {
+    document.getElementById('compliance').click();
+    document.querySelector('[href="#compliance"]').click();
+}
+
+// Save KYC settings
+function saveKycSettings() {
+    const settings = {
+        kyc_enabled: document.getElementById('kycEnabled').checked,
+        kyc_strict: document.getElementById('kycStrict').checked,
+        kyc_auto_approve: document.getElementById('kycAutoApprove').checked,
+        default_kyc_level: parseInt(document.getElementById('defaultKycLevel').value),
+        max_kyc_level: parseInt(document.getElementById('maxKycLevel').value),
+        registration_mode: document.querySelector('input[name="registrationMode"]:checked').value,
+        kyc_require_identity: document.querySelector('[data-requirement="identity"]').checked,
+        kyc_require_address: document.querySelector('[data-requirement="address"]').checked,
+        kyc_require_business: document.querySelector('[data-requirement="business"]').checked,
+        kyc_require_financial: document.querySelector('[data-requirement="financial"]').checked
+    };
+
+    // Send settings to server
+    fetch(`/org/{{ org.id }}/settings/kyc`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.innerHTML = `
+                <i class="bi bi-check-circle me-2"></i>
+                KYC settings saved successfully!
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.settings-section').prepend(alert);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        } else {
+            // Show error message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger alert-dismissible fade show';
+            alert.innerHTML = `
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Error saving KYC settings: ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.settings-section').prepend(alert);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving KYC settings:', error);
+        // Show error message
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger alert-dismissible fade show';
+        alert.innerHTML = `
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Error saving KYC settings. Please try again.
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.settings-section').prepend(alert);
+    });
+}
+
+// Handle KYC enabled/disabled state
+document.getElementById('kycEnabled').addEventListener('change', function() {
+    const kycRequirements = document.querySelectorAll('.kyc-requirement');
+    const kycLevelConfig = document.querySelectorAll('#defaultKycLevel, #maxKycLevel');
+    
+    if (!this.checked) {
+        // Disable all KYC requirements when KYC is disabled
+        kycRequirements.forEach(req => {
+            req.disabled = true;
+            req.checked = false;
+        });
+        kycLevelConfig.forEach(select => {
+            select.disabled = true;
+            select.value = '0';
+        });
+        document.getElementById('kycStrict').disabled = true;
+        document.getElementById('kycStrict').checked = false;
+    } else {
+        // Enable KYC requirements when KYC is enabled
+        kycRequirements.forEach(req => {
+            req.disabled = false;
+        });
+        kycLevelConfig.forEach(select => {
+            select.disabled = false;
+        });
+        document.getElementById('kycStrict').disabled = false;
+    }
+});
+
+// Handle strict mode changes
+document.getElementById('kycStrict').addEventListener('change', function() {
+    if (this.checked) {
+        // Enable all requirements in strict mode
+        document.querySelectorAll('.kyc-requirement').forEach(req => {
+            req.checked = true;
+        });
+        document.getElementById('defaultKycLevel').value = '3';
+        document.getElementById('maxKycLevel').value = '3';
+    }
+});
+
+// Handle registration mode changes
+document.querySelectorAll('input[name="registrationMode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.value === 'testing') {
+            // Disable KYC in testing mode
+            document.getElementById('kycEnabled').checked = false;
+            document.getElementById('kycEnabled').disabled = true;
+            document.getElementById('kycStrict').checked = false;
+            document.getElementById('kycStrict').disabled = true;
+            document.querySelectorAll('.kyc-requirement').forEach(req => {
+                req.checked = false;
+                req.disabled = true;
+            });
+        } else {
+            // Enable KYC controls in standard mode
+            document.getElementById('kycEnabled').disabled = false;
+            document.getElementById('kycStrict').disabled = false;
+            document.querySelectorAll('.kyc-requirement').forEach(req => {
+                req.disabled = false;
+            });
+        }
+    });
+});
+
+// Add smooth animations
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+
+    document.querySelectorAll('.settings-section').forEach(section => {
+        section.style.opacity = '0';
+        section.style.transform = 'translateY(20px)';
+        section.style.transition = 'all 0.6s ease';
+        observer.observe(section);
+    });
+});
+</script>
+{% endblock %}
