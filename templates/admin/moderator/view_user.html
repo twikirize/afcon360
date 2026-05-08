@@ -106,7 +106,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <form method="POST" action="{{ url_for('admin.moderator.add_user_note', user_id=user.public_id) }}">
+        <form method="POST" action="{{ url_for('admin.moderator.add_user_note', user_id=user.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <textarea name="note" class="form-control" rows="4" placeholder="Add internal moderation notes..."></textarea>
           <button type="submit" class="btn btn-primary btn-sm">Add Note</button>

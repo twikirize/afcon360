@@ -1,6 +1,6 @@
 # app/transport/api/__init__.py - REFACTORED (initialization only)
 """
-AFCON360 Transport — REST API
+AFCON360 Transport - REST API
 Creates blueprint and API instance, then delegates registration to routes.py
 """
 
@@ -38,4 +38,4 @@ def init_api(app):
     # Register blueprint with the app
     app.register_blueprint(api_bp)
 
-    app.logger.info("✅ Transport API initialized — /api/transport/* routes live")
+    app.logger.info("✅ Transport API initialized - /api/transport/* routes live")

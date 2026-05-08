@@ -76,7 +76,7 @@ def app():
                     db.session.commit()
                     print(f"✅ Seeded test admin {admin_email} with owner role")
                 except Exception as e:
-                    # Don't fail the test runner if seeding fails — log and continue
+                    # Don't fail the test runner if seeding fails - log and continue
                     print(f"⚠️ Failed to seed test DB: {e}")
 
             yield app

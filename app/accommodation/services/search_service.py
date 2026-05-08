@@ -6,7 +6,7 @@ Phase 1: Mixed mode (hardcoded + DB fallback)
 
 from typing import List, Dict, Optional
 from flask import current_app
-# FIX 1: Was `PropertyStatus` — that name does not exist. Correct name is AccommodationPropertyStatus.
+# FIX 1: Was `PropertyStatus` - that name does not exist. Correct name is AccommodationPropertyStatus.
 # This bad import was the root cause of the duplicate-table crash on startup.
 from app.accommodation.models.property import Property, AccommodationPropertyStatus
 import logging

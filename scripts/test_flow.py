@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-End-to-end KYC flow test — Bank of Uganda Compliance
+End-to-end KYC flow test - Bank of Uganda Compliance
 Run with: pytest scripts/test_flow.py -v
 """
 
@@ -87,8 +87,8 @@ def create_test_user(username: str, email: str, password: str) -> "User | None":
     """
     Insert a User directly into the DB.
 
-    - Never passes `id` or `user_id` — the BIGINT PK is auto-incremented.
-    - Never passes `public_id` — the column default generates a UUID and
+    - Never passes `id` or `user_id` - the BIGINT PK is auto-incremented.
+    - Never passes `public_id` - the column default generates a UUID and
       the IDGuard would reject a manually supplied string anyway.
     - Rolls back on any error so the session stays clean.
     """
@@ -128,7 +128,7 @@ def create_test_user(username: str, email: str, password: str) -> "User | None":
 
 def test_kyc_flow() -> bool:
     """
-    Full KYC compliance flow — pytest-compatible.
+    Full KYC compliance flow - pytest-compatible.
 
     Pytest discovers this function because its name starts with `test_`.
     No fixture arguments are needed; the app is bootstrapped internally.
@@ -162,13 +162,13 @@ def test_kyc_flow() -> bool:
         "password": "TestPass123!",
     }
 
-    overall = True  # accumulates pass/fail — pytest fails if this returns False
+    overall = True  # accumulates pass/fail - pytest fails if this returns False
 
     with app.app_context():
         with app.test_client() as client:
 
             print(f"\n{BLUE}{'='*60}{RESET}")
-            print(f"{BLUE}[BANK] KYC Flow Test — Bank of Uganda Compliance{RESET}")
+            print(f"{BLUE}[BANK] KYC Flow Test - Bank of Uganda Compliance{RESET}")
             print(f"{BLUE}{'='*60}{RESET}\n")
 
             # ─────────────────────────────────────────────────────────────────
@@ -184,13 +184,13 @@ def test_kyc_flow() -> bool:
             if reg_probe.status_code == 404:
                 print_result(
                     "Register endpoint (/register)", False,
-                    "404 — endpoint not implemented, creating user directly in DB"
+                    "404 - endpoint not implemented, creating user directly in DB"
                 )
                 user = create_test_user(**test_user)
                 ok = user is not None
                 print_result(
                     "Test user created directly in DB", ok,
-                    "" if ok else "DB insert failed — see error above"
+                    "" if ok else "DB insert failed - see error above"
                 )
                 overall = overall and ok
 
@@ -231,7 +231,7 @@ def test_kyc_flow() -> bool:
             #
             # KEY DETAIL: Flask-Login stores the value returned by
             # user.get_id() under the session key '_user_id' (not 'user_id').
-            # Our User.get_id() returns str(self.public_id) — a UUID string.
+            # Our User.get_id() returns str(self.public_id) - a UUID string.
             # The user_loader MUST therefore query by public_id, not by id.
             # ─────────────────────────────────────────────────────────────────
             print(f"\n{YELLOW}[STEP 2] User Login{RESET}")
@@ -240,7 +240,7 @@ def test_kyc_flow() -> bool:
 
             if login_probe.status_code == 404:
                 print_result("Login endpoint (/login)", False,
-                             "404 — injecting session directly")
+                             "404 - injecting session directly")
                 user = User.query.filter_by(username=test_user['username']).first()
                 if user:
                     with client.session_transaction() as sess:
@@ -250,7 +250,7 @@ def test_kyc_flow() -> bool:
                                  f"public_id={user.public_id}")
                 else:
                     print_result("Session injected (simulated login)", False,
-                                 "User not found in DB — Step 1 likely failed")
+                                 "User not found in DB - Step 1 likely failed")
                     overall = False
 
             else:
@@ -273,7 +273,7 @@ def test_kyc_flow() -> bool:
                 logged_in = '_user_id' in sess
             print_result(
                 "Login verification (session contains _user_id)", logged_in,
-                "Session key '_user_id' missing — check user_loader queries by public_id"
+                "Session key '_user_id' missing - check user_loader queries by public_id"
                 if not logged_in else ""
             )
             overall = overall and logged_in
@@ -296,7 +296,7 @@ def test_kyc_flow() -> bool:
                     overall = False
             else:
                 print_result("User marked as verified", False,
-                             "User not found in DB — Step 1 likely failed")
+                             "User not found in DB - Step 1 likely failed")
                 overall = False
 
             # ─────────────────────────────────────────────────────────────────
@@ -339,7 +339,7 @@ def test_kyc_flow() -> bool:
             resp = client.get('/wallet/dashboard', follow_redirects=False)
             if resp.status_code == 404:
                 print_result("Wallet dashboard (/wallet/dashboard)", False,
-                             "404 — endpoint not implemented")
+                             "404 - endpoint not implemented")
             else:
                 blocked = resp.status_code in (301, 302, 303)
                 print_result(
@@ -385,7 +385,7 @@ def test_kyc_flow() -> bool:
             resp = client.get('/kyc/verify/national-id')
             if resp.status_code == 404:
                 print_result("Verification submission", False,
-                             "Endpoint 404 — skipping submission")
+                             "Endpoint 404 - skipping submission")
             else:
                 csrf = get_csrf_token(client, '/kyc/verify/national-id')
                 if not csrf:

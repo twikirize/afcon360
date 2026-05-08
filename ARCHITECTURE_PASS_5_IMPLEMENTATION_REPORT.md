@@ -1,25 +1,25 @@
-# AFCON 360 — Architecture Pass 5 Implementation Report
+# AFCON 360 - Architecture Pass 5 Implementation Report
 
 **Date:** 2026-05-06
 **Architecture Doc:** `app/Documentation/ARCHITECTURE_PASS_5_FINAL.md`
-**Status:** Code implementation **COMPLETE** — Pending manual DB migration/seed steps (Phase 2 table drop + Phase 4 re-seed)
+**Status:** Code implementation **COMPLETE** - Pending manual DB migration/seed steps (Phase 2 table drop + Phase 4 re-seed)
 
 ---
 
 ## Overview
 
-This report documents the implementation of the "AFCON 360 — Final Architecture Decision" which centralizes fan-related identity data into the `UserProfile` model, deprecates the standalone `FanProfile` table, aligns the `fan` role to `user`, and introduces a tournament skin toggle via `MODULE_FLAGS`.
+This report documents the implementation of the "AFCON 360 - Final Architecture Decision" which centralizes fan-related identity data into the `UserProfile` model, deprecates the standalone `FanProfile` table, aligns the `fan` role to `user`, and introduces a tournament skin toggle via `MODULE_FLAGS`.
 
 The work was executed in 6 phases, with all code edits completed and Python syntax verified. A small number of database-level commands remain for the user to run manually to avoid Alembic issues in this environment.
 
 ---
 
-## Phase 1 — Database: Add Fields to UserProfile
+## Phase 1 - Database: Add Fields to UserProfile
 
 **Goal:** Add four new nullable columns to `user_profiles` to store fan identity, display name, avatar, and bio.
 
 **Files Modified**
-- `app/profile/models.py` — Added columns after `email`:
+- `app/profile/models.py` - Added columns after `email`:
   - `fan_team` (`String(64)`, nullable, indexed)
   - `display_name` (`String(128)`, nullable)
   - `avatar_url` (`String(512)`, nullable)
@@ -31,19 +31,19 @@ The work was executed in 6 phases, with all code edits completed and Python synt
 
 ---
 
-## Phase 2 — Database: Migrate FanProfile Data & Drop Table
+## Phase 2 - Database: Migrate FanProfile Data & Drop Table
 
 **Goal:** Move any existing `fan_profiles` rows into `user_profiles`, then remove the deprecated model/table.
 
 **Files Created**
-- `scripts/migrate_fan_profiles.py` — One-time SQL migration script that:
+- `scripts/migrate_fan_profiles.py` - One-time SQL migration script that:
   1. Reads `fan_profiles` rows
   2. Resolves `fan_profiles.user_id` (internal bigint) → `users.public_id` (UUID)
   3. Copies `display_name`, `avatar_url`, `bio` into the matching `user_profiles` row using `COALESCE` to avoid overwriting existing data
   4. Copies `nationality` only if the target field is empty
 
 **Files Modified**
-- `app/fan/models.py` — Entire model code replaced with a deprecation placeholder comment. The file is kept empty (except comments) to prevent import errors during transition.
+- `app/fan/models.py` - Entire model code replaced with a deprecation placeholder comment. The file is kept empty (except comments) to prevent import errors during transition.
 
 **Pending DB Steps**
 - Run data migration if `fan_profiles` has rows: `flask shell < scripts/migrate_fan_profiles.py`
@@ -53,7 +53,7 @@ The work was executed in 6 phases, with all code edits completed and Python synt
 
 ---
 
-## Phase 3 — Code: Remove `get_or_create_fan()` Calls
+## Phase 3 - Code: Remove `get_or_create_fan()` Calls
 
 **Goal:** Eliminate all runtime dependency on `FanProfile` / `get_or_create_fan` and route everything through `UserProfile` (`get_profile_by_user`).
 
@@ -63,17 +63,17 @@ The work was executed in 6 phases, with all code edits completed and Python synt
 |------|--------|
 | `app/fan/routes.py` | `view_fan_profile()` now calls `get_profile_by_user(current_user.public_id)` instead of `get_or_create_fan(internal_id)` |
 | `app/fan/routes.py` | `update_fan_profile_route()` now updates `UserProfile` fields directly (display_name, nationality, fan_team, avatar_url) and commits |
-| `app/auth/onboarding_routes.py` | `fan_onboarding()` — removed `get_or_create_fan` import and call; now sets `profile.display_name = full_name` inside the `db_transaction` block |
-| `app/auth/onboarding_routes.py` | `_commit_driver_onboarding()` — removed `get_or_create_fan` call; sets `profile.display_name` on the `UserProfile` record |
-| `app/auth/onboarding_routes.py` | `_commit_organisation_onboarding()` — removed `get_or_create_fan` call |
+| `app/auth/onboarding_routes.py` | `fan_onboarding()` - removed `get_or_create_fan` import and call; now sets `profile.display_name = full_name` inside the `db_transaction` block |
+| `app/auth/onboarding_routes.py` | `_commit_driver_onboarding()` - removed `get_or_create_fan` call; sets `profile.display_name` on the `UserProfile` record |
+| `app/auth/onboarding_routes.py` | `_commit_organisation_onboarding()` - removed `get_or_create_fan` call |
 | `app/identity/individuals/individual_verification.py` | Updated architectural boundary comments to reference `UserProfile` instead of deprecated `FanProfile` |
 
 **Verification**
-- Post-edit grep confirmed **zero functional references** to `get_or_create_fan`, `FanProfile`, or `from app.fan.models import` remain in `app/` (only the deprecation comment in `app/fan/models.py` and the stale `app/fan/services/registry.py` file remain — the latter is now orphaned).
+- Post-edit grep confirmed **zero functional references** to `get_or_create_fan`, `FanProfile`, or `from app.fan.models import` remain in `app/` (only the deprecation comment in `app/fan/models.py` and the stale `app/fan/services/registry.py` file remain - the latter is now orphaned).
 
 ---
 
-## Phase 4 — Code: Align `fan` Role → `user`
+## Phase 4 - Code: Align `fan` Role → `user`
 
 **Goal:** Rename the default end-user role from `fan` to `user` across seed definitions, decorators, helpers, and route logic.
 
@@ -81,7 +81,7 @@ The work was executed in 6 phases, with all code edits completed and Python synt
 
 | File | Change |
 |------|--------|
-| `app/auth/seed_roles.py` | `GLOBAL_ROLE_DEFS`: `RoleDef("fan", 13, ...)` → `RoleDef("user", 13, "Default registered user — can browse and book services")` |
+| `app/auth/seed_roles.py` | `GLOBAL_ROLE_DEFS`: `RoleDef("fan", 13, ...)` → `RoleDef("user", 13, "Default registered user - can browse and book services")` |
 | `app/auth/seed_roles.py` | `GLOBAL_PERMISSION_DEFS`: all `accommodation.search`, `accommodation.view`, `accommodation.book` permission role lists changed `"fan"` → `"user"` |
 | `app/auth/decorators.py` | `get_highest_role()` hierarchy list: `"fan"` → `"user"`; default return: `"user"` |
 | `app/auth/helpers.py` | `ROLE_HIERARCHY` tuple: `"fan"` → `"user"` |
@@ -92,7 +92,7 @@ The work was executed in 6 phases, with all code edits completed and Python synt
 
 ---
 
-## Phase 5 — Code: Tournament Skin via `MODULE_FLAGS`
+## Phase 5 - Code: Tournament Skin via `MODULE_FLAGS`
 
 **Goal:** Make the fan-allegiance UI conditional on `MODULE_FLAGS["tournament"]` and wire `fan_team` through forms/templates.
 
@@ -104,14 +104,14 @@ The work was executed in 6 phases, with all code edits completed and Python synt
 | `templates/fan/dashboard.html` | Added `{% if tournament_mode %}` block containing `fan-allegiance-badge` (if `profile.fan_team` is set) and `fan-declare-prompt` (otherwise). End block clearly marked. |
 | `templates/profile/edit.html` | Added `<select name="fan_team">` with all AFCON teams (Algeria through Other/Neutral) bound to `profile.fan_team`. Placed inside the existing form, before submit buttons. |
 | `app/profile/routes.py` | `edit_profile()` POST handler now reads `request.form.get("fan_team", "").strip() or None` and assigns to `profile.fan_team`. Placed in the mutable-fields section, safely outside immutability enforcement. |
-| `templates/profile/public.html` | Added `{% if tournament_mode and profile.fan_team %}` badge inside the profile header: green pill badge reading "AFCON fan — {team}" |
+| `templates/profile/public.html` | Added `{% if tournament_mode and profile.fan_team %}` badge inside the profile header: green pill badge reading "AFCON fan - {team}" |
 
 ---
 
-## Phase 6 — Verification (In Progress)
+## Phase 6 - Verification (In Progress)
 
 **Automated Checks Performed**
-- `python -m py_compile` passed on all 9 modified `.py` files — zero syntax errors.
+- `python -m py_compile` passed on all 9 modified `.py` files - zero syntax errors.
 
 **Remaining Manual Verification Steps**
 
@@ -127,25 +127,25 @@ from app.extensions import db
 from sqlalchemy import inspect, text
 cols = [c['name'] for c in inspect(db.engine).get_columns('user_profiles')]
 assert 'fan_team' in cols and 'display_name' in cols and 'avatar_url' in cols and 'bio' in cols
-print('Phase 1: PASS — columns exist')
+print('Phase 1: PASS - columns exist')
 "
 
 # 2. Verify fan_profiles table is gone
 C:\Users\ADMIN\Desktop\afcon360_app\.venv\Scripts\python.exe -m flask shell -c "
 from app.extensions import db; from sqlalchemy import inspect
 assert 'fan_profiles' not in inspect(db.engine).get_table_names()
-print('Phase 2: PASS — fan_profiles dropped')
+print('Phase 2: PASS - fan_profiles dropped')
 "
 
 # 3. Verify no FanProfile references remain (excluding docs & registry orphan)
-# (Already confirmed via grep — zero hits in app/ except deprecation comment)
+# (Already confirmed via grep - zero hits in app/ except deprecation comment)
 
 # 4. Verify role rename
 C:\Users\ADMIN\Desktop\afcon360_app\.venv\Scripts\python.exe -m flask shell -c "
 from app.extensions import db; from sqlalchemy import text
 assert db.session.execute(text('SELECT COUNT(*) FROM roles WHERE name=''fan''')).scalar() == 0
 assert db.session.execute(text('SELECT COUNT(*) FROM roles WHERE name=''user''')).scalar() == 1
-print('Phase 4: PASS — role aligned')
+print('Phase 4: PASS - role aligned')
 "
 
 # 5. Smoke test: app starts and routes are present

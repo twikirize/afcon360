@@ -1,6 +1,5 @@
-# app/admin/moderator/routes.py
 """
-Moderator Blueprint — Complete Route Set
+Moderator Blueprint - Complete Route Set
 =========================================
 All routes the moderator role needs. Nothing deferred.
 
@@ -14,7 +13,7 @@ Sections:
   G.  Event Moderation     (list · view · approve · reject · flag)
   H.  Organisation Queue   (list · view · approve · reject · flag)
   I.  KYC Queue            (list · view · flag · refer-to-compliance)
-  J.  Audit Log            (list — read-only)
+  J.  Audit Log            (list - read-only)
   K.  Moderation Stats     (dashboard)
   L.  JSON API helpers     (live counters, quick-resolve)
 """
@@ -34,11 +33,7 @@ from app.auth.decorators import require_role, require_permission
 
 from app.extensions import db
 from app.identity.models.user import User
-# Import all models from the models package to avoid circular imports
-from app.admin.models import (
-    ContentFlag, ContentSubmission, ModerationLog,
-    ManageableItem, ManageableCategory
-)
+# Models imported at function level to avoid circular imports
 from app.admin.moderator import moderator_bp
 from app.admin.services import create_flag, resolve_flag
 from app.admin.moderator.registry import get_review_url
@@ -50,7 +45,7 @@ from app.admin.compliance.models import ComplianceCaseType, ComplianceCasePriori
 
 logger = logging.getLogger(__name__)
 
-moderator_bp = Blueprint('moderator', __name__, url_prefix='/moderator')
+#moderator_bp = Blueprint('moderator', __name__, url_prefix='/moderator')
 
 # Roles allowed everywhere unless a route narrows it
 _MOD = ('moderator', 'admin', 'super_admin', 'owner')
@@ -86,7 +81,7 @@ def _enrich_flags(flag_list):
 
 
 def _moderators():
-    """Return list of users who are moderators/admins — for assign dropdowns."""
+    """Return list of users who are moderators/admins - for assign dropdowns."""
     try:
         from app.identity.models.roles_permission import Role, UserRole
         role_ids = db.session.query(Role.id).filter(
@@ -107,6 +102,10 @@ def _redirect_back(fallback):
 
 def _build_moderation_stats():
     """Build moderation statistics for dashboard across all modules."""
+    from app.admin.models import (
+        ContentFlag, ContentSubmission, ModerationLog,
+        ManageableItem, ManageableCategory
+    )
     stats = {}
 
     # Content Submissions
@@ -178,6 +177,7 @@ def _build_moderation_stats():
 
 def _build_my_stats():
     """Build moderator's personal statistics from ModerationLog."""
+    from app.admin.models import ModerationLog
     try:
         week_ago = datetime.now(timezone.utc) - timedelta(days=7)
         my_logs = ModerationLog.query.filter(
@@ -204,8 +204,172 @@ def _build_my_stats():
 @login_required
 @require_role(*_MOD)
 def dashboard():
+    from app.admin.models import (
+        ContentFlag, ContentSubmission, ModerationLog,
+        ManageableItem, ManageableCategory
+    )
+    from sqlalchemy import func, case
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # Enterprise-level moderation metrics
+    # Critical flags (risk score >= 80 or priority critical)
+    flags_critical = ContentFlag.query.filter(
+        ContentFlag.status == 'open',
+        db.or_(
+            ContentFlag.priority == 'critical',
+            ContentFlag.risk_score >= 80
+        )
+    ).count()
+
+    # High priority flags
+    flags_high = ContentFlag.query.filter_by(status='open', priority='high').count()
+
+    # SLA breach metrics
+    sla_breached_flags = ContentFlag.query.filter(
+        ContentFlag.status == 'open',
+        ContentFlag.sla_due_at < datetime.now(timezone.utc)
+    ).all()
+    sla_breached_count = len(sla_breached_flags)
+    
+    # Calculate average SLA breach time
+    avg_sla_breach_time = 0
+    if sla_breached_flags:
+        total_breach_time = sum(
+            (datetime.now(timezone.utc) - flag.sla_due_at).total_seconds() / 60 
+            for flag in sla_breached_flags
+        )
+        avg_sla_breach_time = total_breach_time / len(sla_breached_flags)
+
+    # AI performance metrics
+    ai_processed_today = ContentFlag.query.filter(
+        ContentFlag.detection_source == 'ai',
+        ContentFlag.created_at >= today
+    ).count()
+    
+    ai_flags = ContentFlag.query.filter(
+        ContentFlag.detection_source == 'ai',
+        ContentFlag.ai_confidence.isnot(None)
+    ).all()
+    ai_accuracy = sum(flag.ai_confidence or 0 for flag in ai_flags) / len(ai_flags) * 100 if ai_flags else 0
+
+    # Response time metrics
+    resolved_today = ContentFlag.query.filter(
+        ContentFlag.status == 'resolved',
+        ContentFlag.resolved_at >= today
+    ).all()
+    
+    avg_response_time = 0
+    if resolved_today:
+        total_response_time = sum(
+            (flag.resolved_at - flag.created_at).total_seconds()
+            for flag in resolved_today
+        )
+        avg_response_time = total_response_time / len(resolved_today)
+
+    # SLA compliance rate
+    total_resolved = ContentFlag.query.filter_by(status='resolved').count()
+    sla_compliant = ContentFlag.query.filter(
+        ContentFlag.status == 'resolved',
+        ContentFlag.sla_breached == False
+    ).count()
+    sla_compliance = (sla_compliant / total_resolved * 100) if total_resolved > 0 else 0
+
+    # Active moderators and workload
+    from app.identity.models.user import UserRole
+    from app.identity.models.roles_permission import Role
+    
+    active_moderators = User.query.join(UserRole, User.id == UserRole.user_id).join(Role, UserRole.role_id == Role.id).filter(
+        Role.name == 'moderator',
+        User.is_active == True
+    ).count()
+    
+    assigned_flags = ContentFlag.query.filter(
+        ContentFlag.assigned_to.isnot(None),
+        ContentFlag.status == 'open'
+    ).count()
+    avg_workload = assigned_flags / active_moderators if active_moderators > 0 else 0
+
+    # Escalation metrics
+    total_flags = ContentFlag.query.count()
+    escalated_flags = ContentFlag.query.filter(
+        ContentFlag.escalation_count > 0
+    ).count()
+    escalation_rate = (escalated_flags / total_flags * 100) if total_flags > 0 else 0
+    
+    level_3_cases = ContentFlag.query.filter_by(
+        moderation_level='level_3',
+        status='open'
+    ).count()
+
+    # User satisfaction (mock data for now)
+    user_satisfaction = 4.2  # This would come from actual feedback system
+    feedback_count = 156  # This would come from actual feedback system
+
+    # Resolution rate
+    resolution_rate = (total_resolved / total_flags * 100) if total_flags > 0 else 0
+
+    # Average risk score
+    open_flags_with_risk = ContentFlag.query.filter(
+        ContentFlag.status == 'open',
+        ContentFlag.risk_score.isnot(None)
+    ).all()
+    avg_risk_score = sum(flag.risk_score for flag in open_flags_with_risk) / len(open_flags_with_risk) if open_flags_with_risk else 0
+
+    # Current moderator level (would be based on user's permissions/role)
+    current_moderator_level = "1"  # This would be determined dynamically
+
+    # Build enterprise moderation stats
+    moderation_stats = {
+        'flags_critical': flags_critical,
+        'flags_high': flags_high,
+        'sla_breached_count': sla_breached_count,
+        'avg_sla_breach_time': avg_sla_breach_time,
+        'ai_processed_today': ai_processed_today,
+        'ai_accuracy': ai_accuracy,
+        'avg_response_time': avg_response_time,
+        'sla_compliance': sla_compliance,
+        'active_moderators': active_moderators,
+        'avg_workload': avg_workload,
+        'escalation_rate': escalation_rate,
+        'level_3_cases': level_3_cases,
+        'user_satisfaction': user_satisfaction,
+        'feedback_count': feedback_count,
+        'resolved_today': len(resolved_today),
+        'resolution_rate': resolution_rate,
+        'avg_risk_score': avg_risk_score,
+    }
+    
+    # Add transport statistics
+    try:
+        from app.transport.models import DriverProfile, Vehicle, Booking
+        transport_stats = {
+            'pending_drivers': DriverProfile.query.filter_by(
+                verification_tier='pending', is_deleted=False
+            ).count(),
+            'pending_vehicles': Vehicle.query.filter_by(
+                status='pending', is_deleted=False
+            ).count(),
+            'disputed_bookings': Booking.query.filter_by(
+                status='disputed', is_deleted=False
+            ).count(),
+            'total_active_drivers': DriverProfile.query.filter_by(
+                verification_tier='platform_verified', is_active=True, is_deleted=False
+            ).count(),
+            'total_verified_vehicles': Vehicle.query.filter_by(
+                status='active', is_deleted=False
+            ).count(),
+            'transport_flags_today': ContentFlag.query.filter(
+                ContentFlag.entity_type.like('transport_%'),
+                ContentFlag.created_at >= today
+            ).count()
+        }
+        moderation_stats.update(transport_stats)
+    except Exception:
+        # Transport module not available - skip transport stats
+        pass
+
+    # Original dashboard data (keep for compatibility)
     pending_submissions = (ContentSubmission.query
                            .filter_by(status='pending')
                            .order_by(ContentSubmission.created_at.desc())
@@ -252,11 +416,19 @@ def dashboard():
     pending_count = ContentSubmission.query.filter_by(status='pending').count()
     changes_requested_count = ContentSubmission.query.filter_by(status='changes_requested').count()
 
-    # Build moderation stats using helper
-    moderation_stats = _build_moderation_stats()
-
     # Build moderator's personal stats
     my_stats = _build_my_stats() if _build_my_stats else {}
+    
+    # Add my queue stats for enterprise view
+    if my_stats:
+        my_stats['assigned_count'] = ContentFlag.query.filter_by(
+            assigned_to=current_user.id, 
+            status='open'
+        ).count()
+        my_stats['in_review_count'] = ContentFlag.query.filter_by(
+            assigned_to=current_user.id, 
+            status='in_review'
+        ).count()
 
     return render_template(
         'admin/moderator/dashboard.html',
@@ -274,8 +446,9 @@ def dashboard():
         changes_requested_count=changes_requested_count,
         moderation_stats=moderation_stats,
         my_stats=my_stats,
+        current_moderator_level=current_moderator_level,
         now=datetime.utcnow,
-        title="Moderator Dashboard"
+        title="Enterprise Moderation Dashboard"
     )
 
 
@@ -287,6 +460,7 @@ def dashboard():
 @login_required
 @require_role(*_MOD)
 def content_moderation():
+    from app.admin.models import ContentSubmission, ManageableCategory
     page       = request.args.get('page', 1, type=int)
     per_page   = request.args.get('per_page', 20, type=int)
     status     = request.args.get('status', 'pending')
@@ -343,6 +517,7 @@ def content_moderation():
 @login_required
 @require_role(*_MOD)
 def view_submission(submission_id):
+    from app.admin.models import ContentSubmission, ContentFlag
     submission    = ContentSubmission.query.get_or_404(submission_id)
     related_flags = (ContentFlag.query
                      .filter_by(entity_type='content_submission', entity_id=submission_id)
@@ -362,6 +537,7 @@ def view_submission(submission_id):
 @require_role(*_MOD)
 def claim_submission(submission_id):
     """Claim a content submission for review."""
+    from app.admin.models import ContentSubmission, ModerationLog
     submission = ContentSubmission.query.get_or_404(submission_id)
 
     # Check if already claimed
@@ -389,6 +565,7 @@ def claim_submission(submission_id):
 @login_required
 @require_role(*_MOD)
 def approve_submission(submission_id):
+    from app.admin.models import ContentSubmission, ModerationLog
     s = ContentSubmission.query.get_or_404(submission_id)
     now = datetime.now(timezone.utc)
     s.status      = 'approved'
@@ -414,6 +591,7 @@ def approve_submission(submission_id):
 @login_required
 @require_role(*_MOD)
 def reject_submission(submission_id):
+    from app.admin.models import ContentSubmission, ModerationLog
     s = ContentSubmission.query.get_or_404(submission_id)
     notes = request.form.get('notes', '').strip()
     if not notes:
@@ -443,6 +621,7 @@ def reject_submission(submission_id):
 @login_required
 @require_role(*_MOD)
 def request_changes(submission_id):
+    from app.admin.models import ContentSubmission
     s = ContentSubmission.query.get_or_404(submission_id)
     notes = request.form.get('notes', '').strip()
     if not notes:
@@ -462,6 +641,7 @@ def request_changes(submission_id):
 @login_required
 @require_role(*_MOD)
 def assign_submission(submission_id):
+    from app.admin.models import ContentSubmission
     s = ContentSubmission.query.get_or_404(submission_id)
     assignee_id = request.form.get('assignee_id', type=int)
     if not assignee_id:
@@ -480,6 +660,7 @@ def assign_submission(submission_id):
 @login_required
 @require_permission('content.flag')
 def flag_submission(submission_id):
+    from app.admin.models import ContentSubmission
     ContentSubmission.query.get_or_404(submission_id)   # existence check
     reason   = request.form.get('reason') or (request.json or {}).get('reason', '')
     priority = request.form.get('priority', 'normal')
@@ -501,6 +682,7 @@ def flag_submission(submission_id):
 @require_role(*_MOD)
 def bulk_submission_action():
     """Approve or reject multiple submissions at once."""
+    from app.admin.models import ContentSubmission
     ids    = request.form.getlist('submission_ids', type=int)
     action = request.form.get('action')   # approve | reject | request_changes
     notes  = request.form.get('notes', 'Bulk action by moderator')
@@ -537,12 +719,17 @@ def bulk_submission_action():
 @login_required
 @require_role(*_MOD)
 def flagged_content():
+    from app.admin.models import ContentFlag
     page            = request.args.get('page', 1, type=int)
     per_page        = request.args.get('per_page', 20, type=int)
     status_filter   = request.args.get('status', 'open')
     priority_filter = request.args.get('priority')
     type_filter     = request.args.get('entity_type')
+    detection_source = request.args.get('detection_source')
+    moderation_level = request.args.get('moderation_level')
+    sla_status      = request.args.get('sla_status')
     sort            = request.args.get('sort', 'newest')
+    search          = request.args.get('search', '').strip()
 
     q = ContentFlag.query
     if status_filter != 'all':
@@ -551,6 +738,26 @@ def flagged_content():
         q = q.filter_by(priority=priority_filter)
     if type_filter:
         q = q.filter_by(entity_type=type_filter)
+    if detection_source:
+        q = q.filter_by(detection_source=detection_source)
+    if moderation_level:
+        q = q.filter_by(moderation_level=moderation_level)
+    if search:
+        q = q.filter(ContentFlag.reason.ilike(f'%{search}%'))
+
+    # SLA status filtering
+    if sla_status == 'breached':
+        q = q.filter(ContentFlag.sla_breached == True)
+    elif sla_status == 'urgent':
+        urgent_time = datetime.now(timezone.utc) + timedelta(hours=1)
+        q = q.filter(
+            ContentFlag.sla_due_at < urgent_time,
+            ContentFlag.sla_due_at > datetime.now(timezone.utc)
+        )
+    elif sla_status == 'normal':
+        q = q.filter(
+            ContentFlag.sla_due_at > datetime.now(timezone.utc) + timedelta(hours=1)
+        )
 
     if sort == 'priority':
         priority_order = db.case(
@@ -579,18 +786,43 @@ def flagged_content():
         .group_by(ContentFlag.status).all()
     )
 
+    # Enterprise metrics
+    sla_breached_count = ContentFlag.query.filter(
+        ContentFlag.sla_breached == True,
+        ContentFlag.status == 'open'
+    ).count()
+    
+    # AI accuracy calculation
+    ai_flags = ContentFlag.query.filter(
+        ContentFlag.detection_source == 'ai',
+        ContentFlag.ai_confidence.isnot(None)
+    ).all()
+    ai_accuracy = sum(flag.ai_confidence or 0 for flag in ai_flags) / len(ai_flags) * 100 if ai_flags else 0
+
+    # Set status for template
+    status = status_filter if status_filter != 'all' else 'open'
+    priority = priority_filter
+
     return render_template(
         'admin/moderator/flagged.html',
         flags=flags,
         flag_rows=flag_rows,
         entity_types=entity_types,
         moderators=moderators,
+        status=status,
+        priority=priority,
         status_filter=status_filter,
         priority_filter=priority_filter,
         entity_type_filter=type_filter,
+        detection_source=detection_source,
+        moderation_level=moderation_level,
+        sla_status=sla_status,
         sort=sort,
         status_counts=status_counts,
-        title="Flagged Content"
+        sla_breached_count=sla_breached_count,
+        ai_accuracy=ai_accuracy,
+        now=datetime.now(timezone.utc),
+        title="Enterprise Flagged Content"
     )
 
 
@@ -598,6 +830,7 @@ def flagged_content():
 @login_required
 @require_role(*_MOD)
 def view_flag(flag_id):
+    from app.admin.models import ContentFlag
     flag        = ContentFlag.query.get_or_404(flag_id)
     review_url  = _review_url(flag.entity_type, flag.entity_id)
     moderators  = _moderators()
@@ -651,6 +884,7 @@ def resolve_flag_route(flag_id):
 @login_required
 @require_role(*_MOD)
 def escalate_flag(flag_id):
+    from app.admin.models import ContentFlag
     flag        = ContentFlag.query.get_or_404(flag_id)
     role        = request.form.get('role', 'admin')
     assignee_id = request.form.get('assignee_id', type=int)
@@ -676,8 +910,9 @@ def escalate_flag(flag_id):
 @login_required
 @require_role(*_MOD)
 def close_flag(flag_id):
+    from app.admin.models import ContentFlag
     flag       = ContentFlag.query.get_or_404(flag_id)
-    notes      = request.form.get('notes', 'Closed by moderator — not actionable')
+    notes      = request.form.get('notes', 'Closed by moderator - not actionable')
     flag.status             = 'resolved'
     flag.resolved_by        = current_user.id
     flag.resolution_action  = 'closed'
@@ -695,10 +930,11 @@ def close_flag(flag_id):
 @login_required
 @require_role(*_MOD)
 def assign_flag(flag_id):
+    from app.admin.models import ContentFlag
     flag        = ContentFlag.query.get_or_404(flag_id)
     assignee_id = request.form.get('assignee_id', type=int)
     if not assignee_id:
-        flash('Select a moderator.', 'danger')
+        flash('Select a admin.moderator.', 'danger')
         return _redirect_back('admin.moderator.flagged_content')
     assignee         = User.query.get_or_404(assignee_id)
     flag.assigned_to = assignee.id
@@ -713,6 +949,7 @@ def assign_flag(flag_id):
 @login_required
 @require_role(*_MOD)
 def reprioritise_flag(flag_id):
+    from app.admin.models import ContentFlag
     flag          = ContentFlag.query.get_or_404(flag_id)
     new_priority  = request.form.get('priority', 'normal')
     VALID         = {'low', 'normal', 'medium', 'high', 'critical'}
@@ -760,6 +997,7 @@ def create_flag_route():
 @login_required
 @require_role(*_MOD)
 def bulk_flag_action():
+    from app.admin.models import ContentFlag
     flag_ids = request.form.getlist('flag_ids', type=int)
     action   = request.form.get('action')   # resolve | close | escalate
     notes    = request.form.get('notes', 'Bulk action by moderator')
@@ -797,6 +1035,7 @@ def bulk_flag_action():
 @login_required
 @require_role(*_MOD)
 def user_moderation():
+    from app.admin.models import ContentFlag
     page         = request.args.get('page', 1, type=int)
     per_page     = request.args.get('per_page', 20, type=int)
     filter_      = request.args.get('filter', 'all')
@@ -847,6 +1086,7 @@ def user_moderation():
 @login_required
 @require_role(*_MOD)
 def view_user(user_id):
+    from app.admin.models import ContentFlag, ContentSubmission
     user           = User.query.get_or_404(user_id)
     flags_raised   = (ContentFlag.query.filter_by(flagged_by=user_id)
                       .order_by(ContentFlag.created_at.desc()).limit(20).all())
@@ -868,6 +1108,7 @@ def view_user(user_id):
 @login_required
 @require_role(*_MOD)
 def suspend_user(user_id):
+    from app.admin.models import ContentFlag
     user   = User.query.get_or_404(user_id)
     reason = request.form.get('reason', '').strip()
     if user.id == current_user.id:
@@ -890,6 +1131,7 @@ def suspend_user(user_id):
 @login_required
 @require_role(*_MOD)
 def unsuspend_user(user_id):
+    from app.admin.models import ContentFlag
     user           = User.query.get_or_404(user_id)
     user.is_active = True
     # Resolve any open suspension flags
@@ -911,6 +1153,7 @@ def unsuspend_user(user_id):
 @login_required
 @require_role(*_MOD)
 def warn_user(user_id):
+    from app.admin.models import ContentFlag
     user   = User.query.get_or_404(user_id)
     reason = request.form.get('reason', '').strip()
     if not reason:
@@ -1021,7 +1264,7 @@ def activate_user(user_id):
 @login_required
 @require_permission('content.flag')
 def flag_user(user_id):
-    user     = User.query.get_or_404(user_id)
+    User.query.get_or_404(user_id)
     reason   = request.form.get('reason') or (request.json or {}).get('reason', '')
     priority = request.form.get('priority', 'normal')
     ok, result = create_flag(current_user, 'user', user_id, reason, priority)
@@ -1096,6 +1339,7 @@ def bulk_user_action():
 @login_required
 @require_role(*_MOD)
 def categories_list():
+    from app.admin.models import ManageableCategory
     cats = ManageableCategory.query.order_by(ManageableCategory.name).all()
     return render_template(
         'admin/moderator/categories.html',
@@ -1108,6 +1352,7 @@ def categories_list():
 @login_required
 @require_role(*_MOD)
 def view_category(cat_id):
+    from app.admin.models import ManageableCategory, ManageableItem
     cat = ManageableCategory.query.get_or_404(cat_id)
     pending_items = ManageableItem.query.filter_by(
         category_id=cat_id, is_approved=False
@@ -1124,6 +1369,7 @@ def view_category(cat_id):
 @login_required
 @require_role(*_MOD)
 def toggle_category_active(cat_id):
+    from app.admin.models import ManageableCategory
     cat           = ManageableCategory.query.get_or_404(cat_id)
     cat.is_active = not cat.is_active
     db.session.commit()
@@ -1137,6 +1383,7 @@ def toggle_category_active(cat_id):
 @login_required
 @require_role(*_MOD)
 def create_category():
+    from app.admin.models import ManageableCategory
     name = request.form.get('name', '').strip()
     slug = request.form.get('slug', '').strip()
     description = request.form.get('description', '').strip()
@@ -1172,6 +1419,7 @@ def create_category():
 @login_required
 @require_role(*_MOD)
 def items_list():
+    from app.admin.models import ManageableItem, ManageableCategory
     page     = request.args.get('page', 1, type=int)
     approved = request.args.get('approved', 'all')
     cat_id   = request.args.get('category_id', type=int)
@@ -1205,6 +1453,7 @@ def items_list():
 @login_required
 @require_role(*_MOD)
 def view_item(item_id):
+    from app.admin.models import ManageableItem, ManageableCategory, ContentFlag
     item       = ManageableItem.query.get_or_404(item_id)
     flags      = (ContentFlag.query
                   .filter_by(entity_type='manageable_item', entity_id=item_id)
@@ -1223,6 +1472,7 @@ def view_item(item_id):
 @login_required
 @require_role(*_MOD)
 def approve_item(item_id):
+    from app.admin.models import ManageableItem
     item             = ManageableItem.query.get_or_404(item_id)
     item.is_approved = True
     item.is_active   = True
@@ -1236,6 +1486,7 @@ def approve_item(item_id):
 @login_required
 @require_role(*_MOD)
 def reject_item(item_id):
+    from app.admin.models import ManageableItem
     item             = ManageableItem.query.get_or_404(item_id)
     notes            = request.form.get('notes', '').strip()
     item.is_approved = False
@@ -1250,6 +1501,7 @@ def reject_item(item_id):
 @login_required
 @require_role(*_MOD)
 def toggle_item_featured(item_id):
+    from app.admin.models import ManageableItem
     item             = ManageableItem.query.get_or_404(item_id)
     item.is_featured = not item.is_featured
     db.session.commit()
@@ -1262,6 +1514,7 @@ def toggle_item_featured(item_id):
 @login_required
 @require_permission('content.flag')
 def flag_item(item_id):
+    from app.admin.models import ManageableItem
     ManageableItem.query.get_or_404(item_id)
     reason   = request.form.get('reason') or (request.json or {}).get('reason', '')
     priority = request.form.get('priority', 'normal')
@@ -1364,24 +1617,106 @@ def _org_model():
 @login_required
 @require_role(*_MOD)
 def orgs_queue():
-    """Redirect to Organisation module admin."""
-    try:
-        return redirect(url_for('org.dashboard'))
-    except Exception:
-        flash('Organisation module is not available.', 'warning')
-        return redirect(url_for('admin.moderator.dashboard'))
+    """Organisation moderation queue - show organizations pending review."""
+    from app.admin.models import ContentFlag
+    from app.identity.models.organisation import Organisation
+    
+    # Get organizations with flags or pending status
+    flagged_orgs_query = db.session.query(Organisation).join(
+        ContentFlag, Organisation.id == ContentFlag.entity_id
+    ).filter(
+        ContentFlag.entity_type == 'organisation',
+        ContentFlag.status.in_(['pending', 'under_review'])
+    ).distinct()
+    
+    # Get organizations with verification status issues
+    pending_orgs_query = Organisation.query.filter(
+        Organisation.verification_status.in_(['pending', 'flagged', 'under_review'])
+    )
+    
+    # Combine both queries
+    flagged_orgs = flagged_orgs_query.all()
+    pending_orgs = pending_orgs_query.all()
+    
+    # Remove duplicates
+    all_orgs = list({org.id: org for org in flagged_orgs + pending_orgs}.values())
+    
+    # Sort by most recent activity
+    all_orgs.sort(key=lambda x: x.updated_at or x.created_at, reverse=True)
+    
+    # Get moderation stats
+    org_stats = {
+        'total_pending': len(all_orgs),
+        'flagged_count': len(flagged_orgs),
+        'verification_pending': len([org for org in all_orgs if org.verification_status in ['pending', 'under_review']]),
+        'high_priority': len([org for org in all_orgs if any(
+            flag.priority == 'critical' for flag in org.flags if hasattr(org, 'flags')
+        )])
+    }
+    
+    return render_template(
+        'admin/moderator/orgs.html',
+        orgs=all_orgs,
+        org_stats=org_stats,
+        title="Organisation Moderation"
+    )
 
 
 @moderator_bp.route('/orgs/<int:org_id>')
 @login_required
 @require_role(*_MOD)
 def view_org(org_id):
-    """Redirect to specific organisation in Org module."""
-    try:
-        return redirect(url_for('org.view_organisation', org_id=org_id))
-    except Exception:
-        flash('Organisation module is not available.', 'warning')
-        return redirect(url_for('admin.moderator.orgs_queue'))
+    """View organisation details for moderation review."""
+    from app.admin.models import ContentFlag
+    from app.identity.models.organisation import Organisation
+    
+    org = Organisation.query.get_or_404(org_id)
+    
+    # Get flags related to this organization
+    org_flags = ContentFlag.query.filter_by(
+        entity_type='organisation',
+        entity_id=org.id
+    ).order_by(ContentFlag.created_at.desc()).all()
+    
+    # Get organization activity
+    org_activity = []
+    if hasattr(org, 'created_at'):
+        org_activity.append({
+            'type': 'created',
+            'timestamp': org.created_at,
+            'description': f'Organization "{org.name}" was created'
+        })
+    
+    # Add flag activity
+    for flag in org_flags:
+        org_activity.append({
+            'type': 'flag',
+            'timestamp': flag.created_at,
+            'description': f'Flagged: {flag.reason[:100]}...',
+            'priority': flag.priority,
+            'status': flag.status
+        })
+    
+    # Sort activity by timestamp
+    org_activity.sort(key=lambda x: x['timestamp'], reverse=True)
+    
+    # Get moderation recommendations
+    recommendations = []
+    if org.verification_status == 'pending':
+        recommendations.append('Review organization documents and verify business legitimacy')
+    if any(flag.priority == 'critical' for flag in org_flags):
+        recommendations.append('URGENT: Critical flags require immediate attention')
+    if len(org_flags) > 3:
+        recommendations.append('Multiple flags - consider escalating to compliance team')
+    
+    return render_template(
+        'admin/moderator/view_org.html',
+        org=org,
+        org_flags=org_flags,
+        org_activity=org_activity,
+        recommendations=recommendations,
+        title=f"Review Organization: {org.name}"
+    )
 
 
 @moderator_bp.route('/orgs/<int:org_id>/approve', methods=['POST'])
@@ -1639,7 +1974,7 @@ def flag_kyc(doc_id):
     priority = request.form.get('priority', 'high')
     ok, result = create_flag(current_user, 'kyc_document', doc_id, reason, priority)
     if ok:
-        flash('KYC record flagged — compliance team will review.', 'warning')
+        flash('KYC record flagged - compliance team will review.', 'warning')
     else:
         flash(f'Could not flag: {result}', 'danger')
     if request.is_json:
@@ -1746,6 +2081,7 @@ def audit_log():
 @login_required
 @require_role(*_MOD)
 def stats():
+    from app.admin.models import ContentSubmission, ContentFlag
     now     = datetime.now(timezone.utc)
     week_ago  = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
@@ -1804,7 +2140,7 @@ def stats():
             ).count()
         })
 
-    # Top flaggers (last 30 days) — useful to spot spam-flaggers
+    # Top flaggers (last 30 days) - useful to spot spam-flaggers
     top_flaggers_raw = (
         ContentFlag.query
         .with_entities(ContentFlag.flagged_by, func.count().label('n'))
@@ -1841,6 +2177,7 @@ def stats():
 @require_role(*_MOD)
 def api_queue_health():
     """Live queue counters for header widgets / polling."""
+    from app.admin.models import ContentFlag, ContentSubmission
     return jsonify({
         "open_flags":            ContentFlag.query.filter_by(status='open').count(),
         "critical_flags":        ContentFlag.query.filter_by(status='open', priority='critical').count(),
@@ -1870,6 +2207,7 @@ def api_resolve_flag(flag_id):
 @login_required
 @require_role(*_MOD)
 def api_close_flag(flag_id):
+    from app.admin.models import ContentFlag
     data  = request.get_json() or {}
     flag  = ContentFlag.query.get_or_404(flag_id)
     flag.status            = 'resolved'
@@ -1885,6 +2223,7 @@ def api_close_flag(flag_id):
 @login_required
 @require_role(*_MOD)
 def api_approve_submission(submission_id):
+    from app.admin.models import ContentSubmission, ModerationLog
     s = ContentSubmission.query.get_or_404(submission_id)
     now = datetime.now(timezone.utc)
     s.status      = 'approved'
@@ -1908,6 +2247,7 @@ def api_approve_submission(submission_id):
 @login_required
 @require_role(*_MOD)
 def api_reject_submission(submission_id):
+    from app.admin.models import ContentSubmission, ModerationLog
     data  = request.get_json() or {}
     notes = data.get('notes', '').strip()
     if not notes:
@@ -1936,6 +2276,7 @@ def api_reject_submission(submission_id):
 @require_role(*_MOD)
 def moderate_submission(submission_id):
     """Approve or reject a submission (must be claimed by current user)."""
+    from app.admin.models import ContentSubmission, ModerationLog
     data = request.get_json() or {}
     action = data.get('action', '').strip().lower()
     notes = data.get('notes', '').strip()
@@ -1985,6 +2326,7 @@ def moderate_submission(submission_id):
 @require_role(*_MOD)
 def preview_submission(submission_id):
     """Preview user-submitted content before approval."""
+    from app.admin.models import ContentSubmission
     submission = ContentSubmission.query.get_or_404(submission_id)
     
     # Determine template based on category
@@ -2030,6 +2372,7 @@ def performance():
 @login_required
 @require_role(*_MOD)
 def queue_metrics():
+    from app.admin.models import ContentSubmission
     now = datetime.now(timezone.utc)
     pending = ContentSubmission.query.filter_by(status='pending')
     total = pending.count()
@@ -2060,6 +2403,7 @@ def queue_metrics():
 @require_role(*_MOD)
 def audit_insights():
     from sqlalchemy import func
+    from app.admin.models import ModerationLog
     logs = db.session.query(
         ModerationLog.moderator_id,
         func.count(ModerationLog.id).label('actions')
@@ -2071,6 +2415,7 @@ def audit_insights():
 @login_required
 @require_role(*_MOD)
 def api_auto_priority():
+    from app.admin.models import ContentFlag
     now = datetime.now(timezone.utc)
     flags = ContentFlag.query.filter(
         ContentFlag.resolved_at == None,
@@ -2094,6 +2439,8 @@ def api_auto_priority():
 @require_role(*_MOD)
 def my_queue():
     """Return items assigned to the current moderator for the My Queue panel."""
+    from app.admin.models import ContentFlag, ContentSubmission
+    
     submissions = ContentSubmission.query.filter_by(
         assigned_to_id=current_user.id,
         status='pending'
@@ -2414,4 +2761,784 @@ def audit_log_export():
 
     else:
         return jsonify({"error": f"Unsupported format: {export_format}"}), 400
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# K.  ENTERPRISE MODERATION FEATURES
+# ═════════════════════════════════════════════════════════════════════════════
+
+@moderator_bp.route('/ai-analytics')
+@login_required
+@require_role(*_MOD)
+def ai_analytics():
+    """AI-powered content detection analytics dashboard"""
+    from app.admin.models import ContentFlag
+    
+    # Mock AI analytics data (would come from AI service)
+    ai_stats = {
+        'accuracy': 92.5,
+        'processed_today': 156,
+        'avg_processing_time': 0.45,
+        'processed_hourly': 89,
+        'false_positive_rate': 3.2,
+        'false_negatives': 12,
+        'auto_resolution_rate': 78.4,
+        'auto_resolved_today': 67,
+        'text_processed': 1247,
+        'image_processed': 892,
+        'behavior_processed': 456,
+        'spam_processed': 2341,
+        'toxicity_processed': 678,
+        'trend_accuracy': 2.3,
+        'true_positives': 1423,
+        'false_positives': 48,
+        'api_response_time': 120,
+        'gpu_usage': 67,
+        'last_training': '2d ago',
+        'models_count': 5
+    }
+    
+    return render_template(
+        'admin/moderator/ai_analytics.html',
+        ai_stats=ai_stats,
+        title="AI Analytics Dashboard"
+    )
+
+
+@moderator_bp.route('/training')
+@login_required
+@require_role(*_MOD)
+def training():
+    """Moderator training and certification system"""
+    # Mock training data (would come from training service)
+    user_certification = {
+        'level': 1,
+        'certification_name': 'Basic Moderator',
+        'credits_earned': 45,
+        'modules_completed': 3,
+        'issued_at': datetime.now(timezone.utc) - timedelta(days=30),
+        'next_level_requirements': {
+            'credits_needed': 55,
+            'modules_needed': 2,
+            'assessments_needed': 1
+        }
+    }
+
+    training_modules = [
+        {
+            'id': 1,
+            'name': 'Content Moderation Basics',
+            'description': 'Learn the fundamentals of content moderation',
+            'level': 1,
+            'status': 'completed',
+            'progress': 100,
+            'credits': 10,
+            'estimated_hours': 2
+        },
+        {
+            'id': 2,
+            'name': 'Policy Enforcement',
+            'description': 'Understanding and applying content policies',
+            'level': 1,
+            'status': 'completed',
+            'progress': 100,
+            'credits': 15,
+            'estimated_hours': 3
+        },
+        {
+            'id': 3,
+            'name': 'User Safety',
+            'description': 'Protecting users from harmful content',
+            'level': 1,
+            'status': 'completed',
+            'progress': 100,
+            'credits': 20,
+            'estimated_hours': 4
+        },
+        {
+            'id': 4,
+            'name': 'Advanced Content Analysis',
+            'description': 'Deep analysis techniques for complex content',
+            'level': 2,
+            'status': 'in_progress',
+            'progress': 65,
+            'credits': 25,
+            'estimated_hours': 5
+        },
+        {
+            'id': 5,
+            'name': 'Legal Compliance',
+            'description': 'Understanding legal requirements for moderation',
+            'level': 2,
+            'status': 'not_started',
+            'progress': 0,
+            'credits': 30,
+            'estimated_hours': 6
+        }
+    ]
+
+    upcoming_assessments = [
+        {
+            'id': 1,
+            'name': 'Content Policy Assessment',
+            'module_name': 'Policy Enforcement',
+            'priority': 'high',
+            'due_date': datetime.now(timezone.utc) + timedelta(days=2)
+        },
+        {
+            'id': 2,
+            'name': 'Advanced Analysis Test',
+            'module_name': 'Advanced Content Analysis',
+            'priority': 'medium',
+            'due_date': datetime.now(timezone.utc) + timedelta(days=5)
+        }
+    ]
+
+    recommended_path = [
+        {
+            'order': 1,
+            'module_name': 'Advanced Content Analysis',
+            'reason': 'Build on current skills',
+            'color': 'var(--accent)',
+            'completed': False
+        },
+        {
+            'order': 2,
+            'module_name': 'Legal Compliance',
+            'reason': 'Required for Level 2',
+            'color': 'var(--blue)',
+            'completed': False
+        },
+        {
+            'order': 3,
+            'module_name': 'Crisis Management',
+            'reason': 'Advanced skill',
+            'color': 'var(--purple)',
+            'completed': False
+        }
+    ]
+
+    training_stats = {
+        'total_hours': 9,
+        'assessment_score': 87,
+        'streak_days': 5,
+        'rank': '12/45'
+    }
+
+    return render_template(
+        'admin/moderator/training.html',
+        user_certification=user_certification,
+        training_modules=training_modules,
+        upcoming_assessments=upcoming_assessments,
+        recommended_path=recommended_path,
+        training_stats=training_stats,
+        title="Moderator Training"
+    )
+
+
+@moderator_bp.route('/training-content')
+@login_required
+@require_role(*_MOD)
+def training_content():
+    """Comprehensive training materials and course content"""
+    return render_template(
+        'admin/moderator/training_content.html',
+        title="Training Materials"
+    )
+
+
+@moderator_bp.route('/content-safety')
+@login_required
+@require_role(*_MOD)
+def content_safety():
+    """Content safety policies and enforcement dashboard"""
+    # Mock policy data (would come from content safety service)
+    policy_stats = {
+        'hate_speech_blocks': 1247,
+        'hate_speech_today': 89,
+        'violence_blocks': 892,
+        'violence_today': 67,
+        'harassment_blocks': 456,
+        'harassment_today': 34,
+        'spam_blocks': 2341,
+        'spam_today': 156
+    }
+    
+    policy_categories = [
+        {
+            'id': 1,
+            'name': 'Hate Speech',
+            'description': 'Content that promotes hatred against individuals or groups',
+            'status': 'active',
+            'severity_level': 'high',
+            'auto_enforce': True,
+            'region': 'Global',
+            'key_rules': [
+                'No racial slurs or derogatory terms',
+                'No content targeting protected characteristics',
+                'No hate symbols or imagery'
+            ],
+            'blocks_today': 89,
+            'total_blocks': 1247,
+            'accuracy': 94.2
+        },
+        {
+            'id': 2,
+            'name': 'Violence and Threats',
+            'description': 'Content that depicts or promotes violence',
+            'status': 'active',
+            'severity_level': 'critical',
+            'auto_enforce': True,
+            'region': 'Global',
+            'key_rules': [
+                'No graphic violence or gore',
+                'No threats of physical harm',
+                'No weapons or dangerous activities'
+            ],
+            'blocks_today': 67,
+            'total_blocks': 892,
+            'accuracy': 91.8
+        },
+        {
+            'id': 3,
+            'name': 'Harassment',
+            'description': 'Targeted harassment or bullying of individuals',
+            'status': 'active',
+            'severity_level': 'medium',
+            'auto_enforce': False,
+            'region': 'US',
+            'key_rules': [
+                'No personal attacks or insults',
+                'No repeated unwanted contact',
+                'No doxxing or privacy violations'
+            ],
+            'blocks_today': 34,
+            'total_blocks': 456,
+            'accuracy': 89.5
+        },
+        {
+            'id': 4,
+            'name': 'Spam and Deceptive Content',
+            'description': 'Misleading or repetitive content',
+            'status': 'active',
+            'severity_level': 'low',
+            'auto_enforce': True,
+            'region': 'Global',
+            'key_rules': [
+                'No repetitive or duplicate content',
+                'No misleading links or scams',
+                'No unauthorized commercial content'
+            ],
+            'blocks_today': 156,
+            'total_blocks': 2341,
+            'accuracy': 96.7
+        },
+        {
+            'id': 5,
+            'name': 'Sexual Content',
+            'description': 'Adult or sexually explicit content',
+            'status': 'active',
+            'severity_level': 'high',
+            'auto_enforce': True,
+            'region': 'EU',
+            'key_rules': [
+                'No explicit sexual content',
+                'No adult entertainment',
+                'No sexual services or products'
+            ],
+            'blocks_today': 23,
+            'total_blocks': 234,
+            'accuracy': 93.1
+        }
+    ]
+    
+    effectiveness = {
+        'false_positive_rate': 2.3,
+        'detection_rate': 97.8,
+        'response_time': 1.2,
+        'user_satisfaction': 4.6
+    }
+    
+    last_report_date = '2026-05-01'
+    active_policies_count = 5
+    regions_count = 5
+    
+    return render_template(
+        'admin/moderator/content_safety.html',
+        policy_stats=policy_stats,
+        policy_categories=policy_categories,
+        effectiveness=effectiveness,
+        last_report_date=last_report_date,
+        active_policies_count=active_policies_count,
+        regions_count=regions_count,
+        title="Content Safety Policies"
+    )
+
+
+@moderator_bp.route('/cross-platform')
+@login_required
+@require_role(*_MOD)
+def cross_platform():
+    """Cross-platform moderation dashboard"""
+    # Mock platform data (would come from cross-platform service)
+    platform_stats = {
+        'web_actions': 892,
+        'web_pending': 45,
+        'web_response_time': 0.8,
+        'ios_actions': 567,
+        'ios_pending': 23,
+        'ios_response_time': 1.2,
+        'android_actions': 445,
+        'android_pending': 31,
+        'android_response_time': 1.5,
+        'api_actions': 234,
+        'api_pending': 12,
+        'api_response_time': 2.1
+    }
+    
+    platform_health = {
+        'uptime': 99.8,
+        'error_rate': 0.2,
+        'sync_success': 98.5,
+        'avg_latency': 1.4
+    }
+    
+    sync_rules = {
+        'user_suspension': 89,
+        'content_removal': 156,
+        'user_warning': 67
+    }
+    
+    active_platforms_count = 4
+    synced_actions_count = 156
+    
+    return render_template(
+        'admin/moderator/cross_platform.html',
+        platform_stats=platform_stats,
+        platform_health=platform_health,
+        sync_rules=sync_rules,
+        active_platforms_count=active_platforms_count,
+        synced_actions_count=synced_actions_count,
+        title="Cross-Platform Moderation"
+    )
+
+
+# ============================================================================
+# TRANSPORT MODERATION
+# ============================================================================
+
+@moderator_bp.route('/transport')
+@login_required
+@require_role(*_MOD)
+def transport_moderation():
+    """Transport moderation dashboard with drivers, vehicles, and bookings"""
+    from app.transport.models import DriverProfile, Vehicle, Booking
+    from app.admin.models import ContentFlag
+    
+    # Get transport statistics
+    transport_stats = {
+        'total_drivers': DriverProfile.query.filter_by(is_deleted=False).count(),
+        'pending_drivers': DriverProfile.query.filter_by(
+            verification_tier='pending', is_deleted=False
+        ).count(),
+        'verified_drivers': DriverProfile.query.filter_by(
+            verification_tier='platform_verified', is_deleted=False
+        ).count(),
+        'total_vehicles': Vehicle.query.filter_by(is_deleted=False).count(),
+        'pending_vehicles': Vehicle.query.filter_by(
+            status='pending', is_deleted=False
+        ).count(),
+        'verified_vehicles': Vehicle.query.filter_by(
+            status='active', is_deleted=False
+        ).count(),
+        'total_bookings': Booking.query.filter_by(is_deleted=False).count(),
+        'disputed_bookings': Booking.query.filter_by(
+            status='disputed', is_deleted=False
+        ).count(),
+        'active_bookings': Booking.query.filter(
+            Booking.status.in_(['confirmed', 'assigned', 'driver_en_route', 'in_progress']),
+            Booking.is_deleted == False
+        ).count()
+    }
+    
+    # Get flagged transport items
+    transport_flags = ContentFlag.query.filter(
+        ContentFlag.entity_type.like('transport_%')
+    ).order_by(ContentFlag.created_at.desc()).limit(10).all()
+    
+    # Get pending items for review
+    pending_drivers = DriverProfile.query.filter_by(
+        verification_tier='pending', is_deleted=False
+    ).order_by(DriverProfile.created_at.desc()).limit(5).all()
+    
+    pending_vehicles = Vehicle.query.filter_by(
+        status='pending', is_deleted=False
+    ).order_by(Vehicle.created_at.desc()).limit(5).all()
+    
+    disputed_bookings = Booking.query.filter_by(
+        status='disputed', is_deleted=False
+    ).order_by(Booking.created_at.desc()).limit(5).all()
+    
+    return render_template(
+        'admin/moderator/transport.html',
+        transport_stats=transport_stats,
+        transport_flags=transport_flags,
+        pending_drivers=pending_drivers,
+        pending_vehicles=pending_vehicles,
+        disputed_bookings=disputed_bookings,
+        title="Transport Moderation"
+    )
+
+
+@moderator_bp.route('/transport/drivers')
+@login_required
+@require_role(*_MOD)
+def transport_drivers():
+    """Transport driver moderation queue"""
+    from app.transport.models import DriverProfile
+    
+    status_filter = request.args.get('status', 'pending')
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    
+    query = DriverProfile.query.filter_by(is_deleted=False)
+    
+    if status_filter and status_filter != 'all':
+        query = query.filter_by(verification_tier=status_filter)
+    
+    if search:
+        query = query.filter(
+            db.or_(
+                DriverProfile.first_name.ilike(f'%{search}%'),
+                DriverProfile.last_name.ilike(f'%{search}%'),
+                DriverProfile.email.ilike(f'%{search}%'),
+                DriverProfile.phone.ilike(f'%{search}%')
+            )
+        )
+    
+    drivers = query.order_by(DriverProfile.created_at.desc()).paginate(
+        page=page, per_page=20, error_out=False
+    )
+    
+    return render_template(
+        'admin/moderator/transport_drivers.html',
+        drivers=drivers,
+        current_status=status_filter,
+        current_search=search,
+        title="Transport Drivers"
+    )
+
+
+@moderator_bp.route('/transport/vehicles')
+@login_required
+@require_role(*_MOD)
+def transport_vehicles():
+    """Transport vehicle moderation queue"""
+    from app.transport.models import Vehicle
+    
+    status_filter = request.args.get('status', 'pending')
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    
+    query = Vehicle.query.filter_by(is_deleted=False)
+    
+    if status_filter and status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    
+    if search:
+        query = query.filter(
+            db.or_(
+                Vehicle.make.ilike(f'%{search}%'),
+                Vehicle.model.ilike(f'%{search}%'),
+                Vehicle.license_plate.ilike(f'%{search}%'),
+                Vehicle.vehicle_type.ilike(f'%{search}%')
+            )
+        )
+    
+    vehicles = query.order_by(Vehicle.created_at.desc()).paginate(
+        page=page, per_page=20, error_out=False
+    )
+    
+    return render_template(
+        'admin/moderator/transport_vehicles.html',
+        vehicles=vehicles,
+        current_status=status_filter,
+        current_search=search,
+        title="Transport Vehicles"
+    )
+
+
+@moderator_bp.route('/transport/bookings')
+@login_required
+@require_role(*_MOD)
+def transport_bookings():
+    """Transport booking moderation queue"""
+    from app.transport.models import Booking
+    
+    status_filter = request.args.get('status', 'disputed')
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    
+    query = Booking.query.filter_by(is_deleted=False)
+    
+    if status_filter and status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    
+    if search:
+        query = query.filter(
+            db.or_(
+                Booking.booking_reference.ilike(f'%{search}%'),
+                Booking.pickup_address.ilike(f'%{search}%'),
+                Booking.dropoff_address.ilike(f'%{search}%')
+            )
+        )
+    
+    bookings = query.order_by(Booking.created_at.desc()).paginate(
+        page=page, per_page=20, error_out=False
+    )
+    
+    return render_template(
+        'admin/moderator/transport_bookings.html',
+        bookings=bookings,
+        current_status=status_filter,
+        current_search=search,
+        title="Transport Bookings"
+    )
+
+
+@moderator_bp.route('/transport/driver/<int:driver_id>')
+@login_required
+@require_role(*_MOD)
+def view_transport_driver(driver_id):
+    """View transport driver details for moderation"""
+    from app.transport.models import DriverProfile
+    from app.admin.models import ContentFlag
+    
+    driver = DriverProfile.query.get_or_404(driver_id)
+    
+    # Get driver-related flags
+    driver_flags = ContentFlag.query.filter_by(
+        entity_type='transport_driver',
+        entity_id=driver_id
+    ).order_by(ContentFlag.created_at.desc()).all()
+    
+    # Get driver vehicles
+    from app.transport.models import Vehicle
+    driver_vehicles = Vehicle.query.filter_by(
+        owner_type='driver',
+        owner_id=driver_id,
+        is_deleted=False
+    ).all()
+    
+    # Get driver bookings
+    from app.transport.models import Booking
+    driver_bookings = Booking.query.filter_by(
+        driver_id=driver_id,
+        is_deleted=False
+    ).order_by(Booking.created_at.desc()).limit(10).all()
+    
+    return render_template(
+        'admin/moderator/transport_driver_view.html',
+        driver=driver,
+        driver_flags=driver_flags,
+        driver_vehicles=driver_vehicles,
+        driver_bookings=driver_bookings,
+        title=f"Driver: {driver.first_name} {driver.last_name}"
+    )
+
+
+@moderator_bp.route('/transport/vehicle/<int:vehicle_id>')
+@login_required
+@require_role(*_MOD)
+def view_transport_vehicle(vehicle_id):
+    """View transport vehicle details for moderation"""
+    from app.transport.models import Vehicle
+    from app.admin.models import ContentFlag
+    
+    vehicle = Vehicle.query.get_or_404(vehicle_id)
+    
+    # Get vehicle-related flags
+    vehicle_flags = ContentFlag.query.filter_by(
+        entity_type='transport_vehicle',
+        entity_id=vehicle_id
+    ).order_by(ContentFlag.created_at.desc()).all()
+    
+    # Get vehicle driver history
+    from app.transport.models import DriverVehicleHistory
+    vehicle_history = DriverVehicleHistory.query.filter_by(
+        vehicle_id=vehicle_id
+    ).order_by(DriverVehicleHistory.created_at.desc()).limit(10).all()
+    
+    return render_template(
+        'admin/moderator/transport_vehicle_view.html',
+        vehicle=vehicle,
+        vehicle_flags=vehicle_flags,
+        vehicle_history=vehicle_history,
+        title=f"Vehicle: {vehicle.make} {vehicle.model}"
+    )
+
+
+@moderator_bp.route('/transport/booking/<int:booking_id>')
+@login_required
+@require_role(*_MOD)
+def view_transport_booking(booking_id):
+    """View transport booking details for moderation"""
+    from app.transport.models import Booking
+    from app.admin.models import ContentFlag
+    
+    booking = Booking.query.get_or_404(booking_id)
+    
+    # Get booking-related flags
+    booking_flags = ContentFlag.query.filter_by(
+        entity_type='transport_booking',
+        entity_id=booking_id
+    ).order_by(ContentFlag.created_at.desc()).all()
+    
+    return render_template(
+        'admin/moderator/transport_booking_view.html',
+        booking=booking,
+        booking_flags=booking_flags,
+        title=f"Booking: {booking.booking_reference}"
+    )
+
+
+@moderator_bp.route('/transport/action/<entity_type>/<int:entity_id>/<action>', methods=['POST'])
+@login_required
+@require_role(*_MOD)
+def transport_moderate_action(entity_type, entity_id, action):
+    """Perform moderation actions on transport entities"""
+    from app.transport.models import DriverProfile, Vehicle, Booking
+    
+    # Get the appropriate entity
+    if entity_type == 'driver':
+        entity = DriverProfile.query.get_or_404(entity_id)
+        redirect_url = url_for('admin.moderator.view_transport_driver', driver_id=entity_id)
+    elif entity_type == 'vehicle':
+        entity = Vehicle.query.get_or_404(entity_id)
+        redirect_url = url_for('admin.moderator.view_transport_vehicle', vehicle_id=entity_id)
+    elif entity_type == 'booking':
+        entity = Booking.query.get_or_404(entity_id)
+        redirect_url = url_for('admin.moderator.view_transport_booking', booking_id=entity_id)
+    else:
+        flash('Invalid entity type.', 'danger')
+        return redirect(url_for('admin.moderator.transport_moderation'))
+    
+    # Perform the action
+    if action == 'approve':
+        if entity_type == 'driver':
+            entity.verification_tier = 'platform_verified'
+            # Add verified_at field if it exists
+            if hasattr(entity, 'verified_at'):
+                entity.verified_at = datetime.now(timezone.utc)
+        elif entity_type == 'vehicle':
+            entity.status = 'active'
+            # Add verified_at field if it exists
+            if hasattr(entity, 'verified_at'):
+                entity.verified_at = datetime.now(timezone.utc)
+        elif entity_type == 'booking':
+            entity.status = 'confirmed'
+        
+        db.session.commit()
+        flash(f'{entity_type.capitalize()} approved successfully.', 'success')
+    
+    elif action == 'reject':
+        reason = request.form.get('reason', '').strip()
+        if not reason:
+            flash('Rejection reason is required.', 'warning')
+            return redirect(redirect_url)
+        
+        if entity_type == 'driver':
+            entity.verification_tier = 'pending'
+            # Add rejection_reason field if it exists
+            if hasattr(entity, 'rejection_reason'):
+                entity.rejection_reason = reason
+        elif entity_type == 'vehicle':
+            entity.status = 'rejected'
+            # Add rejection_reason field if it exists
+            if hasattr(entity, 'rejection_reason'):
+                entity.rejection_reason = reason
+        elif entity_type == 'booking':
+            entity.status = 'cancelled'
+            # Add cancellation_reason field if it exists
+            if hasattr(entity, 'cancellation_reason'):
+                entity.cancellation_reason = reason
+        
+        db.session.commit()
+        flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
+    
+    elif action == 'flag':
+        reason = request.form.get('reason', '').strip()
+        priority = request.form.get('priority', 'medium')
+        
+        if not reason:
+            flash('Reason required for flagging.', 'warning')
+            return redirect(redirect_url)
+        
+        from app.admin.services import create_flag
+        ok, flag = create_flag(
+            user=current_user,
+            entity_type=f'transport_{entity_type}',
+            entity_id=entity_id,
+            reason=reason,
+            priority=priority
+        )
+        
+        if ok:
+            flash(f'{entity_type.capitalize()} flagged for review (Priority: {priority})', 'warning')
+        else:
+            flash(f'Failed to flag: {flag}', 'danger')
+    
+    elif action == 'suspend':
+        if entity_type == 'driver':
+            entity.is_active = False
+            entity.suspension_reason = request.form.get('reason', 'Suspended by moderator')
+            entity.suspended_at = datetime.now(timezone.utc)
+        elif entity_type == 'vehicle':
+            entity.is_available = False
+            entity.suspension_reason = request.form.get('reason', 'Suspended by moderator')
+        
+        db.session.commit()
+        flash(f'{entity_type.capitalize()} suspended successfully.', 'warning')
+    
+    return redirect(redirect_url)
+
+
+@moderator_bp.route('/transport/third-party-applications')
+@login_required
+@require_role(*_MOD)
+def transport_third_party_applications():
+    """View third-party transport platform applications (Uber, SafeBoda, etc.)"""
+    # This would show applications from external platforms wanting to integrate
+    # For now, mock data - in production this would come from a database table
+    
+    applications = [
+        {
+            'id': 1,
+            'platform_name': 'Uber',
+            'company': 'Uber Technologies Inc.',
+            'contact_email': 'partnerships@uber.com',
+            'application_date': '2026-04-15',
+            'status': 'pending_review',
+            'integration_type': 'API Booking',
+            'requested_features': ['Ride Booking', 'Driver Verification', 'Payment Processing'],
+            'priority': 'high'
+        },
+        {
+            'id': 2,
+            'platform_name': 'SafeBoda',
+            'company': 'SafeBoda Uganda Ltd',
+            'contact_email': 'partners@safeboda.com',
+            'application_date': '2026-04-20',
+            'status': 'pending_review',
+            'integration_type': 'API Booking',
+            'requested_features': ['Boda Booking', 'Driver Onboarding', 'Fleet Management'],
+            'priority': 'medium'
+        }
+    ]
+    
+    return render_template(
+        'admin/moderator/transport_third_party.html',
+        applications=applications,
+        title="Third-Party Applications"
+    )
 

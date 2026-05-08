@@ -28,7 +28,7 @@ class ComplianceAuditLog(BaseModel):
     requirement_key = Column(String(64))
 
     # Snapshot of compliance state at the time of decision
-    compliance_level = Column(Integer)  # 0–3
+    compliance_level = Column(Integer)  # 0-3
     risk_tier = Column(Enum("low", "medium", "high", name="risk_tier"))
 
     # Extra context (e.g. expired doc, missing license)

@@ -1,7 +1,7 @@
 # app/__init__.py
 """
 # Changes vs original:
-#   [P0] REMOVED remove_csp() — it was stripping CSP in production due to
+#   [P0] REMOVED remove_csp() - it was stripping CSP in production due to
 #        Flask's LIFO after_request execution order (registered first = runs last)
 #   [P0] Consolidated security headers into single after_request handler
 #   [P1] SESSION_SERIALIZER changed to json (pickle = RCE risk)
@@ -73,13 +73,36 @@ from app.extensions import db, migrate, login_manager, csrf, limiter, cache, red
 # Configure logging globally at the entry point
 def configure_logging():
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    
+    # Get log level from environment or use default based on FLASK_ENV
+    log_level_str = os.getenv('LOG_LEVEL', '').upper()
+    flask_env = os.getenv('FLASK_ENV', 'development').lower()
+    
+    # Determine logging level
+    if log_level_str == 'DEBUG':
+        root.setLevel(logging.DEBUG)
+    elif log_level_str == 'INFO':
+        root.setLevel(logging.INFO)
+    elif log_level_str == 'WARNING':
+        root.setLevel(logging.WARNING)
+    elif log_level_str == 'ERROR':
+        root.setLevel(logging.ERROR)
+    elif log_level_str == 'CRITICAL':
+        root.setLevel(logging.CRITICAL)
+    else:
+        # Default based on environment
+        if flask_env == 'production':
+            root.setLevel(logging.INFO)
+        else:
+            root.setLevel(logging.DEBUG)
+    
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
     root.addHandler(handler)
-
+    
+    
 
 configure_logging()
 logger = logging.getLogger("app")
@@ -292,6 +315,17 @@ def create_app(config_object=None) -> Flask:
     # The storage URI should already be set in app.config["RATELIMIT_STORAGE_URI"]
     limiter.init_app(app)
 
+    # Configure Flask error logging
+    if not app.debug:
+        # In production, ensure errors are still logged
+        app.logger.setLevel(logging.INFO)
+        # Ensure Flask's error handlers propagate exceptions
+        app.config['PROPAGATE_EXCEPTIONS'] = True
+        app.config['TRAP_HTTP_EXCEPTIONS'] = False
+    else:
+        # In development, show all logs
+        app.logger.setLevel(logging.DEBUG)
+
     # Verify Redis is available for rate limiting if configured
     if REDIS_AVAILABLE and app.config.get("RATELIMIT_STORAGE_URI", "").startswith("redis://"):
         try:
@@ -451,7 +485,7 @@ def create_app(config_object=None) -> Flask:
         ('compliance_bp', 'app.admin.compliance.routes'),
         ('auditor_bp', 'app.admin.auditor.routes'),
         ('support_bp', 'app.admin.support.routes'),
-        ('moderator_bp', 'app.admin.moderator.routes'),
+        ('moderator_bp', 'app.admin.moderator'),
     ]
 
     for bp_name, module_path in optional_blueprints:
@@ -634,6 +668,26 @@ def create_app(config_object=None) -> Flask:
 
     @app.context_processor
     def inject_sitewide() -> Dict:
+        # ── resolve nav state ───────────────────────────────────────
+        from flask import session as _session
+        from flask_login import current_user as _cu
+
+        _profile_completed = False
+        _in_org_context = False
+        _org_name = None
+
+        if _cu.is_authenticated:
+            try:
+                from app.profile.models import get_profile_by_user
+                _p = get_profile_by_user(_cu.public_id)
+                _profile_completed = bool(_p and _p.profile_completed)
+            except Exception:
+                pass
+            _in_org_context = _session.get("current_context") == "organization"
+            if _in_org_context:
+                _org_name = _session.get("current_org_name", "Organisation")
+        # ── end nav state ───────────────────────────────────────────
+
         return {
             "app_name": current_app.config.get("APP_NAME", "AFCON 360"),
             "tournament_name": current_app.config.get("TOURNAMENT_NAME", "AFCON Tournament"),
@@ -641,6 +695,10 @@ def create_app(config_object=None) -> Flask:
             "require_email_verification": current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False),
             "allow_username_login": current_app.config.get("ALLOW_USERNAME_LOGIN", True),
             "tournament_mode": current_app.config.get("MODULE_FLAGS", {}).get("tournament", False),
+            # ADD THESE FOUR at the end of the return dict:
+            "nav_profile_completed": _profile_completed,
+            "nav_in_org_context":    _in_org_context,
+            "nav_org_name":          _org_name,
         }
 
     @app.context_processor
@@ -909,7 +967,7 @@ def create_app(config_object=None) -> Flask:
             - Lazy-loaded attributes accessed outside the request context
 
         Permission checks MUST use app/auth/helpers.py which queries the DB
-        directly by role IDs — never walk role.permissions on detached objects.
+        directly by role IDs - never walk role.permissions on detached objects.
         """
         from app.identity.models.user import User
         from sqlalchemy.orm import joinedload
@@ -1047,7 +1105,7 @@ def create_app(config_object=None) -> Flask:
             )
             if not has_client_request_unique:
                 logger.critical(
-                    "Missing unique index on transactions.client_request_id — idempotency may be broken. "
+                    "Missing unique index on transactions.client_request_id - idempotency may be broken. "
                     "Create a DB migration to add a unique index on transactions(client_request_id)."
                 )
             else:
@@ -1096,13 +1154,9 @@ def create_app(config_object=None) -> Flask:
         <p><strong>ENV:</strong> FLASK_ENV={os.getenv('FLASK_ENV')}, APP_ENV={os.getenv('APP_ENV')}</p>
         """
 
-    # ── Regenerate theme CSS on startup ──────────────────────────────
-    with app.app_context():
-        try:
-            from app.tools.theme_service import ThemeService
-            ThemeService.update_global_theme_css()
-        except Exception as e:
-            logger.warning(f"Could not regenerate global theme CSS on startup: {e}")
+    # ── Theme CSS generation deferred to first request ──────────────────────────────
+    # Global theme CSS will be generated on first access via theme routes
+    # This prevents EventTheme initialization issues during app startup
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app

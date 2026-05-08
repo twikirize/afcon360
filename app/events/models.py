@@ -63,7 +63,7 @@ def _deprecated(new_name: str):
     @property
     def prop(self):
         warnings.warn(
-            f"'{new_name.replace('_flag', '')}' is deprecated — use '{new_name}'.",
+            f"'{new_name.replace('_flag', '')}' is deprecated - use '{new_name}'.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -79,9 +79,9 @@ class CreatorType(str, enum.Enum):
     """
     Who *created* the event record.  This is immutable after creation.
 
-    INDIVIDUAL   – a human user pressed the button
-    ORGANIZATION – an organisation's automated workflow created it
-    SYSTEM       – the platform itself created it (e.g. anniversary events,
+    INDIVIDUAL   - a human user pressed the button
+    ORGANIZATION - an organisation's automated workflow created it
+    SYSTEM       - the platform itself created it (e.g. anniversary events,
                    auto-generated fixtures).  current_owner_id = 0 in this case.
     """
     INDIVIDUAL   = "individual"
@@ -94,7 +94,7 @@ class OwnerType(str, enum.Enum):
     Who *currently controls* the event.  Can change via EventTransferRequest.
 
     Example: a manager (INDIVIDUAL creator) creates an event on behalf of a
-    client (INDIVIDUAL owner) — creator ≠ owner from day one.
+    client (INDIVIDUAL owner) - creator ≠ owner from day one.
     """
     INDIVIDUAL   = "individual"
     ORGANIZATION = "organization"
@@ -316,7 +316,7 @@ class Event(BaseModel):
             self.current_owner_type = OwnerType.SYSTEM
             self.current_owner_id   = SYSTEM_OWNER_ID
             if self.created_by_type != CreatorType.SYSTEM:
-                # An admin created a system event — creator stays INDIVIDUAL
+                # An admin created a system event - creator stays INDIVIDUAL
                 pass
             return
 
@@ -488,7 +488,7 @@ class Event(BaseModel):
     def admin_remove(self, admin_id: int, reason: str) -> "EventModerationLog":
         """
         Admin hard-remove → DELETED.
-        Still never physically removed — just excluded from all normal queries.
+        Still never physically removed - just excluded from all normal queries.
         """
         return self.transition_to(
             EventStatus.DELETED,
@@ -653,7 +653,7 @@ class EventRegistration(BaseModel):
     STATUS_EXPIRED         = "expired"
 
     # ── Columns ────────────────────────────────────────────────────────────
-    # seq_number is sourced from a PG sequence — guaranteed unique, no races
+    # seq_number is sourced from a PG sequence - guaranteed unique, no races
     seq_number       = Column(BigInteger, _reg_seq, server_default=_reg_seq.next_value())
 
     registration_ref = Column(String(60),    unique=True, nullable=False, index=True)
@@ -697,7 +697,7 @@ class EventRegistration(BaseModel):
 
         Prefers self.seq_number (PostgreSQL SEQUENCE, populated after flush).
         Falls back to the manually passed sequence argument for callers that
-        compute it before flushing — safe inside a REPEATABLE READ transaction.
+        compute it before flushing - safe inside a REPEATABLE READ transaction.
         """
         seq = self.seq_number if self.seq_number is not None else sequence
         if seq is None:
@@ -714,7 +714,7 @@ class EventRegistration(BaseModel):
         self.registration_ref = f"ER-{slug}-{seq:08d}"
         self.ticket_number    = f"TKT-{slug}-{seq:08d}"
 
-        # HMAC-signed QR token — tamper-evident
+        # HMAC-signed QR token - tamper-evident
         payload   = f"AFCON360:{self.registration_ref}:{seq}"
         key       = os.environ.get("QR_SECRET_KEY", "dev-secret-change-in-production").encode()
         signature = hmac.new(key, payload.encode(), digestmod=hashlib.sha256).hexdigest()[:24]
@@ -903,7 +903,7 @@ class EventTransferRequest(BaseModel):
 
 
 # ============================================================================
-# EVENT MODERATION LOG  (append-only — never delete rows from this table)
+# EVENT MODERATION LOG  (append-only - never delete rows from this table)
 # ============================================================================
 
 class EventModerationLog(BaseModel):

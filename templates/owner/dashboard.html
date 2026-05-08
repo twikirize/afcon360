@@ -384,7 +384,7 @@
                     <strong>{{ admin.username }}</strong>
                     <span>{{ admin.email }}</span>
                   </div>
-                  <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.user_id) }}"
+                  <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.id) }}"
                         onsubmit="return confirm('Remove super admin privileges from {{ admin.username }}?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-remove">
@@ -407,7 +407,7 @@
                 <select name="user_id" class="form-select" required>
                   <option value="">Select user...</option>
                   {% for user in regular_users %}
-                  <option value="{{ user.user_id }}">{{ user.username }} ({{ user.email }})</option>
+                  <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
                   {% endfor %}
                 </select>
                 <button type="submit" class="btn-primary">

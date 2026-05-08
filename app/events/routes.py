@@ -81,7 +81,7 @@ import secrets
 def rate_limit(key, limit=10, window=60):
     """Redis-backed rate limiter safe for multi-worker deployments."""
     if not redis_client:
-        # Fail open if Redis is unavailable — log and allow
+        # Fail open if Redis is unavailable - log and allow
         logger.warning(f"Rate limiter Redis unavailable, allowing request for key: {key}")
         return True
     try:
@@ -279,7 +279,7 @@ def my_registrations():
         # Get assignment for this registration
         try:
             from app.events.models import EventAssignment, Event
-            # Safely access event slug – event dict is always present now
+            # Safely access event slug - event dict is always present now
             event_slug = reg.get('event', {}).get('slug')
             if event_slug:
                 event = Event.query.filter_by(slug=event_slug).first()
@@ -1260,7 +1260,7 @@ def admin_suspend(identifier):
 @events_bp.route("/admin/<identifier>/deactivate", methods=['POST'])
 @login_required
 def admin_deactivate(identifier):
-    """Deactivate an event — disabled but NOT deleted."""
+    """Deactivate an event - disabled but NOT deleted."""
     # FIX: fetch event FIRST
     event = resolve_event(identifier)
     if not event or event.is_deleted:
@@ -1302,7 +1302,7 @@ def admin_deactivate(identifier):
 @events_bp.route("/admin/<identifier>/takedown", methods=['POST'])
 @login_required
 def admin_takedown(identifier):
-    """Policy takedown — severe enforcement, compliance logged."""
+    """Policy takedown - severe enforcement, compliance logged."""
     # FIX: fetch event FIRST
     event = resolve_event(identifier)
     if not event or event.is_deleted:
@@ -1334,7 +1334,7 @@ def admin_takedown(identifier):
     event.taken_down_at = datetime.now(timezone.utc)
     event.taken_down_by_id = current_user.id
     event.status = EventStatus.ARCHIVED
-    event.rejection_reason = f"[POLICY TAKEDOWN – {category.upper()}] {reason}"
+    event.rejection_reason = f"[POLICY TAKEDOWN - {category.upper()}] {reason}"
     event.is_deleted = True
     event.deleted_at = datetime.now(timezone.utc)
     event.deleted_by_id = current_user.id
@@ -1475,7 +1475,7 @@ def admin_events():
         except KeyError:
             logger.warning(
                 f"admin_events: unknown enum name '{enum_name}' in query param "
-                f"'{raw_status}' — showing all events"
+                f"'{raw_status}' - showing all events"
             )
             normalized = "all"
 
@@ -1564,7 +1564,7 @@ def admin_events():
 @events_bp.route("/api/admin/stats")
 @login_required
 def api_admin_stats():
-    """JSON API for admin dashboard stats — used by the super admin panel."""
+    """JSON API for admin dashboard stats - used by the super admin panel."""
     if not is_system_admin(current_user):
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
@@ -1588,7 +1588,7 @@ def api_admin_stats():
 @events_bp.route("/api/admin/pending-events")
 @login_required
 def api_pending_events():
-    """JSON API for pending events list — used by the owner dashboard."""
+    """JSON API for pending events list - used by the owner dashboard."""
     if not is_system_admin(current_user):
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
@@ -1907,7 +1907,7 @@ def admin_debug_counts():
 def moderate():
     """Show all events for moderators (same data as admin view)"""
     
-    # Use the same query as admin_events – show all non-deleted events
+    # Use the same query as admin_events - show all non-deleted events
     events = Event.query.filter_by(is_deleted=False).order_by(
         Event.created_at.desc()
     ).all()

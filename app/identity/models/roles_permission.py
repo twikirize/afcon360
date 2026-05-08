@@ -2,7 +2,7 @@
 """
 Role, Permission, and RolePermission models.
 
-Global role hierarchy (level — lower = more privileged):
+Global role hierarchy (level - lower = more privileged):
     1  owner        Ultimate platform authority
     2  super_admin  Full system admin (except ownership transfer)
     3  admin        Manages regular users and organisations
@@ -54,13 +54,13 @@ def get_or_create_role(
     Creates and persists a new one otherwise.
 
     If the role exists but ``level`` is provided and differs from the stored
-    value, the level is updated — useful for re-seeding after hierarchy changes.
+    value, the level is updated - useful for re-seeding after hierarchy changes.
 
     Args:
         name:        Role identifier, e.g. ``"owner"``, ``"admin"``.
         scope:       ``"global"`` (platform-wide) or ``"org"`` (per-organisation).
         description: Human-readable summary shown in the admin UI.
-        level:       Numeric privilege rank — lower = more privileged (owner=1).
+        level:       Numeric privilege rank - lower = more privileged (owner=1).
         commit:      Commit immediately. Pass ``False`` when batching inserts.
 
     Returns:
@@ -150,7 +150,7 @@ def assign_permission_to_role(
     """
     Idempotent link between a role and a permission.
 
-    Safe to call multiple times — returns the existing link if already present.
+    Safe to call multiple times - returns the existing link if already present.
 
     Args:
         role:       The ``Role`` instance to grant the permission to.
@@ -323,7 +323,7 @@ class Role(BaseModel):
     def permission_names(self) -> Set[str]:
         """Return the set of permission name strings granted to this role.
 
-        Queries the database directly — safe to call even on detached objects.
+        Queries the database directly - safe to call even on detached objects.
         """
         if not self.id:
             return set()
@@ -426,7 +426,7 @@ class RolePermission(BaseModel):
     """
     Many-to-many link between :class:`Role` and :class:`Permission`.
 
-    Use :func:`assign_permission_to_role` to create links — it is
+    Use :func:`assign_permission_to_role` to create links - it is
     idempotent and handles the uniqueness constraint gracefully.
     """
 

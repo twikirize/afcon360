@@ -77,11 +77,11 @@ class BaseModel(TimestampMixin, db.Model):
         # String/UUID identifier columns that end in _id but are NOT foreign keys.
         # Add any new non-FK _id columns here rather than hardcoding inline.
         NON_FK_STRING_IDS = {
-            'session_id',  # Session.session_id — UUID string
-            'public_id',  # User.public_id — UUID for public exposure/Flask-Login
-            'key_id',  # APIKey.key_id — string key identifier
-            'device_id',  # Session.device_id — string device identifier
-            'resource_id',  # AuditLog.resource_id — UUID string
+            'session_id',  # Session.session_id - UUID string
+            'public_id',  # User.public_id - UUID for public exposure/Flask-Login
+            'key_id',  # APIKey.key_id - string key identifier
+            'device_id',  # Session.device_id - string device identifier
+            'resource_id',  # AuditLog.resource_id - UUID string
         }
 
         # Check if this is an _id field that needs validation

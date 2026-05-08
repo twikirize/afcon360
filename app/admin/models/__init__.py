@@ -7,32 +7,27 @@ Admin models module - exposes all models from the admin package
 from app.admin.models.emergency_access import EmergencyAccess
 from app.admin.models.moderation import ContentSubmission, ModerationLog
 
-# Import from the main models file for other models
+# Import from individual model files to avoid circular imports
+from app.admin.models.core import (
+    ManageableCategory,
+    ManageableItem,
+    UserDashboardConfig,
+    SystemConfiguration,
+)
+
+# Import ContentFlag from moderation module
 try:
-    from app.admin.models import (
-        ManageableCategory,
-        ManageableItem,
-        UserDashboardConfig,
-        ContentFlag,
-    )
+    from app.admin.models.moderation import ContentFlag
 except ImportError:
-    # If the main models file has issues, try importing from individual files
-    try:
-        from app.admin.models.core import ManageableCategory, ManageableItem
-        from app.admin.models.dashboard import UserDashboardConfig
-    except ImportError:
-        # Fallback - define empty classes to prevent import errors
-        ManageableCategory = None
-        ManageableItem = None
-        UserDashboardConfig = None
-        ContentFlag = None
+    ContentFlag = None
 
 __all__ = [
     'EmergencyAccess',
     'ManageableCategory',
-    'ManageableItem', 
+    'ManageableItem',
     'ContentSubmission',
     'UserDashboardConfig',
     'ContentFlag',
     'ModerationLog',
+    'SystemConfiguration',
 ]

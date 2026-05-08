@@ -1,6 +1,6 @@
 # app/events/permissions.py
 """
-Event Permissions — Role-based access control for all event actions.
+Event Permissions - Role-based access control for all event actions.
 
 ROLE HIERARCHY (highest → lowest)
 ───────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ MODERATION MATRIX
   soft-delete(→ARC)  ✅     ✅     ✅      ✅      ✅       ✅ (own)
   edit               ✅     ✅     ✅      ✅      ✅       ✅ (own)
 
-  * org_owner / org_admin — only for events owned by their organisation
+  * org_owner / org_admin - only for events owned by their organisation
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ def is_system_admin(user) -> bool:
     """
     True for owner, super_admin, and admin.
     These three roles have full platform-wide event visibility.
-    Note: not all of them can hard-delete — use is_super_admin() for that.
+    Note: not all of them can hard-delete - use is_super_admin() for that.
     """
     if not user or not user.is_authenticated:
         return False
@@ -186,7 +186,7 @@ def resolve_user_roles(user, event) -> set[str]:
     if not user or not user.is_authenticated:
         return roles
 
-    # Platform roles (order matters — most powerful first)
+    # Platform roles (order matters - most powerful first)
     if has_global_role(user, 'owner'):
         roles.add('owner')
     if has_global_role(user, 'super_admin'):
@@ -233,7 +233,7 @@ def resolve_user_roles(user, event) -> set[str]:
 # ============================================================================
 
 def can_manage_event(user, event) -> Tuple[bool, str]:
-    """Edit, create, update — organiser and above."""
+    """Edit, create, update - organiser and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
     if is_event_manager(user):
@@ -287,7 +287,7 @@ def can_publish_event(user, event) -> Tuple[bool, str]:
 def can_suspend_event(user, event) -> Tuple[bool, str]:
     """
     Suspend PUBLISHED → SUSPENDED.  admin and above only.
-    event_manager cannot suspend — suspension is an enforcement action.
+    event_manager cannot suspend - suspension is an enforcement action.
     """
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
@@ -371,7 +371,7 @@ def can_cancel_event(user, event) -> Tuple[bool, str]:
 def can_soft_delete_event(user, event) -> Tuple[bool, str]:
     """
     Organiser soft-delete → ARCHIVED.
-    Organisers reach ARCHIVED only — never DELETED.
+    Organisers reach ARCHIVED only - never DELETED.
     Admins can also archive via this path.
     """
     if not user or not user.is_authenticated:
@@ -388,7 +388,7 @@ def can_soft_delete_event(user, event) -> Tuple[bool, str]:
 def can_hard_delete_event(user, event) -> Tuple[bool, str]:
     """
     Admin hard-delete → DELETED.  super_admin / owner only.
-    The event is never physically removed — just set to terminal DELETED status.
+    The event is never physically removed - just set to terminal DELETED status.
     Organisers can NEVER reach this state directly.
     """
     if not user or not user.is_authenticated:
@@ -523,7 +523,7 @@ def require_event_permission(user, event, action: str) -> Tuple[bool, str]:
 
     fn = _ACTION_DISPATCH.get(action)
     if fn is None:
-        # Unknown action — fail secure
+        # Unknown action - fail secure
         return False, f"Unknown action '{action}'"
 
     return fn(user, event)

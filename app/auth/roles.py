@@ -2,14 +2,14 @@
 """
 Runtime role assignment and revocation utilities.
 
-These functions are the write side of the RBAC system — they mutate the
+These functions are the write side of the RBAC system - they mutate the
 database.  The read side (checking whether a user *has* a role) lives in
 :mod:`app.auth.helpers`.
 
 Global roles  →  persisted via :class:`~app.identity.models.user.UserRole`.
 Org roles     →  persisted via :class:`~app.identity.models.organisation_member.OrgUserRole`.
 
-All assignment functions are idempotent — calling them twice has no
+All assignment functions are idempotent - calling them twice has no
 additional effect.  All revocation functions return ``False`` gracefully
 if the assignment did not exist.
 
@@ -118,7 +118,7 @@ def _get_role(name: str, scope: str) -> Role:
     """
     Fetch a role by name and scope, raising ``ValueError`` if not found.
 
-    Intentionally strict — callers should always pass a valid, seeded
+    Intentionally strict - callers should always pass a valid, seeded
     role name.  If you see this error, run ``flask seed-roles``.
     """
     role = Role.query.filter_by(name=name, scope=scope).first()
@@ -173,7 +173,7 @@ def assign_global_role(
     """
     Assign a global role to a user.
 
-    Idempotent — returns the existing ``UserRole`` if already assigned.
+    Idempotent - returns the existing ``UserRole`` if already assigned.
 
     Args:
         user_id:        Primary key of the target ``User``.
@@ -248,7 +248,7 @@ def assign_org_role(
     """
     Assign an organisation-scoped role to a user.
 
-    Idempotent — returns the existing ``OrgUserRole`` if already assigned.
+    Idempotent - returns the existing ``OrgUserRole`` if already assigned.
 
     Args:
         user_id:        Primary key of the target ``User``.

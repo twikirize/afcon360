@@ -1,6 +1,6 @@
 # app/events/__init__.py
 """
-Events Module — top-level blueprint for AFCON360.
+Events Module - top-level blueprint for AFCON360.
 Peer to: accommodation, transport, wallet, tourism.
 """
 from flask import Blueprint, current_app

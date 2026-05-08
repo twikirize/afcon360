@@ -1,6 +1,6 @@
 import os
 from flask import current_app
-from app.models.theme import GlobalTheme, UserThemePreference, EventTheme
+from app.models.theme import GlobalTheme, UserThemePreference
 
 class ThemeService:
     @staticmethod
@@ -37,14 +37,52 @@ class ThemeService:
         return content
 
     @classmethod
+    def update_event_theme_css(cls, event_id):
+        """Generates static/css/generated/event-{event_id}.css for an event."""
+        try:
+            from app.models.theme import EventTheme
+            event_theme = EventTheme.query.get(event_id)
+            if not event_theme:
+                return ""
+
+            # Get global theme as base
+            global_theme = GlobalTheme.query.filter_by(is_active=True).first()
+            if not global_theme:
+                return ""
+
+            # Start with global variables, then apply event overrides
+            css_vars = global_theme.settings.copy()
+            
+            # Apply event-specific settings
+            for key, value in event_theme.settings.items():
+                css_vars[f'event-{key}'] = value
+
+            content = cls.generate_css_content(css_vars)
+            dir_path = cls.ensure_generated_dir()
+            file_path = os.path.join(dir_path, f'event-{event_id}.css')
+
+            with open(file_path, 'w') as f:
+                f.write(content)
+
+            return content
+        except ImportError:
+            # Event model not available
+            return ""
+
+    @classmethod
     def update_user_theme_css(cls, user_id):
         """Generates static/css/generated/user-{user_id}.css for a user."""
         pref = UserThemePreference.query.get(user_id)
         if not pref:
             return ""
 
-        # Map all settings that should be in CSS variables
-        css_vars = {}
+        # Get global theme as base
+        global_theme = GlobalTheme.query.filter_by(is_active=True).first()
+        if not global_theme:
+            return ""
+
+        # Start with global variables, then apply user overrides
+        css_vars = global_theme.settings.copy()
         settings = pref.settings
 
         # Map frontend keys to CSS variable names

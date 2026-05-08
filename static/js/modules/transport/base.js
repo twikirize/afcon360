@@ -78,4 +78,17 @@
         });
     }
 
+    // =========================================
+    // GLOBAL TOGGLE SIDEBAR (used by inline onclick)
+    // =========================================
+    window.toggleSidebar = function () {
+        const sidebar = document.getElementById("sidebar");
+        const overlay = document.getElementById("sidebarOverlay");
+        if (!sidebar) return;
+        const open = sidebar.classList.toggle("open");
+        if (overlay) {
+            overlay.style.display = open ? "block" : "none";
+        }
+    };
+
 })();

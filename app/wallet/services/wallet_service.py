@@ -4,9 +4,9 @@ Financial-grade wallet service with atomic transactions.
 
 Core principle: The DATABASE guarantees money integrity, not the application.
 
-RULE #1 — NEVER update a balance column directly.
-RULE #2 — Balance = derived from ledger_entries at query time.
-RULE #3 — Every financial op = ONE db.session.begin() block, zero compensation.
+RULE #1 - NEVER update a balance column directly.
+RULE #2 - Balance = derived from ledger_entries at query time.
+RULE #3 - Every financial op = ONE db.session.begin() block, zero compensation.
 """
 
 from decimal import Decimal, ROUND_DOWN, getcontext
@@ -144,7 +144,7 @@ class WalletService:
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def deposit(
         self,
-        user_id: int,
+        account_id: str,  # UUID - primary identifier (Alipay model)
         amount: Decimal,
         currency: str,
         client_request_id: str,
@@ -154,28 +154,13 @@ class WalletService:
         external_reference: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Process a deposit with full atomicity.
-        
-        Single transaction: freeze check → limit check → idempotency → ledger → audit → complete
-        If any step fails, entire transaction rolls back.
+        Deposit funds into account.
         
         Args:
-            user_id: User ID
+            account_id: Account UUID (primary identifier - Alipay model)
             amount: Amount to deposit
             currency: Currency of deposit
             client_request_id: Unique idempotency key
-            metadata: Additional transaction metadata
-            payment_method: mobile_money, bank_transfer, card, etc.
-            payment_provider: MTN, Airtel, Flutterwave, etc.
-            external_reference: Provider's transaction ID
-            
-        Returns:
-            Dict with transaction result
-            
-        Raises:
-            WalletFrozenError: If account is frozen
-            LimitExceededError: If limits exceeded
-            DuplicateTransactionError: If already processed
         """
         amount = self._quantize(amount)
 
@@ -188,10 +173,10 @@ class WalletService:
 
         # SINGLE TRANSACTION - everything or nothing
         with self.db.begin():
-            # 1. Get account with lock (do NOT auto-create)
-            account = self.account_repo.get_by_user_id(user_id, for_update=True)
+            # 1. Get account by UUID with lock
+            account = self.account_repo.get_by_id(account_id, for_update=True)
             if not account:
-                raise WalletNotFoundError(user_id=user_id)
+                raise WalletNotFoundError(wallet_ref=str(account_id))
             
             # 2. Freeze check
             if account.is_frozen:
@@ -200,16 +185,16 @@ class WalletService:
                     reason=account.frozen_reason
                 )
 
-            # 3. Daily limit check (REAL query)
-            self._check_daily_limit(account.id, amount, currency, "deposit")
+            # 3. Daily limit check
+            self._check_daily_limit(account.id, amount, currency)
 
-            # 4. Atomic idempotency (DB-enforced)
+            # 4. Atomic idempotency
             tx = self.tx_repo.get_or_create(
                 client_request_id=client_request_id,
                 tx_type=TransactionType.DEPOSIT,
                 amount=amount,
                 currency=currency,
-                user_id=user_id,
+                user_id=account.user_id,  # Internal only - NEVER returned
                 metadata=metadata
             )
 
@@ -222,7 +207,8 @@ class WalletService:
                     "already_processed": True,
                     "amount": str(amount),
                     "currency": currency,
-                    "new_balance": str(balance)
+                    "new_balance": str(balance),
+                    "account_id": str(account.id)  # Expose account_id, not user_id
                 }
 
             # 5. Create ledger entry (CREDIT)
@@ -259,28 +245,23 @@ class WalletService:
                             currency=currency,
                             source_type='deposit',
                             source_id=str(tx.id),
-                            recipient_id=user_id,
+                            recipient_id=account.user_id,  # Internal only
                             extra_data={'client_metadata': metadata}
                         )
             except Exception:
                 current_app.logger.exception('Failed to record commission for deposit')
 
-            # 7. Audit log (INSIDE transaction - no silent failures)
+            # 7. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
-                actor_id=user_id,
+                actor_id=account.user_id,  # Internal only
                 action="deposit",
                 description=f"Deposit of {amount} {currency}",
                 before_state={"balance": str(self.ledger_repo.get_balance(account.id, currency) - amount)},
                 after_state={"balance": str(self.ledger_repo.get_balance(account.id, currency))},
                 ip_address=self._get_ip_address(),
                 user_agent=self._get_user_agent(),
-                audit_metadata={
-                    "payment_method": payment_method,
-                    "payment_provider": payment_provider,
-                    "external_reference": external_reference,
-                    "client_metadata": metadata or {}
-                }
+                audit_metadata={"account_id": str(account.id), "payment_provider": payment_provider}
             )
             self.db.add(audit_log)
 
@@ -301,13 +282,14 @@ class WalletService:
             "transaction_id": str(tx.id),
             "amount": str(amount),
             "currency": currency,
-            "new_balance": str(final_balance)
+            "new_balance": str(final_balance),
+            "account_id": str(account.id)  # Always expose account_id
         }
 
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def withdraw(
         self,
-        user_id: int,
+        account_id: str,  # UUID - primary identifier (Alipay model)
         amount: Decimal,
         currency: str,
         client_request_id: str,
@@ -353,10 +335,10 @@ class WalletService:
 
         # SINGLE TRANSACTION
         with self.db.begin():
-            # 1. Get account with lock
-            account = self.account_repo.get_by_user_id(user_id, for_update=True)
+            # 1. Get account by UUID with lock
+            account = self.account_repo.get_by_id(account_id, for_update=True)
             if not account:
-                raise WalletNotFoundError(user_id=user_id)
+                raise WalletNotFoundError(wallet_ref=str(account_id))
 
             # 2. Freeze check
             if account.is_frozen:
@@ -381,7 +363,7 @@ class WalletService:
                 tx_type=TransactionType.WITHDRAW,
                 amount=amount,
                 currency=currency,
-                user_id=user_id,
+                user_id=account.user_id,  # Internal only
                 metadata=metadata
             )
 
@@ -434,7 +416,7 @@ class WalletService:
                             currency=currency,
                             source_type='withdraw',
                             source_id=str(tx.id),
-                            recipient_id=user_id,
+                            recipient_id=account.user_id,  # Internal only
                             extra_data={'destination_details': destination_details or {}, 'client_metadata': metadata or {}}
                         )
             except Exception:
@@ -443,7 +425,7 @@ class WalletService:
             # 8. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
-                actor_id=user_id,
+                actor_id=account.user_id,  # Internal only
                 action="withdraw",
                 description=f"Withdrawal of {amount} {currency}",
                 before_state={"balance": str(current_balance)},
@@ -474,7 +456,8 @@ class WalletService:
             "transaction_id": str(tx.id),
             "amount": str(amount),
             "currency": currency,
-            "new_balance": str(final_balance)
+            "new_balance": str(final_balance),
+            "account_id": str(account.id)  # Always expose account_id
         }
 
     def ensure_account_exists(self, user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
@@ -500,8 +483,8 @@ class WalletService:
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def transfer(
         self,
-        from_user_id: int,
-        to_user_id: int,
+        from_account_id: str,  # UUID - primary identifier (Alipay model)
+        to_account_id: str,    # UUID - primary identifier (Alipay model)
         amount: Decimal,
         currency: str,
         client_request_id: str,
@@ -540,7 +523,7 @@ class WalletService:
         """
         amount = self._quantize(amount)
 
-        if from_user_id == to_user_id:
+        if from_account_id == to_account_id:
             raise ValueError("Cannot transfer to yourself")
 
         if amount <= Decimal("0"):
@@ -558,7 +541,11 @@ class WalletService:
                 from app.identity.models.user import User
                 from app.wallet.exceptions import TransactionPINError
 
-                sender_user = User.get_by_private_id(from_user_id)
+                # Get sender's account first to find user_id
+                from_account = self.account_repo.get_by_id(from_account_id)
+                if not from_account:
+                    raise WalletNotFoundError(wallet_ref=from_account_id)
+                sender_user = User.get_by_private_id(from_account.user_id)
                 if sender_user and sender_user.transaction_pin_hash:
                     if not pin:
                         raise TransactionPINError("Transaction PIN is required")
@@ -579,26 +566,17 @@ class WalletService:
                 # Non-fatal: if verification infrastructure missing, continue without enforcing PIN
                 current_app.logger.debug("Transaction PIN verification infrastructure unavailable; skipping PIN enforcement")
 
-            # 1. Ensure both users have accounts (create if missing)
-            from_account = self.ensure_account_exists(from_user_id, currency)
-            if not from_account:
-                raise WalletNotFoundError(user_id=from_user_id)
-            
-            to_account = self.ensure_account_exists(to_user_id, currency)
-            if not to_account:
-                raise WalletNotFoundError(user_id=to_user_id)
-            
-            # Lock both accounts in consistent ID order (prevents deadlock)
-            ids = sorted([from_user_id, to_user_id])
-            wallets = {w.user_id: w for w in self.account_repo.get_wallets_for_update(ids)}
-            
-            from_account = wallets.get(from_user_id)
-            to_account = wallets.get(to_user_id)
-            
-            if not from_account:
-                raise WalletNotFoundError(user_id=from_user_id)
-            if not to_account:
-                raise WalletNotFoundError(user_id=to_user_id)
+            # 1. Get both accounts by UUID with lock (consistent order prevents deadlock)
+            account_ids = sorted([from_account_id, to_account_id])
+            accounts = {}
+            for aid in account_ids:
+                acc = self.account_repo.get_by_id(aid, for_update=True)
+                if not acc:
+                    raise WalletNotFoundError(wallet_ref=aid)
+                accounts[aid] = acc
+
+            from_account = accounts[from_account_id]
+            to_account = accounts[to_account_id]
 
             # 2. Freeze check (both accounts)
             if from_account.is_frozen:
@@ -630,8 +608,8 @@ class WalletService:
                 tx_type=TransactionType.TRANSFER,
                 amount=amount,
                 currency=currency,
-                user_id=from_user_id,
-                recipient_user_id=to_user_id,
+                user_id=from_account.user_id,  # Internal only
+                recipient_user_id=to_account.user_id,  # Internal only
                 metadata=metadata
             )
 
@@ -657,7 +635,7 @@ class WalletService:
                     entry_type=EntryType.DEBIT,
                     amount=amount,
                     currency=currency,
-                    meta={"note": note, "counterparty": to_user_id}
+                    meta={"note": note, "counterparty": to_account_id}
                 ),
                 LedgerEntryModel(
                     transaction_id=tx.id,
@@ -665,7 +643,7 @@ class WalletService:
                     entry_type=EntryType.CREDIT,
                     amount=amount,
                     currency=currency,
-                    meta={"note": note, "counterparty": from_user_id}
+                    meta={"note": note, "counterparty": from_account_id}
                 )
             ]
             
@@ -700,7 +678,7 @@ class WalletService:
                             currency=fee_currency or currency,
                             source_type='transfer',
                             source_id=str(tx.id),
-                            recipient_id=to_user_id,
+                            recipient_id=to_account.user_id,  # Internal only
                             extra_data={'platform_fee': str(platform_fee) if platform_fee else None, 'client_metadata': metadata or {}}
                         )
             except Exception:
@@ -712,9 +690,9 @@ class WalletService:
             # 8. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
-                actor_id=from_user_id,
+                actor_id=from_account.user_id,  # Internal only
                 action="transfer",
-                description=f"Transfer of {amount} {currency} to user {to_user_id}",
+                description=f"Transfer of {amount} {currency} to account {to_account_id}",
                 before_state={
                     "from_balance": str(from_balance),
                     "to_balance": str(self.ledger_repo.get_balance(to_account.id, currency))
@@ -726,7 +704,7 @@ class WalletService:
                 ip_address=self._get_ip_address(),
                 user_agent=self._get_user_agent(),
                 audit_metadata={
-                    "to_user_id": to_user_id,
+                    "to_account_id": to_account_id,
                     "note": note,
                     "platform_fee": str(platform_fee) if platform_fee else None,
                     "client_metadata": metadata or {}
@@ -747,10 +725,10 @@ class WalletService:
             )
             from app.identity.models.user import User
             try:
-                recipient_user = User.get_by_private_id(to_user_id)
-                sender_user = User.get_by_private_id(from_user_id)
-                recipient_name = getattr(recipient_user, 'username', None) or getattr(recipient_user, 'email', None) or str(to_user_id)
-                sender_name = getattr(sender_user, 'username', None) or getattr(sender_user, 'email', None) or str(from_user_id)
+                recipient_user = User.get_by_private_id(to_account.user_id)
+                sender_user = User.get_by_private_id(from_account.user_id)
+                recipient_name = getattr(recipient_user, 'username', None) or getattr(recipient_user, 'email', None) or str(to_account_id)
+                sender_name = getattr(sender_user, 'username', None) or getattr(sender_user, 'email', None) or str(from_account_id)
             except Exception:
                 recipient_name = str(to_user_id)
                 sender_name = str(from_user_id)
@@ -774,10 +752,12 @@ class WalletService:
             "currency": currency,
             "new_balance_from": str(from_balance),
             "new_balance_to": str(to_balance),
+            "from_account_id": str(from_account.id),
+            "to_account_id": str(to_account.id),
             "note": note
         }
 
-    def get_balance(self, user_id: int) -> Dict[str, Any]:
+    def get_balance(self, user_id: str) -> Dict[str, Any]:
         """
         Get current wallet balance for a user.
         

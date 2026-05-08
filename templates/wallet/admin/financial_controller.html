@@ -1,0 +1,802 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Financial Controller - Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+.financial-controller {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.settings-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.control-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.section {
+    margin-bottom: 2rem;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1F2937;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #E5E7EB;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.save-btn {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.save-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.gateway-config {
+    background: #F9FAFB;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.gateway-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.gateway-name {
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.gateway-toggle {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    background: #E5E7EB;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.gateway-toggle.active {
+    background: #10B981;
+}
+
+.gateway-toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+}
+
+.gateway-toggle.active::after {
+    transform: translateX(30px);
+}
+
+.fee-structure {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.fee-input {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fee-input input {
+    flex: 1;
+}
+
+.fee-input span {
+    font-size: 0.875rem;
+    color: #6B7280;
+    min-width: 60px;
+}
+
+.limits-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.limit-card {
+    background: white;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.limit-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1F2937;
+    margin-bottom: 0.5rem;
+}
+
+.limit-label {
+    font-size: 0.875rem;
+    color: #6B7280;
+}
+
+.compliance-rules {
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.rule-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.rule-checkbox {
+    width: 20px;
+    height: 20px;
+    margin-right: 0.75rem;
+}
+
+.rule-text {
+    flex: 1;
+    font-size: 0.875rem;
+    color: #92400E;
+}
+
+.alert-settings {
+    background: #DBEAFE;
+    border: 1px solid #3B82F6;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.alert-input {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.alert-input input {
+    flex: 1;
+    margin-right: 0.75rem;
+}
+
+.alert-level {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.level-low {
+    background: #10B981;
+    color: white;
+}
+
+.level-medium {
+    background: #F59E0B;
+    color: white;
+}
+
+.level-high {
+    background: #EF4444;
+    color: white;
+}
+
+.level-critical {
+    background: #991B1B;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Financial Controller</h1>
+            <p class="text-gray-600 mt-2">Manage payment gateway configurations and financial controls</p>
+        </div>
+        <div class="flex gap-4">
+            <button onclick="saveAllSettings()" class="save-btn">
+                💾 Save All Settings
+            </button>
+            <button onclick="resetToDefaults()" class="save-btn" style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);">
+                🔄 Reset to Defaults
+            </button>
+        </div>
+    </div>
+
+    <div class="financial-controller">
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <!-- Gateway Configuration -->
+            <div class="section">
+                <h2 class="section-title">Payment Gateway Configuration</h2>
+                
+                <!-- PayPal -->
+                <div class="gateway-config">
+                    <div class="gateway-header">
+                        <div class="gateway-name">PayPal</div>
+                        <div class="gateway-toggle active" onclick="toggleGateway('paypal')"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Client ID</label>
+                        <input type="text" id="paypal_client_id" value="{{ config.paypal.client_id or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Client Secret</label>
+                        <input type="password" id="paypal_client_secret" value="{{ config.paypal.client_secret or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Environment</label>
+                        <select id="paypal_environment">
+                            <option value="sandbox" {% if config.paypal.environment == 'sandbox' %}selected{% endif %}>Sandbox</option>
+                            <option value="production" {% if config.paypal.environment == 'production' %}selected{% endif %}>Production</option>
+                        </select>
+                    </div>
+                    
+                    <div class="fee-structure">
+                        <div class="fee-input">
+                            <input type="number" id="paypal_fee_percentage" step="0.01" value="{{ config.paypal.fee_percentage or 2.9 }}">
+                            <span>% + Fixed Fee</span>
+                        </div>
+                        <div class="fee-input">
+                            <input type="number" id="paypal_fixed_fee" step="0.01" value="{{ config.paypal.fixed_fee or 0.30 }}">
+                            <span>USD</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alipay -->
+                <div class="gateway-config">
+                    <div class="gateway-header">
+                        <div class="gateway-name">Alipay</div>
+                        <div class="gateway-toggle active" onclick="toggleGateway('alipay')"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>App ID</label>
+                        <input type="text" id="alipay_app_id" value="{{ config.alipay.app_id or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Private Key</label>
+                        <textarea id="alipay_private_key">{{ config.alipay.private_key or '' }}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Environment</label>
+                        <select id="alipay_environment">
+                            <option value="sandbox" {% if config.alipay.environment == 'sandbox' %}selected{% endif %}>Sandbox</option>
+                            <option value="production" {% if config.alipay.environment == 'production' %}selected{% endif %}>Production</option>
+                        </select>
+                    </div>
+                    
+                    <div class="fee-structure">
+                        <div class="fee-input">
+                            <input type="number" id="alipay_fee_percentage" step="0.01" value="{{ config.alipay.fee_percentage or 0.6 }}">
+                            <span>% Fee</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Flutterwave -->
+                <div class="gateway-config">
+                    <div class="gateway-header">
+                        <div class="gateway-name">Flutterwave</div>
+                        <div class="gateway-toggle active" onclick="toggleGateway('flutterwave')"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Public Key</label>
+                        <input type="text" id="flutterwave_public_key" value="{{ config.flutterwave.public_key or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Secret Key</label>
+                        <input type="password" id="flutterwave_secret_key" value="{{ config.flutterwave.secret_key or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Environment</label>
+                        <select id="flutterwave_environment">
+                            <option value="sandbox" {% if config.flutterwave.environment == 'sandbox' %}selected{% endif %}>Sandbox</option>
+                            <option value="production" {% if config.flutterwave.environment == 'production' %}selected{% endif %}>Production</option>
+                        </select>
+                    </div>
+                    
+                    <div class="fee-structure">
+                        <div class="fee-input">
+                            <input type="number" id="flutterwave_fee_percentage" step="0.01" value="{{ config.flutterwave.fee_percentage or 1.4 }}">
+                            <span>% Fee</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Paystack -->
+                <div class="gateway-config">
+                    <div class="gateway-header">
+                        <div class="gateway-name">Paystack</div>
+                        <div class="gateway-toggle active" onclick="toggleGateway('paystack')"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Public Key</label>
+                        <input type="text" id="paystack_public_key" value="{{ config.paystack.public_key or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Secret Key</label>
+                        <input type="password" id="paystack_secret_key" value="{{ config.paystack.secret_key or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Environment</label>
+                        <select id="paystack_environment">
+                            <option value="sandbox" {% if config.paystack.environment == 'sandbox' %}selected{% endif %}>Sandbox</option>
+                            <option value="production" {% if config.paystack.environment == 'production' %}selected{% endif %}>Production</option>
+                        </select>
+                    </div>
+                    
+                    <div class="fee-structure">
+                        <div class="fee-input">
+                            <input type="number" id="paystack_fee_percentage" step="0.01" value="{{ config.paystack.fee_percentage or 1.5 }}">
+                            <span>% Fee</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mobile Money -->
+                <div class="gateway-config">
+                    <div class="gateway-header">
+                        <div class="gateway-name">Mobile Money</div>
+                        <div class="gateway-toggle active" onclick="toggleGateway('mobile_money')"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>MTN Uganda API Key</label>
+                        <input type="password" id="mtn_ug_api_key" value="{{ config.mobile_money.mtn_ug_api_key or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Airtel Uganda API Key</label>
+                        <input type="password" id="airtel_ug_api_key" value="{{ config.mobile_money.airtel_ug_api_key or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>M-PESA API Key</label>
+                        <input type="password" id="mpesa_api_key" value="{{ config.mobile_money.mpesa_api_key or '' }}">
+                    </div>
+                    
+                    <div class="fee-structure">
+                        <div class="fee-input">
+                            <input type="number" id="mobile_money_fee_percentage" step="0.01" value="{{ config.mobile_money.fee_percentage or 1.0 }}">
+                            <span>% Fee</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaction Limits -->
+            <div class="section">
+                <h2 class="section-title">Transaction Limits</h2>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Minimum Transaction Amount</label>
+                        <input type="number" id="min_transaction" step="0.01" value="{{ config.limits.min_transaction or 10.00 }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Maximum Transaction Amount</label>
+                        <input type="number" id="max_transaction" step="0.01" value="{{ config.limits.max_transaction or 1000000.00 }}">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Daily Transaction Limit</label>
+                        <input type="number" id="daily_limit" step="0.01" value="{{ config.limits.daily_limit or 500000.00 }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Monthly Transaction Limit</label>
+                        <input type="number" id="monthly_limit" step="0.01" value="{{ config.limits.monthly_limit or 10000000.00 }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compliance Settings -->
+            <div class="section">
+                <h2 class="section-title">Compliance & Monitoring</h2>
+                
+                <div class="compliance-rules">
+                    <div class="rule-item">
+                        <input type="checkbox" id="aml_screening" class="rule-checkbox" {% if config.compliance.aml_screening %}checked{% endif %}>
+                        <span class="rule-text">Enable AML Screening for all transactions</span>
+                    </div>
+                    
+                    <div class="rule-item">
+                        <input type="checkbox" id="kyc_verification" class="rule-checkbox" {% if config.compliance.kyc_verification %}checked{% endif %}>
+                        <span class="rule-text">Require KYC verification for transactions above UGX 1,000,000</span>
+                    </div>
+                    
+                    <div class="rule-item">
+                        <input type="checkbox" id="suspicious_monitoring" class="rule-checkbox" {% if config.compliance.suspicious_monitoring %}checked{% endif %}>
+                        <span class="rule-text">Enable suspicious activity monitoring</span>
+                    </div>
+                    
+                    <div class="rule-item">
+                        <input type="checkbox" id="auto_freeze" class="rule-checkbox" {% if config.compliance.auto_freeze %}checked{% endif %}>
+                        <span class="rule-text">Auto-freeze suspicious transactions</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <!-- Real-time Monitoring -->
+            <div class="section">
+                <h2 class="section-title">Real-time Monitoring</h2>
+                
+                <div class="limits-grid">
+                    <div class="limit-card">
+                        <div class="limit-value" id="activeTransactions">1,247</div>
+                        <div class="limit-label">Active Transactions</div>
+                    </div>
+                    
+                    <div class="limit-card">
+                        <div class="limit-value" id="pendingApprovals">23</div>
+                        <div class="limit-label">Pending Approvals</div>
+                    </div>
+                    
+                    <div class="limit-card">
+                        <div class="limit-value" id="suspiciousFlagged">7</div>
+                        <div class="limit-label">Suspicious Flagged</div>
+                    </div>
+                </div>
+                
+                <div class="limits-grid" style="margin-top: 1rem;">
+                    <div class="limit-card">
+                        <div class="limit-value" id="totalVolume">$458,234</div>
+                        <div class="limit-label">Today's Volume</div>
+                    </div>
+                    
+                    <div class="limit-card">
+                        <div class="limit-value" id="successRate">98.7%</div>
+                        <div class="limit-label">Success Rate</div>
+                    </div>
+                    
+                    <div class="limit-card">
+                        <div class="limit-value" id="avgProcessing">2.3s</div>
+                        <div class="limit-label">Avg Processing</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alert Configuration -->
+            <div class="section">
+                <h2 class="section-title">Alert Configuration</h2>
+                
+                <div class="alert-settings">
+                    <div class="alert-input">
+                        <input type="checkbox" id="alert_low_balance" {% if config.alerts.low_balance %}checked{% endif %}>
+                        <span>Low Balance Alert (< UGX 100,000)</span>
+                    </div>
+                    
+                    <div class="alert-input">
+                        <input type="checkbox" id="alert_high_value" {% if config.alerts.high_value %}checked{% endif %}>
+                        <span>High Value Transaction Alert (> UGX 10,000,000)</span>
+                    </div>
+                    
+                    <div class="alert-input">
+                        <input type="checkbox" id="alert_failed_transactions" {% if config.alerts.failed_transactions %}checked{% endif %}>
+                        <span>Failed Transaction Rate Alert (> 5%)</span>
+                    </div>
+                    
+                    <div class="alert-input">
+                        <input type="checkbox" id="alert_gateway_down" {% if config.alerts.gateway_down %}checked{% endif %}>
+                        <span>Gateway Downtime Alert</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Alert Recipients</label>
+                    <textarea id="alert_recipients" placeholder="Enter email addresses, comma-separated">{{ config.alerts.recipients or '' }}</textarea>
+                </div>
+            </div>
+
+            <!-- Risk Management -->
+            <div class="section">
+                <h2 class="section-title">Risk Management</h2>
+                
+                <div class="form-group">
+                    <label>Risk Score Threshold</label>
+                    <input type="number" id="risk_threshold" step="0.1" min="0" max="100" value="{{ config.risk.threshold or 75.0 }}">
+                </div>
+                
+                <div class="form-group">
+                    <label>Auto-Review Transactions Above</label>
+                    <input type="number" id="auto_review_amount" step="0.01" value="{{ config.risk.auto_review_amount or 5000000.00 }}">
+                </div>
+                
+                <div class="form-group">
+                    <label>Maximum Daily Transactions per User</label>
+                    <input type="number" id="max_daily_user_tx" value="{{ config.risk.max_daily_user_tx or 50 }}">
+                </div>
+                
+                <div class="form-group">
+                    <label>Blacklist Keywords</label>
+                    <textarea id="blacklist_keywords" placeholder="Enter keywords, comma-separated">{{ config.risk.blacklist_keywords or '' }}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Toggle gateway activation
+function toggleGateway(gateway) {
+    const toggle = event.target;
+    toggle.classList.toggle('active');
+    
+    // Update gateway status
+    const isActive = toggle.classList.contains('active');
+    updateGatewayStatus(gateway, isActive);
+}
+
+// Update gateway status
+function updateGatewayStatus(gateway, isActive) {
+    fetch('/admin/financial/update-gateway-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            gateway: gateway,
+            active: isActive
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error || 'Failed to update gateway status');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+// Save all settings
+function saveAllSettings() {
+    const settings = {
+        gateways: {
+            paypal: {
+                client_id: document.getElementById('paypal_client_id').value,
+                client_secret: document.getElementById('paypal_client_secret').value,
+                environment: document.getElementById('paypal_environment').value,
+                fee_percentage: parseFloat(document.getElementById('paypal_fee_percentage').value),
+                fixed_fee: parseFloat(document.getElementById('paypal_fixed_fee').value)
+            },
+            alipay: {
+                app_id: document.getElementById('alipay_app_id').value,
+                private_key: document.getElementById('alipay_private_key').value,
+                environment: document.getElementById('alipay_environment').value,
+                fee_percentage: parseFloat(document.getElementById('alipay_fee_percentage').value)
+            },
+            flutterwave: {
+                public_key: document.getElementById('flutterwave_public_key').value,
+                secret_key: document.getElementById('flutterwave_secret_key').value,
+                environment: document.getElementById('flutterwave_environment').value,
+                fee_percentage: parseFloat(document.getElementById('flutterwave_fee_percentage').value)
+            },
+            paystack: {
+                public_key: document.getElementById('paystack_public_key').value,
+                secret_key: document.getElementById('paystack_secret_key').value,
+                environment: document.getElementById('paystack_environment').value,
+                fee_percentage: parseFloat(document.getElementById('paystack_fee_percentage').value)
+            },
+            mobile_money: {
+                mtn_ug_api_key: document.getElementById('mtn_ug_api_key').value,
+                airtel_ug_api_key: document.getElementById('airtel_ug_api_key').value,
+                mpesa_api_key: document.getElementById('mpesa_api_key').value,
+                fee_percentage: parseFloat(document.getElementById('mobile_money_fee_percentage').value)
+            }
+        },
+        limits: {
+            min_transaction: parseFloat(document.getElementById('min_transaction').value),
+            max_transaction: parseFloat(document.getElementById('max_transaction').value),
+            daily_limit: parseFloat(document.getElementById('daily_limit').value),
+            monthly_limit: parseFloat(document.getElementById('monthly_limit').value)
+        },
+        compliance: {
+            aml_screening: document.getElementById('aml_screening').checked,
+            kyc_verification: document.getElementById('kyc_verification').checked,
+            suspicious_monitoring: document.getElementById('suspicious_monitoring').checked,
+            auto_freeze: document.getElementById('auto_freeze').checked
+        },
+        alerts: {
+            low_balance: document.getElementById('alert_low_balance').checked,
+            high_value: document.getElementById('alert_high_value').checked,
+            failed_transactions: document.getElementById('alert_failed_transactions').checked,
+            gateway_down: document.getElementById('alert_gateway_down').checked,
+            recipients: document.getElementById('alert_recipients').value
+        },
+        risk: {
+            threshold: parseFloat(document.getElementById('risk_threshold').value),
+            auto_review_amount: parseFloat(document.getElementById('auto_review_amount').value),
+            max_daily_user_tx: parseInt(document.getElementById('max_daily_user_tx').value),
+            blacklist_keywords: document.getElementById('blacklist_keywords').value
+        }
+    };
+    
+    fetch('/admin/financial/save-settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Financial settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save settings');
+    });
+}
+
+// Reset to defaults
+function resetToDefaults() {
+    if (confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+        fetch('/admin/financial/reset-defaults', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Settings reset to defaults');
+                location.reload();
+            } else {
+                alert(data.error || 'Failed to reset settings');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to reset settings');
+        });
+    }
+}
+
+// Real-time updates
+function updateRealTimeData() {
+    fetch('/admin/financial/real-time-data', {
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('activeTransactions').textContent = data.active_transactions.toLocaleString();
+            document.getElementById('pendingApprovals').textContent = data.pending_approvals.toLocaleString();
+            document.getElementById('suspiciousFlagged').textContent = data.suspicious_flagged.toLocaleString();
+            document.getElementById('totalVolume').textContent = data.total_volume;
+            document.getElementById('successRate').textContent = data.success_rate + '%';
+            document.getElementById('avgProcessing').textContent = data.avg_processing + 's';
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching real-time data:', error);
+    });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Start real-time updates
+    setInterval(updateRealTimeData, 5000);
+    
+    // Initial data load
+    updateRealTimeData();
+});
+</script>
+{% endblock %}

@@ -1,6 +1,6 @@
 """
 Backwards-compatible re-export of signals from signal_handlers.
-Import signals from here OR signal_handlers — both are the same object.
+Import signals from here OR signal_handlers - both are the same object.
 """
 from app.events.signal_handlers import (
     event_registered,

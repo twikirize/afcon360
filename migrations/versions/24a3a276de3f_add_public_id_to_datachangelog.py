@@ -29,12 +29,14 @@ def upgrade():
         "SELECT id FROM data_change_logs WHERE public_id IS NULL"
     ))
     
-    for row in result:
-        new_uuid = str(uuid.uuid4())
-        conn.execute(
-            sa.text("UPDATE data_change_logs SET public_id = :uuid WHERE id = :id"),
-            {"uuid": new_uuid, "id": row[0]}
-        )
+    # Check if result is not None before iterating
+    if result is not None:
+        for row in result:
+            new_uuid = str(uuid.uuid4())
+            conn.execute(
+                sa.text("UPDATE data_change_logs SET public_id = :uuid WHERE id = :id"),
+                {"uuid": new_uuid, "id": row[0]}
+            )
     
     # Now make it NOT NULL
     op.alter_column('data_change_logs', 'public_id', 

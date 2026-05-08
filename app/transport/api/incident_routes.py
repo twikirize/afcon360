@@ -1,6 +1,6 @@
 # app/transport/api/incident_routes.py
 """
-AFCON360 Transport — Incident REST API
+AFCON360 Transport - Incident REST API
 Full incident lifecycle: report, investigate, assign, follow-up, resolve.
 Critical incidents trigger alerts visible on the admin dashboard.
 """
@@ -35,8 +35,8 @@ def _incident_or_404(incident_id):
 # ===========================================================================
 
 class IncidentListResource(Resource):
-    """GET /api/transport/incidents  — list with filters/sort/pagination
-       POST /api/transport/incidents — report a new incident
+    """GET /api/transport/incidents  - list with filters/sort/pagination
+       POST /api/transport/incidents - report a new incident
     """
 
     def get(self):
@@ -99,7 +99,7 @@ class IncidentListResource(Resource):
         }
 
     def post(self):
-        """Report a new incident — open to drivers and users, not just admin"""
+        """Report a new incident - open to drivers and users, not just admin"""
         data = request.get_json()
         if not data:
             return {"success": False, "error": "JSON body required"}, 400

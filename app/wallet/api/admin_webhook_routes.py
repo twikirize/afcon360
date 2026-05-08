@@ -5,9 +5,9 @@ Admin endpoints for WebhookEvent dead-letter queue management.
 Add this to your existing admin_api_bp or register as a separate blueprint.
 
 Endpoints:
-    GET  /api/admin/wallet/webhooks/failed     — List dead_letter events
-    POST /api/admin/wallet/webhooks/{id}/retry — Requeue a dead_letter event
-    GET  /api/admin/wallet/webhooks/stats      — Queue health stats
+    GET  /api/admin/wallet/webhooks/failed     - List dead_letter events
+    POST /api/admin/wallet/webhooks/{id}/retry - Requeue a dead_letter event
+    GET  /api/admin/wallet/webhooks/stats      - Queue health stats
 """
 
 from flask import jsonify, request
@@ -54,7 +54,7 @@ def list_failed_webhooks():
                 "created_at": e.created_at.isoformat() if e.created_at else None,
                 "next_retry_at": e.next_retry_at.isoformat() if e.next_retry_at else None,
                 "processed_at": e.processed_at.isoformat() if e.processed_at else None,
-                # Show safe subset of payload — never log full card data
+                # Show safe subset of payload - never log full card data
                 "payload_preview": {
                     k: v for k, v in (e.payload or {}).items()
                     if k in ("event", "event_type", "status", "txRef",

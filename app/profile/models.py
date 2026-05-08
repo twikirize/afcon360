@@ -399,6 +399,6 @@ if __name__ == '__main__':
     # Test that integer input is rejected
     try:
         get_profile_by_user(1)
-        print("❌ FAILED — integer should have been rejected")
+        print("❌ FAILED - integer should have been rejected")
     except ValueError as e:
-        print(f"✅ PASSED — integer correctly rejected: {e}")
+        print(f"✅ PASSED - integer correctly rejected: {e}")

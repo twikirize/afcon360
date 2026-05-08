@@ -1,4 +1,5 @@
 # app/kyc/models.py
+from typing import Dict, Any, List
 from app.extensions import db
 from app.models.base import ProtectedModel
 from datetime import datetime
@@ -72,11 +73,78 @@ class KycRecord(ProtectedModel):
     referred_at = db.Column(db.DateTime, nullable=True)
     referred_by = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=True)
 
+    # Enhanced KYC fields
+    expiry_date = db.Column(db.DateTime, nullable=True)
+    enhanced_risk_score = db.Column(db.Float, default=0.0)
+    risk_factors = db.Column(db.JSON, default=list)
+    aml_screened = db.Column(db.Boolean, default=False, nullable=False)
+    pep_screened = db.Column(db.Boolean, default=False, nullable=False)
+    sanctions_screened = db.Column(db.Boolean, default=False, nullable=False)
+    
     # Relationships - use string references to avoid import issues
     user = db.relationship("User", foreign_keys=[user_id], back_populates="kyc_records")
     verified_by = db.relationship("User", foreign_keys=[verified_by_id], lazy="joined")
     compliance_reviewer = db.relationship("User", foreign_keys=[compliance_reviewed_by], lazy="joined")
     referrer = db.relationship("User", foreign_keys=[referred_by], lazy="joined")
+    
+    def calculate_enhanced_risk(self) -> Dict[str, Any]:
+        """Calculate enhanced risk assessment."""
+        risk_score = 0.0
+        risk_factors = []
+        
+        # Age risk
+        if self.user and self.user.date_of_birth:
+            age = datetime.utcnow().year - self.user.date_of_birth.year
+            if age < 18:
+                risk_score += 0.8
+                risk_factors.append('under_age')
+            elif age < 21:
+                risk_score += 0.3
+                risk_factors.append('under_21')
+        
+        # Country risk
+        if self.country:
+            high_risk_countries = ['AFG', 'IRN', 'PRK', 'SYR', 'MMR', 'SSD', 'VEN', 'YEM']
+            if self.country in high_risk_countries:
+                risk_score += 0.6
+                risk_factors.append('high_risk_country')
+        
+        # Document quality risk
+        if self.verification_score and self.verification_score < 70:
+            risk_score += 0.4
+            risk_factors.append('low_verification_score')
+        
+        # Update enhanced risk
+        self.enhanced_risk_score = risk_score
+        self.risk_factors = risk_factors
+        
+        return {
+            'risk_score': risk_score,
+            'risk_level': 'high' if risk_score >= 0.7 else 'medium' if risk_score >= 0.4 else 'low',
+            'risk_factors': risk_factors
+        }
+    
+    def is_expiring_soon(self, days: int = 30) -> bool:
+        """Check if document is expiring soon."""
+        if not self.expiry_date:
+            return False
+        return (self.expiry_date - datetime.utcnow()).days <= days
+    
+    def get_kyc_tier_requirements(self) -> Dict[str, Any]:
+        """Get KYC tier requirements based on record type."""
+        from app.auth.kyc_compliance import TIER_REQUIREMENTS, TIER_2_STANDARD
+        
+        # Map record types to tier requirements
+        tier_mapping = {
+            'national_id': TIER_2_STANDARD,
+            'passport': TIER_2_STANDARD,
+            'driving_license': TIER_2_STANDARD,
+            'voter_card': TIER_2_STANDARD,
+            'nira_verification': TIER_2_STANDARD
+        }
+        
+        tier = tier_mapping.get(self.record_type, TIER_2_STANDARD)
+        return TIER_REQUIREMENTS.get(tier, {})
 
     def __repr__(self):
         return f"<KycRecord {self.id}: User {self.user_id} - {self.status} ({self.record_type})>"

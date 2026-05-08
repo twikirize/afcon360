@@ -1,0 +1,732 @@
+{% extends "owner/base.html" %}
+
+{% block title %}Compliance Settings - AFCON360{% endblock %}
+
+{% block extra_css %}
+<style>
+.compliance-settings {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.navigation-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.settings-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.nav-item:hover {
+    background: #F3F4F6;
+}
+
+.nav-item.active {
+    background: #EEF2FF;
+    border-color: #4F46E5;
+    color: #4F46E5;
+}
+
+.nav-icon {
+    margin-right: 1rem;
+    font-size: 1.25rem;
+}
+
+.nav-text {
+    font-weight: 500;
+}
+
+.setting-section {
+    display: none;
+}
+
+.setting-section.active {
+    display: block;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #E5E7EB;
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.save-section-btn {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.save-section-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    background: #E5E7EB;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.toggle-switch.active {
+    background: #10B981;
+}
+
+.toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+}
+
+.toggle-switch.active::after {
+    transform: translateX(30px);
+}
+
+.alert-box {
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.alert-title {
+    font-weight: 600;
+    color: #92400E;
+    margin-bottom: 0.5rem;
+}
+
+.alert-text {
+    color: #92400E;
+    font-size: 0.875rem;
+}
+
+.compliance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.compliance-card {
+    background: #F9FAFB;
+    border: 2px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.compliance-card:hover {
+    border-color: #4F46E5;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+
+.compliance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.compliance-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.compliance-status {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-enabled {
+    background: #10B981;
+    color: white;
+}
+
+.status-disabled {
+    background: #EF4444;
+    color: white;
+}
+
+.status-warning {
+    background: #F59E0B;
+    color: white;
+}
+
+.info-box {
+    background: #EBF8FF;
+    border: 1px solid #3B82F6;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-title {
+    font-weight: 600;
+    color: #1E40AF;
+    margin-bottom: 0.5rem;
+}
+
+.info-text {
+    color: #1E40AF;
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Compliance Settings</h1>
+        <p class="text-gray-600 text-lg">Configure AML, KYC, and regulatory compliance settings</p>
+    </div>
+
+    <div class="compliance-settings">
+        <!-- Navigation Panel -->
+        <div class="navigation-panel">
+            <div class="nav-item active" onclick="showSection('aml-settings')">
+                <span class="nav-icon">🛡️</span>
+                <span class="nav-text">AML Settings</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('kyc-settings')">
+                <span class="nav-icon">🆔</span>
+                <span class="nav-text">KYC Settings</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('regulator-settings')">
+                <span class="nav-icon">🏛️</span>
+                <span class="nav-text">Regulator Access</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('audit-settings')">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Audit Settings</span>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <!-- AML Settings Section -->
+            <div id="aml-settings" class="setting-section active">
+                <div class="section-header">
+                    <h2 class="section-title">Anti-Money Laundering (AML) Settings</h2>
+                    <button onclick="saveAMLSettings()" class="save-section-btn">
+                        💾 Save AML Settings
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">🛡️ AML Compliance</div>
+                    <div class="alert-text">
+                        Configure automatic AML screening and suspicious transaction monitoring.
+                        All flagged transactions are automatically reported to compliance officers.
+                    </div>
+                </div>
+
+                <div class="compliance-grid">
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Transaction Monitoring</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable AML Screening</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('aml_enabled')"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Suspicious Transaction Threshold (UGX)</label>
+                            <input type="number" id="aml_threshold" value="{{ config.aml.threshold or 1000000 }}" step="10000">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Auto-Flag Suspicious Transactions</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('aml_auto_flag')"></div>
+                        </div>
+                    </div>
+
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Risk Assessment</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>High-Risk Transaction Limit (UGX)</label>
+                            <input type="number" id="high_risk_threshold" value="{{ config.aml.high_risk_threshold or 5000000 }}" step="10000">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Daily Transaction Count Threshold</label>
+                            <input type="number" id="daily_threshold" value="{{ config.aml.daily_threshold or 50 }}" min="1">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Require Manual Review Above (UGX)</label>
+                            <input type="number" id="manual_review_threshold" value="{{ config.aml.manual_review_threshold or 10000000 }}" step="10000">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KYC Settings Section -->
+            <div id="kyc-settings" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Know Your Customer (KYC) Settings</h2>
+                    <button onclick="saveKYCSettings()" class="save-section-btn">
+                        💾 Save KYC Settings
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">🆔 KYC Compliance</div>
+                    <div class="alert-text">
+                        Configure KYC verification levels and requirements for user onboarding.
+                        Higher levels require more documentation but provide higher transaction limits.
+                    </div>
+                </div>
+
+                <div class="compliance-grid">
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Verification Levels</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable KYC Verification</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('kyc_enabled')"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Required KYC Level for Full Access</label>
+                            <select id="kyc_required_level">
+                                <option value="1">Level 1 - Basic</option>
+                                <option value="2" selected>Level 2 - Standard</option>
+                                <option value="3">Level 3 - Enhanced</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Auto-Verify Level 1</label>
+                            <div class="toggle-switch" onclick="toggleSetting('kyc_auto_verify')"></div>
+                        </div>
+                    </div>
+
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Document Requirements</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Level 2 Required Documents</label>
+                            <textarea id="level2_documents" rows="3" placeholder="Enter required documents, one per line">{{ config.kyc.level2_documents or 'National ID\nProof of Address\nSelfie' }}</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Level 3 Required Documents</label>
+                            <textarea id="level3_documents" rows="3" placeholder="Enter required documents, one per line">{{ config.kyc.level3_documents or 'Passport\nUtility Bill\nBank Statement\nTax ID' }}</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Document Expiry (Days)</label>
+                            <input type="number" id="document_expiry_days" value="{{ config.kyc.document_expiry_days or 365 }}" min="30" max="1825">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Regulator Settings Section -->
+            <div id="regulator-settings" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Regulator Access Configuration</h2>
+                    <button onclick="saveRegulatorSettings()" class="save-section-btn">
+                        💾 Save Regulator Settings
+                    </button>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-title">🏛️ Regulatory Compliance</div>
+                    <div class="info-text">
+                        Configure secure access for regulatory bodies. All access is logged and audited.
+                        Time-limited access codes ensure controlled data sharing.
+                    </div>
+                </div>
+
+                <div class="compliance-grid">
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Access Control</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable Regulator Access</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('regulator_access_enabled')"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Default Access Duration (Hours)</label>
+                            <input type="number" id="regulator_default_duration" value="{{ config.regulator.default_duration or 24 }}" min="1" max="168">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Maximum Accesses per Code</label>
+                            <input type="number" id="regulator_max_accesses" value="{{ config.regulator.max_accesses or 10 }}" min="1" max="100">
+                        </div>
+                    </div>
+
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Report Permissions</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Default Report Types</label>
+                            <select id="default_report_types" multiple>
+                                <option value="daily" selected>Daily Report</option>
+                                <option value="weekly" selected>Weekly Report</option>
+                                <option value="monthly">Monthly Report</option>
+                                <option value="aml" selected>AML Report</option>
+                                <option value="kyc">KYC Report</option>
+                                <option value="suspicious">Suspicious Activity</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Require Approval for Sensitive Reports</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('sensitive_report_approval')"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Auto-Generate Daily Reports</label>
+                            <div class="toggle-switch" onclick="toggleSetting('auto_daily_reports')"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audit Settings Section -->
+            <div id="audit-settings" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Audit Trail Configuration</h2>
+                    <button onclick="saveAuditSettings()" class="save-section-btn">
+                        💾 Save Audit Settings
+                    </button>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-title">📊 Audit Compliance</div>
+                    <div class="info-text">
+                        Configure audit trail retention and logging levels. 
+                        All financial and compliance activities are logged for regulatory requirements.
+                    </div>
+                </div>
+
+                <div class="compliance-grid">
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Data Retention</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Audit Retention Period (Days)</label>
+                            <input type="number" id="audit_retention_days" value="{{ config.audit.retention_days or 2555 }}" min="365" max="3650">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Auto-Cleanup Expired Logs</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('audit_auto_cleanup')"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Cleanup Frequency (Days)</label>
+                            <input type="number" id="cleanup_frequency" value="{{ config.audit.cleanup_frequency or 30 }}" min="1" max="365">
+                        </div>
+                    </div>
+
+                    <div class="compliance-card">
+                        <div class="compliance-header">
+                            <div class="compliance-name">Logging Configuration</div>
+                            <div class="compliance-status status-enabled">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Log Level</label>
+                            <select id="audit_log_level">
+                                <option value="DEBUG">Debug</option>
+                                <option value="INFO" selected>Info</option>
+                                <option value="WARNING">Warning</option>
+                                <option value="ERROR">Error</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Log All API Access</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('log_api_access')"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Log Failed Login Attempts</label>
+                            <div class="toggle-switch active" onclick="toggleSetting('log_failed_logins')"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Show section
+function showSection(sectionId) {
+    // Hide all sections
+    document.querySelectorAll('.setting-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    
+    // Remove active class from all nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Show selected section
+    document.getElementById(sectionId).classList.add('active');
+    
+    // Activate corresponding nav item
+    event.currentTarget.classList.add('active');
+}
+
+// Toggle setting
+function toggleSetting(setting) {
+    const toggle = event.target;
+    toggle.classList.toggle('active');
+}
+
+// Save AML settings
+function saveAMLSettings() {
+    const settings = {
+        enabled: document.querySelector('#aml-settings .toggle-switch:nth-child(1)').classList.contains('active'),
+        threshold: parseFloat(document.getElementById('aml_threshold').value),
+        auto_flag: document.querySelector('#aml-settings .toggle-switch:nth-child(2)').classList.contains('active'),
+        high_risk_threshold: parseFloat(document.getElementById('high_risk_threshold').value),
+        daily_threshold: parseInt(document.getElementById('daily_threshold').value),
+        manual_review_threshold: parseFloat(document.getElementById('manual_review_threshold').value)
+    };
+    
+    fetch('/owner/settings/compliance/save-aml', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('AML settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save AML settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save AML settings');
+    });
+}
+
+// Save KYC settings
+function saveKYCSettings() {
+    const settings = {
+        enabled: document.querySelector('#kyc-settings .toggle-switch').classList.contains('active'),
+        required_level: parseInt(document.getElementById('kyc_required_level').value),
+        auto_verify: document.querySelector('#kyc-settings .toggle-switch:nth-child(2)').classList.contains('active'),
+        level2_documents: document.getElementById('level2_documents').value,
+        level3_documents: document.getElementById('level3_documents').value,
+        document_expiry_days: parseInt(document.getElementById('document_expiry_days').value)
+    };
+    
+    fetch('/owner/settings/compliance/save-kyc', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('KYC settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save KYC settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save KYC settings');
+    });
+}
+
+// Save Regulator settings
+function saveRegulatorSettings() {
+    const settings = {
+        access_enabled: document.querySelector('#regulator-settings .toggle-switch').classList.contains('active'),
+        default_duration: parseInt(document.getElementById('regulator_default_duration').value),
+        max_accesses: parseInt(document.getElementById('regulator_max_accesses').value),
+        default_report_types: Array.from(document.getElementById('default_report_types').selectedOptions).map(option => option.value),
+        sensitive_report_approval: document.querySelector('#regulator-settings .toggle-switch:nth-child(2)').classList.contains('active'),
+        auto_daily_reports: document.querySelector('#regulator-settings .toggle-switch:nth-child(3)').classList.contains('active')
+    };
+    
+    fetch('/owner/settings/compliance/save-regulator', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Regulator settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save regulator settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save regulator settings');
+    });
+}
+
+// Save Audit settings
+function saveAuditSettings() {
+    const settings = {
+        retention_days: parseInt(document.getElementById('audit_retention_days').value),
+        auto_cleanup: document.querySelector('#audit-settings .toggle-switch:nth-child(1)').classList.contains('active'),
+        cleanup_frequency: parseInt(document.getElementById('cleanup_frequency').value),
+        log_level: document.getElementById('audit_log_level').value,
+        log_api_access: document.querySelector('#audit-settings .toggle-switch:nth-child(2)').classList.contains('active'),
+        log_failed_logins: document.querySelector('#audit-settings .toggle-switch:nth-child(3)').classList.contains('active')
+    };
+    
+    fetch('/owner/settings/compliance/save-audit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Audit settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save audit settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save audit settings');
+    });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Load initial settings from server
+    // This would typically be done via API calls
+});
+</script>
+{% endblock %}

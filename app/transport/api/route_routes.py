@@ -1,6 +1,6 @@
 # app/transport/api/route_routes.py
 """
-AFCON360 Transport — Scheduled Routes REST API
+AFCON360 Transport - Scheduled Routes REST API
 Manages fixed shuttle routes: stadium transfers, airport runs,
 hotel circuits. Handles capacity, scheduling, and live assignment.
 """
@@ -34,8 +34,8 @@ def _route_or_404(route_id):
 # ===========================================================================
 
 class ScheduledRouteListResource(Resource):
-    """GET /api/transport/routes  — list with filters/sort/pagination
-       POST /api/transport/routes — create a new scheduled route
+    """GET /api/transport/routes  - list with filters/sort/pagination
+       POST /api/transport/routes - create a new scheduled route
     """
 
     def get(self):

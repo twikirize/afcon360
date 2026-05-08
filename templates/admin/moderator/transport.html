@@ -1,0 +1,340 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Transport Moderation — AFCON360{% endblock %}
+
+{% block topbar_title %}Transport Moderation{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Transport</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Transport Moderation</h1>
+    <p class="page-subheading">Manage drivers, vehicles, and booking disputes</p>
+  </div>
+</div>
+
+<!-- Transport Statistics -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-icon">👤</div>
+    <div class="stat-content">
+      <div class="stat-value">{{ transport_stats.pending_drivers }}</div>
+      <div class="stat-label">Pending Drivers</div>
+    </div>
+    <div class="stat-trend up">+12%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🚗</div>
+    <div class="stat-content">
+      <div class="stat-value">{{ transport_stats.pending_vehicles }}</div>
+      <div class="stat-label">Pending Vehicles</div>
+    </div>
+    <div class="stat-trend up">+8%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">⚠️</div>
+    <div class="stat-content">
+      <div class="stat-value">{{ transport_stats.disputed_bookings }}</div>
+      <div class="stat-label">Disputed Bookings</div>
+    </div>
+    <div class="stat-trend down">-5%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">✅</div>
+    <div class="stat-content">
+      <div class="stat-value">{{ transport_stats.total_active_drivers }}</div>
+      <div class="stat-label">Active Drivers</div>
+    </div>
+    <div class="stat-trend up">+15%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🔧</div>
+    <div class="stat-content">
+      <div class="stat-value">{{ transport_stats.total_verified_vehicles }}</div>
+      <div class="stat-label">Verified Vehicles</div>
+    </div>
+    <div class="stat-trend up">+10%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🚩</div>
+    <div class="stat-content">
+      <div class="stat-value">{{ transport_stats.transport_flags_today }}</div>
+      <div class="stat-label">Flags Today</div>
+    </div>
+    <div class="stat-trend down">-2%</div>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-bolt" style="background:var(--amber-lt);color:var(--amber);"></i>
+      Quick Actions
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+      <a href="{{ url_for('admin.moderator.transport_drivers') }}" class="btn btn-outline" style="display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-users"></i>
+        Review Drivers
+        {% if transport_stats.pending_drivers > 0 %}
+        <span class="badge badge-amber">{{ transport_stats.pending_drivers }}</span>
+        {% endif %}
+      </a>
+      <a href="{{ url_for('admin.moderator.transport_vehicles') }}" class="btn btn-outline" style="display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-car"></i>
+        Review Vehicles
+        {% if transport_stats.pending_vehicles > 0 %}
+        <span class="badge badge-amber">{{ transport_stats.pending_vehicles }}</span>
+        {% endif %}
+      </a>
+      <a href="{{ url_for('admin.moderator.transport_bookings') }}" class="btn btn-outline" style="display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-calendar-alt"></i>
+        Handle Disputes
+        {% if transport_stats.disputed_bookings > 0 %}
+        <span class="badge badge-red">{{ transport_stats.disputed_bookings }}</span>
+        {% endif %}
+      </a>
+      <a href="{{ url_for('admin.moderator.transport_third_party_applications') }}" class="btn btn-outline" style="display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-handshake"></i>
+        Third-Party Apps
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="col-layout-2-1">
+  <!-- Pending Items -->
+  <div>
+    <!-- Pending Drivers -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-user-tie" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Pending Drivers
+        </div>
+        <a href="{{ url_for('admin.moderator.transport_drivers') }}" class="btn btn-xs btn-outline">View All</a>
+      </div>
+      <div class="panel-body">
+        {% if pending_drivers %}
+          <div class="data-list">
+            {% for driver in pending_drivers %}
+            <div class="data-list-item">
+              <div class="data-list-icon">
+                <i class="fas fa-user"></i>
+              </div>
+              <div class="data-list-content">
+                <div class="data-list-title">{{ driver.first_name }} {{ driver.last_name }}</div>
+                <div class="data-list-subtitle">{{ driver.email }}</div>
+                <div class="data-list-meta">
+                  Applied {{ driver.created_at.strftime('%Y-%m-%d') }}
+                </div>
+              </div>
+              <div class="data-list-actions">
+                <a href="{{ url_for('admin.moderator.view_transport_driver', driver_id=driver.id) }}" class="btn btn-xs btn-outline">Review</a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="text-align:center;padding:40px;color:var(--muted);">
+            <i class="fas fa-check-circle" style="font-size:48px;margin-bottom:16px;"></i>
+            <div>No pending drivers</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Pending Vehicles -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-car" style="background:var(--green-lt);color:var(--green);"></i>
+          Pending Vehicles
+        </div>
+        <a href="{{ url_for('admin.moderator.transport_vehicles') }}" class="btn btn-xs btn-outline">View All</a>
+      </div>
+      <div class="panel-body">
+        {% if pending_vehicles %}
+          <div class="data-list">
+            {% for vehicle in pending_vehicles %}
+            <div class="data-list-item">
+              <div class="data-list-icon">
+                <i class="fas fa-car"></i>
+              </div>
+              <div class="data-list-content">
+                <div class="data-list-title">{{ vehicle.make }} {{ vehicle.model }}</div>
+                <div class="data-list-subtitle">{{ vehicle.license_plate }}</div>
+                <div class="data-list-meta">
+                  {{ vehicle.vehicle_type }} • {{ vehicle.year }}
+                </div>
+              </div>
+              <div class="data-list-actions">
+                <a href="{{ url_for('admin.moderator.view_transport_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-xs btn-outline">Review</a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="text-align:center;padding:40px;color:var(--muted);">
+            <i class="fas fa-check-circle" style="font-size:48px;margin-bottom:16px;"></i>
+            <div>No pending vehicles</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column -->
+  <div>
+    <!-- Transport Flags -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Recent Transport Flags
+        </div>
+        <a href="{{ url_for('admin.moderator.flagged_content') }}" class="btn btn-xs btn-outline">View All</a>
+      </div>
+      <div class="panel-body">
+        {% if transport_flags %}
+          <div class="data-list">
+            {% for flag in transport_flags %}
+            <div class="data-list-item">
+              <div class="data-list-icon">
+                <i class="fas fa-flag" style="color:{{ 'var(--red)' if flag.priority == 'critical' else 'var(--amber)' if flag.priority == 'high' else 'var(--blue)' }}"></i>
+              </div>
+              <div class="data-list-content">
+                <div class="data-list-title">{{ flag.entity_type.replace('transport_', '').title() }}</div>
+                <div class="data-list-subtitle">{{ flag.reason[:100] }}{% if flag.reason|length > 100 %}...{% endif %}</div>
+                <div class="data-list-meta">
+                  {{ flag.created_at.strftime('%Y-%m-%d %H:%M') }}
+                </div>
+              </div>
+              <div class="data-list-actions">
+                <span class="badge badge-{{ 'red' if flag.priority == 'critical' else 'amber' if flag.priority == 'high' else 'blue' }}">
+                  {{ flag.priority }}
+                </span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="text-align:center;padding:40px;color:var(--muted);">
+            <i class="fas fa-shield-alt" style="font-size:48px;margin-bottom:16px;"></i>
+            <div>No recent flags</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Disputed Bookings -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-exclamation-triangle" style="background:var(--red-lt);color:var(--red);"></i>
+          Disputed Bookings
+        </div>
+        <a href="{{ url_for('admin.moderator.transport_bookings') }}" class="btn btn-xs btn-outline">View All</a>
+      </div>
+      <div class="panel-body">
+        {% if disputed_bookings %}
+          <div class="data-list">
+            {% for booking in disputed_bookings %}
+            <div class="data-list-item">
+              <div class="data-list-icon">
+                <i class="fas fa-calendar-alt"></i>
+              </div>
+              <div class="data-list-content">
+                <div class="data-list-title">{{ booking.booking_reference }}</div>
+                <div class="data-list-subtitle">{{ booking.pickup_address[:50] }}...</div>
+                <div class="data-list-meta">
+                  {{ booking.created_at.strftime('%Y-%m-%d') }}
+                </div>
+              </div>
+              <div class="data-list-actions">
+                <a href="{{ url_for('admin.moderator.view_transport_booking', booking_id=booking.id) }}" class="btn btn-xs btn-outline">Review</a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="text-align:center;padding:40px;color:var(--muted);">
+            <i class="fas fa-check-circle" style="font-size:48px;margin-bottom:16px;"></i>
+            <div>No disputed bookings</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.data-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.data-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.data-list-item:hover {
+  background: rgba(255,255,255,0.02);
+  border-color: var(--accent);
+}
+
+.data-list-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.data-list-content {
+  flex: 1;
+}
+
+.data-list-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.data-list-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.data-list-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.data-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+</style>
+{% endblock %}

@@ -1,4 +1,4 @@
-### AFCON360 Web App — Content Security Policy (CSP)
+### AFCON360 Web App - Content Security Policy (CSP)
 
 This document describes the CSP we enforce, how nonces are generated and applied, how to monitor violations, and how developers should add scripts and styles going forward.
 
@@ -96,9 +96,9 @@ Do
 - Keep styles in `static/css/` files.
 - If you must load third-party assets, prefer self-hosting. If third-party is unavoidable, add Subresource Integrity (SRI) and pin versions, and request an explicit allow-list review.
 
-Don’t
-- Don’t use inline JS (`<script>...</script>` without a nonce, or `onclick=...` etc.).
-- Don’t add new inline `<style>` or style attributes; use classes and external CSS.
+Don't
+- Don't use inline JS (`<script>...</script>` without a nonce, or `onclick=...` etc.).
+- Don't add new inline `<style>` or style attributes; use classes and external CSS.
 
 ---
 

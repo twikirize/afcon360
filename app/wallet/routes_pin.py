@@ -5,9 +5,9 @@ Transaction PIN endpoints.
 Register this blueprint in app/__init__.py alongside the main wallet blueprint.
 
 Routes:
-    POST /wallet/pin/set        — Set or change the user's transaction PIN
-    POST /wallet/pin/verify     — Verify PIN (used by frontend modal before transfer)
-    POST /wallet/pin/reset      — Reset PIN via OTP (when user forgets)
+    POST /wallet/pin/set        - Set or change the user's transaction PIN
+    POST /wallet/pin/verify     - Verify PIN (used by frontend modal before transfer)
+    POST /wallet/pin/reset      - Reset PIN via OTP (when user forgets)
 """
 
 from flask import Blueprint, request, jsonify, current_app

@@ -45,7 +45,7 @@ class BlockedDate(BaseModel):
         UniqueConstraint("property_id", "blocked_date", name="uq_property_blocked_date"),
         Index("idx_blocked_property_date", "property_id", "blocked_date"),
         Index("idx_blocked_booking", "booking_id"),
-        # FIX 2: Removed CheckConstraint("blocked_date >= CURRENT_DATE") — enforcing this at the
+        # FIX 2: Removed CheckConstraint("blocked_date >= CURRENT_DATE") - enforcing this at the
         # DB level breaks `db upgrade` whenever historical blocked dates exist in the table.
         # Validate future-only dates in the service/API layer instead.
     )

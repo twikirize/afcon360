@@ -1,0 +1,245 @@
+{% extends "owner/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Add Payment Gateway</h1>
+            <p class="text-muted">Configure additional payment gateways for wallet operations</p>
+        </div>
+        <div>
+            <a href="{{ url_for('owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Capabilities
+            </a>
+        </div>
+    </div>
+
+    <!-- Available Gateways -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Available Payment Gateways</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body text-center">
+                            <i class="bi bi-credit-card fs-1 text-success"></i>
+                            <h6 class="card-title mt-2">Visa Direct</h6>
+                            <p class="card-text small">Real-time card-to-card transfers</p>
+                            <button class="btn btn-sm btn-success" onclick="selectGateway('visa_direct')">Configure</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body text-center">
+                            <i class="bi bi-credit-card fs-1 text-warning"></i>
+                            <h6 class="card-title mt-2">MasterCard Send</h6>
+                            <p class="card-text small">MasterCard real-time payments</p>
+                            <button class="btn btn-sm btn-warning" onclick="selectGateway('mastercard_send')">Configure</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-info">
+                        <div class="card-body text-center">
+                            <i class="bi bi-bank fs-1 text-info"></i>
+                            <h6 class="card-title mt-2">Bank Transfer API</h6>
+                            <p class="card-text small">Direct bank integration</p>
+                            <button class="btn btn-sm btn-info" onclick="selectGateway('bank_transfer')">Configure</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-primary">
+                        <div class="card-body text-center">
+                            <i class="bi bi-phone fs-1 text-primary"></i>
+                            <h6 class="card-title mt-2">Mobile Money</h6>
+                            <p class="card-text small">Additional mobile money providers</p>
+                            <button class="btn btn-sm btn-primary" onclick="selectGateway('mobile_money')">Configure</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-secondary">
+                        <div class="card-body text-center">
+                            <i class="bi bi-globe fs-1 text-secondary"></i>
+                            <h6 class="card-title mt-2">International Wire</h6>
+                            <p class="card-text small">SWIFT/SEPA transfers</p>
+                            <button class="btn btn-sm btn-secondary" onclick="selectGateway('international_wire')">Configure</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card border-dark">
+                        <div class="card-body text-center">
+                            <i class="bi bi-currency-bitcoin fs-1 text-dark"></i>
+                            <h6 class="card-title mt-2">Crypto Gateway</h6>
+                            <p class="card-text small">Bitcoin/Ethereum integration</p>
+                            <button class="btn btn-sm btn-dark" onclick="selectGateway('crypto_gateway')">Configure</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Gateway Configuration</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Gateway Name *</label>
+                    <input type="text" name="gateway_name" class="form-control" id="gateway_name" required>
+                    <small class="text-muted">Select a gateway from above</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Gateway Type *</label>
+                    <select name="gateway_type" class="form-select" id="gateway_type" required>
+                        <option value="">Select gateway type</option>
+                        <option value="visa_direct">Visa Direct</option>
+                        <option value="mastercard_send">MasterCard Send</option>
+                        <option value="bank_transfer">Bank Transfer API</option>
+                        <option value="mobile_money">Mobile Money</option>
+                        <option value="international_wire">International Wire</option>
+                        <option value="crypto_gateway">Crypto Gateway</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">API Key *</label>
+                    <input type="text" name="api_key" class="form-control" required placeholder="API key from gateway provider">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">API Secret *</label>
+                    <input type="password" name="api_secret" class="form-control" required placeholder="API secret from gateway provider">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Webhook URL</label>
+                    <input type="url" name="webhook_url" class="form-control" placeholder="https://yourapp.com/webhooks/gateway">
+                    <small class="text-muted">For transaction status notifications</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Environment</label>
+                    <select name="environment" class="form-select">
+                        <option value="sandbox">Sandbox</option>
+                        <option value="production">Production</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Supported Operations</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="operations[]" value="deposit" id="deposit" checked>
+                        <label class="form-check-label" for="deposit">Deposit</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="operations[]" value="withdraw" id="withdraw" checked>
+                        <label class="form-check-label" for="withdraw">Withdraw</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="operations[]" value="transfer" id="transfer">
+                        <label class="form-check-label" for="transfer">Transfer</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Rate Limits</label>
+                    <div class="row">
+                        <div class="col-6">
+                            <input type="number" name="rate_limit_per_minute" class="form-control" value="10" placeholder="Per minute">
+                        </div>
+                        <div class="col-6">
+                            <input type="number" name="rate_limit_per_hour" class="form-control" value="100" placeholder="Per hour">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" class="form-control" rows="3" placeholder="Description of this payment gateway integration"></textarea>
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="enabled" id="enabled" checked>
+                        <label class="form-check-label" for="enabled">
+                            Enable Gateway
+                        </label>
+                    </div>
+                </div>
+                <div class="col-12 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Add Payment Gateway
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Existing Gateways -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Existing Payment Gateways</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Gateway</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Operations</th>
+                            <th>Added Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Flutterwave</td>
+                            <td>Payment Provider</td>
+                            <td><span class="badge bg-success">Active</span></td>
+                            <td>Deposit, Withdraw</td>
+                            <td>2024-01-15</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Paystack</td>
+                            <td>Payment Provider</td>
+                            <td><span class="badge bg-success">Active</span></td>
+                            <td>Deposit, Withdraw</td>
+                            <td>2024-01-15</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>MTN Mobile Money</td>
+                            <td>Mobile Money</td>
+                            <td><span class="badge bg-success">Active</span></td>
+                            <td>Deposit, Withdraw</td>
+                            <td>2024-01-15</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function selectGateway(gatewayType) {
+    document.getElementById('gateway_name').value = gatewayType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    document.getElementById('gateway_type').value = gatewayType;
+}
+</script>
+{% endblock %}

@@ -61,14 +61,14 @@ def sanitize_status(status_value):
     if status_value is None:
         return EventStatus.DRAFT.value
 
-    # Already a proper enum member — just return its value
+    # Already a proper enum member - just return its value
     if isinstance(status_value, EventStatus):
         return status_value.value
 
     status_str = str(status_value).strip()
 
     # ------------------------------------------------------------------ #
-    # GUARD: detect "EventStatus.APPROVED" — this is always a caller bug. #
+    # GUARD: detect "EventStatus.APPROVED" - this is always a caller bug. #
     # The template or route used str(EventStatus.X) instead of            #
     # EventStatus.X.value.  Recover by extracting the name part.          #
     # ------------------------------------------------------------------ #
@@ -82,7 +82,7 @@ def sanitize_status(status_value):
         try:
             return EventStatus[enum_name].value  # lookup by name: APPROVED → "approved"
         except KeyError:
-            logger.error(f"Recovery failed — unknown enum name '{enum_name}', defaulting to DRAFT")
+            logger.error(f"Recovery failed - unknown enum name '{enum_name}', defaulting to DRAFT")
             return EventStatus.DRAFT.value
 
     # Try matching by value first (e.g. "approved", "pending_approval")
@@ -97,7 +97,7 @@ def sanitize_status(status_value):
     except KeyError:
         pass
 
-    # Genuine legacy DB value — log and default
+    # Genuine legacy DB value - log and default
     logger.warning(f"Legacy status value encountered: '{status_str}', defaulting to DRAFT")
     return EventStatus.DRAFT.value
 
@@ -404,19 +404,19 @@ class EventService:
             approved_at = None
             approved_by_id = None
 
-            # Setting 1: auto_publish — skip moderation entirely
+            # Setting 1: auto_publish - skip moderation entirely
             if evt_settings.auto_publish:
                 status = EventStatus.PUBLISHED
                 approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
-            # Setting 2: event_manager_auto_approve — approve but not publish
+            # Setting 2: event_manager_auto_approve - approve but not publish
             elif evt_settings.event_manager_auto_approve and has_global_role(user, 'event_manager'):
                 status = EventStatus.APPROVED
                 approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
-            # Setting 3: require_approval is OFF — auto-approve for everyone
+            # Setting 3: require_approval is OFF - auto-approve for everyone
             elif not evt_settings.require_approval:
                 status = EventStatus.APPROVED
                 approved_at = datetime.now(timezone.utc)
@@ -498,7 +498,7 @@ class EventService:
                     submit_for_moderation(
                         entity_type="event",
                         object_id=event.id,
-                        reason="New event submission — awaiting moderator review",
+                        reason="New event submission - awaiting moderator review",
                         submitted_by_user=user,
                         priority="normal",
                     )
@@ -1365,7 +1365,7 @@ class EventService:
         if not result.get('ticket_number'):
             result['ticket_number'] = result['registration_ref']
 
-        # Do NOT expose full qr_token via API — show only first 8 chars for debugging
+        # Do NOT expose full qr_token via API - show only first 8 chars for debugging
         if result.get('qr_token'):
             result['qr_token_hint'] = result['qr_token'][:8] + '...'
             del result['qr_token']
@@ -1873,7 +1873,7 @@ class EventService:
         # Increment usage count
         discount.used_count = (discount.used_count or 0) + 1
         db.session.add(discount)
-        # Don't commit here — let the caller's transaction handle it
+        # Don't commit here - let the caller's transaction handle it
 
         logger.info(
             f"Discount code '{code}' validated for event '{identifier}': "

@@ -1,11 +1,11 @@
 # app/transport/api/dashboard_routes.py
 """
-AFCON360 Transport — Admin Dashboard REST API
+AFCON360 Transport - Admin Dashboard REST API
 Single overview endpoint that aggregates everything the admin
 dashboard needs in one call: live stats, alerts, recent activity,
 and quick-action counts.
 
-Designed to be called on dashboard load — one request, full picture.
+Designed to be called on dashboard load - one request, full picture.
 """
 from flask import request
 from flask_restful import Resource

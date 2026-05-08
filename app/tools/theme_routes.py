@@ -2,7 +2,7 @@ import os
 from flask import Blueprint, jsonify, request, render_template, current_app, send_from_directory
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.models.theme import UserThemePreference, GlobalTheme, EventTheme
+from app.models.theme import UserThemePreference, GlobalTheme
 from app.tools.theme_service import ThemeService
 from app.identity.models.user import User
 # Import Event if needed, assuming app.events.models.Event exists
@@ -105,6 +105,7 @@ def save_global_theme():
 
 @theme_bp.route('/event/<int:event_id>/api', methods=['GET'])
 def get_event_theme(event_id):
+    from app.models.theme import EventTheme
     event_theme = EventTheme.query.get(event_id)
     if event_theme:
         return jsonify(event_theme.settings)
@@ -115,6 +116,7 @@ def get_event_theme(event_id):
 def save_event_theme(event_id):
     # Add organizer check here if applicable
     data = request.json
+    from app.models.theme import EventTheme
     event_theme = EventTheme.query.get(event_id)
     if not event_theme:
         event_theme = EventTheme(event_id=event_id)
@@ -123,6 +125,26 @@ def save_event_theme(event_id):
     event_theme.settings = data
     db.session.commit()
     return jsonify({"success": True, "message": "Event theme saved"})
+
+@theme_bp.route('/css/event-<int:event_id>.css')
+def serve_event_theme_css(event_id):
+    """
+    Serve event-specific CSS file.
+    Falls back to global theme if no event theme exists.
+    """
+    generated_dir = ThemeService.ensure_generated_dir()
+    event_css_path = os.path.join(generated_dir, f'event-{event_id}.css')
+    
+    # If event theme exists, serve it
+    if os.path.exists(event_css_path):
+        return send_from_directory(generated_dir, f'event-{event_id}.css', mimetype='text/css')
+    
+    # Otherwise, serve global theme
+    global_css_path = os.path.join(generated_dir, 'global-theme.css')
+    if os.path.exists(global_css_path):
+        return send_from_directory(generated_dir, 'global-theme.css', mimetype='text/css')
+    
+    return "", 200, {'Content-Type': 'text/css'}
 
 @theme_bp.route('/reset', methods=['POST'])
 @login_required
@@ -152,6 +174,13 @@ def serve_user_theme_css():
     generated_dir = ThemeService.ensure_generated_dir()
     global_css_path = os.path.join(generated_dir, 'global-theme.css')
 
+    # Generate global theme CSS if it doesn't exist
+    if not os.path.exists(global_css_path):
+        try:
+            ThemeService.update_global_theme_css()
+        except Exception as e:
+            current_app.logger.error(f"Failed to generate global theme CSS: {e}")
+
     # For non-authenticated users, always serve global theme
     if not current_user.is_authenticated:
         if os.path.exists(global_css_path):
@@ -163,9 +192,16 @@ def serve_user_theme_css():
     user_css_path = os.path.join(generated_dir, user_css_filename)
     pref = UserThemePreference.query.get(current_user.id)
 
-    # If user has custom preferences and the file exists, serve it
-    if pref and os.path.exists(user_css_path):
-        return send_from_directory(generated_dir, user_css_filename, mimetype='text/css')
+    # If user has preferences, generate or serve their CSS
+    if pref:
+        if not os.path.exists(user_css_path):
+            try:
+                ThemeService.update_user_theme_css(current_user.id)
+            except Exception as e:
+                current_app.logger.error(f"Failed to generate user theme CSS: {e}")
+        
+        if os.path.exists(user_css_path):
+            return send_from_directory(generated_dir, user_css_filename, mimetype='text/css')
 
     # Otherwise, fall back to global theme
     if os.path.exists(global_css_path):

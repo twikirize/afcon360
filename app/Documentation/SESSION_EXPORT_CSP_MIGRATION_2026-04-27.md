@@ -1,4 +1,4 @@
-### Session Export — CSP Hardening and Admin Moderation Fix (2026‑04‑27)
+### Session Export - CSP Hardening and Admin Moderation Fix (2026‑04‑27)
 
 #### Overview
 This session addressed two objectives:

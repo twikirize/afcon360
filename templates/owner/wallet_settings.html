@@ -1,0 +1,908 @@
+{% extends "owner/base.html" %}
+
+{% block title %}Wallet Settings - AFCON360{% endblock %}
+
+{% block extra_css %}
+<style>
+.wallet-settings {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.navigation-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.settings-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.nav-item:hover {
+    background: #F3F4F6;
+}
+
+.nav-item.active {
+    background: #EEF2FF;
+    border-color: #4F46E5;
+    color: #4F46E5;
+}
+
+.nav-icon {
+    margin-right: 1rem;
+    font-size: 1.25rem;
+}
+
+.nav-text {
+    font-weight: 500;
+}
+
+.setting-section {
+    display: none;
+}
+
+.setting-section.active {
+    display: block;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #E5E7EB;
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.save-section-btn {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.save-section-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.gateway-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.gateway-card {
+    background: #F9FAFB;
+    border: 2px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.gateway-card:hover {
+    border-color: #4F46E5;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+
+.gateway-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.gateway-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.gateway-status {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-enabled {
+    background: #10B981;
+    color: white;
+}
+
+.status-disabled {
+    background: #EF4444;
+    color: white;
+}
+
+.status-maintenance {
+    background: #F59E0B;
+    color: white;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    background: #E5E7EB;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.toggle-switch.active {
+    background: #10B981;
+}
+
+.toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+}
+
+.toggle-switch.active::after {
+    transform: translateX(30px);
+}
+
+.alert-box {
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.alert-title {
+    font-weight: 600;
+    color: #92400E;
+    margin-bottom: 0.5rem;
+}
+
+.alert-text {
+    color: #92400E;
+    font-size: 0.875rem;
+}
+
+.delegation-info {
+    background: #DBEAFE;
+    border: 1px solid #3B82F6;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.delegation-title {
+    font-weight: 600;
+    color: #1E40AF;
+    margin-bottom: 0.5rem;
+}
+
+.delegation-text {
+    color: #1E40AF;
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Wallet Settings</h1>
+        <p class="text-gray-600 text-lg">Configure wallet system and payment gateway settings</p>
+    </div>
+
+    <div class="wallet-settings">
+        <!-- Navigation Panel -->
+        <div class="navigation-panel">
+            <div class="nav-item active" onclick="showSection('payment-gateways')">
+                <span class="nav-icon">💳</span>
+                <span class="nav-text">Payment Gateways</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('wallet-limits')">
+                <span class="nav-icon">💰</span>
+                <span class="nav-text">Wallet Limits</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('transaction-fees')">
+                <span class="nav-icon">💸</span>
+                <span class="nav-text">Transaction Fees</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('wallet-security')">
+                <span class="nav-icon">🔒</span>
+                <span class="nav-text">Wallet Security</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('delegation')">
+                <span class="nav-icon">👥</span>
+                <span class="nav-text">Delegation</span>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <!-- Payment Gateways Section -->
+            <div id="payment-gateways" class="setting-section active">
+                <div class="section-header">
+                    <h2 class="section-title">Payment Gateway Configuration</h2>
+                    <button onclick="savePaymentGateways()" class="save-section-btn">
+                        💾 Save Gateways
+                    </button>
+                </div>
+
+                <!-- Gateway Cards -->
+                <div class="gateway-grid">
+                    <!-- PayPal -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">PayPal</div>
+                            <div class="gateway-status status-enabled">Enabled</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Client ID</label>
+                            <input type="text" id="paypal_client_id" value="{{ config.paypal.client_id or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Environment</label>
+                            <select id="paypal_environment">
+                                <option value="sandbox">Sandbox</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleGateway('paypal')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Alipay -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">Alipay</div>
+                            <div class="gateway-status status-enabled">Enabled</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>App ID</label>
+                            <input type="text" id="alipay_app_id" value="{{ config.alipay.app_id or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Environment</label>
+                            <select id="alipay_environment">
+                                <option value="sandbox">Sandbox</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleGateway('alipay')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Flutterwave -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">Flutterwave</div>
+                            <div class="gateway-status status-enabled">Enabled</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Public Key</label>
+                            <input type="text" id="flutterwave_public_key" value="{{ config.flutterwave.public_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Environment</label>
+                            <select id="flutterwave_environment">
+                                <option value="sandbox">Sandbox</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleGateway('flutterwave')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Paystack -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">Paystack</div>
+                            <div class="gateway-status status-enabled">Enabled</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Public Key</label>
+                            <input type="text" id="paystack_public_key" value="{{ config.paystack.public_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Environment</label>
+                            <select id="paystack_environment">
+                                <option value="sandbox">Sandbox</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleGateway('paystack')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Money -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">Mobile Money</div>
+                            <div class="gateway-status status-enabled">Enabled</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>MTN Uganda API Key</label>
+                            <input type="password" id="mtn_ug_api_key" value="{{ config.mobile_money.mtn_ug_api_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Airtel Uganda API Key</label>
+                            <input type="password" id="airtel_ug_api_key" value="{{ config.mobile_money.airtel_ug_api_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>M-PESA Kenya API Key</label>
+                            <input type="password" id="mpesa_api_key" value="{{ config.mobile_money.mpesa_api_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleGateway('mobile_money')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Visa Direct -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">Visa Direct</div>
+                            <div class="gateway-status status-maintenance">Sandbox</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Merchant ID</label>
+                            <input type="text" id="visa_merchant_id" value="{{ config.visa.merchant_id or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Environment</label>
+                            <select id="visa_environment">
+                                <option value="sandbox">Sandbox</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch" onclick="toggleGateway('visa')"></div>
+                        </div>
+                    </div>
+
+                    <!-- WeChat Pay -->
+                    <div class="gateway-card">
+                        <div class="gateway-header">
+                            <div class="gateway-name">WeChat Pay</div>
+                            <div class="gateway-status status-maintenance">Sandbox</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>App ID</label>
+                            <input type="text" id="wechat_app_id" value="{{ config.wechat.app_id or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Environment</label>
+                            <select id="wechat_environment">
+                                <option value="sandbox">Sandbox</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch" onclick="toggleGateway('wechat')"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Limits Section -->
+            <div id="wallet-limits" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Wallet Transaction Limits</h2>
+                    <button onclick="saveWalletLimits()" class="save-section-btn">
+                        💾 Save Limits
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">⚠️ Important Notice</div>
+                    <div class="alert-text">
+                        Changes to wallet limits will affect all new transactions immediately. 
+                        Existing transactions will continue with their original settings.
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Minimum Transaction Amount (UGX)</label>
+                        <input type="number" id="min_transaction" value="{{ config.wallet.min_transaction or 10000 }}" step="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Maximum Transaction Amount (UGX)</label>
+                        <input type="number" id="max_transaction" value="{{ config.wallet.max_transaction or 10000000 }}" step="1000">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Daily Transaction Limit (UGX)</label>
+                        <input type="number" id="daily_limit" value="{{ config.wallet.daily_limit or 5000000 }}" step="1000">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Monthly Transaction Limit (UGX)</label>
+                        <input type="number" id="monthly_limit" value="{{ config.wallet.monthly_limit or 50000000 }}" step="1000">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Maximum Wallet Balance (UGX)</label>
+                    <input type="number" id="max_balance" value="{{ config.wallet.max_balance or 100000000 }}" step="10000">
+                </div>
+            </div>
+
+            <!-- Transaction Fees Section -->
+            <div id="transaction-fees" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Transaction Fee Structure</h2>
+                    <button onclick="saveTransactionFees()" class="save-section-btn">
+                        💾 Save Fees
+                    </button>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>PayPal Fee (%)</label>
+                        <input type="number" id="paypal_fee" value="{{ config.fees.paypal_fee or 2.9 }}" step="0.1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>PayPal Fixed Fee (USD)</label>
+                        <input type="number" id="paypal_fixed_fee" value="{{ config.fees.paypal_fixed_fee or 0.30 }}" step="0.01">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Alipay Fee (%)</label>
+                        <input type="number" id="alipay_fee" value="{{ config.fees.alipay_fee or 0.6 }}" step="0.1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Flutterwave Fee (%)</label>
+                        <input type="number" id="flutterwave_fee" value="{{ config.fees.flutterwave_fee or 1.4 }}" step="0.1">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Paystack Fee (%)</label>
+                        <input type="number" id="paystack_fee" value="{{ config.fees.paystack_fee or 1.5 }}" step="0.1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Mobile Money Fee (%)</label>
+                        <input type="number" id="mobile_money_fee" value="{{ config.fees.mobile_money_fee or 1.0 }}" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Security Section -->
+            <div id="wallet-security" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Wallet Security Settings</h2>
+                    <button onclick="saveWalletSecurity()" class="save-section-btn">
+                        💾 Save Security
+                    </button>
+                </div>
+
+                <div class="form-group">
+                    <label>Enable Two-Factor Authentication</label>
+                    <div class="toggle-switch active" onclick="toggleSetting('wallet_2fa')"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Require PIN for Transactions Above (UGX)</label>
+                    <input type="number" id="pin_threshold" value="{{ config.security.pin_threshold or 100000 }}" step="1000">
+                </div>
+
+                <div class="form-group">
+                    <label>Auto-Lock After Failed Attempts</label>
+                    <input type="number" id="max_failed_attempts" value="{{ config.security.max_failed_attempts or 3 }}" min="1" max="10">
+                </div>
+
+                <div class="form-group">
+                    <label>Lockout Duration (Minutes)</label>
+                    <input type="number" id="lockout_duration" value="{{ config.security.lockout_duration or 30 }}" min="5" max="1440">
+                </div>
+            </div>
+
+            <!-- Delegation Section -->
+            <div id="delegation" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Role Delegation Settings</h2>
+                    <button onclick="saveDelegationSettings()" class="save-section-btn">
+                        💾 Save Delegation
+                    </button>
+                </div>
+
+                <div class="delegation-info">
+                    <div class="delegation-title">👥 Current Delegation Rules</div>
+                    <div class="delegation-text">
+                        • Owner can delegate to Super Admin (7 days, no approval)<br>
+                        • Super Admin can delegate to Admin (3 days, requires approval)<br>
+                        • Admin can delegate to User (1 day, requires approval)
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Enable Delegation System</label>
+                    <div class="toggle-switch active" onclick="toggleSetting('delegation_enabled')"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Require Approval for Admin Delegation</label>
+                    <div class="toggle-switch active" onclick="toggleSetting('admin_delegation_approval')"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Maximum Delegation Duration (Hours)</label>
+                    <input type="number" id="max_delegation_duration" value="{{ config.delegation.max_duration or 168 }}" min="1" max="720">
+                </div>
+
+                <div class="form-group">
+                    <label>Auto-Expire Delegations</label>
+                    <div class="toggle-switch active" onclick="toggleSetting('auto_expire_delegations')"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Show section
+function showSection(sectionId) {
+    // Hide all sections
+    document.querySelectorAll('.setting-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    
+    // Remove active class from all nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Show selected section
+    document.getElementById(sectionId).classList.add('active');
+    
+    // Activate corresponding nav item
+    event.currentTarget.classList.add('active');
+}
+
+// Toggle gateway
+function toggleGateway(gateway) {
+    const toggle = event.target;
+    toggle.classList.toggle('active');
+    
+    const isActive = toggle.classList.contains('active');
+    updateGatewayStatus(gateway, isActive);
+}
+
+// Toggle setting
+function toggleSetting(setting) {
+    const toggle = event.target;
+    toggle.classList.toggle('active');
+}
+
+// Update gateway status
+function updateGatewayStatus(gateway, isActive) {
+    fetch('/owner/wallet/update-gateway-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            gateway: gateway,
+            active: isActive
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error || 'Failed to update gateway status');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+// Save payment gateways
+function savePaymentGateways() {
+    const settings = {
+        paypal: {
+            client_id: document.getElementById('paypal_client_id').value,
+            environment: document.getElementById('paypal_environment').value
+        },
+        alipay: {
+            app_id: document.getElementById('alipay_app_id').value,
+            environment: document.getElementById('alipay_environment').value
+        },
+        flutterwave: {
+            public_key: document.getElementById('flutterwave_public_key').value,
+            environment: document.getElementById('flutterwave_environment').value
+        },
+        paystack: {
+            public_key: document.getElementById('paystack_public_key').value,
+            environment: document.getElementById('paystack_environment').value
+        },
+        mobile_money: {
+            mtn_ug_api_key: document.getElementById('mtn_ug_api_key').value,
+            airtel_ug_api_key: document.getElementById('airtel_ug_api_key').value,
+            mpesa_api_key: document.getElementById('mpesa_api_key').value
+        },
+        visa: {
+            merchant_id: document.getElementById('visa_merchant_id').value,
+            environment: document.getElementById('visa_environment').value
+        },
+        wechat: {
+            app_id: document.getElementById('wechat_app_id').value,
+            environment: document.getElementById('wechat_environment').value
+        }
+    };
+    
+    fetch('/owner/wallet/save-payment-gateways', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Payment gateway settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save settings');
+    });
+}
+
+// Save wallet limits
+function saveWalletLimits() {
+    const settings = {
+        min_transaction: parseFloat(document.getElementById('min_transaction').value),
+        max_transaction: parseFloat(document.getElementById('max_transaction').value),
+        daily_limit: parseFloat(document.getElementById('daily_limit').value),
+        monthly_limit: parseFloat(document.getElementById('monthly_limit').value),
+        max_balance: parseFloat(document.getElementById('max_balance').value)
+    };
+    
+    fetch('/owner/wallet/save-limits', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Wallet limits saved successfully');
+        } else {
+            alert(data.error || 'Failed to save limits');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save limits');
+    });
+}
+
+// Save transaction fees
+function saveTransactionFees() {
+    const settings = {
+        paypal_fee: parseFloat(document.getElementById('paypal_fee').value),
+        paypal_fixed_fee: parseFloat(document.getElementById('paypal_fixed_fee').value),
+        alipay_fee: parseFloat(document.getElementById('alipay_fee').value),
+        flutterwave_fee: parseFloat(document.getElementById('flutterwave_fee').value),
+        paystack_fee: parseFloat(document.getElementById('paystack_fee').value),
+        mobile_money_fee: parseFloat(document.getElementById('mobile_money_fee').value)
+    };
+    
+    fetch('/owner/wallet/save-fees', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Transaction fees saved successfully');
+        } else {
+            alert(data.error || 'Failed to save fees');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save fees');
+    });
+}
+
+// Save wallet security
+function saveWalletSecurity() {
+    const settings = {
+        wallet_2fa: document.querySelector('#wallet-security .toggle-switch').classList.contains('active'),
+        pin_threshold: parseFloat(document.getElementById('pin_threshold').value),
+        max_failed_attempts: parseInt(document.getElementById('max_failed_attempts').value),
+        lockout_duration: parseInt(document.getElementById('lockout_duration').value)
+    };
+    
+    fetch('/owner/wallet/save-security', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Wallet security settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save security settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save security settings');
+    });
+}
+
+// Save delegation settings
+function saveDelegationSettings() {
+    const settings = {
+        delegation_enabled: document.querySelector('#delegation .toggle-switch').classList.contains('active'),
+        admin_delegation_approval: document.querySelector('#delegation .toggle-switch:nth-child(2)').classList.contains('active'),
+        max_delegation_duration: parseInt(document.getElementById('max_delegation_duration').value),
+        auto_expire_delegations: document.querySelector('#delegation .toggle-switch:nth-child(3)').classList.contains('active')
+    };
+    
+    fetch('/owner/wallet/save-delegation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Delegation settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save delegation settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save delegation settings');
+    });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Load initial settings from server
+    // This would typically be done via API calls
+});
+</script>
+{% endblock %}

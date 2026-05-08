@@ -15,7 +15,7 @@ class AuditLog(BaseModel):
     Immutable audit log for compliance. Do NOT delete or modify entries programmatically.
     Avoid storing secrets or full PII in meta.
 
-    Single source of truth — app/audit/user.py re-exports this class for backwards compatibility.
+    Single source of truth - app/audit/user.py re-exports this class for backwards compatibility.
     """
     __tablename__ = "audit_logs"
 

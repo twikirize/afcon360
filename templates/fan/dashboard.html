@@ -8,6 +8,33 @@
 {% endblock %}
 
 {% block content %}
+
+{# ── ACCOUNT CREATION PROMPT (shown only before account is created) ── #}
+{% if not nav_profile_completed %}
+<div class="container-fluid mt-3 mb-1">
+  <div class="alert d-flex align-items-center gap-3 mb-0"
+       style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+              border:none;border-radius:12px;padding:20px 24px;color:#fff;">
+    <div style="font-size:2rem;">👋</div>
+    <div style="flex:1;">
+      <strong style="font-size:16px;">Welcome to AFCON 360, {{ current_user.username }}!</strong>
+      <p class="mb-0 mt-1" style="font-size:13px;opacity:0.85;">
+        You're in. Browse events, accommodation and transport.
+        When you're ready to book or provide services —
+        <strong>create your account</strong> to unlock everything.
+      </p>
+    </div>
+    <a href="{{ url_for('onboarding.choose') }}"
+       class="btn btn-sm flex-shrink-0"
+       style="background:#1D9E75;color:#fff;font-weight:600;
+              border-radius:8px;padding:8px 18px;white-space:nowrap;">
+      Create Account →
+    </a>
+  </div>
+</div>
+{% endif %}
+{# ── END ACCOUNT CREATION PROMPT ──────────────────────────────────── #}
+
 <div class="dashboard-container outlook-layout">
     {% if driver_status == 'pending' %}
     <div class="status-banner status-banner--pending">🚗 Driver application under review.</div>

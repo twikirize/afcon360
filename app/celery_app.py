@@ -9,7 +9,7 @@ Start workers:
 Start beat scheduler (runs periodic tasks):
     celery -A app.celery_app beat --loglevel=info
 
-Or combined (dev only — not for production):
+Or combined (dev only - not for production):
     celery -A app.celery_app worker --beat --loglevel=info
 """
 
@@ -34,7 +34,7 @@ def make_celery(app=None):
         ]
     )
 
-    # Beat schedule — periodic tasks
+    # Beat schedule - periodic tasks
     celery.conf.beat_schedule = {
         # Process queued/failed webhook events every 60 seconds
         "process-webhook-events": {

@@ -117,7 +117,7 @@ def verify_permission(user: object, permission: str, resource: Optional[object] 
     """
     Verify if a user has a specific permission.
 
-    Uses app/auth/helpers.py which queries the database directly — safe to call
+    Uses app/auth/helpers.py which queries the database directly - safe to call
     even on detached user objects loaded by Flask-Login in a previous session.
 
     Args:
@@ -138,7 +138,7 @@ def verify_permission(user: object, permission: str, resource: Optional[object] 
     if is_owner(user):
         return True
 
-    # Use the DB-querying helper — never walks lazy-loaded relationships
+    # Use the DB-querying helper - never walks lazy-loaded relationships
     return has_global_permission(user, permission)
 
 

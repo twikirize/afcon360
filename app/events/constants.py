@@ -1,6 +1,6 @@
 # app/events/constants.py
 """
-EventStatus — the single source of truth for every state an event can be in.
+EventStatus - the single source of truth for every state an event can be in.
 
 LIFECYCLE
 ─────────────────────────────────────────────────────────────────────────────
@@ -60,8 +60,8 @@ RULES
 
 CREATOR vs OWNER
 ─────────────────
-created_by_type / created_by_id   — who pressed the "create" button; immutable.
-current_owner_type / current_owner_id — who currently controls the event;
+created_by_type / created_by_id   - who pressed the "create" button; immutable.
+current_owner_type / current_owner_id - who currently controls the event;
                                         can change via EventTransferRequest.
 
 Examples:
@@ -171,7 +171,7 @@ ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
     EventStatus.ARCHIVED: {
         EventStatus.DELETED,         # admin can escalate
     },
-    EventStatus.DELETED: set(),      # terminal — no further transitions
+    EventStatus.DELETED: set(),      # terminal - no further transitions
     EventStatus.ACTIVE: {
         EventStatus.PUBLISHED,       # migrate legacy records
     },
@@ -209,7 +209,7 @@ REGISTRATION_OPEN_STATUSES: frozenset[EventStatus] = frozenset({
     EventStatus.PUBLISHED,
 })
 
-# Terminal statuses — no further organiser action possible
+# Terminal statuses - no further organiser action possible
 TERMINAL_STATUSES: frozenset[EventStatus] = frozenset({
     EventStatus.COMPLETED,
     EventStatus.CANCELLED,

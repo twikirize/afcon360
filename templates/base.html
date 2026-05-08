@@ -17,10 +17,17 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
 
-  <!-- Generated theme CSS (will be created by backend) -->
+  <!-- Theme System - Proper Cascade Order -->
+  <!-- 1. Global Theme (Foundation) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="global-theme-css">
-  <!-- User theme CSS - lazy generated, falls back to global if no custom preferences -->
+  
+  <!-- 2. User Theme (Personal Overrides) -->
   <link rel="stylesheet" href="{{ url_for('theme.serve_user_theme_css') }}" id="user-theme-css">
+  
+  <!-- 3. Event Theme (Contextual Overrides - Only on event pages) -->
+  {% if event_id %}
+  <link rel="stylesheet" href="{{ url_for('theme.serve_event_theme_css', event_id=event_id) }}" id="event-theme-css">
+  {% endif %}
 
   <!-- Global Custom CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
@@ -258,61 +265,173 @@
         <li class="menu-item"><a href="{{ url_for('accommodation.index') }}">Accommodation</a></li>
 
         {% if current_user.is_authenticated %}
-          <!-- Simple direct links instead of dropdown -->
-          <li class="menu-item">
-            <a href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
-                     {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
-                     {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
-                     {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor.dashboard') }}
-                     {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance.dashboard') }}
-                     {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
-                     {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
-                     {% elif current_user.has_global_role('event_manager') %}{{ url_for('events.admin_dashboard') }}
-                     {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
-                     {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
-                     {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
-                     {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
-                     {% else %}{{ url_for('fan.dashboard') }}{% endif %}">
+
+          {# ── STATE 1: signed in, no account yet ─────────────────── #}
+          {% if not nav_profile_completed %}
+
+            <li class="menu-item">
+              <a href="{{ url_for('wallet_api.wallet_home') }}"
+                 class="nav-wallet-locked"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="bottom"
+                 title="Create an account to activate your wallet">
+                <i class="bi bi-wallet2 me-1"></i>Wallet
+                <i class="bi bi-lock-fill ms-1" style="font-size:10px;opacity:0.6;"></i>
+              </a>
+            </li>
+
+            <li class="menu-item">
+              <a href="{{ url_for('onboarding.choose') }}" class="btn-create-account">
+                <i class="bi bi-person-plus me-1"></i>Create Account
+              </a>
+            </li>
+
+            <li class="menu-item has-dropdown nav-user-menu">
+              <button class="nav-user-trigger">
+                <span class="nav-user-avatar">{{ current_user.username[0]|upper if current_user.username else '?' }}</span>
+                <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+              </button>
+              <ul class="drop-menu drop-menu--right" role="menu">
+                <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
+                  <i class="bi bi-person-circle me-2"></i>My Profile</a></li>
+                <li><hr class="drop-divider"></li>
+                <li>
+                  <form method="POST" action="{{ url_for('auth.logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <button type="submit" class="drop-item drop-item--btn">
+                      <i class="bi bi-box-arrow-right me-2"></i>Sign Out
+                    </button>
+                  </form>
+                </li>
+              </ul>
+            </li>
+
+          {# ── STATE 3: org context ─────────────────────────────────── #}
+          {% elif nav_in_org_context %}
+
+            <li class="menu-item">
+              <a href="{{ url_for('wallet.wallet_dashboard') }}" class="nav-wallet-link">
+                <i class="bi bi-wallet2 me-1"></i>Org Wallet
+              </a>
+            </li>
+
+            <li class="menu-item">
+              <a href="{{ url_for('org.dashboard', org_id=session.get('current_org_id')) }}"
+                 class="nav-dashboard-link">
+                <i class="bi bi-speedometer2 me-1"></i>Org Dashboard
+              </a>
+            </li>
+
+            <li class="menu-item has-dropdown nav-user-menu nav-user-menu--org">
+              <button class="nav-user-trigger nav-user-trigger--org">
+                <span class="nav-org-avatar">{{ nav_org_name[0]|upper if nav_org_name else 'O' }}</span>
+                <span class="nav-org-name">{{ nav_org_name|truncate(14, true, '…') }}</span>
+                <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+              </button>
+              <ul class="drop-menu drop-menu--right" role="menu">
+                <li><span class="drop-header">{{ nav_org_name }}</span></li>
+                <li><hr class="drop-divider"></li>
+                <li><a class="drop-item" href="{{ url_for('auth.switch_context', context='individual') }}">
+                  <i class="bi bi-person me-2"></i>Switch to Personal</a></li>
+                <li><a class="drop-item" href="{{ url_for('org.members', org_id=session.get('current_org_id')) }}">
+                  <i class="bi bi-people me-2"></i>Org Members</a></li>
+                <li><a class="drop-item" href="{{ url_for('org.settings', org_id=session.get('current_org_id')) }}">
+                  <i class="bi bi-gear me-2"></i>Org Settings</a></li>
+                <li><hr class="drop-divider"></li>
+                <li>
+                  <form method="POST" action="{{ url_for('auth.logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <button type="submit" class="drop-item drop-item--btn">
+                      <i class="bi bi-box-arrow-right me-2"></i>Sign Out
+                    </button>
+                  </form>
+                </li>
+              </ul>
+            </li>
+
+          {# ── STATE 2: personal account, profile complete ───────────── #}
+          {% else %}
+
+            <li class="menu-item">
+              <a href="{{ url_for('wallet.wallet_dashboard') }}" class="nav-wallet-link">
+                <i class="bi bi-wallet2 me-1"></i>Wallet
+              </a>
+            </li>
+
+            <li class="menu-item">
+              <a href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
+                       {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
+                       {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
+                       {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor.dashboard') }}
+                       {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance.dashboard') }}
+                       {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
+                       {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
+                       {% elif current_user.has_global_role('event_manager') %}{{ url_for('events.admin_dashboard') }}
+                       {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
+                       {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
+                       {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
+                       {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
+                       {% else %}{{ url_for('fan.dashboard') }}{% endif %}"
+                 class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
-            </a>
-          </li>
-          <!-- FIXED: Added Wallet menu item for authenticated users -->
+              </a>
+            </li>
+
+            {# KYC badge — show for all authenticated users with completed profiles #}
+            {% if nav_profile_completed %}
+            <li class="nav-item auth">
+              <div class="kyc-badge-nav" style="display:inline-block;margin-left:10px;"
+                   data-bs-toggle="tooltip"
+                   title="KYC Tier {{ kyc_tier }}: {{ kyc_tier_name }}">
+                <span class="badge bg-{{ tier_colors.get(kyc_tier, 'secondary') }}"
+                      style="font-size:0.8em;padding:3px 8px;">
+                  T{{ kyc_tier }}
+                </span>
+              </div>
+            </li>
+            {% endif %}
+
+            <li class="menu-item has-dropdown nav-user-menu">
+              <button class="nav-user-trigger">
+                <span class="nav-user-avatar">{{ current_user.username[0]|upper if current_user.username else '?' }}</span>
+                <span class="nav-user-name">{{ current_user.username|truncate(12, true, '…') }}</span>
+                <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+              </button>
+              <ul class="drop-menu drop-menu--right" role="menu">
+                <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
+                  <i class="bi bi-person-circle me-2"></i>My Profile</a></li>
+                <li><a class="drop-item" href="{{ url_for('profile.account_overview') }}">
+                  <i class="bi bi-person-badge me-2"></i>My Account</a></li>
+                <li><a class="drop-item" href="{{ url_for('profile.edit_profile') }}">
+                  <i class="bi bi-gear me-2"></i>Settings</a></li>
+                <li><hr class="drop-divider"></li>
+                <li>
+                  <form method="POST" action="{{ url_for('auth.logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <button type="submit" class="drop-item drop-item--btn">
+                      <i class="bi bi-box-arrow-right me-2"></i>Sign Out
+                    </button>
+                  </form>
+                </li>
+              </ul>
+            </li>
+
+          {% endif %}
+        {# ── STATE 0: anonymous ───────────────────────────────────────── #}
+        {% else %}
+
           <li class="menu-item">
-            <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet_api.wallet_home') }}{% endif %}">
+            <a href="{{ url_for('wallet_api.wallet_home') }}">
               <i class="bi bi-wallet2 me-1"></i>Wallet
             </a>
           </li>
-          <li class="menu-item">
-            <a href="{{ url_for('profile.account_overview') }}">
-              <i class="bi bi-person-badge me-1"></i>Account
-            </a>
+          <li class="menu-item auth">
+            <a href="{{ url_for('auth.login') }}">Sign In</a>
           </li>
-          <li class="menu-item">
-            <form method="POST" action="{{ url_for('auth.logout') }}" class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
-              <button type="submit" class="btn-logout" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; font: inherit;">
-                <i class="bi bi-box-arrow-right me-1"></i>Logout
-              </button>
-            </form>
+          <li class="menu-item auth">
+            <a href="{{ url_for('auth.register') }}" class="btn-create-account">Sign Up</a>
           </li>
-          <!-- KYC Badge -->
-          <li class="nav-item auth">
-              <div class="kyc-badge-nav" style="display: inline-block; margin-left: 10px;"
-                   data-bs-toggle="tooltip"
-                   title="KYC Tier {{ kyc_tier }}: {{ kyc_tier_name }}">
-                  <span class="badge bg-{{ tier_colors.get(kyc_tier, 'secondary') }}"
-                        style="font-size: 0.8em; padding: 3px 8px;">
-                      T{{ kyc_tier }}
-                  </span>
-              </div>
-          </li>
-        {% else %}
-          <!-- Non-authenticated users see Wallet prominently -->
-          <li class="menu-item"><a href="{{ url_for('wallet.home') }}">
-            <i class="bi bi-wallet2 me-1"></i>Wallet
-          </a></li>
-          <li class="menu-item auth"><a href="{{ url_for('auth.login') }}">Login</a></li>
-          <li class="menu-item auth"><a href="{{ url_for('auth.register') }}">Register</a></li>
+
         {% endif %}
 
       </ul>
@@ -356,41 +475,74 @@
       <div class="drawer-divider"></div>
 
       {% if current_user.is_authenticated %}
-        <a class="drawer-link" href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
-                          {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
-                          {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
-                          {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor.dashboard') }}
-                          {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance.dashboard') }}
-                          {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
-                          {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
-                          {% elif current_user.has_global_role('event_manager') %}{{ url_for('events.admin_dashboard') }}
-                          {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
-                          {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
-                          {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
-                          {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
-                          {% else %}{{ url_for('fan.dashboard') }}{% endif %}">
-            <i class="bi bi-speedometer2 me-2"></i>My Dashboard
-        </a>
-        <!-- FIXED: Added Wallet to mobile drawer -->
-        <a class="drawer-link" href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet_api.wallet_home') }}{% endif %}">
-          <i class="bi bi-wallet2 me-2"></i>Wallet
-        </a>
-        <a class="drawer-link" href="{{ url_for('profile.account_overview') }}">
-          <i class="bi bi-person-badge me-2"></i>My Account
-        </a>
+
+        {# Wallet — always first for authenticated users #}
+        {% if nav_profile_completed %}
+          <a class="drawer-link" href="{{ url_for('wallet.wallet_dashboard') }}">
+            <i class="bi bi-wallet2 me-2"></i>Wallet
+          </a>
+        {% else %}
+          <a class="drawer-link" href="{{ url_for('wallet_api.wallet_home') }}"
+             style="opacity:0.6;">
+            <i class="bi bi-wallet2 me-2"></i>Wallet
+            <i class="bi bi-lock-fill ms-1" style="font-size:10px;"></i>
+          </a>
+        {% endif %}
+
+        {# Dashboard or Create Account depending on state #}
+        {% if not nav_profile_completed %}
+          <a class="drawer-link drawer-link--primary" href="{{ url_for('onboarding.choose') }}">
+            <i class="bi bi-person-plus me-2"></i>Create Account
+          </a>
+        {% elif nav_in_org_context %}
+          <a class="drawer-link" href="{{ url_for('org.dashboard', org_id=session.get('current_org_id')) }}">
+            <i class="bi bi-speedometer2 me-2"></i>Org Dashboard
+          </a>
+          <a class="drawer-link" href="{{ url_for('auth.switch_context', context='individual') }}">
+            <i class="bi bi-person me-2"></i>Switch to Personal
+          </a>
+        {% else %}
+          <a class="drawer-link" href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
+            {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
+            {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
+            {% else %}{{ url_for('fan.dashboard') }}{% endif %}">
+            <i class="bi bi-speedometer2 me-2"></i>Dashboard
+          </a>
+        {% endif %}
+
+        <div class="drawer-divider"></div>
+
         <a class="drawer-link" href="{{ url_for('profile.my_public_profile') }}">
           <i class="bi bi-person-circle me-2"></i>My Profile
         </a>
-        <form method="POST" action="{{ url_for('auth.logout') }}" style="display: block; width: 100%; margin: 0; padding: 0;">
+        {% if nav_profile_completed %}
+          <a class="drawer-link" href="{{ url_for('profile.account_overview') }}">
+            <i class="bi bi-person-badge me-2"></i>My Account
+          </a>
+          <a class="drawer-link" href="{{ url_for('profile.edit_profile') }}">
+            <i class="bi bi-gear me-2"></i>Settings
+          </a>
+        {% endif %}
+
+        <div class="drawer-divider"></div>
+
+        <form method="POST" action="{{ url_for('auth.logout') }}"
+              style="display:block;width:100%;margin:0;padding:0;">
           <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
-          <button type="submit" class="drawer-link drawer-auth" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
-            <i class="bi bi-box-arrow-right me-2"></i>Logout
+          <button type="submit" class="drawer-link drawer-auth"
+                  style="width:100%;text-align:left;background:none;border:none;cursor:pointer;">
+            <i class="bi bi-box-arrow-right me-2"></i>Sign Out
           </button>
         </form>
       {% else %}
-        <a class="drawer-link" href="{{ url_for('wallet_api.wallet_home') }}">👛 Wallet</a>
-        <a class="drawer-link drawer-auth" href="{{ url_for('auth.login') }}">Login</a>
-        <a class="drawer-link drawer-auth" href="{{ url_for('auth.register') }}">Register</a>
+
+        <a class="drawer-link" href="{{ url_for('wallet_api.wallet_home') }}">
+          <i class="bi bi-wallet2 me-2"></i>Wallet
+        </a>
+        <a class="drawer-link drawer-auth" href="{{ url_for('auth.login') }}">Sign In</a>
+        <a class="drawer-link drawer-auth drawer-link--primary"
+           href="{{ url_for('auth.register') }}">Sign Up</a>
+
       {% endif %}
 
       {% if current_user.is_authenticated and current_user.has_global_role('admin') %}

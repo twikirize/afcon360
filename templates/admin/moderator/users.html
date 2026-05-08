@@ -315,7 +315,7 @@
             {% endfor %}
           </td>
           <td>
-            <a href="{{ url_for('admin.moderator.view_user', user_id=user.public_id) }}" class="btn btn-outline btn-xs">View</a>
+            <a href="{{ url_for('admin.moderator.view_user', user_id=user.id) }}" class="btn btn-outline btn-xs">View</a>
           </td>
         </tr>
         {% endfor %}

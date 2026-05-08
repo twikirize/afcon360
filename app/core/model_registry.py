@@ -40,7 +40,7 @@ def register_all_models():
 
     # Admin domain
     try:
-        from app.admin.models import ModerationLog, ContentFlag
+        from app.admin.models.moderation import ContentFlag, ModerationLog
     except ImportError:
         pass
 

@@ -1,6 +1,6 @@
 # app/transport/api/settings_routes.py
 """
-AFCON360 Transport — Settings REST API
+AFCON360 Transport - Settings REST API
 Admin-controlled feature flags and configuration.
 All writes are audited. Sensitive settings are protected.
 Cache is invalidated on every write.
@@ -44,8 +44,8 @@ def _invalidate_cache(key):
 # ===========================================================================
 
 class SettingsListResource(Resource):
-    """GET /api/transport/settings  — list all settings (admin: all, public: public only)
-       POST /api/transport/settings — create a new setting (admin only)
+    """GET /api/transport/settings  - list all settings (admin: all, public: public only)
+       POST /api/transport/settings - create a new setting (admin only)
     """
 
     def get(self):
@@ -268,7 +268,7 @@ class SettingByKeyResource(Resource):
 
     @admin_required
     def put(self, key):
-        """Update a setting by key — shorthand for the detail PUT endpoint"""
+        """Update a setting by key - shorthand for the detail PUT endpoint"""
         setting = TransportSetting.query.filter_by(
             key=key, is_deleted=False
         ).first()

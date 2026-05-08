@@ -1,9 +1,9 @@
 # app/events/settings_model.py
 """
-EventSettings — platform-wide event configuration.
+EventSettings - platform-wide event configuration.
 
 Single-row table.  Never insert more than one row.
-Use EventSettings.get() everywhere — it caches in Redis and falls back
+Use EventSettings.get() everywhere - it caches in Redis and falls back
 to DB on cache miss.
 
 Usage:
@@ -31,7 +31,7 @@ _CACHE_TTL  = 300   # 5 minutes
 
 class EventSettings(BaseModel):
     """
-    Platform-wide event settings.  One row only — use EventSettings.get().
+    Platform-wide event settings.  One row only - use EventSettings.get().
 
     All settings have safe defaults so the system works even before
     the admin has visited the settings page.
@@ -41,7 +41,7 @@ class EventSettings(BaseModel):
     # ── Approval workflow ──────────────────────────────────────────────────
     auto_publish = Column(
         Boolean, default=False, nullable=False,
-        doc="Skip moderation — new events go straight to PUBLISHED."
+        doc="Skip moderation - new events go straight to PUBLISHED."
     )
     require_approval = Column(
         Boolean, default=True, nullable=False,
@@ -183,7 +183,7 @@ class EventSettings(BaseModel):
 
     @classmethod
     def invalidate_cache(cls):
-        """Clear the Redis cache — call after saving changes."""
+        """Clear the Redis cache - call after saving changes."""
         try:
             from app.extensions import redis_client
             if redis_client:

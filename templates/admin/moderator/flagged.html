@@ -1,8 +1,8 @@
 {% extends "admin/moderator/base_moderator.html" %}
 
-{% block title %}Flagged Content — AFCON360{% endblock %}
+{% block title %}Enterprise Flagged Content — AFCON360{% endblock %}
 
-{% block topbar_title %}Flagged Content{% endblock %}
+{% block topbar_title %}Enterprise Flagged Content{% endblock %}
 
 {% block content %}
 <div class="breadcrumbs">
@@ -13,10 +13,36 @@
 
 <div class="heading-row">
   <div>
-    <h1 class="page-heading">Flagged Content</h1>
-    <p class="page-subheading">Review and manage content flags</p>
+    <h1 class="page-heading">Enterprise Flagged Content</h1>
+    <p class="page-subheading">AI-powered content moderation with multi-tier escalation</p>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <!-- SLA Status Indicator -->
+    {% if sla_breached_count is defined and sla_breached_count > 0 %}
+    <div style="background:var(--red-lt);color:var(--red);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+        <i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>
+        {{ sla_breached_count }} SLA Breached
+    </div>
+    {% endif %}
+    
+    <!-- AI Processing Status -->
+    <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+        <i class="fas fa-brain" style="margin-right:4px;"></i>
+        AI Accuracy: {{ ai_accuracy|round(1) if ai_accuracy else 'N/A' }}%
+    </div>
   </div>
 </div>
+
+<!-- Enterprise-Level Alert Bar -->
+{% if priority == 'critical' %}
+<div style="background:linear-gradient(135deg, var(--red), var(--red-dark));color:#fff;padding:12px 20px;border-radius:var(--radius);margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+    <i class="fas fa-shield-halved" style="font-size:20px;"></i>
+    <div>
+        <strong>CRITICAL FLAGS VIEW</strong>
+        <div style="font-size:14px;opacity:0.9;">High-risk content requiring immediate attention - Risk score ≥80%</div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Status Tabs -->
 <div class="tab-bar">
@@ -34,32 +60,65 @@
   </a>
 </div>
 
-<!-- Filter Row -->
+<!-- Enterprise Filter Row -->
 <form method="GET" class="search-row">
   <div class="search-input-wrap">
     <i class="fas fa-search"></i>
-    <input type="text" class="search-input" placeholder="Search flags..." name="search" value="{{ request.args.get('search', '') }}">
+    <input type="text" class="search-input" placeholder="Search by content, user, or reason..." name="search" value="{{ request.args.get('search', '') }}">
   </div>
+  
+  <!-- Priority Filter -->
   <select class="form-control" style="width: auto;" name="priority">
     <option value="">All Priorities</option>
-    <option value="critical" {% if request.args.get('priority') == 'critical' %}selected{% endif %}>Critical</option>
-    <option value="high" {% if request.args.get('priority') == 'high' %}selected{% endif %}>High</option>
-    <option value="medium" {% if request.args.get('priority') == 'medium' %}selected{% endif %}>Medium</option>
-    <option value="low" {% if request.args.get('priority') == 'low' %}selected{% endif %}>Low</option>
-    <option value="normal" {% if request.args.get('priority') == 'normal' %}selected{% endif %}>Normal</option>
+    <option value="critical" {% if request.args.get('priority') == 'critical' %}selected{% endif %}>🚨 Critical (≥80% risk)</option>
+    <option value="high" {% if request.args.get('priority') == 'high' %}selected{% endif %}>⚠️ High (60-80% risk)</option>
+    <option value="medium" {% if request.args.get('priority') == 'medium' %}selected{% endif %}>📋 Medium (40-60% risk)</option>
+    <option value="normal" {% if request.args.get('priority') == 'normal' %}selected{% endif %}>📝 Normal (<40% risk)</option>
+    <option value="low" {% if request.args.get('priority') == 'low' %}selected{% endif %}>✅ Low</option>
   </select>
+  
+  <!-- Detection Source Filter -->
+  <select class="form-control" style="width: auto;" name="detection_source">
+    <option value="">All Detection Sources</option>
+    <option value="ai" {% if request.args.get('detection_source') == 'ai' %}selected{% endif %}>🤖 AI Detection</option>
+    <option value="human" {% if request.args.get('detection_source') == 'human' %}selected{% endif %}>👤 Human Report</option>
+    <option value="hybrid" {% if request.args.get('detection_source') == 'hybrid' %}selected{% endif %}>🔄 Hybrid</option>
+    <option value="automated" {% if request.args.get('detection_source') == 'automated' %}selected{% endif %}>⚙️ Automated</option>
+  </select>
+  
+  <!-- Moderation Level Filter -->
+  <select class="form-control" style="width: auto;" name="moderation_level">
+    <option value="">All Levels</option>
+    <option value="level_1" {% if request.args.get('moderation_level') == 'level_1' %}selected{% endif %}>Level 1 (Basic)</option>
+    <option value="level_2" {% if request.args.get('moderation_level') == 'level_2' %}selected{% endif %}>Level 2 (Advanced)</option>
+    <option value="level_3" {% if request.args.get('moderation_level') == 'level_3' %}selected{% endif %}>Level 3 (Expert)</option>
+  </select>
+  
+  <!-- Entity Type Filter -->
   <select class="form-control" style="width: auto;" name="entity_type">
     <option value="">All Entity Types</option>
-    <option value="ContentSubmission" {% if request.args.get('entity_type') == 'ContentSubmission' %}selected{% endif %}>Content</option>
-    <option value="Property" {% if request.args.get('entity_type') == 'Property' %}selected{% endif %}>Property</option>
-    <option value="Review" {% if request.args.get('entity_type') == 'Review' %}selected{% endif %}>Review</option>
-    <option value="TourismListing" {% if request.args.get('entity_type') == 'TourismListing' %}selected{% endif %}>Tourism Listing</option>
-    <option value="Event" {% if request.args.get('entity_type') == 'Event' %}selected{% endif %}>Event</option>
+    <option value="user_profile" {% if request.args.get('entity_type') == 'user_profile' %}selected{% endif %}>👤 User Profile</option>
+    <option value="content_submission" {% if request.args.get('entity_type') == 'content_submission' %}selected{% endif %}>📄 Content Submission</option>
+    <option value="manageable_item" {% if request.args.get('entity_type') == 'manageable_item' %}selected{% endif %}>🏠 Property/Item</option>
+    <option value="review" {% if request.args.get('entity_type') == 'review' %}selected{% endif %}>⭐ Review</option>
+    <option value="event" {% if request.args.get('entity_type') == 'event' %}selected{% endif %}>📅 Event</option>
+    <option value="transaction" {% if request.args.get('entity_type') == 'transaction' %}selected{% endif %}>💳 Transaction</option>
   </select>
-  <button type="submit" class="btn btn-primary">Filter</button>
-  {% if request.args.get('search') or request.args.get('priority') or request.args.get('entity_type') %}
-  <a href="{{ url_for('admin.moderator.flagged_content') }}" class="btn btn-ghost">Clear</a>
-  {% endif %}
+  
+  <!-- SLA Status Filter -->
+  <select class="form-control" style="width: auto;" name="sla_status">
+    <option value="">All SLA Status</option>
+    <option value="breached" {% if request.args.get('sla_status') == 'breached' %}selected{% endif %}>🚨 SLA Breached</option>
+    <option value="urgent" {% if request.args.get('sla_status') == 'urgent' %}selected{% endif %}>⏰ Urgent (<1hr)</option>
+    <option value="normal" {% if request.args.get('sla_status') == 'normal' %}selected{% endif %}>✅ On Track</option>
+  </select>
+  
+  <button type="submit" class="btn btn-primary">
+    <i class="fas fa-filter"></i> Apply Filters
+  </button>
+  <a href="{{ url_for('admin.moderator.flagged_content') }}" class="btn btn-secondary">
+    <i class="fas fa-times"></i> Clear
+  </a>
 </form>
 
 <!-- Panel with Table -->

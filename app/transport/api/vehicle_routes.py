@@ -1,6 +1,6 @@
 # app/transport/api/vehicle_routes.py
 """
-AFCON360 Transport — Vehicle REST API
+AFCON360 Transport - Vehicle REST API
 Handles vehicle registration, verification, maintenance tracking,
 and driver assignment management.
 """
@@ -32,8 +32,8 @@ def _vehicle_or_404(vehicle_id):
 # ===========================================================================
 
 class VehicleListResource(Resource):
-    """GET /api/transport/vehicles — list with filters/sort/pagination
-       POST /api/transport/vehicles — register a new vehicle
+    """GET /api/transport/vehicles - list with filters/sort/pagination
+       POST /api/transport/vehicles - register a new vehicle
     """
 
     def get(self):

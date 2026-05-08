@@ -5,30 +5,30 @@
 
 ## Routes Created
 
-- [x] `/onboarding/choose` – Landing page with role selection cards
-- [x] `/onboarding/fan` – 1-step fan/explorer onboarding
-- [x] `/onboarding/driver` – 3-step driver onboarding wizard
-- [x] `/onboarding/driver/step/<n>` – Individual driver wizard steps
-- [x] `/onboarding/organisation` – 2-step organisation registration
-- [x] `/onboarding/organisation/step/<n>` – Organisation wizard steps
-- [x] `/onboarding/host` – 2-step accommodation host onboarding
-- [x] `/onboarding/host/step/<n>` – Host wizard steps
-- [x] `/onboarding/event-organiser` – 1-step event organiser onboarding
-- [x] `/wallet/activate` – Wallet activation (opt-in, not auto-created)
+- [x] `/onboarding/choose` - Landing page with role selection cards
+- [x] `/onboarding/fan` - 1-step fan/explorer onboarding
+- [x] `/onboarding/driver` - 3-step driver onboarding wizard
+- [x] `/onboarding/driver/step/<n>` - Individual driver wizard steps
+- [x] `/onboarding/organisation` - 2-step organisation registration
+- [x] `/onboarding/organisation/step/<n>` - Organisation wizard steps
+- [x] `/onboarding/host` - 2-step accommodation host onboarding
+- [x] `/onboarding/host/step/<n>` - Host wizard steps
+- [x] `/onboarding/event-organiser` - 1-step event organiser onboarding
+- [x] `/wallet/activate` - Wallet activation (opt-in, not auto-created)
 
 ## Templates Created
 
-- [x] `templates/onboarding/choose.html` – Main landing page with 7 role cards
-- [x] `templates/onboarding/fan.html` – Simple 1-step form
-- [x] `templates/onboarding/driver_step1.html` – Personal details
-- [x] `templates/onboarding/driver_step2.html` – Licence details with file upload
-- [x] `templates/onboarding/driver_step3.html` – Vehicle details
-- [x] `templates/onboarding/_progress_bar.html` – Shared step indicator
-- [x] `templates/onboarding/organisation_step1.html` – Org details
-- [x] `templates/onboarding/organisation_step2.html` – Confirm & submit
-- [x] `templates/onboarding/host_step1.html` – Personal verification
-- [x] `templates/onboarding/host_step2.html` – Property details
-- [x] `templates/onboarding/event_organiser.html` – 1-step form
+- [x] `templates/onboarding/choose.html` - Main landing page with 7 role cards
+- [x] `templates/onboarding/fan.html` - Simple 1-step form
+- [x] `templates/onboarding/driver_step1.html` - Personal details
+- [x] `templates/onboarding/driver_step2.html` - Licence details with file upload
+- [x] `templates/onboarding/driver_step3.html` - Vehicle details
+- [x] `templates/onboarding/_progress_bar.html` - Shared step indicator
+- [x] `templates/onboarding/organisation_step1.html` - Org details
+- [x] `templates/onboarding/organisation_step2.html` - Confirm & submit
+- [x] `templates/onboarding/host_step1.html` - Personal verification
+- [x] `templates/onboarding/host_step2.html` - Property details
+- [x] `templates/onboarding/event_organiser.html` - 1-step form
 
 ## Code Modifications
 
@@ -38,7 +38,7 @@
 - Uses `db_transaction` for atomic commits
 - Session-based multi-step wizard flow
 
-### `app/auth/routes.py` – `_dashboard_for_user()`
+### `app/auth/routes.py` - `_dashboard_for_user()`
 - Added onboarding completion check at the top
 - Added driver profile check for routing to transport dashboard
 - Added event_manager role check
@@ -69,10 +69,10 @@ flask seed-all
 
 ## Key Design Decisions
 
-1. **Wallet is never auto-created** – only on explicit user request with terms acceptance
+1. **Wallet is never auto-created** - only on explicit user request with terms acceptance
 2. **All role assignments go through `assign_global_role()` or `assign_org_role()`** from `app/auth/roles.py`
 3. **Every DB mutation is wrapped in `db_transaction()`** from `app/utils/transactions.py`
 4. **`get_profile_by_user()` always receives `user.public_id`** (UUID string), never an integer
 5. **Org creation** always creates an `Organisation` record + `OrganisationMember` record + assigns `org_owner` role
-6. **Session-based multi-step wizards** – data stored in session until final commit
-7. **Profile completion** is the gate for dashboard routing – incomplete profiles always go to onboarding
+6. **Session-based multi-step wizards** - data stored in session until final commit
+7. **Profile completion** is the gate for dashboard routing - incomplete profiles always go to onboarding

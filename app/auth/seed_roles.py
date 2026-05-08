@@ -2,7 +2,7 @@
 """
 Database seed script for roles, permissions, and role-permission links.
 
-All operations are idempotent — safe to run multiple times without
+All operations are idempotent - safe to run multiple times without
 duplicating data.
 
 CLI commands (register via register_commands(app) in create_app):
@@ -48,7 +48,7 @@ class RoleDef(NamedTuple):
 
 
 GLOBAL_ROLE_DEFS: List[RoleDef] = [
-    RoleDef("owner", 1, "Platform owner — ultimate authority, no restrictions"),
+    RoleDef("owner", 1, "Platform owner - ultimate authority, no restrictions"),
     RoleDef("super_admin", 2, "Full system admin; manages admins, roles, users"),
     RoleDef("admin", 3, "Manages regular users; cannot touch system config"),
     RoleDef("auditor", 4, "Read-only audit log access"),
@@ -60,11 +60,11 @@ GLOBAL_ROLE_DEFS: List[RoleDef] = [
     RoleDef("wallet_admin", 10, "Wallet and transaction management"),
     RoleDef("accommodation_admin", 11, "Accommodation property management"),
     RoleDef("tourism_admin", 12, "Tourism content and destination management"),
-    RoleDef("user", 13, "Default registered user — can browse and book services"),
+    RoleDef("user", 13, "Default registered user - can browse and book services"),
 ]
 
 ORG_ROLE_DEFS: List[RoleDef] = [
-    RoleDef("org_owner", 1, "Organisation owner — full control", "org"),
+    RoleDef("org_owner", 1, "Organisation owner - full control", "org"),
     RoleDef("org_admin", 2, "Organisation administrator", "org"),
     RoleDef("finance_manager", 3, "Manages finances and payouts", "org"),
     RoleDef("transport_manager", 3, "Manages drivers, vehicles, and routes", "org"),
@@ -371,14 +371,14 @@ def seed_role_permissions(
     for p_def in GLOBAL_PERMISSION_DEFS + ORG_PERMISSION_DEFS:
         perm = permissions.get(p_def.name)
         if not perm:
-            log.warning("Permission %r not found — skipping", p_def.name)
+            log.warning("Permission %r not found - skipping", p_def.name)
             continue
 
         for role_name in p_def.roles:
             role = roles.get(role_name)
             if not role:
                 log.warning(
-                    "Role %r not found when linking permission %r — skipping",
+                    "Role %r not found when linking permission %r - skipping",
                     role_name, p_def.name,
                 )
                 continue

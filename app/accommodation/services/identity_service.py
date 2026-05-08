@@ -102,7 +102,7 @@ class AccommodationIdentityService:
                         'type': 'organisation',
                         'id': org.id,
                         'display_name': org.legal_name,
-                        # FIX 3: Old-style `X and Y or Z` ternary is fragile — it breaks if Y is
+                        # FIX 3: Old-style `X and Y or Z` ternary is fragile - it breaks if Y is
                         # falsy. The string 'admin' is always truthy here so it happened to work,
                         # but using a proper ternary is safer and clearer.
                         'member_role': 'admin' if member.has_permission("org.accommodation.manage") else 'member'
@@ -126,7 +126,7 @@ class AccommodationIdentityService:
         if not user or not user.is_active or user.is_deleted:
             return False, "Invalid account"
 
-        # FIX 2: Was `and` — that requires BOTH conditions to be true to block a user,
+        # FIX 2: Was `and` - that requires BOTH conditions to be true to block a user,
         # meaning a user who is NOT fully verified but has kyc_level >= 1 would pass through.
         # Using `or` correctly blocks anyone who fails either check.
         if not user.is_fully_verified() or user.kyc_level < 1:
@@ -220,7 +220,7 @@ class AccommodationIdentityService:
                     orgs.append({
                         'id': member.organisation.id,
                         'name': member.organisation.legal_name,
-                        # FIX 3 applied here too — same old-style ternary pattern
+                        # FIX 3 applied here too - same old-style ternary pattern
                         'role': 'admin' if member.has_permission("org.accommodation.manage") else 'member'
                     })
         return orgs

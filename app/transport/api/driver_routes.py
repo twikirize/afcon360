@@ -11,7 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Fields allowed for sorting — prevents arbitrary column injection
+# Fields allowed for sorting - prevents arbitrary column injection
 DRIVER_SORT_FIELDS = [
     "created_at", "updated_at", "average_rating",
     "reliability_score", "safety_score", "total_trips",
@@ -43,7 +43,7 @@ class DriverListResource(Resource):
         query = filter_query(query, DriverProfile, filters)
 
         # ------------------------------------------------------------------
-        # Search (join required — handled separately from filter_query)
+        # Search (join required - handled separately from filter_query)
         # ------------------------------------------------------------------
         search = request.args.get("search")
         if search:

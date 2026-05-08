@@ -7,7 +7,7 @@ from app.extensions import db
 from app.models.base import BaseModel
 
 # ─────────────────────────────────────────────────────────────────
-# ARCHITECTURAL BOUNDARY — identity module
+# ARCHITECTURAL BOUNDARY - identity module
 # ─────────────────────────────────────────────────────────────────
 # This module is part of the IDENTITY domain.
 # It must NEVER import from or define relationships back to:

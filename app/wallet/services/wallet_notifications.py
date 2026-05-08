@@ -2,7 +2,7 @@
 app/wallet/services/wallet_notifications.py
 
 Thin notification layer for wallet events.
-Calls the existing SMS and email services — does NOT implement them.
+Calls the existing SMS and email services - does NOT implement them.
 
 RULE: Every call is wrapped in try/except.
 A broken SMS provider must NEVER roll back a successful deposit.
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_user(user_id: int):
-    """Load user safely — returns None on any failure."""
+    """Load user safely - returns None on any failure."""
     try:
         from app.identity.models.user import User
         return User.get_by_private_id(user_id)
@@ -34,7 +34,7 @@ def _get_user(user_id: int):
 def _send(user_id: int, message: str, channel: str = "sms"):
     """
     Send a notification via SMS or email.
-    Fails silently — never raises.
+    Fails silently - never raises.
     """
     if not current_app.config.get("WALLET_NOTIFICATIONS_ENABLED", True):
         return
@@ -76,12 +76,12 @@ def _send(user_id: int, message: str, channel: str = "sms"):
                     logger.warning(f"Email failed for user {user_id}: {e}")
 
     except Exception as e:
-        # Swallow everything — notifications are best-effort
+        # Swallow everything - notifications are best-effort
         logger.warning(f"Notification failed for user {user_id}: {e}")
 
 
 # ---------------------------------------------------------------------------
-# Public notification functions — one per wallet event
+# Public notification functions - one per wallet event
 # ---------------------------------------------------------------------------
 
 def notify_deposit(user_id: int, amount: Decimal, currency: str, new_balance: Decimal):

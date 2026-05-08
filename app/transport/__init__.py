@@ -1,13 +1,13 @@
 # app/transport/__init__.py
 """
-AFCON360 – Transport Module
+AFCON360 - Transport Module
 """
 
 from flask import Blueprint
 import logging
 
 # -------------------------------------------------------------------
-# Blueprints — created at module level (safe)
+# Blueprints - created at module level (safe)
 # -------------------------------------------------------------------
 
 transport_bp = Blueprint(
@@ -82,7 +82,7 @@ def init_transport_module(app):
     """
     Initialize Transport module services and register all routes.
     """
-    # 1. Models — imported here so they are registered with SQLAlchemy
+    # 1. Models - imported here so they are registered with SQLAlchemy
     # but only when the module is actually initialized.
     from app.transport import models  # noqa: F401
 
@@ -131,3 +131,23 @@ try:
                    module_name='Transport', icon='fa-id-card')
 except Exception:
     pass
+
+
+# -------------------------------------------------------------------
+# Context processor to inject wallet balance safely
+# -------------------------------------------------------------------
+@transport_bp.context_processor
+def inject_wallet_balance():
+    """Inject wallet balance for the current user if available."""
+    from flask_login import current_user
+    balance = None
+    try:
+        if current_user.is_authenticated:
+            # Use the wallet service from the app's lazy getter
+            from app.wallet.services.wallet_service import WalletService
+            ws = WalletService()
+            # Pass user_id as keyword argument to match expected signature
+            balance = ws.get_balance(user_id=current_user.id)
+    except Exception as e:
+        logger.warning(f"Wallet balance query error: {e}")
+    return dict(wallet_balance=balance)

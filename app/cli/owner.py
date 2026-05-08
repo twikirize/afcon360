@@ -1,5 +1,5 @@
 """
-AFCON360 — Owner Assignment CLI
+AFCON360 - Owner Assignment CLI
 ================================
 Drop this file in:  app/cli/owner.py
 
@@ -85,8 +85,8 @@ def register_owner_commands(app):
             console.print(
                 Panel(
                     f"[red]❌  No user found for:[/red]\n"
-                    f"  email    = {email or '—'}\n"
-                    f"  username = {username or '—'}",
+                    f"  email    = {email or '-'}\n"
+                    f"  username = {username or '-'}",
                     title="User not found",
                     border_style="red",
                 )
@@ -97,7 +97,7 @@ def register_owner_commands(app):
         owner_role = Role.query.filter_by(name="owner", scope="global").first()
 
         if not owner_role:
-            console.print("[yellow]⚠️  Owner role not found — creating it...[/yellow]")
+            console.print("[yellow]⚠️  Owner role not found - creating it...[/yellow]")
             owner_role = Role(
                 name="owner",
                 scope="global",
@@ -175,7 +175,7 @@ def register_owner_commands(app):
 
 
 def _list_current_owners(db, Role, User, UserRole):
-    """Helper — print current owner assignments."""
+    """Helper - print current owner assignments."""
 
     owner_role = Role.query.filter_by(name="owner", scope="global").first()
 

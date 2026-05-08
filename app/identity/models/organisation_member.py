@@ -241,7 +241,7 @@ class OrgRole(BaseModel):
     def permission_names(self) -> set[str]:
         """Return all permission name strings granted to this role.
 
-        Queries the database directly — safe to call even on detached objects.
+        Queries the database directly - safe to call even on detached objects.
         """
         if not self.id:
             return set()
@@ -300,7 +300,7 @@ class OrgMemberPermission(BaseModel):
     """
     A direct permission grant or explicit deny for a single member.
 
-    These override role-based permissions.  Use sparingly — role
+    These override role-based permissions.  Use sparingly - role
     assignments should cover 95% of cases.  Direct denies are the
     exceptional case where a member needs a role but must be excluded
     from one specific permission.

@@ -807,11 +807,34 @@
       <i class="fas fa-tree"></i> Tourism
       {% if moderation_stats is defined and moderation_stats.tourism_pending %}<span class="nav-badge amber">{{ moderation_stats.tourism_pending }}</span>{% endif %}
     </a>
+    <a href="{{ url_for('admin.moderator.transport_moderation') }}"
+       class="nav-item {% if request.endpoint == 'admin.moderator.transport_moderation' %}active{% endif %}">
+      <i class="fas fa-bus"></i> Transport
+      {% if moderation_stats is defined and moderation_stats.pending_drivers %}<span class="nav-badge amber">{{ moderation_stats.pending_drivers }}</span>{% endif %}
+    </a>
 
     <div class="sidebar-section">USERS</div>
     <a href="{{ url_for('admin.moderator.user_moderation') }}"
        class="nav-item {% if 'user_moderation' in request.endpoint or 'view_user' in request.endpoint %}active{% endif %}">
       <i class="fas fa-users"></i> User List
+    </a>
+
+    <div class="sidebar-section">ENTERPRISE</div>
+    <a href="{{ url_for('admin.moderator.ai_analytics') }}"
+       class="nav-item {% if request.endpoint == 'admin.moderator.ai_analytics' %}active{% endif %}">
+      <i class="fas fa-brain"></i> AI Analytics
+    </a>
+    <a href="{{ url_for('admin.moderator.content_safety') }}"
+       class="nav-item {% if request.endpoint == 'admin.moderator.content_safety' %}active{% endif %}">
+      <i class="fas fa-shield-alt"></i> Content Safety
+    </a>
+    <a href="{{ url_for('admin.moderator.cross_platform') }}"
+       class="nav-item {% if request.endpoint == 'admin.moderator.cross_platform' %}active{% endif %}">
+      <i class="fas fa-network-wired"></i> Cross-Platform
+    </a>
+    <a href="{{ url_for('admin.moderator.training') }}"
+       class="nav-item {% if request.endpoint == 'admin.moderator.training' %}active{% endif %}">
+      <i class="fas fa-graduation-cap"></i> Training
     </a>
 
     <div class="sidebar-section">SYSTEM</div>

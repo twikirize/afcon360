@@ -3,7 +3,7 @@
 Organisation ownership transfer utilities.
 
 Ownership is represented by the ``org_owner`` OrgRole assignment within
-an organisation.  Only one member should hold ``org_owner`` at any time —
+an organisation.  Only one member should hold ``org_owner`` at any time -
 this module enforces that invariant during transfers.
 """
 

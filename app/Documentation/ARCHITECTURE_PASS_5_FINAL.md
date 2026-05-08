@@ -1,7 +1,7 @@
-# AFCON 360 — Final Architecture Decision & Implementation
-## Codeium Agent Instructions — Architecture Pass 5
+# AFCON 360 - Final Architecture Decision & Implementation
+## Codeium Agent Instructions - Architecture Pass 5
 
-**Version:** 5.0 — FINAL ARCHITECTURE
+**Version:** 5.0 - FINAL ARCHITECTURE
 **Date:** 2026-05-06
 **Authority:** This document supersedes all previous passes on fan/role/profile decisions.
 **Principle:** Surgical changes only. Every change listed. Nothing unlisted is touched.
@@ -12,16 +12,16 @@
 
 AFCON 360 is a super app with a tournament skin. Every person has one
 account with a default role of "user". The word "fan" is a product label
-and a UI skin — not a database role and not a separate profile model.
+and a UI skin - not a database role and not a separate profile model.
 Fan allegiance (which team someone supports) is stored as a single
 nullable field on UserProfile. All tournament-specific UI features are
 controlled by MODULE_FLAGS["tournament"] in config.py. When the
-tournament ends, the flag is toggled off — accounts, wallets, bookings,
+tournament ends, the flag is toggled off - accounts, wallets, bookings,
 and history are completely untouched.
 
 ---
 
-## PHASE 0 — READ BEFORE TOUCHING ANYTHING
+## PHASE 0 - READ BEFORE TOUCHING ANYTHING
 
 ### What you must NOT change
 - Any route URLs or blueprint prefixes
@@ -35,12 +35,12 @@ and history are completely untouched.
 - Any migration already applied to the database
 
 ### What you ARE changing
-Five things only — listed in Phases 1 through 5 below.
+Five things only - listed in Phases 1 through 5 below.
 Execute them in order. Do not combine phases.
 
 ---
 
-## PHASE 1 — DATABASE: Add fields to UserProfile, create migration
+## PHASE 1 - DATABASE: Add fields to UserProfile, create migration
 
 ### 1.1 Add 4 columns to UserProfile model
 
@@ -65,7 +65,7 @@ Find the `UserProfile` class. After the existing `email` column, add:
 ```
 
 Do not change any other column. Do not change any relationship.
-Do not change IMMUTABLE_AFTER_VERIFICATION — these 4 new fields are
+Do not change IMMUTABLE_AFTER_VERIFICATION - these 4 new fields are
 mutable at any time.
 
 ### 1.2 Create the migration
@@ -81,7 +81,7 @@ Check the generated migration file. It must only contain:
 - `op.add_column('user_profiles', sa.Column('bio', ...))`
 - One `op.create_index` for fan_team
 
-If it contains anything else — especially any `op.drop_table` —
+If it contains anything else - especially any `op.drop_table` -
 STOP and report before running.
 
 ### 1.3 Apply the migration
@@ -108,7 +108,7 @@ Expected output: `Phase 1 verified`
 
 ---
 
-## PHASE 2 — DATABASE: Migrate FanProfile data and drop table
+## PHASE 2 - DATABASE: Migrate FanProfile data and drop table
 
 ### 2.1 Check if FanProfile table has any data
 
@@ -173,7 +173,7 @@ for row in rows:
         "public_id":    user_public_id,
     })
 
-    # nationality already exists on UserProfile — only copy if empty
+    # nationality already exists on UserProfile - only copy if empty
     if row.nationality:
         db.session.execute(text("""
             UPDATE user_profiles SET nationality = :nat
@@ -205,7 +205,7 @@ Fields moved: display_name, avatar_url, bio, fan_team (new).
 This file is kept as a placeholder to avoid import errors during transition.
 All fan_profiles references should be updated to use UserProfile instead.
 """
-# DEPRECATED — do not add new code here
+# DEPRECATED - do not add new code here
 ```
 
 Create a new migration to drop the table:
@@ -214,7 +214,7 @@ Create a new migration to drop the table:
 flask db migrate -m "drop_fan_profiles_table"
 ```
 
-Check the generated file — it must contain `op.drop_table('fan_profiles')`.
+Check the generated file - it must contain `op.drop_table('fan_profiles')`.
 Apply it:
 
 ```bash
@@ -228,12 +228,12 @@ flask shell
 >>> from app.extensions import db
 >>> tables = inspect(db.engine).get_table_names()
 >>> assert 'fan_profiles' not in tables, "fan_profiles table still exists"
->>> print("Phase 2 verified — fan_profiles dropped")
+>>> print("Phase 2 verified - fan_profiles dropped")
 ```
 
 ---
 
-## PHASE 3 — CODE: Remove get_or_create_fan() calls
+## PHASE 3 - CODE: Remove get_or_create_fan() calls
 
 ### 3.1 Find every callsite
 
@@ -248,18 +248,18 @@ Record every file returned. You must fix all of them.
 For every occurrence, the replacement is the same pattern:
 
 ```python
-# BEFORE — creates a FanProfile record (no longer exists):
+# BEFORE - creates a FanProfile record (no longer exists):
 from app.fan.services.registry import get_or_create_fan
 fan = get_or_create_fan(user.id)
 if fan:
     fan.display_name = full_name
 
-# AFTER — updates UserProfile directly:
+# AFTER - updates UserProfile directly:
 from app.profile.models import get_profile_by_user
 profile = get_profile_by_user(user.public_id)
 if profile and not profile.display_name:
     profile.display_name = full_name
-# No separate record needed — UserProfile is the single source of truth
+# No separate record needed - UserProfile is the single source of truth
 ```
 
 ### 3.3 Fix app/fan/routes.py specifically
@@ -268,12 +268,12 @@ The fan dashboard route uses `get_or_create_fan`. Replace the profile
 section with a direct UserProfile lookup:
 
 ```python
-# In fan/routes.py dashboard() — REPLACE this pattern:
+# In fan/routes.py dashboard() - REPLACE this pattern:
 # profile = get_or_create_fan(internal_id)
 # WITH:
 from app.profile.models import get_profile_by_user
 profile = get_profile_by_user(current_user.public_id)
-# profile is now UserProfile — has full_name, display_name, avatar_url, bio, fan_team
+# profile is now UserProfile - has full_name, display_name, avatar_url, bio, fan_team
 ```
 
 ### 3.4 Fix app/auth/onboarding_routes.py
@@ -292,7 +292,7 @@ Expected: zero matches (except the deprecated comment in app/fan/models.py).
 
 ---
 
-## PHASE 4 — CODE: Fix the "fan" role → "user" role alignment
+## PHASE 4 - CODE: Fix the "fan" role → "user" role alignment
 
 ### 4.1 The situation
 
@@ -312,14 +312,14 @@ RoleDef("fan", 13, "Default end-user; no admin access"),
 
 Change it to:
 ```python
-RoleDef("user", 13, "Default registered user — can browse and book services"),
+RoleDef("user", 13, "Default registered user - can browse and book services"),
 ```
 
-Also update `GLOBAL_PERMISSION_DEFS` — find every place `"fan"` appears
+Also update `GLOBAL_PERMISSION_DEFS` - find every place `"fan"` appears
 in the `roles` list of a permission and change it to `"user"`:
 
 ```python
-# Example — find and replace pattern:
+# Example - find and replace pattern:
 # BEFORE:
 PermDef("accommodation.search", "Search and view listings",
         ["owner", "super_admin", "admin", "fan"]),
@@ -342,7 +342,7 @@ if "fan" in role_names:
 # AFTER:
 if "user" in role_names:
     return url_for("fan.dashboard")
-# Note: URL stays as fan.dashboard — we are not renaming the blueprint
+# Note: URL stays as fan.dashboard - we are not renaming the blueprint
 ```
 
 ### 4.4 Update helpers.py if needed
@@ -383,9 +383,9 @@ flask shell
 ...     db.session.commit()
 ...     print(f"Updated {result.rowcount} user_roles rows from fan -> user")
 ... elif not fan_role:
-...     print("No fan role found — already clean")
+...     print("No fan role found - already clean")
 ... elif not user_role:
-...     print("ERROR: user role not found — run flask seed-all first")
+...     print("ERROR: user role not found - run flask seed-all first")
 ```
 
 ### 4.7 Verify
@@ -406,7 +406,7 @@ flask shell
 
 ---
 
-## PHASE 5 — CODE: Tournament skin via MODULE_FLAGS
+## PHASE 5 - CODE: Tournament skin via MODULE_FLAGS
 
 ### 5.1 Confirm flag exists in config.py
 
@@ -457,7 +457,7 @@ scores, fan feed, etc.). Wrap it:
 
 ```html
 {% if tournament_mode %}
-  {# ── TOURNAMENT SKIN — only shown during AFCON ──────────── #}
+  {# ── TOURNAMENT SKIN - only shown during AFCON ──────────── #}
 
   {% if profile and profile.fan_team %}
   <div class="fan-allegiance-badge">
@@ -472,7 +472,7 @@ scores, fan feed, etc.). Wrap it:
   </div>
   {% endif %}
 
-  {# Match feed, fan events, fan trips go here — all inside this block #}
+  {# Match feed, fan events, fan trips go here - all inside this block #}
 
 {% endif %}
 {# ── END TOURNAMENT SKIN ─────────────────────────────────── #}
@@ -482,10 +482,10 @@ scores, fan feed, etc.). Wrap it:
 
 **File:** `templates/profile/edit.html`
 
-Add this field to the form (it is always editable — not locked after verification):
+Add this field to the form (it is always editable - not locked after verification):
 
 ```html
-<!-- Fan team declaration — shown always, relevant during tournament -->
+<!-- Fan team declaration - shown always, relevant during tournament -->
 <div class="mb-3">
   <label for="fan_team" class="form-label">
     AFCON team you support
@@ -522,7 +522,7 @@ Add this field to the form (it is always editable — not locked after verificat
 Find where the profile fields are saved from the form. Add:
 
 ```python
-# fan_team is always mutable — not in IMMUTABLE_AFTER_VERIFICATION
+# fan_team is always mutable - not in IMMUTABLE_AFTER_VERIFICATION
 fan_team = request.form.get("fan_team", "").strip() or None
 profile.fan_team = fan_team
 ```
@@ -536,14 +536,14 @@ Add inside the profile header section:
 ```html
 {% if tournament_mode and profile.fan_team %}
 <span class="badge" style="background:#E1F5EE;color:#085041;font-size:12px;padding:4px 10px;border-radius:20px;">
-  AFCON fan — {{ profile.fan_team }}
+  AFCON fan - {{ profile.fan_team }}
 </span>
 {% endif %}
 ```
 
 ---
 
-## PHASE 6 — VERIFICATION: Full system check
+## PHASE 6 - VERIFICATION: Full system check
 
 Run all of these. Paste output in your report.
 
@@ -600,36 +600,36 @@ Expected: all passing tests still pass.
 Date: ___________
 Branch: ___________
 
-PHASE 1 — UserProfile columns added:
+PHASE 1 - UserProfile columns added:
 fan_team column: EXISTS / MISSING
 display_name column: EXISTS / MISSING
 avatar_url column: EXISTS / MISSING
 bio column: EXISTS / MISSING
 Migration applied without errors: YES / NO
 
-PHASE 2 — FanProfile dropped:
+PHASE 2 - FanProfile dropped:
 Rows migrated before drop: ___ rows
 fan_profiles table dropped: YES / NO
 app/fan/models.py cleared: YES / NO
 
-PHASE 3 — get_or_create_fan removed:
+PHASE 3 - get_or_create_fan removed:
 Files changed: ___________
 Remaining references: ___ (must be 0)
 
-PHASE 4 — fan role renamed to user:
+PHASE 4 - fan role renamed to user:
 seed_roles.py updated: YES / NO
 flask seed-all ran: YES / NO
 Existing user_roles rows updated: ___ rows
 fan role count in DB: ___ (must be 0)
 user role count in DB: ___ (must be 1)
 
-PHASE 5 — Tournament skin:
+PHASE 5 - Tournament skin:
 tournament_mode in context processor: YES / NO
 fan_team field in edit form: YES / NO
 fan_team saved in edit route: YES / NO
 Tournament block in dashboard template: YES / NO
 
-PHASE 6 — Verification:
+PHASE 6 - Verification:
 App starts without errors: YES / NO
 All routes still present: YES / NO
 FanProfile references remaining: ___ (must be 0)

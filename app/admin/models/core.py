@@ -105,3 +105,20 @@ class UserDashboardConfig(BaseModel):
 
     def __repr__(self):
         return f"<UserDashboardConfig user_id={self.user_id}>"
+
+
+class SystemConfiguration(BaseModel):
+    """
+    System-wide configuration settings stored in database
+    """
+    __tablename__ = "system_configurations"
+
+    key = Column(String(100), nullable=False, unique=True, index=True)
+    value = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    value_type = Column(String(50), default="string")  # string, int, bool, json
+    category = Column(String(50), nullable=True)  # permissions, features, security, etc.
+    is_public = Column(Boolean, default=False)  # Whether this setting can be exposed to clients
+
+    def __repr__(self):
+        return f"<SystemConfiguration {self.key}={self.value}>"

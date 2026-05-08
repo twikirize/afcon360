@@ -6,7 +6,7 @@ These functions accept a ``User`` ORM instance and inspect its loaded
 relationships for role checks (fast, cached on user object).
 
 Permission checks (has_global_permission, has_org_permission) always
-query the database directly — permissions are security-critical and must
+query the database directly - permissions are security-critical and must
 reflect the current state of the DB, not a potentially stale/detached
 ORM object loaded earlier in the session lifecycle.
 
@@ -17,7 +17,7 @@ Org helpers     →  operate on ``user.organisations``  (OrganisationMember
 Owner bypass
 ------------
 The ``owner`` role satisfies every role and permission check
-unconditionally. This is the single place that rule is enforced — every
+unconditionally. This is the single place that rule is enforced - every
 other check delegates here so the bypass is never duplicated.
 """
 
@@ -45,7 +45,7 @@ STAFF_ROLES: frozenset[str] = frozenset({
     "owner", "super_admin", "admin", "moderator", "support",
 })
 
-#: Privilege order — index 0 = highest privilege.
+#: Privilege order - index 0 = highest privilege.
 ROLE_HIERARCHY: tuple[str, ...] = (
     "owner",
     "super_admin",
@@ -63,12 +63,12 @@ ROLE_HIERARCHY: tuple[str, ...] = (
 def _get_user_global_role_ids(user: "User") -> list:
     """
     Return the list of Role PKs assigned to the user via their UserRole
-    join records. Safe to call even when role objects are detached — we
+    join records. Safe to call even when role objects are detached - we
     only read the FK column, not a lazy relationship.
     """
     ids = []
     for ur in (user.roles or []):
-        # ur.role_id is a plain column — never triggers a lazy load.
+        # ur.role_id is a plain column - never triggers a lazy load.
         if hasattr(ur, 'role_id') and ur.role_id is not None:
             ids.append(ur.role_id)
         elif ur.role:
@@ -78,7 +78,7 @@ def _get_user_global_role_ids(user: "User") -> list:
 
 
 # ---------------------------------------------------------------------------
-# Global role helpers  (safe — only inspects role.name, loaded with user)
+# Global role helpers  (safe - only inspects role.name, loaded with user)
 # ---------------------------------------------------------------------------
 
 def is_owner(user: "User") -> bool:
@@ -98,7 +98,7 @@ def has_global_role(user: "User", *role_names: str) -> bool:
     """
     Return ``True`` if the user holds **any** of the named global roles.
 
-    ``owner`` implicitly satisfies every role check — an owner can do
+    ``owner`` implicitly satisfies every role check - an owner can do
     anything any other role can do.
 
     Args:
@@ -154,7 +154,7 @@ def has_global_permission(user: "User", permission_name: str) -> bool:
 
     ``owner`` short-circuits to ``True`` without a DB query.
 
-    Always queries the database for non-owner users — permissions are
+    Always queries the database for non-owner users - permissions are
     security-critical and must never be read from a detached/stale ORM
     object.
 
@@ -165,7 +165,7 @@ def has_global_permission(user: "User", permission_name: str) -> bool:
     if not user or not user.roles:
         return False
 
-    # Owner bypass — no DB needed.
+    # Owner bypass - no DB needed.
     if is_owner(user):
         return True
 
@@ -252,7 +252,7 @@ def get_profile_completion_data(user: "User"):
 
 
 # ---------------------------------------------------------------------------
-# Organisation role helpers  (safe — only inspects role.name)
+# Organisation role helpers  (safe - only inspects role.name)
 # ---------------------------------------------------------------------------
 
 def get_org_member(
@@ -328,7 +328,7 @@ def has_org_permission(
     if not member:
         return False
 
-    # Collect org-role IDs from the membership (FK columns only — no lazy load).
+    # Collect org-role IDs from the membership (FK columns only - no lazy load).
     org_role_ids = []
     for our in (member.roles or []):
         if hasattr(our, 'role_id') and our.role_id is not None:

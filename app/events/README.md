@@ -1,4 +1,4 @@
-# Events Module — Consolidated README
+# Events Module - Consolidated README
 
 This document consolidates all Events-related READMEs/notes into a single, up‑to‑date reference. It de-duplicates overlapping content, aligns claims with the current codebase, and highlights what remains to be done.
 
@@ -57,8 +57,8 @@ These models are actively used by `EventService` and routes.
 - Content lifecycle: `create_event`, `update_event`, `delete_event` (soft), moderation actions (approve/reject)
 - Home/Discovery: `get_featured_event`, `get_upcoming_events`
 - Registration:
-  - `register_for_event_optimistic` — high-concurrency path with atomic capacity updates (see Concurrency below)
-  - `register_for_event_with_payment` — payment-aware flow
+  - `register_for_event_optimistic` - high-concurrency path with atomic capacity updates (see Concurrency below)
+  - `register_for_event_with_payment` - payment-aware flow
   - `cancel_registration`, `check_in_attendee` (with QR)
 - Ticketing: `add_ticket_type`, validations, discount code validation
 - Dashboards: attendee, organizer, service provider
@@ -112,7 +112,7 @@ Note: `landing`, `list`, `create_event`, etc., confirmed present (former notes q
 
 Permission helpers determine who can do what based on:
 - Global roles: system admin, super admin, event manager
-- Organization roles for the event’s organisation
+- Organization roles for the event's organisation
 - Event ownership (created by/owned by)
 - Event status (e.g., only published/approved can be certain actions)
 

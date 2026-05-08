@@ -1,4 +1,4 @@
-# app/auth/services.py — FIXED AUDIT LOGGING
+# app/auth/services.py - FIXED AUDIT LOGGING
 #
 # Changes:
 #   [FIX] Replaced ComplianceAuditLog with AuditLog in _emit()
@@ -76,7 +76,7 @@ def _emit(event_name: str, payload: dict) -> None:
 
     # FIXED: Use correct audit log model with proper field mapping
     # NOTE: AuditLog.user_id is a BigInteger FK to users.id (integer PK).
-    # payload["user_id"] is the public UUID string — we must use payload["id"] instead,
+    # payload["user_id"] is the public UUID string - we must use payload["id"] instead,
     # which is the integer PK set by _user_payload() and auth_event_emitter.
     try:
         AuditLog.log(

@@ -1,10 +1,11 @@
 # app/identity/user.py
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid as uuid_lib
+from typing import List
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, ForeignKey, JSON,
-    Index, UniqueConstraint, event, select
+    Index, UniqueConstraint, event, Text, select
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
@@ -23,7 +24,7 @@ from flask import current_app
 class User(UserMixin, ProtectedModel):
     """
     Enterprise user with Dual ID System:
-    - id:        BIGINT (internal, for database relations/Foreign Keys and joins only — never expose)
+    - id:        BIGINT (internal, for database relations/Foreign Keys and joins only - never expose)
     - public_id: String(64) UUID (external, for APIs/URLs/Flask-Login sessions)
     # Rule: if a human sees it → public_id. If only DB sees it → id
     """
@@ -37,7 +38,7 @@ class User(UserMixin, ProtectedModel):
         Index("ix_user_public_id", "public_id"),
     )
 
-    # EXTERNAL ID (UUID) — Use for ALL public exposure, URLs, Flask-Login sessions
+    # EXTERNAL ID (UUID) - Use for ALL public exposure, URLs, Flask-Login sessions
     public_id = Column(
         String(64), unique=True, nullable=False, index=True,
         default=lambda: str(uuid_lib.uuid4())
@@ -86,7 +87,7 @@ class User(UserMixin, ProtectedModel):
     emergency_access_reason = Column(String(255), nullable=True)  # Why access was granted
     emergency_access_expires = Column(DateTime, nullable=True)  # When access expires
 
-    # Default organisation — use_alter=True prevents circular dependency on table creation
+    # Default organisation - use_alter=True prevents circular dependency on table creation
     default_org_id = Column(
         BigInteger,
         ForeignKey(
@@ -132,7 +133,7 @@ class User(UserMixin, ProtectedModel):
         cascade="all, delete-orphan"
     )
     verifications = relationship(
-        "IndividualVerification",           # Short name — safer than full module path
+        "IndividualVerification",           # Short name - safer than full module path
         back_populates="user",
         cascade="all, delete-orphan",
         foreign_keys="IndividualVerification.user_id"
@@ -170,21 +171,21 @@ class User(UserMixin, ProtectedModel):
         return self.id
 
     def get_id_for_fk(self):
-        """Explicit helper — foreign key usage (internal BIGINT)."""
+        """Explicit helper - foreign key usage (internal BIGINT)."""
         return self.id
 
     def get_id_for_url(self):
-        """Explicit helper — URL/public usage (UUID string)."""
+        """Explicit helper - URL/public usage (UUID string)."""
         return self.public_id
 
     @classmethod
     def get_by_public_id(cls, public_uuid: str):
-        """Find user by public UUID — use this in all API endpoints."""
+        """Find user by public UUID - use this in all API endpoints."""
         return cls.query.filter_by(public_id=public_uuid).first()
 
     @classmethod
     def get_by_private_id(cls, internal_id: int):
-        """Find user by internal BIGINT — use this for DB-only operations."""
+        """Find user by internal BIGINT - use this for DB-only operations."""
         return cls.query.get(internal_id)
 
     # ---------------------------
@@ -194,7 +195,7 @@ class User(UserMixin, ProtectedModel):
         """
         Returns public_id (UUID string) for Flask-Login session tracking.
         Flask-Login will store and reload using this value, so it must
-        match what user_loader queries on — query by public_id, NOT by id.
+        match what user_loader queries on - query by public_id, NOT by id.
 
         Ensure your user_loader looks like:
             @login_manager.user_loader
@@ -277,9 +278,8 @@ class User(UserMixin, ProtectedModel):
         may lock the PIN for a configurable window.
         """
         from flask import current_app
-        from datetime import timezone
         if not self.transaction_pin_hash:
-            # No PIN set — caller may decide to allow or disallow
+            # No PIN set - caller may decide to allow or disallow
             return False
 
         # If locked, prevent verification
@@ -287,7 +287,7 @@ class User(UserMixin, ProtectedModel):
             return False
 
         if check_password_hash(self.transaction_pin_hash, pin):
-            # Successful verification — reset counters
+            # Successful verification - reset counters
             self.transaction_pin_failed_attempts = 0
             self.transaction_pin_locked_until = None
             if session:
@@ -799,7 +799,7 @@ def check_user_duplicates(connection, target, is_update=False):
             return
         query = select(users_table.c.id).where(column == value)
         if is_update and target.id:
-            # Exclude the current record — don't flag a user's own existing values
+            # Exclude the current record - don't flag a user's own existing values
             query = query.where(users_table.c.id != target.id)
         result = connection.execute(query).first()
         if result:
@@ -870,12 +870,51 @@ class MFASecret(ProtectedModel):
     mfa_type = Column(String(32), nullable=False, index=True)
     secret = Column(String(1024), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
+    
+    # Enhanced MFA fields
+    backup_codes = Column(Text, nullable=True)  # Encrypted JSON backup codes
+    device_name = Column(String(100), nullable=True)
+    last_used = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="mfa_secrets", lazy="joined")
 
     __table_args__ = (
         UniqueConstraint("user_id", "mfa_type", name="uq_mfa_user_type"),
     )
+    
+    def generate_backup_codes(self, count: int = 10) -> List[str]:
+        """Generate backup codes."""
+        import secrets
+        return [secrets.token_hex(4).upper() for _ in range(count)]
+    
+    def store_backup_codes(self, backup_codes: List[str]):
+        """Store encrypted backup codes."""
+        from app.utils.security import get_encryption_key, _fernet
+        encrypted_codes = _fernet.encrypt(str(backup_codes).encode()).decode()
+        self.backup_codes = encrypted_codes
+    
+    def get_backup_codes(self) -> List[str]:
+        """Get decrypted backup codes."""
+        if not self.backup_codes:
+            return []
+        
+        from app.utils.security import get_encryption_key, _fernet
+        try:
+            decrypted = _fernet.decrypt(self.backup_codes.encode()).decode()
+            return eval(decrypted)  # Convert string back to list
+        except Exception:
+            return []
+    
+    def verify_backup_code(self, code: str) -> bool:
+        """Verify and consume backup code."""
+        backup_codes = self.get_backup_codes()
+        if code in backup_codes:
+            backup_codes.remove(code)
+            self.store_backup_codes(backup_codes)
+            self.last_used = datetime.utcnow()
+            return True
+        return False
 
     @validates("mfa_type")
     def validate_type(self, key, value):

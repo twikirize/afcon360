@@ -7,14 +7,14 @@ permission checks across the application.
 
 Design decisions
 ----------------
-* **Owner bypass** — the ``owner`` role is always granted. Enforced in
+* **Owner bypass** - the ``owner`` role is always granted. Enforced in
   :mod:`app.auth.helpers`, not here, so the rule is never duplicated.
-* **DB-driven** — permissions are resolved against the ``role_permissions``
+* **DB-driven** - permissions are resolved against the ``role_permissions``
   table via :func:`~app.auth.helpers.has_global_permission` /
   :func:`~app.auth.helpers.has_org_permission`. Seed the DB with
   :mod:`app.auth.seed` to populate them.
-* **Fail-closed** — any unknown permission returns ``False``.
-* **No side effects** — every function here is pure and stateless.
+* **Fail-closed** - any unknown permission returns ``False``.
+* **No side effects** - every function here is pure and stateless.
 
 Usage
 -----
@@ -72,7 +72,7 @@ def can(
     if user is None:
         return False
 
-    # Owner has unconditional access everywhere — checked once, here.
+    # Owner has unconditional access everywhere - checked once, here.
     if is_owner(user):
         return True
 

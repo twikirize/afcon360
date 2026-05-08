@@ -17,11 +17,11 @@ A dedicated Flask blueprint (`onboarding_bp`, URL prefix `/onboarding`) was crea
 | `/onboarding/choose` | GET | Landing page where users select their path |
 | `/onboarding/fan` | GET, POST | 1-step fan/explorer onboarding |
 | `/onboarding/driver` | GET, POST | 3-step driver wizard (step 1 default) |
-| `/onboarding/driver/step/<int:step>` | GET, POST | Driver wizard steps 1–3 |
+| `/onboarding/driver/step/<int:step>` | GET, POST | Driver wizard steps 1-3 |
 | `/onboarding/organisation` | GET, POST | 2-step org wizard (step 1 default) |
-| `/onboarding/organisation/step/<int:step>` | GET, POST | Org wizard steps 1–2 |
+| `/onboarding/organisation/step/<int:step>` | GET, POST | Org wizard steps 1-2 |
 | `/onboarding/host` | GET, POST | 2-step host wizard (step 1 default) |
-| `/onboarding/host/step/<int:step>` | GET, POST | Host wizard steps 1–2 |
+| `/onboarding/host/step/<int:step>` | GET, POST | Host wizard steps 1-2 |
 | `/onboarding/event-organiser` | GET, POST | 1-step event organiser onboarding |
 
 **Key design decisions:**
@@ -32,11 +32,11 @@ A dedicated Flask blueprint (`onboarding_bp`, URL prefix `/onboarding`) was crea
 
 ### 1.2 Dashboard Routing Integration (`app/auth/routes.py`)
 
-The existing `_dashboard_for_user()` function already contained an onboarding check (lines 78–85). Two fixes were applied directly in the routing logic:
+The existing `_dashboard_for_user()` function already contained an onboarding check (lines 78-85). Two fixes were applied directly in the routing logic:
 
-1. **Login redirect prioritisation** (line 646–652): When a user logs in with an incomplete profile and a `next` parameter is present, the intended destination is saved to `session["post_onboarding_redirect"]` and the user is sent to `/onboarding/choose`.
-2. **Driver verification field fix** (line 152–159): `DriverProfile.verification_status` (non-existent) was replaced with `DriverProfile.verification_tier == VerificationTier.PLATFORM_VERIFIED`.
-3. **Event manager redirect fix** (line 161–166): `events.organizer_dashboard` (requires an `identifier`) was replaced with `events.my_events`.
+1. **Login redirect prioritisation** (line 646-652): When a user logs in with an incomplete profile and a `next` parameter is present, the intended destination is saved to `session["post_onboarding_redirect"]` and the user is sent to `/onboarding/choose`.
+2. **Driver verification field fix** (line 152-159): `DriverProfile.verification_status` (non-existent) was replaced with `DriverProfile.verification_tier == VerificationTier.PLATFORM_VERIFIED`.
+3. **Event manager redirect fix** (line 161-166): `events.organizer_dashboard` (requires an `identifier`) was replaced with `events.my_events`.
 
 ### 1.3 Templates (`templates/onboarding/`)
 
@@ -60,7 +60,7 @@ Files created/updated:
 
 ### 1.4 Blueprint Registration (`app/__init__.py`)
 
-`onboarding_bp` was already imported and registered in the app factory at lines 422–423 and 488. No changes were required.
+`onboarding_bp` was already imported and registered in the app factory at lines 422-423 and 488. No changes were required.
 
 ### 1.5 Tests (`tests/test_onboarding.py`)
 
@@ -197,7 +197,7 @@ The registration system assigns `"user"` as the default global role. The onboard
 ### 3.6 Medium: Wallet Auto-Creation Violates Onboarding Rule
 **Status**: **Noted for further analysis. NOT fixed.**
 
-`app/wallet/services/account_service.py` contains `get_or_create_account()` which auto-creates a wallet if none exists. The onboarding guide explicitly states: "Wallet is opt-in — never auto-create".
+`app/wallet/services/account_service.py` contains `get_or_create_account()` which auto-creates a wallet if none exists. The onboarding guide explicitly states: "Wallet is opt-in - never auto-create".
 
 **Impact**: Users may have wallets created implicitly before they explicitly accept terms.
 

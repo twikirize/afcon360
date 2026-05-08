@@ -25,38 +25,71 @@ auth_bp = Blueprint("auth", __name__, url_prefix="")
 # Security Helpers
 # ---------------------------------------------------------------------------
 
-def _verify_mfa_token(user, token: str) -> bool:
+def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
     """
-    Verify MFA token for user.
+    Verify MFA token for user with enhanced functionality.
     
     SECURITY: Used for owner login MFA requirement.
     
     Args:
         user: User model instance
         token: MFA code from user
+        backup_code: Whether this is a backup code verification
         
     Returns:
         True if token valid, False otherwise
     """
-    if not token or not hasattr(user, 'mfa_secret'):
+    if not token:
         return False
     
     try:
-        # Use pyotp if available
-        import pyotp
-        totp = pyotp.TOTP(user.mfa_secret)
-        return totp.verify(token, valid_window=1)
+        from app.identity.models.user import MFASecret
+        
+        # Get active MFA secret
+        mfa_secret = MFASecret.query.filter_by(
+            user_id=user.id,
+            is_active=True
+        ).first()
+        
+        if not mfa_secret:
+            return False
+        
+        # Check if it's a backup code
+        if backup_code or len(token) == 8:
+            if mfa_secret.verify_backup_code(token.upper()):
+                mfa_secret.last_used = datetime.utcnow()
+                db.session.commit()
+                return True
+            return False
+        
+        # Verify TOTP token
+        if mfa_secret.mfa_type == 'totp':
+            import pyotp
+            totp = pyotp.TOTP(mfa_secret.secret)
+            if totp.verify(token, valid_window=1):
+                mfa_secret.last_used = datetime.utcnow()
+                db.session.commit()
+                return True
+        
+        # SMS verification (placeholder)
+        elif mfa_secret.mfa_type == 'sms':
+            # Implement SMS verification logic here
+            return False
+        
+        return False
+        
     except ImportError:
         # Fallback: simple time-based verification (less secure, for dev only)
         import hashlib
         import time
-        secret = user.mfa_secret
-        # Check current time window and adjacent windows
-        for window in [-1, 0, 1]:
-            time_window = int(time.time()) // 30 + window
-            expected = hashlib.sha256(f"{secret}:{time_window}".encode()).hexdigest()[:6]
-            if token == expected:
-                return True
+        if hasattr(user, 'mfa_secret'):
+            secret = user.mfa_secret
+            # Check current time window and adjacent windows
+            for window in [-1, 0, 1]:
+                time_window = int(time.time()) // 30 + window
+                expected = hashlib.sha256(f"{secret}:{time_window}".encode()).hexdigest()[:6]
+                if token == expected:
+                    return True
         return False
     except Exception as e:
         current_app.logger.error(f"MFA verification error: {e}")
@@ -75,15 +108,7 @@ def _dashboard_for_user(user) -> str:
     RULE: If the user has NOT completed onboarding, redirect to the
     onboarding landing page regardless of roles.
     """
-    # STEP 1: Check onboarding completion
-    try:
-        from app.profile.models import get_profile_by_user
-        profile = get_profile_by_user(user.public_id)
-        if not profile or not profile.profile_completed:
-            return url_for("onboarding.choose")
-    except Exception as e:
-        current_app.logger.warning(f"Profile check error in dashboard routing: {e}")
-
+    
     # STEP 2: Owner check
     if hasattr(user, 'is_app_owner') and callable(user.is_app_owner):
         try:
@@ -646,10 +671,6 @@ def login():
             next_page = request.args.get("next") or session.pop("next_url", None)
             if not next_page or not is_safe_url(next_page):
                 next_page = _dashboard_for_user(user)
-            elif profile and not profile.profile_completed:
-                # Profile incomplete — save intended destination and go to onboarding
-                session["post_onboarding_redirect"] = next_page
-                next_page = url_for("onboarding.choose")
 
             return redirect(next_page)
 
@@ -843,78 +864,63 @@ def recover_verify():
 # Organization Context Switching
 # ---------------------------------------------------------------------------
 
-@auth_bp.route("/switch-context", methods=["POST"], endpoint="switch_context")
+@auth_bp.route("/switch-context/<context>", methods=["POST", "GET"])
 @login_required
-def switch_context():
-    """Switch between individual and organization contexts."""
-    from flask import session, request, jsonify
-    from app.identity.models.organisation_member import OrganisationMember
+def switch_context(context):
+    """
+    Switch between personal and organisation context.
+    Called from the nav dropdown.
+    context: 'individual' | 'organization'
+    """
+    from flask import session, redirect, url_for, request
 
-    context = request.form.get("context", "individual")
-    org_id = request.form.get("org_id")
+    if context == "individual":
+        session["current_context"] = "individual"
+        session.pop("current_org_id", None)
+        session.pop("current_org_name", None)
+        # Redirect to personal dashboard
+        return redirect(url_for("fan.dashboard"))
 
-    if context == "organization" and org_id:
-        # Verify user is a member of this organization
-        user = current_user
-        is_member = False
+    elif context == "organization":
+        # org_id must be provided as query param or form field
+        org_id = request.args.get("org_id") or request.form.get("org_id")
+        if not org_id:
+            flash("No organisation specified.", "warning")
+            return redirect(url_for("fan.dashboard"))
 
-        # Try to check membership
-        try:
-            # Check if user has organisations attribute
-            if hasattr(user, 'organisations'):
-                for membership in user.organisations:
-                    if (membership.organisation_id == int(org_id) and
-                        not getattr(membership, 'is_deleted', False) and
-                        getattr(membership, 'is_active', True)):
-                        is_member = True
-                        break
-            else:
-                # Try querying directly
-                membership = OrganisationMember.query.filter_by(
-                    user_id=user.id,
-                    organisation_id=int(org_id),
-                    is_deleted=False,
-                    is_active=True
-                ).first()
-                is_member = membership is not None
-        except Exception as e:
-            current_app.logger.warning(f"Error checking organization membership: {e}")
-            is_member = False
+        # Verify user is a member of this org
+        from app.identity.models.organisation import Organisation
+        from app.identity.models.organisation_member import OrganisationMember
+        from app.identity.models.user import User as UserModel
 
-        if not is_member:
-            if request.is_json:
-                return jsonify({"error": "Not a member of this organization"}), 403
-            flash("You are not a member of this organization.", "danger")
-            return redirect(request.referrer or url_for("index"))
+        db_user = UserModel.query.filter_by(
+            public_id=str(current_user.public_id)
+        ).first()
+
+        org = Organisation.query.filter_by(org_id=org_id).first()
+        if not org:
+            flash("Organisation not found.", "danger")
+            return redirect(url_for("fan.dashboard"))
+
+        member = OrganisationMember.query.filter_by(
+            user_id=db_user.id,
+            organisation_id=org.id,
+            is_active=True,
+            is_deleted=False,
+        ).first()
+
+        if not member:
+            flash("You are not a member of this organisation.", "danger")
+            return redirect(url_for("fan.dashboard"))
 
         session["current_context"] = "organization"
-        session["current_org_id"] = int(org_id)
-        # Store organization name if available
-        try:
-            from app.identity.models.organisation import Organisation
-            org = Organisation.query.get(int(org_id))
-            if org:
-                session["current_org_name"] = org.name
-        except:
-            pass
+        session["current_org_id"] = org.org_id   # UUID - not BIGINT
+        session["current_org_name"] = org.legal_name
 
-        if request.is_json:
-            return jsonify({"success": True, "message": "Context switched to organization"})
-        flash(f"Now acting as organization", "success")
+        return redirect(url_for("org.dashboard", org_id=org.org_id))
 
-    elif context == "individual":
-        session["current_context"] = "individual"
-        session["current_org_id"] = None
-        session.pop("current_org_name", None)
-
-        if request.is_json:
-            return jsonify({"success": True, "message": "Context switched to individual"})
-        flash("Now acting as individual", "success")
-
-    next_page = request.form.get("next") or request.referrer or url_for("index")
-    if request.is_json:
-        return jsonify({"success": True, "redirect": next_page})
-    return redirect(next_page)
+    else:
+        return redirect(url_for("fan.dashboard"))
 
 # ---------------------------------------------------------------------------
 # Organization Selection
@@ -992,9 +998,102 @@ def complete_profile():
 
     return render_template("kyc/complete_profile.html")
 
+
 # ---------------------------------------------------------------------------
-# MFA
+# Enhanced MFA Routes
 # ---------------------------------------------------------------------------
+
+@auth_bp.route('/mfa/setup')
+@login_required
+def mfa_setup():
+    """MFA setup page."""
+    from app.identity.models.user import MFASecret
+    
+    # Check if MFA is already enabled
+    existing_mfa = MFASecret.query.filter_by(
+        user_id=current_user.id,
+        is_active=True
+    ).first()
+    
+    if existing_mfa:
+        flash('MFA is already enabled for your account', 'info')
+        return redirect(url_for('auth.mfa_status'))
+    
+    return render_template('auth/mfa_setup.html')
+
+@auth_bp.route('/mfa/enable', methods=['POST'])
+@login_required
+def mfa_enable():
+    """Enable MFA for user."""
+    from app.identity.models.user import MFASecret
+    import pyotp
+    import qrcode
+    import io
+    import base64
+    
+    mfa_type = request.form.get('mfa_type', 'totp')
+    device_name = request.form.get('device_name', 'Primary Device')
+    
+    if mfa_type == 'totp':
+        # Generate TOTP secret
+        secret = pyotp.random_base32()
+        
+        # Create MFA record
+        mfa_secret = MFASecret(
+            user_id=current_user.id,
+            mfa_type=mfa_type,
+            secret=secret,
+            device_name=device_name,
+            is_active=True
+        )
+        
+        # Generate backup codes
+        backup_codes = mfa_secret.generate_backup_codes()
+        mfa_secret.store_backup_codes(backup_codes)
+        
+        db.session.add(mfa_secret)
+        
+        # Update user
+        current_user.mfa_enabled = True
+        current_user.enable_mfa('totp', enabled_by_user_id=current_user.id)
+        
+        db.session.commit()
+        
+        # Generate QR code
+        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=f"user_{current_user.id}@afcon360.com",
+            issuer_name="AFCON360 Wallet"
+        )
+        
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(totp_uri)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        qr_code = f"data:image/png;base64,{img_str}"
+        
+        return jsonify({
+            'success': True,
+            'secret': secret,
+            'qr_code': qr_code,
+            'backup_codes': backup_codes
+        })
+    
+    return jsonify({'success': False, 'error': 'Unsupported MFA type'})
+
+@auth_bp.route('/mfa/status')
+@login_required
+def mfa_status():
+    """MFA status page."""
+    from app.identity.models.user import MFASecret
+    
+    mfa_secrets = MFASecret.query.filter_by(user_id=current_user.id).all()
+    
+    return render_template('auth/mfa_status.html', mfa_secrets=mfa_secrets)
 
 @auth_bp.route("/mfa/<user_id>", methods=["GET", "POST"], endpoint="mfa")
 def mfa(user_id: str):

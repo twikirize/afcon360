@@ -19,7 +19,7 @@ Install the latest PowerShell for new features and improvements! https://aka.ms/
 2026-04-28 23:41:32,386 [INFO] app: Events module signal handlers connected
 2026-04-28 23:41:32,394 [WARNING] app: Organization blueprint not found: No module named 'app.org'
 2026-04-28 23:41:32,496 [INFO] app.transport.api.routes: ✅ Transport API resources registered (32 endpoints)
-2026-04-28 23:41:32,504 [INFO] app: ✅ Transport API initialized — /api/transport/* routes live
+2026-04-28 23:41:32,504 [INFO] app: ✅ Transport API initialized - /api/transport/* routes live
 2026-04-28 23:41:32,504 [INFO] app: ✅ Transport module initialized (Deep Lazy)
 2026-04-28 23:41:32,536 [INFO] app: ✅ IDGuard CLI commands registered
 2026-04-28 23:41:32,536 [INFO] app.events.signal_handlers: Events module signal handlers connected

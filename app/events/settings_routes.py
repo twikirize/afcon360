@@ -1,6 +1,6 @@
 # app/events/settings_routes.py
 """
-Event Settings routes — admin-only platform configuration.
+Event Settings routes - admin-only platform configuration.
 
 Register on the events blueprint:
     from app.events.settings_routes import register_settings_routes
@@ -22,7 +22,7 @@ def register_settings_routes(bp):
     @bp.route("/admin/settings", methods=["GET"])
     @login_required
     def admin_settings():
-        """Event platform settings page — admin only."""
+        """Event platform settings page - admin only."""
         from app.events.permissions import is_system_admin
         from app.events.settings_model import EventSettings
 
@@ -40,7 +40,7 @@ def register_settings_routes(bp):
     @bp.route("/admin/settings", methods=["POST"])
     @login_required
     def admin_settings_save():
-        """Save event platform settings — admin only."""
+        """Save event platform settings - admin only."""
         from app.events.permissions import is_system_admin
         from app.events.settings_model import EventSettings
 

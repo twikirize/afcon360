@@ -1,0 +1,705 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Vehicle: {{ vehicle.make }} {{ vehicle.model }} — AFCON360{% endblock %}
+
+{% block topbar_title %}Vehicle Details{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_vehicles') }}">Vehicles</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">{{ vehicle.make }} {{ vehicle.model }}</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">{{ vehicle.make }} {{ vehicle.model }}</h1>
+    <p class="page-subtitle">License Plate: {{ vehicle.license_plate }}</p>
+  </div>
+  <div class="action-buttons">
+    {% if vehicle.status == 'pending' %}
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='approve') }}" style="display:inline;">
+      <button type="submit" class="btn btn-success" onclick="return confirm('Approve this vehicle?')">
+        <i class="fas fa-check"></i> Approve Vehicle
+      </button>
+    </form>
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='reject') }}" style="display:inline;">
+      <button type="submit" class="btn btn-danger" onclick="return confirm('Reject this vehicle?')">
+        <i class="fas fa-times"></i> Reject Vehicle
+      </button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='flag') }}" style="display:inline;">
+      <input type="hidden" name="reason" value="Flagged for review">
+      <input type="hidden" name="priority" value="medium">
+      <button type="submit" class="btn btn-outline">
+        <i class="fas fa-flag"></i> Flag
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="col-layout-2-1">
+  <!-- Main Content -->
+  <div>
+    <!-- Vehicle Information -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-car" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Vehicle Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Make & Model</div>
+            <div class="info-value">{{ vehicle.make }} {{ vehicle.model }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">License Plate</div>
+            <div class="info-value mono">{{ vehicle.license_plate }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">VIN Number</div>
+            <div class="info-value mono">{{ vehicle.vin_number or 'Not provided' }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Registration Number</div>
+            <div class="info-value">{{ vehicle.registration_number or 'Not provided' }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Year</div>
+            <div class="info-value">{{ vehicle.year }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Color</div>
+            <div class="info-value">{{ vehicle.color or 'Not specified' }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Vehicle Type</div>
+            <div class="info-value">{{ vehicle.vehicle_type.replace('_', ' ').title() }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Vehicle Class</div>
+            <div class="info-value">{{ vehicle.vehicle_class.replace('_', ' ').title() }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Status</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 
+                'green' if vehicle.status == 'active'
+                else 'amber' if vehicle.status == 'pending'
+                else 'blue' if vehicle.status == 'maintenance'
+                else 'red' if vehicle.status == 'rejected'
+                else 'gray' }}">
+                {{ vehicle.status.replace('_', ' ').title() }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Availability</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 'green' if vehicle.is_available else 'gray' }}">
+                {{ 'Available' if vehicle.is_available else 'Unavailable' }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Owner Type</div>
+            <div class="info-value">{{ vehicle.owner_type.title() }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Owner ID</div>
+            <div class="info-value mono">{{ vehicle.owner_id }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Registered</div>
+            <div class="info-value">{{ vehicle.created_at.strftime('%Y-%m-%d') }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Capacity & Features -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-users" style="background:var(--green-lt);color:var(--green);"></i>
+          Capacity & Features
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="capacity-grid">
+          <div class="capacity-item">
+            <div class="capacity-icon">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="capacity-content">
+              <div class="capacity-label">Passenger Capacity</div>
+              <div class="capacity-value">{{ vehicle.passenger_capacity }} seats</div>
+            </div>
+          </div>
+          {% if vehicle.max_passenger_capacity %}
+          <div class="capacity-item">
+            <div class="capacity-icon">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="capacity-content">
+              <div class="capacity-label">Max Capacity</div>
+              <div class="capacity-value">{{ vehicle.max_passenger_capacity }} seats</div>
+            </div>
+          </div>
+          {% endif %}
+          {% if vehicle.luggage_capacity %}
+          <div class="capacity-item">
+            <div class="capacity-icon">
+              <i class="fas fa-suitcase"></i>
+            </div>
+            <div class="capacity-content">
+              <div class="capacity-label">Luggage Capacity</div>
+              <div class="capacity-value">{{ vehicle.luggage_capacity }} bags</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        
+        <div class="features-section">
+          <div class="features-title">Vehicle Features</div>
+          <div class="features-grid">
+            {% for feature, enabled in vehicle.features.items() %}
+            <div class="feature-item {{ 'enabled' if enabled else 'disabled' }}">
+              <i class="fas fa-{{ 'check' if enabled else 'times' }}"></i>
+              {{ feature.replace('_', ' ').title() }}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compliance & Insurance -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-shield-alt" style="background:var(--amber-lt);color:var(--amber);"></i>
+          Compliance & Insurance
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="compliance-grid">
+          <div class="compliance-item">
+            <div class="compliance-icon {{ 'verified' if vehicle.insurance_verified else 'pending' }}">
+              <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="compliance-content">
+              <div class="compliance-title">Insurance Verification</div>
+              <div class="compliance-status">
+                {{ 'Verified' if vehicle.insurance_verified else 'Not Verified' }}
+              </div>
+              {% if vehicle.insurance_provider %}
+              <div class="compliance-details">{{ vehicle.insurance_provider }}</div>
+              {% endif %}
+              {% if vehicle.insurance_expiry %}
+              <div class="compliance-details">Expires: {{ vehicle.insurance_expiry.strftime('%Y-%m-%d') }}</div>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="compliance-item">
+            <div class="compliance-icon {{ 'verified' if vehicle.roadworthiness_certificate else 'pending' }}">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="compliance-content">
+              <div class="compliance-title">Roadworthiness Certificate</div>
+              <div class="compliance-status">
+                {{ 'Valid' if vehicle.roadworthiness_certificate else 'Not Provided' }}
+              </div>
+              {% if vehicle.roadworthiness_expiry %}
+              <div class="compliance-details">Expires: {{ vehicle.roadworthiness_expiry.strftime('%Y-%m-%d') }}</div>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="compliance-item">
+            <div class="compliance-icon {{ 'verified' if vehicle.last_inspection_date else 'pending' }}">
+              <i class="fas fa-wrench"></i>
+            </div>
+            <div class="compliance-content">
+              <div class="compliance-title">Last Inspection</div>
+              <div class="compliance-status">
+                {% if vehicle.last_inspection_date %}
+                  {{ vehicle.last_inspection_date.strftime('%Y-%m-%d') }}
+                {% else %}
+                  No inspection record
+                {% endif %}
+              </div>
+              {% if vehicle.next_inspection_due %}
+              <div class="compliance-details">Next due: {{ vehicle.next_inspection_due.strftime('%Y-%m-%d') }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Driver History -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-history" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Driver History ({{ vehicle_history|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if vehicle_history %}
+          <div class="history-list">
+            {% for history in vehicle_history %}
+            <div class="history-item">
+              <div class="history-icon">
+                <i class="fas fa-user"></i>
+              </div>
+              <div class="history-content">
+                <div class="history-driver">Driver #{{ history.driver_id }}</div>
+                <div class="history-period">
+                  {{ history.started_at.strftime('%Y-%m-%d') }} - 
+                  {% if history.ended_at %}
+                    {{ history.ended_at.strftime('%Y-%m-%d') }}
+                  {% else %}
+                    Present
+                  {% endif %}
+                </div>
+                <div class="history-reason">{{ history.reason or 'Regular assignment' }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-history" style="font-size:32px;color:var(--muted);margin-bottom:12px;"></i>
+            <div>No driver history available</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div>
+    <!-- Flags -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Flags ({{ vehicle_flags|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if vehicle_flags %}
+          <div class="flag-list">
+            {% for flag in vehicle_flags %}
+            <div class="flag-item">
+              <div class="flag-priority {{ flag.priority }}">
+                <i class="fas fa-flag"></i>
+              </div>
+              <div class="flag-content">
+                <div class="flag-reason">{{ flag.reason[:100] }}{% if flag.reason|length > 100 %}...{% endif %}</div>
+                <div class="flag-date">{{ flag.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-shield-alt" style="font-size:32px;color:var(--muted);margin-bottom:12px;"></i>
+            <div>No flags</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Maintenance Info -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-wrench" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Maintenance
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="maintenance-info">
+          <div class="maintenance-item">
+            <div class="maintenance-label">Odometer Reading</div>
+            <div class="maintenance-value">{{ vehicle.odometer_reading_km or 0 }} km</div>
+          </div>
+          {% if vehicle.last_service_date %}
+          <div class="maintenance-item">
+            <div class="maintenance-label">Last Service</div>
+            <div class="maintenance-value">{{ vehicle.last_service_date.strftime('%Y-%m-%d') }}</div>
+          </div>
+          {% endif %}
+          {% if vehicle.next_service_date %}
+          <div class="maintenance-item">
+            <div class="maintenance-label">Next Service Due</div>
+            <div class="maintenance-value">{{ vehicle.next_service_date.strftime('%Y-%m-%d') }}</div>
+          </div>
+          {% endif %}
+          <div class="maintenance-item">
+            <div class="maintenance-label">Maintenance Status</div>
+            <div class="maintenance-value">
+              <span class="badge badge-{{ 
+                'green' if vehicle.maintenance_status == 'ok'
+                else 'amber' if vehicle.maintenance_status == 'due'
+                else 'red' if vehicle.maintenance_status == 'overdue'
+                else 'gray' }}">
+                {{ vehicle.maintenance_status.replace('_', ' ').title() }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-bolt" style="background:var(--amber-lt);color:var(--amber);"></i>
+          Quick Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="action-list">
+          {% if vehicle.status == 'pending' %}
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='approve') }}">
+            <button type="submit" class="btn btn-success btn-block" onclick="return confirm('Approve this vehicle?')">
+              <i class="fas fa-check"></i> Approve Vehicle
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='reject') }}">
+            <button type="submit" class="btn btn-danger btn-block" onclick="return confirm('Reject this vehicle?')">
+              <i class="fas fa-times"></i> Reject Vehicle
+            </button>
+          </form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='flag') }}">
+            <input type="hidden" name="reason" value="Flagged for review">
+            <input type="hidden" name="priority" value="medium">
+            <button type="submit" class="btn btn-outline btn-block">
+              <i class="fas fa-flag"></i> Flag Vehicle
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.info-value {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.info-value.mono {
+  font-family: var(--font-mono);
+}
+
+.capacity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.capacity-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.capacity-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-lt);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.capacity-content {
+  flex: 1;
+}
+
+.capacity-label {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.capacity-value {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.features-section {
+  margin-top: 24px;
+}
+
+.features-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.feature-item.enabled {
+  background: rgba(74,222,128,0.15);
+  color: var(--green);
+}
+
+.feature-item.disabled {
+  background: rgba(107,107,128,0.15);
+  color: var(--muted);
+}
+
+.compliance-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.compliance-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.compliance-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.compliance-icon.verified {
+  background: rgba(74,222,128,0.15);
+  color: var(--green);
+}
+
+.compliance-icon.pending {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.compliance-content {
+  flex: 1;
+}
+
+.compliance-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.compliance-status {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.compliance-details {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.history-list, .flag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-item, .flag-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.history-icon, .flag-priority {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.history-content, .flag-content {
+  flex: 1;
+}
+
+.history-driver, .flag-reason {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.history-period, .flag-date {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.history-reason {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.flag-priority.critical {
+  background: rgba(248,113,113,0.15);
+  color: var(--red);
+}
+
+.flag-priority.high {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.flag-priority.medium {
+  background: rgba(96,165,250,0.15);
+  color: var(--blue);
+}
+
+.flag-priority.low {
+  background: rgba(107,107,128,0.15);
+  color: var(--muted);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.maintenance-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.maintenance-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.maintenance-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.maintenance-value {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-purple { background: rgba(196,181,253,0.15); color: var(--purple); border: 1px solid rgba(196,181,253,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+{% endblock %}

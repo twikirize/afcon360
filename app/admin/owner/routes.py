@@ -183,6 +183,191 @@ def activate_aggregator(aggregator_id):
         flash('Error activating aggregator', 'error')
         return redirect(url_for('admin.owner.manage_aggregators'))
 
+@owner_bp.route('/configure-fraud-detection', methods=['GET', 'POST'])
+@owner_login_required
+def configure_fraud_detection():
+    """Configure fraud detection (Owner only)"""
+    try:
+        from app.wallet.services.fraud_detection_service import FraudDetectionService
+        from flask_login import current_user
+        
+        if request.method == 'POST':
+            # Update fraud detection configuration
+            updates = {
+                'enabled': request.form.get('enabled') == 'on',
+                'algorithm_type': request.form.get('algorithm_type', 'rule_based'),
+                'low_risk_threshold': float(request.form.get('low_risk_threshold', 0.3)),
+                'medium_risk_threshold': float(request.form.get('medium_risk_threshold', 0.7)),
+                'auto_block_threshold': float(request.form.get('auto_block_threshold', 0.9)),
+                'max_transactions_per_minute': int(request.form.get('max_transactions_per_minute', 10)),
+                'max_transactions_per_hour': int(request.form.get('max_transactions_per_hour', 100)),
+                'max_amount_per_transaction': float(request.form.get('max_amount_per_transaction', 1000000)),
+                'max_amount_per_hour': float(request.form.get('max_amount_per_hour', 10000000)),
+                'check_ip_location': request.form.get('check_ip_location') == 'on',
+                'check_device_fingerprint': request.form.get('check_device_fingerprint') == 'on',
+                'check_velocity': request.form.get('check_velocity') == 'on',
+                'check_unusual_patterns': request.form.get('check_unusual_patterns') == 'on',
+                'check_new_account_large_transfer': request.form.get('check_new_account_large_transfer') == 'on',
+                'check_multiple_failed_attempts': request.form.get('check_multiple_failed_attempts') == 'on',
+                'alert_on_high_risk': request.form.get('alert_on_high_risk') == 'on',
+                'alert_on_medium_risk': request.form.get('alert_on_medium_risk') == 'on',
+                'auto_block_high_risk': request.form.get('auto_block_high_risk') == 'on',
+                'require_manual_review_medium_risk': request.form.get('require_manual_review_medium_risk') == 'on',
+                'allow_override': request.form.get('allow_override') == 'on',
+                'alert_email_recipients': request.form.get('alert_email_recipients'),
+                'description': request.form.get('description')
+            }
+            
+            FraudDetectionService.update_config(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner',
+                **updates
+            )
+            
+            flash('Fraud detection configuration updated successfully', 'success')
+            return redirect(url_for('owner.configure_fraud_detection'))
+        
+        # GET request - show current configuration
+        config = FraudDetectionService.get_config()
+        return render_template('owner/configure_fraud_detection.html', config=config)
+    except Exception as e:
+        current_app.logger.error(f"Configure fraud detection error: {e}")
+        flash('Error configuring fraud detection', 'error')
+        return redirect(url_for('owner.dashboard'))
+
+@owner_bp.route('/configure-nonce-protection', methods=['GET', 'POST'])
+@owner_login_required
+def configure_nonce_protection():
+    """Configure nonce replay protection (Owner only)"""
+    try:
+        from app.wallet.services.nonce_protection_service import NonceProtectionService
+        from flask_login import current_user
+        
+        if request.method == 'POST':
+            # Update nonce protection configuration
+            updates = {
+                'enabled': request.form.get('enabled') == 'on',
+                'nonce_ttl_minutes': int(request.form.get('nonce_ttl_minutes', 15)),
+                'cleanup_interval_hours': int(request.form.get('cleanup_interval_hours', 1)),
+                'max_nonces_per_user_per_hour': int(request.form.get('max_nonces_per_user_per_hour', 1000)),
+                'max_nonces_per_aggregator_per_hour': int(request.form.get('max_nonces_per_aggregator_per_hour', 10000)),
+                'require_nonce_for_all_transactions': request.form.get('require_nonce_for_all_transactions') == 'on',
+                'allow_nonce_reuse_same_amount': request.form.get('allow_nonce_reuse_same_amount') == 'on',
+                'strict_ip_binding': request.form.get('strict_ip_binding') == 'on',
+                'alert_on_suspicious_nonce_usage': request.form.get('alert_on_suspicious_nonce_usage') == 'on',
+                'alert_threshold_per_hour': int(request.form.get('alert_threshold_per_hour', 100)),
+                'description': request.form.get('description')
+            }
+            
+            NonceProtectionService.update_config(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner',
+                **updates
+            )
+            
+            flash('Nonce protection configuration updated successfully', 'success')
+            return redirect(url_for('owner.configure_nonce_protection'))
+        
+        # GET request - show current configuration
+        config = NonceProtectionService.get_config()
+        return render_template('owner/configure_nonce_protection.html', config=config)
+    except Exception as e:
+        current_app.logger.error(f"Configure nonce protection error: {e}")
+        flash('Error configuring nonce protection', 'error')
+        return redirect(url_for('owner.dashboard'))
+
+@owner_bp.route('/configure-travel-rule', methods=['GET', 'POST'])
+@owner_login_required
+def configure_travel_rule():
+    """Configure FATF Travel Rule compliance (Owner only)"""
+    try:
+        from app.wallet.services.travel_rule_service import TravelRuleService
+        from flask_login import current_user
+        
+        if request.method == 'POST':
+            # Update travel rule configuration
+            updates = {
+                'enabled': request.form.get('enabled') == 'on',
+                'fiat_threshold_usd': int(request.form.get('fiat_threshold_usd', 1000)),
+                'crypto_threshold_usd': int(request.form.get('crypto_threshold_usd', 1000)),
+                'apply_to_all_jurisdictions': request.form.get('apply_to_all_jurisdictions') == 'on',
+                'exempted_jurisdictions': request.form.get('exempted_jurisdictions'),
+                'collect_originator_info': request.form.get('collect_originator_info') == 'on',
+                'collect_beneficiary_info': request.form.get('collect_beneficiary_info') == 'on',
+                'collect_transaction_purpose': request.form.get('collect_transaction_purpose') == 'on',
+                'verify_originator_identity': request.form.get('verify_originator_identity') == 'on',
+                'verify_beneficiary_identity': request.form.get('verify_beneficiary_identity') == 'on',
+                'auto_report_to_vasp': request.form.get('auto_report_to_vasp') == 'on',
+                'retain_records_days': int(request.form.get('retain_records_days', 1825)),
+                'vasp_api_endpoint': request.form.get('vasp_api_endpoint'),
+                'vasp_api_key': request.form.get('vasp_api_key'),
+                'vasp_timeout_seconds': int(request.form.get('vasp_timeout_seconds', 30)),
+                'description': request.form.get('description')
+            }
+            
+            TravelRuleService.update_config(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner',
+                **updates
+            )
+            
+            flash('Travel Rule configuration updated successfully', 'success')
+            return redirect(url_for('owner.configure_travel_rule'))
+        
+        # GET request - show current configuration
+        config = TravelRuleService.get_config()
+        return render_template('owner/configure_travel_rule.html', config=config)
+    except Exception as e:
+        current_app.logger.error(f"Configure travel rule error: {e}")
+        flash('Error configuring travel rule', 'error')
+        return redirect(url_for('owner.dashboard'))
+
+@owner_bp.route('/add-payment-gateway', methods=['GET', 'POST'])
+@owner_login_required
+def add_payment_gateway():
+    """Add additional payment gateway (Owner only)"""
+    try:
+        from flask_login import current_user
+        
+        if request.method == 'POST':
+            # Get form data
+            gateway_name = request.form.get('gateway_name')
+            gateway_type = request.form.get('gateway_type')
+            api_key = request.form.get('api_key')
+            api_secret = request.form.get('api_secret')
+            webhook_url = request.form.get('webhook_url')
+            
+            # Log the action
+            from app.wallet.services.admin_audit_service import AdminAuditService
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner',
+                action_type='create',
+                action_category='payment_gateway',
+                target_type='payment_gateway',
+                target_name=gateway_name,
+                new_value={
+                    'gateway_name': gateway_name,
+                    'gateway_type': gateway_type,
+                    'api_key': api_key,
+                    'webhook_url': webhook_url
+                },
+                reason=f'Added payment gateway: {gateway_name}'
+            )
+            
+            flash(f'Payment gateway {gateway_name} added successfully', 'success')
+            return redirect(url_for('owner.add_payment_gateway'))
+        
+        return render_template('owner/add_payment_gateway.html')
+    except Exception as e:
+        current_app.logger.error(f"Add payment gateway error: {e}")
+        flash('Error adding payment gateway', 'error')
+        return redirect(url_for('owner.dashboard'))
+
 @owner_bp.route('/dashboard')
 @owner_login_required
 def dashboard():
@@ -595,19 +780,20 @@ def audit_logs():
 def settings():
     """Owner settings page - includes system security settings"""
     try:
-        from app.admin.owner.models import OwnerSettings
+        logger.info("Loading settings page")
+        from app.admin.owner.models import OwnerSettings, SystemSetting
 
         if request.method == 'POST':
             # Update settings
             session_timeout = request.form.get('session_timeout', type=int, default=120)
-            
+
             # SECURITY: Update MFA requirement toggle
             require_owner_mfa = request.form.get('require_owner_mfa') == 'on'
-            
+
             # Update config (this is a system-wide setting)
             # In production, this should update a SystemSetting in DB
             current_app.config['REQUIRE_OWNER_MFA'] = require_owner_mfa
-            
+
             # Also update OwnerSettings
             owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
             if not owner_settings:
@@ -629,31 +815,38 @@ def settings():
             return redirect(url_for('admin.owner.settings'))
 
         # GET request - show settings page
+        logger.info("Fetching owner settings from database")
         owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
-        
+
         # Get current MFA requirement status
         require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
 
         # Get super admin module toggle permission
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
-        
+
         # Get organization registration mode setting
-        from app.admin.models import SystemConfiguration
-        org_registration_config = SystemConfiguration.query.filter_by(
-            key='org_registration_mode'
-        ).first()
-        org_registration_mode = (
-            org_registration_config.value if org_registration_config else 'testing'
-        )
-        
-        return render_template('owner/settings.html', 
-                             settings=owner_settings, 
+        try:
+            from app.admin.models import SystemConfiguration
+            logger.info("Fetching SystemConfiguration for org_registration_mode")
+            org_registration_config = SystemConfiguration.query.filter_by(
+                key='org_registration_mode'
+            ).first()
+            org_registration_mode = (
+                org_registration_config.value if org_registration_config else 'testing'
+            )
+        except Exception as config_error:
+            logger.warning(f"Could not load SystemConfiguration: {config_error}")
+            org_registration_mode = 'testing'
+
+        logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
+        return render_template('owner/settings.html',
+                             settings=owner_settings,
                              require_owner_mfa=require_mfa,
                              super_admin_can_toggle_modules=super_admin_can_toggle_modules,
                              org_registration_mode=org_registration_mode)
     except Exception as e:
-        logger.error(f"Settings error: {e}")
-        flash("Error loading settings", "danger")
+        logger.error(f"Settings error: {e}", exc_info=True)
+        flash(f"Error loading settings: {str(e)}", "danger")
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/settings/toggle-org-registration-mode', methods=['POST'])
@@ -1025,10 +1218,13 @@ def add_super_admin():
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
 
+        logger.info(f"Attempting to add super admin: user_id={user_id}, user={user.username}")
+
         # First, find or create the super_admin role
         super_admin_role = Role.query.filter_by(name='super_admin').first()
         if not super_admin_role:
             # Create the role if it doesn't exist
+            logger.info("Creating super_admin role")
             super_admin_role = Role(
                 name='super_admin',
                 description='System super administrator with full access',
@@ -1037,6 +1233,9 @@ def add_super_admin():
             )
             db.session.add(super_admin_role)
             db.session.commit()  # Commit to ensure role exists
+            logger.info(f"Created super_admin role with id={super_admin_role.id}")
+        else:
+            logger.info(f"Found existing super_admin role with id={super_admin_role.id}")
 
         # Check if user already has this role
         existing_role = UserRole.query.filter_by(
@@ -1044,16 +1243,30 @@ def add_super_admin():
             role_id=super_admin_role.id
         ).first()
 
-        if not existing_role:
-            # Assign the role to the user using assign_global_role
-            assign_global_role(user.id, 'super_admin', assigned_by_id=current_user.id)
-            flash(f"✅ {user.username} is now a Super Admin", "success")
-        else:
+        if existing_role:
+            logger.info(f"User {user.username} already has super_admin role")
             flash(f"⚠️ {user.username} is already a Super Admin", "info")
+        else:
+            # Assign the role to the user using assign_global_role
+            logger.info(f"Assigning super_admin role to user {user.username}")
+            user_role = assign_global_role(user.id, 'super_admin', assigned_by_id=current_user.id)
+            logger.info(f"Assigned UserRole with id={user_role.id}")
+
+            # Verify the assignment
+            verification = UserRole.query.filter_by(
+                user_id=user.id,
+                role_id=super_admin_role.id
+            ).first()
+            if verification:
+                logger.info(f"Verification successful: UserRole exists for user {user.username}")
+            else:
+                logger.error(f"Verification failed: UserRole not found for user {user.username}")
+
+            flash(f"✅ {user.username} is now a Super Admin", "success")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Add super admin error: {e}")
+        logger.error(f"Add super admin error: {e}", exc_info=True)
         flash("Failed to add super admin", "danger")
 
     return redirect(url_for('admin.owner.dashboard'))

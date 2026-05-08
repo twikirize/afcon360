@@ -1,5 +1,5 @@
-Perfect — that actually makes things **clearer**, not worse 👍
-If **MFA, permissions, sessions, API keys are already in `users.py`**, that’s totally valid and *not* a mistake.
+Perfect - that actually makes things **clearer**, not worse 👍
+If **MFA, permissions, sessions, API keys are already in `users.py`**, that's totally valid and *not* a mistake.
 
 Now let me answer your question **precisely and practically**, without over-engineering.
 
@@ -33,7 +33,7 @@ Right now your single file contains:
 
 This is **exactly what an identity domain should own**.
 
-Big companies *start like this too* — one big models file — and split later **only when pain appears**.
+Big companies *start like this too* - one big models file - and split later **only when pain appears**.
 
 ---
 
@@ -46,13 +46,13 @@ You split **only when one of these happens**:
 3. Different devs touch different identity areas
 4. You add **more identity subdomains** (KYB, Trust, Risk, AML, etc.)
 
-You’re *approaching* that point — but not forced yet.
+You're *approaching* that point - but not forced yet.
 
 ---
 
 ## If/when you split: what actually deserves its own file?
 
-Since MFA, permissions, etc. are already in `users.py`, here’s the **minimal future split**, not the academic one.
+Since MFA, permissions, etc. are already in `users.py`, here's the **minimal future split**, not the academic one.
 
 ### 1️⃣ `users.py` (keep as-is, very good)
 
@@ -159,7 +159,7 @@ Those modules should **reference identity by ID only**.
 > Keep it as one file for now.
 > Split only when development friction appears.
 
-That’s how real systems scale — not by premature refactors.
+That's how real systems scale - not by premature refactors.
 
 ---
 
@@ -169,4 +169,4 @@ If you want next, I can:
 * Show how other modules should reference identity safely
 * Review your identity boundaries for payments (wallets vs transactions)
 
-Just tell me what’s next 👊
+Just tell me what's next 👊

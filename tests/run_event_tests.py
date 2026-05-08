@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test event workflow: creation, approval, registration, check-in.
-Uses transaction rollback pattern — no data is ever committed to the DB.
+Uses transaction rollback pattern - no data is ever committed to the DB.
 """
 import sys
 import os
@@ -62,7 +62,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.ctx.pop()
 
     # -------------------------------------------------------------------------
-    # STEP 1 — Event Creation
+    # STEP 1 - Event Creation
     # -------------------------------------------------------------------------
     def test_event_creation(self):
         """Test creating an event"""
@@ -87,7 +87,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertEqual(event['status'], 'draft')
 
     # -------------------------------------------------------------------------
-    # STEP 2 — Event Approval
+    # STEP 2 - Event Approval
     # -------------------------------------------------------------------------
     def test_event_approval(self):
         """Test admin approving an event"""
@@ -113,7 +113,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertIsNotNone(updated_event.approved_at)
 
     # -------------------------------------------------------------------------
-    # STEP 3 — Free Registration
+    # STEP 3 - Free Registration
     # -------------------------------------------------------------------------
     def test_free_registration(self):
         """Test registering for a free event"""
@@ -160,7 +160,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertEqual(registration['status'], 'confirmed')
 
     # -------------------------------------------------------------------------
-    # STEP 4 — Paid Registration
+    # STEP 4 - Paid Registration
     # -------------------------------------------------------------------------
     def test_paid_registration(self):
         """Test registering for a paid event (mocked payment)"""
@@ -193,7 +193,7 @@ class TestEventWorkflow(unittest.TestCase):
             mock_wallet.debit.return_value = (True, {'transaction_id': 123}, None)
             mock_wallet.return_value.debit.return_value = (True, {'transaction_id': 123}, None)
 
-            # FIXED — mock returns integer ID just like the real wallet service would
+            # FIXED - mock returns integer ID just like the real wallet service would
             mock_wallet.debit.return_value = (True, {'transaction_id': 123}, None)
             mock_wallet.return_value.debit.return_value = (True, {'transaction_id': 123}, None)
 
@@ -210,12 +210,12 @@ class TestEventWorkflow(unittest.TestCase):
                     slug, self.user_id, registration_data
                 )
 
-            # Payment is mocked — verify it succeeded or got a meaningful error
+            # Payment is mocked - verify it succeeded or got a meaningful error
             # (not a crash from unpacking)
             self.assertNotIsInstance(registration, type(None))
 
     # -------------------------------------------------------------------------
-    # STEP 5 — Sold Out Event
+    # STEP 5 - Sold Out Event
     # -------------------------------------------------------------------------
     def test_sold_out_event(self):
         """Test registration when event is sold out"""
@@ -243,7 +243,7 @@ class TestEventWorkflow(unittest.TestCase):
         db.session.add(ticket)
         db.session.flush()
 
-        # First registration — should succeed
+        # First registration - should succeed
         reg_data1 = {
             'full_name': 'User One',
             'email': self.test_user.email,
@@ -270,7 +270,7 @@ class TestEventWorkflow(unittest.TestCase):
         db.session.add(user2)
         db.session.flush()
 
-        # Second registration — should fail (sold out)
+        # Second registration - should fail (sold out)
         reg_data2 = {
             'full_name': 'User Two',
             'email': user2.email,
@@ -294,7 +294,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertIn('sold out', err2.lower())
 
     # -------------------------------------------------------------------------
-    # STEP 6 — Check-in Workflow
+    # STEP 6 - Check-in Workflow
     # -------------------------------------------------------------------------
     def test_check_in_workflow(self):
         """Test checking in an attendee"""

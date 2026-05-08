@@ -43,7 +43,7 @@
 Updated: 2026-03-13
 # Already have @limiter.limit per endpoint
 # Consider adding per-user limits in services.py
-# AFCON 360 — Development TODO
+# AFCON 360 - Development TODO
 
 Last updated: March 2026
 
@@ -73,17 +73,17 @@ Last updated: March 2026
 - [x] register_commands(app) pattern wired into create_app()
 
 ### Auth System
-- [x] helpers.py — has_global_role, has_global_permission, has_org_role, has_org_permission, is_owner, highest_role, ROLE_HIERARCHY
-- [x] policy.py — can() single entry point, DB-driven, owner bypass, convenience wrappers
-- [x] decorators.py — @require_role, @require_org_role, @require_permission, @owner_only
-- [x] roles.py — assign_global_role, revoke_global_role, assign_org_role, revoke_org_role with audit logging
-- [x] routes.py — role-based post-login redirect via _dashboard_for_user(), fans no longer land on admin
-- [x] ownership.py — transfer_ownership with correct imports from organisation_member
+- [x] helpers.py - has_global_role, has_global_permission, has_org_role, has_org_permission, is_owner, highest_role, ROLE_HIERARCHY
+- [x] policy.py - can() single entry point, DB-driven, owner bypass, convenience wrappers
+- [x] decorators.py - @require_role, @require_org_role, @require_permission, @owner_only
+- [x] roles.py - assign_global_role, revoke_global_role, assign_org_role, revoke_org_role with audit logging
+- [x] routes.py - role-based post-login redirect via _dashboard_for_user(), fans no longer land on admin
+- [x] ownership.py - transfer_ownership with correct imports from organisation_member
 
 ### Admin Dashboard
-- [x] Super admin dashboard — module toggles, wallet features, transport settings, KYC stats
-- [x] base.html — {% block body %} override so admin dashboard escapes header/footer
-- [x] style.css — sad- prefix namespace, zero collision with public site styles
+- [x] Super admin dashboard - module toggles, wallet features, transport settings, KYC stats
+- [x] base.html - {% block body %} override so admin dashboard escapes header/footer
+- [x] style.css - sad- prefix namespace, zero collision with public site styles
 - [x] Dark theme admin shell with sidebar navigation, stat cards, quick actions
 
 ---
@@ -101,14 +101,14 @@ Last updated: March 2026
 - [ ] This unlocks the Recent Activity panel already built in the dashboard
 - [ ] Without this, compliance story is broken and incidents can't be investigated
 
-### 3. Admin UI — User Management
+### 3. Admin UI - User Management
 - [ ] User list with role badges and KYC status
 - [ ] Role assignment modal (assign/revoke global roles)
 - [ ] User suspend / reactivate
 - [ ] KYC review queue with approve/reject actions
-- [ ] Without this, RBAC system is unusable — you can only change roles via terminal
+- [ ] Without this, RBAC system is unusable - you can only change roles via terminal
 
-### 4. Admin UI — Organisation Management
+### 4. Admin UI - Organisation Management
 - [ ] Organisation list with verification status
 - [ ] Org detail view: members, roles, documents
 - [ ] Approve / reject / suspend organisations
@@ -118,7 +118,7 @@ Last updated: March 2026
 
 ## 🟡 DO NEXT (Before first real user)
 
-### 5. Unit tests — auth helpers
+### 5. Unit tests - auth helpers
 - [ ] tests/auth/test_helpers.py
 - [ ] test_owner_bypasses_all_role_checks()
 - [ ] test_owner_bypasses_all_permission_checks()
@@ -129,16 +129,16 @@ Last updated: March 2026
 - [ ] test_org_member_permission_explicit_deny_overrides_role()
 - [ ] test_effective_permissions_cached_property_invalidation()
 
-### 6. Unit tests — seed
+### 6. Unit tests - seed
 - [ ] tests/auth/test_seed.py
-- [ ] test_seed_all_is_idempotent() — run twice, no duplicates
-- [ ] test_role_permission_links_correct() — owner has system.modules, fan does not
-- [ ] test_org_role_template_permissions() — finance_manager has org.finance.manage
+- [ ] test_seed_all_is_idempotent() - run twice, no duplicates
+- [ ] test_role_permission_links_correct() - owner has system.modules, fan does not
+- [ ] test_org_role_template_permissions() - finance_manager has org.finance.manage
 
 ### 7. Route protection audit
-- [ ] Audit every admin blueprint route — confirm @require_role or @require_permission is present
+- [ ] Audit every admin blueprint route - confirm @require_role or @require_permission is present
 - [ ] Confirm no route redirects to admin without login_required
-- [ ] Check transport_admin routes — currently unprotected (the flask-restful conflict)
+- [ ] Check transport_admin routes - currently unprotected (the flask-restful conflict)
 - [ ] Fix the transport_api route conflict (DriverListResource endpoint overwrite in __init__.py)
 
 ---
@@ -146,7 +146,7 @@ Last updated: March 2026
 ## 🔵 PLANNED (Dashboard builds)
 
 ### 8. Owner dashboard (separate from super_admin)
-- [ ] Leaner than super_admin — god-mode controls only
+- [ ] Leaner than super_admin - god-mode controls only
 - [ ] Module on/off toggles (system.modules permission only)
 - [ ] Role assignment for all levels including super_admin promotion
 - [ ] Full audit log viewer (all roles, all events)
@@ -204,28 +204,28 @@ Last updated: March 2026
 
 ### 16. Health check endpoints
 - [ ] Replace static "Connected" badges in system status card with real pings
-- [ ] GET /health/db — SQLAlchemy ping
-- [ ] GET /health/redis — Redis ping
-- [ ] GET /health/email — SMTP handshake
-- [ ] GET /health/payment — gateway ping
+- [ ] GET /health/db - SQLAlchemy ping
+- [ ] GET /health/redis - Redis ping
+- [ ] GET /health/email - SMTP handshake
+- [ ] GET /health/payment - gateway ping
 - [ ] Wire owner dashboard status card to these endpoints
 
 ### 17. SQLAlchemy 2.x Mapped[] migration
 - [ ] roles_permission.py currently uses __allow_unmapped__ = True as a bridge
 - [ ] Long-term: replace list["RolePermission"] with Mapped[list["RolePermission"]]
 - [ ] Requires importing Mapped from sqlalchemy.orm in each affected model
-- [ ] Not urgent — __allow_unmapped__ is a permanent valid solution
+- [ ] Not urgent - __allow_unmapped__ is a permanent valid solution
 
 ---
 
 ## 🐛 KNOWN BUGS / TECH DEBT
 
-- [ ] transport/__init__.py — DriverListResource endpoint name conflict causing flask app startup error in console (does not affect runtime, fix when touching transport module)
-- [ ] roles_permission.py — create_role() was previously defined twice (fixed)
-- [ ] helpers.py — bare `org_roles` name at module level causing NameError on import (fixed)
-- [ ] seed.py — role names were app_owner/user instead of owner/fan (fixed)
-- [ ] routes.py — all users redirected to super_dashboard after login regardless of role (fixed)
-- [ ] ownership.py — imported OrgUserRole/OrgRole from user.py instead of organisation_member.py (fixed)
+- [ ] transport/__init__.py - DriverListResource endpoint name conflict causing flask app startup error in console (does not affect runtime, fix when touching transport module)
+- [ ] roles_permission.py - create_role() was previously defined twice (fixed)
+- [ ] helpers.py - bare `org_roles` name at module level causing NameError on import (fixed)
+- [ ] seed.py - role names were app_owner/user instead of owner/fan (fixed)
+- [ ] routes.py - all users redirected to super_dashboard after login regardless of role (fixed)
+- [ ] ownership.py - imported OrgUserRole/OrgRole from user.py instead of organisation_member.py (fixed)
 
 # 🏗️ PLATFORM SECURITY - MASTER TODO LIST
 

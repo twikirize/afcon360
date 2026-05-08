@@ -17,13 +17,13 @@ from app.identity.models.organisation_member import OrganisationMember
 from app.audit.comprehensive_audit import AuditService, SecurityEventLog
 
 # ─────────────────────────────────────────────────────────────────
-# IDENTITY RULE — internal vs external IDs
+# IDENTITY RULE - internal vs external IDs
 # ─────────────────────────────────────────────────────────────────
-# user.id          → BigInteger PK  — use for ALL DB queries,
+# user.id          → BigInteger PK  - use for ALL DB queries,
 #                    ForeignKey joins, filter_by, wallet lookups,
 #                    transaction queries, any SQLAlchemy operation
 #
-# user.public_id   → UUID string    — use for URLs, API responses,
+# user.public_id   → UUID string    - use for URLs, API responses,
 #                    audit log descriptions, log messages,
 #                    anything user-facing or externally visible
 #

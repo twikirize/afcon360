@@ -783,6 +783,7 @@
 
         <!-- Settings Form -->
         <form id="settingsForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% for category, settings in settings_by_category.items() %}
             <div class="category-card" data-category="{{ category }}" id="category-{{ category }}">
                 <div class="category-header">

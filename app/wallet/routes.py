@@ -45,7 +45,7 @@ def get_account(user_id, currency='UGX', owner_type=None):
     
     Args:
         user_id: Can be either internal BIGINT id or public_id (UUID string)
-        currency: Currency code (default: UGX) – ignored, kept for signature compatibility
+        currency: Currency code (default: UGX) - ignored, kept for signature compatibility
         owner_type: AccountOwnerType (USER or ORGANISATION). If None, defaults to USER.
     """
     from app.identity.models.user import User
@@ -194,7 +194,7 @@ def wallet_dashboard():
         # Get existing account (do NOT auto-create)
         account = get_account(current_user.id)
         if not account:
-            # No wallet yet – show zero balance and prompt to create
+            # No wallet yet - show zero balance and prompt to create
             return render_template(
                 'wallet/wallet_dashboard.html',
                 account=None,
@@ -383,10 +383,10 @@ def deposit_form():
         # Process deposit using WalletService
         service = WalletService()
         transaction = service.deposit(
-            account_id=account.id,
+            account_id=account.id,  # UUID - correct per Alipay model
             amount=amount,
             currency=currency,
-            description=f"Deposit via web",
+            client_request_id=str(uuid.uuid4()),  # Required parameter
             metadata={'source': 'web_form'}
         )
         
@@ -474,11 +474,11 @@ def send_funds():
         pin = request.form.get('pin')
 
         service = WalletService()
-        # Use from_user_id / to_user_id (internal BIGINT ids) and generate a client_request_id
+        # Use from_account_id / to_account_id (UUIDs) and generate a client_request_id
         client_request_id = str(uuid4())
         transaction = service.transfer(
-            from_user_id=sender_account.user_id,
-            to_user_id=receiver.id,
+            from_account_id=sender_account.id,  # UUID - correct per Alipay model
+            to_account_id=receiver_account.id,    # UUID - correct per Alipay model
             amount=amount,
             currency=currency,
             client_request_id=client_request_id,
@@ -550,10 +550,10 @@ def withdraw_funds():
         # Process withdrawal using WalletService
         service = WalletService()
         transaction = service.withdraw(
-            account_id=account.id,
+            account_id=account.id,  # UUID - correct per Alipay model
             amount=amount,
             currency=currency,
-            description=f"Withdrawal via {method}",
+            client_request_id=str(uuid.uuid4()),  # Required parameter
             metadata={'method': method, 'agent_id': agent_id}
         )
         
@@ -793,7 +793,7 @@ def wallet_settings_update():
 @wallet_bp.route('/pin', methods=['GET'])
 @login_required
 def pin_page():
-    """Show PIN management page — forward to template if available."""
+    """Show PIN management page - forward to template if available."""
     try:
         account = get_account(current_user.id)
         if not account:

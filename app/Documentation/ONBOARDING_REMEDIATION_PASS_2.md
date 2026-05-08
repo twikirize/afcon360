@@ -1,10 +1,10 @@
-# AFCON 360 — Onboarding Remediation Pass 2
+# AFCON 360 - Onboarding Remediation Pass 2
 ## Strict Fix List for Codeium Agent
 
 **Document Version:** 2.0 (Remediation)
 **Date:** 2026-05-05
 **Source:** Audit report dated 2026-05-04
-**Status of previous pass:** PARTIALLY IMPLEMENTED — 5 blocking defects remain
+**Status of previous pass:** PARTIALLY IMPLEMENTED - 5 blocking defects remain
 **Goal of this pass:** Close all 5 defects. Produce evidence. Sign off.
 
 ---
@@ -12,10 +12,10 @@
 ## WHAT CODEIUM MUST NOT TOUCH
 
 These things work. Do not refactor them:
-- `app/auth/onboarding_routes.py` — routes exist, only specific fixes below
-- `app/auth/routes.py` — `_dashboard_for_user()` is already wired
+- `app/auth/onboarding_routes.py` - routes exist, only specific fixes below
+- `app/auth/routes.py` - `_dashboard_for_user()` is already wired
 - Blueprint registration in `app/__init__.py`
-- `tests/test_onboarding.py` — keep this file, expand it per this doc
+- `tests/test_onboarding.py` - keep this file, expand it per this doc
 
 ---
 
@@ -23,12 +23,12 @@ These things work. Do not refactor them:
 
 ---
 
-## DEFECT 1 — DUPLICATE /wallet/activate ROUTES (CRITICAL)
+## DEFECT 1 - DUPLICATE /wallet/activate ROUTES (CRITICAL)
 
 **Problem:** There are 3 route handlers for wallet activation in `app/wallet/routes.py`:
-- `activate_wallet` (GET + POST) — the correct one from Pass 1
-- `wallet_activate` (GET only) — a leftover
-- `wallet_activate_submit` (POST only) — a leftover
+- `activate_wallet` (GET + POST) - the correct one from Pass 1
+- `wallet_activate` (GET only) - a leftover
+- `wallet_activate_submit` (POST only) - a leftover
 
 Flask will crash or behave unpredictably with duplicate URL rules.
 
@@ -54,7 +54,7 @@ def activate_wallet():
         flash("User not found.", "danger")
         return redirect(url_for("fan.dashboard"))
 
-    # Check if wallet already exists — do not double-create
+    # Check if wallet already exists - do not double-create
     existing = AccountModel.query.filter_by(
         user_id=db_user.id,
         owner_type=AccountOwnerType.USER
@@ -68,9 +68,9 @@ def activate_wallet():
             flash("You must accept the wallet terms to continue.", "warning")
             return render_template("wallet/wallet_activate.html")
 
-        with db_transaction("Wallet activation — user opt-in"):
+        with db_transaction("Wallet activation - user opt-in"):
             account = AccountModel(
-                user_id=db_user.id,          # internal BIGINT FK — correct
+                user_id=db_user.id,          # internal BIGINT FK - correct
                 owner_type=AccountOwnerType.USER,
                 currency="UGX",
             )
@@ -86,35 +86,35 @@ def activate_wallet():
 ```bash
 grep -n "def activate_wallet\|def wallet_activate\|def wallet_activate_submit\|route.*activate" app/wallet/routes.py
 ```
-**Expected output:** Only one match — `def activate_wallet` at one line number.
+**Expected output:** Only one match - `def activate_wallet` at one line number.
 
 ---
 
-## DEFECT 2 — IMPLICIT WALLET AUTO-CREATION (CRITICAL)
+## DEFECT 2 - IMPLICIT WALLET AUTO-CREATION (CRITICAL)
 
 **Problem:** `get_or_create_account()` is called in fan routes and other places, silently creating wallets for users who never asked for one. This violates the core rule.
 
-**Fix — Step A:** Find all callsites:
+**Fix - Step A:** Find all callsites:
 ```bash
 grep -rn "get_or_create_account" app/
 ```
 
-**Fix — Step B:** For EVERY match in user-facing routes (fan, profile, etc.), replace the auto-create call with a safe read-only lookup:
+**Fix - Step B:** For EVERY match in user-facing routes (fan, profile, etc.), replace the auto-create call with a safe read-only lookup:
 
 ```python
-# BEFORE (auto-creates — WRONG):
+# BEFORE (auto-creates - WRONG):
 account = get_or_create_account(internal_id)
 
-# AFTER (read-only — CORRECT):
+# AFTER (read-only - CORRECT):
 from app.wallet.models.ledger import AccountModel, AccountOwnerType
 account = AccountModel.query.filter_by(
     user_id=internal_id,
     owner_type=AccountOwnerType.USER
 ).first()
-# account may be None — templates must handle this gracefully
+# account may be None - templates must handle this gracefully
 ```
 
-**Fix — Step C:** In every template that receives `wallet` or `account`, guard against None:
+**Fix - Step C:** In every template that receives `wallet` or `account`, guard against None:
 
 ```html
 {% if wallet %}
@@ -127,8 +127,8 @@ account = AccountModel.query.filter_by(
 ```
 
 **Files most likely to need this fix:**
-- `app/fan/routes.py` — `dashboard()`, `wallet()`, `view_fan_profile()`
-- `app/profile/routes.py` — `account_overview()`
+- `app/fan/routes.py` - `dashboard()`, `wallet()`, `view_fan_profile()`
+- `app/profile/routes.py` - `account_overview()`
 
 **Verification command:**
 ```bash
@@ -138,11 +138,11 @@ grep -rn "get_or_create_account" app/fan/ app/profile/ app/wallet/routes.py
 
 ---
 
-## DEFECT 3 — ORG SESSION USES INTERNAL ID (SECURITY)
+## DEFECT 3 - ORG SESSION USES INTERNAL ID (SECURITY)
 
 **Problem:** After org onboarding completes, the code does:
 ```python
-session["current_org_id"] = org.id          # WRONG — internal BIGINT
+session["current_org_id"] = org.id          # WRONG - internal BIGINT
 return redirect(url_for("org.dashboard", org_id=org.id))  # WRONG
 ```
 
@@ -151,7 +151,7 @@ return redirect(url_for("org.dashboard", org_id=org.id))  # WRONG
 **Fix:** Open `app/auth/onboarding_routes.py`. Find `_commit_organisation_onboarding` and the `organisation_onboarding` route. Change every reference to `org.id` in session and URL context to `org.org_id`:
 
 ```python
-# In _commit_organisation_onboarding — return the org object (already done)
+# In _commit_organisation_onboarding - return the org object (already done)
 return org
 
 # In organisation_onboarding, after the commit:
@@ -168,7 +168,7 @@ flash(f"Organisation '{org.legal_name}' registered successfully!", "success")
 return redirect(url_for("org.dashboard", org_id=org.org_id))  # ← UUID
 ```
 
-**Also fix** any place in `app/auth/routes.py` or `app/__init__.py` that reads `session["current_org_id"]` and passes it to a DB query — those queries must look up the org by `org_id` (UUID), not by `id` (BIGINT):
+**Also fix** any place in `app/auth/routes.py` or `app/__init__.py` that reads `session["current_org_id"]` and passes it to a DB query - those queries must look up the org by `org_id` (UUID), not by `id` (BIGINT):
 
 ```python
 # CORRECT pattern wherever org_id from session is used:
@@ -185,11 +185,11 @@ grep -n "current_org_id.*org\.id\|org_id=org\.id" app/auth/onboarding_routes.py 
 
 ---
 
-## DEFECT 4 — TEMPLATE DEPTH (UX / PRODUCTION QUALITY)
+## DEFECT 4 - TEMPLATE DEPTH (UX / PRODUCTION QUALITY)
 
 **Problem:** All wizard step templates (driver_step1/2/3, organisation_step1/2, host_step1/2, event_organiser) are single-line placeholders. The `choose.html` exists but lacks the visual grouping required by spec.
 
-### 4A — Fix `choose.html` grouping
+### 4A - Fix `choose.html` grouping
 
 The cards must be split into 3 explicit visual sections:
 
@@ -197,7 +197,7 @@ The cards must be split into 3 explicit visual sections:
 <!-- templates/onboarding/choose.html -->
 {% extends "base.html" %}
 
-{% block title %}What brings you here? — AFCON 360{% endblock %}
+{% block title %}What brings you here? - AFCON 360{% endblock %}
 
 {% block content %}
 <div class="onboarding-root">
@@ -230,7 +230,7 @@ The cards must be split into 3 explicit visual sections:
           </ul>
         </div>
         <div class="ob-card-footer">
-          <span class="ob-kyc-badge ob-kyc--1">✓ Phone verified — ready now</span>
+          <span class="ob-kyc-badge ob-kyc--1">✓ Phone verified - ready now</span>
           <span class="ob-cta">Get Started →</span>
         </div>
       </a>
@@ -292,7 +292,7 @@ The cards must be split into 3 explicit visual sections:
         <div class="ob-card-icon">🎪</div>
         <div class="ob-card-body">
           <h3>Event Organiser</h3>
-          <p>Create and publish events. Sell tickets, manage guest lists and coordinate venues — as an individual or company.</p>
+          <p>Create and publish events. Sell tickets, manage guest lists and coordinate venues - as an individual or company.</p>
           <ul class="ob-what-you-get">
             <li>Create &amp; publish events</li>
             <li>Sell tickets online</li>
@@ -391,7 +391,7 @@ The cards must be split into 3 explicit visual sections:
 
   <!-- ── FOOTER ESCAPE HATCH ────────────────────────────── -->
   <footer class="ob-footer">
-    <p>Not sure yet? <a href="{{ url_for('onboarding.fan_onboarding') }}">Start as a Fan</a> — you can upgrade your account at any time.</p>
+    <p>Not sure yet? <a href="{{ url_for('onboarding.fan_onboarding') }}">Start as a Fan</a> - you can upgrade your account at any time.</p>
     <p class="ob-footer-note">Already have an account? <a href="{{ url_for('auth.logout') }}">Sign out</a></p>
   </footer>
 
@@ -672,7 +672,7 @@ The cards must be split into 3 explicit visual sections:
 {% endblock %}
 ```
 
-### 4B — Fix `_progress_bar.html`
+### 4B - Fix `_progress_bar.html`
 
 Replace the single-line placeholder with this reusable component:
 
@@ -753,15 +753,15 @@ Replace the single-line placeholder with this reusable component:
 </style>
 ```
 
-### 4C — Fix all wizard step templates
+### 4C - Fix all wizard step templates
 
-Each step template must follow this exact pattern. The forms are functional, validated, and styled. Build all 9 remaining templates using this pattern — do not leave any as placeholders:
+Each step template must follow this exact pattern. The forms are functional, validated, and styled. Build all 9 remaining templates using this pattern - do not leave any as placeholders:
 
 ```html
-<!-- PATTERN — copy and adapt for each step -->
+<!-- PATTERN - copy and adapt for each step -->
 <!-- templates/onboarding/driver_step1.html -->
 {% extends "base.html" %}
-{% block title %}Become a Driver — Step 1 of 3{% endblock %}
+{% block title %}Become a Driver - Step 1 of 3{% endblock %}
 {% block content %}
 
 {% set step_current = 1 %}
@@ -831,7 +831,7 @@ Each step template must follow this exact pattern. The forms are functional, val
 {% endblock %}
 ```
 
-**Create `templates/onboarding/_wizard_styles.html`** — shared CSS for all wizard steps:
+**Create `templates/onboarding/_wizard_styles.html`** - shared CSS for all wizard steps:
 
 ```html
 <!-- templates/onboarding/_wizard_styles.html -->
@@ -946,31 +946,31 @@ Each step template must follow this exact pattern. The forms are functional, val
 
 | Template | Wizard Title | Steps | Fields |
 |---|---|---|---|
-| `driver_step2.html` | Become a Driver | 2 of 3 — Licence | licence_number, licence_expiry (date), licence_class (select: A/B/C/D), file: licence_document |
-| `driver_step3.html` | Become a Driver | 3 of 3 — Your Vehicle | vehicle_make, vehicle_model, vehicle_year (number 1990-2026), plate_number, vehicle_type (select: Sedan/SUV/Minibus/Truck), file: insurance_document |
-| `organisation_step1.html` | Register Organisation | 1 of 2 — Details | legal_name, country (select), registration_no, tax_id, contact_email, contact_phone, website |
-| `organisation_step2.html` | Register Organisation | 2 of 2 — Confirm | Show summary of step 1 data (read-only), file: registration_document (optional), checkbox: confirm accuracy |
-| `host_step1.html` | List Your Property | 1 of 2 — Your Identity | full_name, national_id_number, file: id_document, file: proof_of_address |
-| `host_step2.html` | List Your Property | 2 of 2 — Property Details | property_name, address, city, country, property_type (select: Apartment/House/Room/Villa), number_of_rooms (number) |
+| `driver_step2.html` | Become a Driver | 2 of 3 - Licence | licence_number, licence_expiry (date), licence_class (select: A/B/C/D), file: licence_document |
+| `driver_step3.html` | Become a Driver | 3 of 3 - Your Vehicle | vehicle_make, vehicle_model, vehicle_year (number 1990-2026), plate_number, vehicle_type (select: Sedan/SUV/Minibus/Truck), file: insurance_document |
+| `organisation_step1.html` | Register Organisation | 1 of 2 - Details | legal_name, country (select), registration_no, tax_id, contact_email, contact_phone, website |
+| `organisation_step2.html` | Register Organisation | 2 of 2 - Confirm | Show summary of step 1 data (read-only), file: registration_document (optional), checkbox: confirm accuracy |
+| `host_step1.html` | List Your Property | 1 of 2 - Your Identity | full_name, national_id_number, file: id_document, file: proof_of_address |
+| `host_step2.html` | List Your Property | 2 of 2 - Property Details | property_name, address, city, country, property_type (select: Apartment/House/Room/Villa), number_of_rooms (number) |
 | `event_organiser.html` | Host Events | 1 of 1 | full_name, organiser_type (radio: Individual/Company), company_name (shown if Company), contact_email |
 | `fan.html` | Get Started | 1 of 1 | full_name, city, country (select) |
 
 ---
 
-## DEFECT 5 — MISSING TESTS EVIDENCE
+## DEFECT 5 - MISSING TESTS EVIDENCE
 
 **Problem:** The audit could not run tests. Tests must be run and evidence must be pasted in the report.
 
-**Fix — Step A:** Verify `tests/test_onboarding.py` exists. If not, create it from Phase 7 of the original guide.
+**Fix - Step A:** Verify `tests/test_onboarding.py` exists. If not, create it from Phase 7 of the original guide.
 
-**Fix — Step B:** Run and capture output:
+**Fix - Step B:** Run and capture output:
 ```bash
 flask seed-all
 pytest tests/test_onboarding.py -v --tb=short 2>&1 | tee test_output.txt
 cat test_output.txt
 ```
 
-**Fix — Step C:** Also run:
+**Fix - Step C:** Also run:
 ```bash
 flask routes | grep onboarding
 flask routes | grep activate
@@ -983,22 +983,22 @@ flask routes | grep activate
 Run each command. Paste the output in your report.
 
 ```
-COMMAND 1 — No duplicate wallet routes:
+COMMAND 1 - No duplicate wallet routes:
 $ grep -n "def activate_wallet\|def wallet_activate\|def wallet_activate_submit" app/wallet/routes.py
 EXPECTED: Exactly 1 line: "def activate_wallet"
 ACTUAL: ___________
 
-COMMAND 2 — No auto-create in fan routes:
+COMMAND 2 - No auto-create in fan routes:
 $ grep -n "get_or_create_account" app/fan/routes.py app/profile/routes.py
 EXPECTED: 0 matches
 ACTUAL: ___________
 
-COMMAND 3 — Org session uses UUID not BIGINT:
+COMMAND 3 - Org session uses UUID not BIGINT:
 $ grep -n "current_org_id.*org\.id\b" app/auth/onboarding_routes.py
 EXPECTED: 0 matches
 ACTUAL: ___________
 
-COMMAND 4 — All template files exist:
+COMMAND 4 - All template files exist:
 $ ls templates/onboarding/
 EXPECTED: choose.html, fan.html, driver_step1.html, driver_step2.html,
           driver_step3.html, organisation_step1.html, organisation_step2.html,
@@ -1006,22 +1006,22 @@ EXPECTED: choose.html, fan.html, driver_step1.html, driver_step2.html,
           _progress_bar.html, _wizard_styles.html
 ACTUAL: ___________
 
-COMMAND 5 — Onboarding routes registered:
+COMMAND 5 - Onboarding routes registered:
 $ flask routes | grep onboarding
 EXPECTED: 6+ lines showing all onboarding routes
 ACTUAL: ___________
 
-COMMAND 6 — Wallet activate route:
+COMMAND 6 - Wallet activate route:
 $ flask routes | grep activate
-EXPECTED: 1 line — /wallet/activate
+EXPECTED: 1 line - /wallet/activate
 ACTUAL: ___________
 
-COMMAND 7 — Test results:
+COMMAND 7 - Test results:
 $ pytest tests/test_onboarding.py -v --tb=short
 EXPECTED: All tests passed
 ACTUAL: ___________
 
-COMMAND 8 — Role seed:
+COMMAND 8 - Role seed:
 $ flask seed-all
 EXPECTED: "Seed complete" with role count > 0
 ACTUAL: ___________
@@ -1035,25 +1035,25 @@ ACTUAL: ___________
 === REMEDIATION PASS 2 REPORT ===
 Date: ___________
 
-DEFECT 1 — Duplicate wallet routes:
+DEFECT 1 - Duplicate wallet routes:
 Status: FIXED / NOT FIXED
 Evidence (command output): ___________
 
-DEFECT 2 — Auto-create wallet removed:
+DEFECT 2 - Auto-create wallet removed:
 Status: FIXED / NOT FIXED
 Files changed: ___________
 Evidence (command output): ___________
 
-DEFECT 3 — Org session uses UUID:
+DEFECT 3 - Org session uses UUID:
 Status: FIXED / NOT FIXED
 Evidence (command output): ___________
 
-DEFECT 4 — Templates production-grade:
+DEFECT 4 - Templates production-grade:
 Status: FIXED / NOT FIXED
 Files created/updated: ___________
 Visual note (any rendering issues): ___________
 
-DEFECT 5 — Tests run with evidence:
+DEFECT 5 - Tests run with evidence:
 Status: FIXED / NOT FIXED
 Test results: Total ___ / Passed ___ / Failed ___
 Failed test names: ___________

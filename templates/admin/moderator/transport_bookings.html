@@ -1,0 +1,477 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Transport Bookings — AFCON360{% endblock %}
+
+{% block topbar_title %}Transport Bookings{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Bookings</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Transport Bookings</h1>
+    <p class="page-subheading">Manage booking disputes and issues</p>
+  </div>
+</div>
+
+<!-- Status Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.transport_bookings', status='all') }}" 
+     class="tab-link {% if current_status == 'all' %}active{% endif %}">
+    <i class="fas fa-list"></i> All Bookings
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_bookings', status='disputed') }}" 
+     class="tab-link {% if current_status == 'disputed' %}active{% endif %}">
+    <i class="fas fa-exclamation-triangle"></i> Disputed
+    {% if moderation_stats is defined and moderation_stats.disputed_bookings %}
+    <span class="tab-count">{{ moderation_stats.disputed_bookings }}</span>
+    {% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_bookings', status='confirmed') }}" 
+     class="tab-link {% if current_status == 'confirmed' %}active{% endif %}">
+    <i class="fas fa-check-circle"></i> Confirmed
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_bookings', status='in_progress') }}" 
+     class="tab-link {% if current_status == 'in_progress' %}active{% endif %}">
+    <i class="fas fa-spinner"></i> In Progress
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_bookings', status='cancelled') }}" 
+     class="tab-link {% if current_status == 'cancelled' %}active{% endif %}">
+    <i class="fas fa-times-circle"></i> Cancelled
+  </a>
+</div>
+
+<!-- Search and Actions -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-search" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Search & Filter
+    </div>
+  </div>
+  <div class="panel-body">
+    <form method="GET" class="search-form">
+      <div class="search-row">
+        <input type="text" name="search" placeholder="Search by booking reference, pickup/dropoff..." 
+               value="{{ current_search }}" class="search-input">
+        <select name="status" class="filter-select">
+          <option value="all" {% if current_status == 'all' %}selected{% endif %}>All Status</option>
+          <option value="disputed" {% if current_status == 'disputed' %}selected{% endif %}>Disputed</option>
+          <option value="confirmed" {% if current_status == 'confirmed' %}selected{% endif %}>Confirmed</option>
+          <option value="in_progress" {% if current_status == 'in_progress' %}selected{% endif %}>In Progress</option>
+          <option value="cancelled" {% if current_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        </select>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-search"></i> Search
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bookings List -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-calendar-alt" style="background:var(--green-lt);color:var(--green);"></i>
+      Bookings ({{ bookings.total }} total)
+    </div>
+    {% if bookings.pages > 1 %}
+    <div class="pagination-info">
+      Page {{ bookings.page }} of {{ bookings.pages }}
+    </div>
+    {% endif %}
+  </div>
+  <div class="panel-body">
+    {% if bookings.items %}
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Booking</th>
+              <th>Customer</th>
+              <th>Route</th>
+              <th>Driver</th>
+              <th>Status</th>
+              <th>Amount</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for booking in bookings.items %}
+            <tr>
+              <td>
+                <div class="booking-info">
+                  <div class="booking-icon">
+                    <i class="fas fa-calendar-alt"></i>
+                  </div>
+                  <div>
+                    <div class="booking-ref">{{ booking.booking_reference }}</div>
+                    <div class="booking-type">{{ booking.service_type.replace('_', ' ').title() }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="customer-info">
+                  <div class="customer-name">
+                    {% if booking.customer_name %}
+                      {{ booking.customer_name }}
+                    {% else %}
+                      Customer #{{ booking.customer_id }}
+                    {% endif %}
+                  </div>
+                  <div class="customer-contact">
+                    {% if booking.customer_email %}
+                      {{ booking.customer_email }}
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="route-info">
+                  <div class="route-from">
+                    <i class="fas fa-map-marker-alt"></i>
+                    {{ booking.pickup_address[:30] }}{% if booking.pickup_address|length > 30 %}...{% endif %}
+                  </div>
+                  <div class="route-to">
+                    <i class="fas fa-flag-checkered"></i>
+                    {{ booking.dropoff_address[:30] }}{% if booking.dropoff_address|length > 30 %}...{% endif %}
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="driver-info">
+                  {% if booking.driver_id %}
+                    <div class="driver-name">Driver #{{ booking.driver_id }}</div>
+                    <div class="driver-status">Assigned</div>
+                  {% else %}
+                    <div class="driver-name">Unassigned</div>
+                    <div class="driver-status">Pending</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <span class="badge badge-{{ 
+                  'red' if booking.status == 'disputed' 
+                  else 'green' if booking.status == 'confirmed'
+                  else 'blue' if booking.status == 'in_progress'
+                  else 'amber' if booking.status in ['pending_payment', 'driver_en_route']
+                  else 'gray' if booking.status == 'cancelled'
+                  else 'gray' }}">
+                  {{ booking.status.replace('_', ' ').title() }}
+                </span>
+              </td>
+              <td>
+                <div class="amount-info">
+                  {% if booking.total_amount %}
+                    <div class="amount">{{ booking.total_amount }}</div>
+                    <div class="currency">{{ booking.currency or 'USD' }}</div>
+                  {% else %}
+                    <div class="amount">--</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="date-info">
+                  <div class="created">{{ booking.created_at.strftime('%Y-%m-%d') }}</div>
+                  {% if booking.scheduled_at %}
+                    <div class="scheduled">{{ booking.scheduled_at.strftime('%H:%M') }}</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <a href="{{ url_for('admin.moderator.view_transport_booking', booking_id=booking.id) }}" 
+                     class="btn btn-xs btn-outline">
+                    <i class="fas fa-eye"></i> View
+                  </a>
+                  {% if booking.status == 'disputed' %}
+                  <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='approve') }}" 
+                        style="display:inline;">
+                    <button type="submit" class="btn btn-xs btn-success" 
+                            onclick="return confirm('Resolve this dispute in favor of customer?')">
+                      <i class="fas fa-check"></i> Resolve
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <i class="fas fa-calendar-alt" style="font-size:48px;color:var(--muted);margin-bottom:16px;"></i>
+        <h3>No bookings found</h3>
+        <p>No bookings match your current search criteria.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if bookings.pages > 1 %}
+<div class="pagination-wrapper">
+  <div class="pagination">
+    {% if bookings.has_prev %}
+      <a href="{{ url_for('admin.moderator.transport_bookings', page=bookings.prev_num, status=current_status, search=current_search) }}" 
+         class="pagination-link">
+        <i class="fas fa-chevron-left"></i> Previous
+      </a>
+    {% endif %}
+    
+    {% for page_num in bookings.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != bookings.page %}
+          <a href="{{ url_for('admin.moderator.transport_bookings', page=page_num, status=current_status, search=current_search) }}" 
+             class="pagination-link">{{ page_num }}</a>
+        {% else %}
+          <span class="pagination-current">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pagination-ellipsis">...</span>
+      {% endif %}
+    {% endfor %}
+    
+    {% if bookings.has_next %}
+      <a href="{{ url_for('admin.moderator.transport_bookings', page=bookings.next_num, status=current_status, search=current_search) }}" 
+         class="pagination-link">
+        Next <i class="fas fa-chevron-right"></i>
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<style>
+.search-form {
+  margin: 0;
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 150px;
+}
+
+.booking-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.booking-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--accent-lt);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.booking-ref {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.booking-type {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.customer-info {
+  font-size: 13px;
+}
+
+.customer-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.customer-contact {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.route-info {
+  font-size: 12px;
+  max-width: 200px;
+}
+
+.route-from, .route-to {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.driver-info {
+  font-size: 13px;
+}
+
+.driver-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.driver-status {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.amount-info {
+  text-align: right;
+}
+
+.amount {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.currency {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.date-info {
+  font-size: 12px;
+}
+
+.created {
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.scheduled {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.data-table-wrapper {
+  overflow-x: auto;
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.pagination {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pagination-link {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.pagination-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pagination-current {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: white;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pagination-ellipsis {
+  padding: 6px 8px;
+  color: var(--muted);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.empty-state h3 {
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+{% endblock %}

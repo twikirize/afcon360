@@ -1,6 +1,6 @@
 # app/transport/api/organisation_routes.py
 """
-AFCON360 Transport — Organisation REST API
+AFCON360 Transport - Organisation REST API
 Manages transport organisations (hotel fleets, tour operators, transport companies)
 including their driver rosters, fleet stats, and verification status.
 """
@@ -34,8 +34,8 @@ def _org_or_404(org_id):
 # ===========================================================================
 
 class OrganisationListResource(Resource):
-    """GET /api/transport/organisations  — list with filters/sort/pagination
-       POST /api/transport/organisations — create a new organisation profile
+    """GET /api/transport/organisations  - list with filters/sort/pagination
+       POST /api/transport/organisations - create a new organisation profile
     """
 
     def get(self):

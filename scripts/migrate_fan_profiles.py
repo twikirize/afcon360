@@ -43,7 +43,7 @@ for row in rows:
         "public_id":    user_public_id,
     })
 
-    # nationality already exists on UserProfile — only copy if empty
+    # nationality already exists on UserProfile - only copy if empty
     if row.nationality:
         db.session.execute(text("""
             UPDATE user_profiles SET nationality = :nat

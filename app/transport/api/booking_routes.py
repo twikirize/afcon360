@@ -1,6 +1,6 @@
 # app/transport/api/booking_routes.py
 """
-AFCON360 Transport — Booking REST API
+AFCON360 Transport - Booking REST API
 Handles the full booking lifecycle: create, view, status updates,
 driver assignment, payments, and route association.
 """
@@ -24,7 +24,7 @@ BOOKING_SORT_FIELDS = [
     "status", "payment_status", "final_price", "passenger_count"
 ]
 
-# Valid status transitions — enforced server-side
+# Valid status transitions - enforced server-side
 STATUS_TRANSITIONS = {
     BookingStatus.DRAFT:           [BookingStatus.PENDING_PAYMENT, BookingStatus.CANCELLED],
     BookingStatus.PENDING_PAYMENT: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -57,8 +57,8 @@ def _can_transition(current: BookingStatus, target: BookingStatus) -> bool:
 # ===========================================================================
 
 class BookingListResource(Resource):
-    """GET /api/transport/bookings  — list with filters/sort/pagination
-       POST /api/transport/bookings — create a new booking
+    """GET /api/transport/bookings  - list with filters/sort/pagination
+       POST /api/transport/bookings - create a new booking
     """
 
     def get(self):

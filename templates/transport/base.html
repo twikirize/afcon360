@@ -96,7 +96,7 @@
 
     <!-- Topbar -->
     <header class="t-topbar">
-      <button class="topbar-toggle" onclick="toggleSidebar()">
+      <button class="topbar-toggle" id="sidebarToggle">
         <i class="fa-solid fa-bars"></i>
       </button>
 
@@ -155,38 +155,8 @@
 <!-- Utility functions first -->
 <script src="{{ url_for('static', filename='transport/js/utils.js') }}"></script>
 
-<!-- Core JavaScript - keep your existing toggle function -->
-<script>
-function toggleSidebar() {
-  const s = document.getElementById('sidebar');
-  const o = document.getElementById('sidebarOverlay');
-  const open = s.classList.toggle('open');
-  o.style.display = open ? 'block' : 'none';
-}
-
-// Refresh button spin (keep your existing code)
-document.getElementById('refreshBtn')?.addEventListener('click', function() {
-  this.style.transition = 'transform 0.5s';
-  this.style.transform = 'rotate(360deg)';
-  setTimeout(() => {
-    this.style.transition = '';
-    this.style.transform = '';
-  }, 520);
-  window.location.reload();
-});
-
-// Auto-dismiss flash (keep your existing code)
-setTimeout(() => {
-  document.querySelectorAll('.flash-messages .alert').forEach(a => {
-    a.style.transition = 'opacity 0.4s';
-    a.style.opacity = '0';
-    setTimeout(() => a.remove(), 400);
-  });
-}, 5000);
-</script>
-
 <!-- Base functionality that uses utils -->
-<script src="{{ url_for('static', filename='transport/js/base.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
 
 <!-- Theme Manager -->
 <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>

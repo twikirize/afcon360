@@ -1,11 +1,11 @@
 # app/transport/api/analytic_routes.py
 """
-AFCON360 Transport — Analytics REST API
+AFCON360 Transport - Analytics REST API
 Provides summary, revenue, and performance metrics for the admin dashboard
 and external reporting tools.
 
 All endpoints are admin-only and return pre-aggregated data.
-Heavy queries use SQLAlchemy func aggregations — no raw SQL.
+Heavy queries use SQLAlchemy func aggregations - no raw SQL.
 """
 from flask import request
 from flask_restful import Resource

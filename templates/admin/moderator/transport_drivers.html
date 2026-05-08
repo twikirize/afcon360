@@ -1,0 +1,396 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Transport Drivers — AFCON360{% endblock %}
+
+{% block topbar_title %}Transport Drivers{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Drivers</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Transport Drivers</h1>
+    <p class="page-subheading">Review and moderate driver applications</p>
+  </div>
+</div>
+
+<!-- Status Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.transport_drivers', status='all') }}" 
+     class="tab-link {% if current_status == 'all' %}active{% endif %}">
+    <i class="fas fa-list"></i> All Drivers
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_drivers', status='pending') }}" 
+     class="tab-link {% if current_status == 'pending' %}active{% endif %}">
+    <i class="fas fa-clock"></i> Pending
+    {% if moderation_stats is defined and moderation_stats.pending_drivers %}
+    <span class="tab-count">{{ moderation_stats.pending_drivers }}</span>
+    {% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_drivers', status='basic_verified') }}" 
+     class="tab-link {% if current_status == 'basic_verified' %}active{% endif %}">
+    <i class="fas fa-check-circle"></i> Basic Verified
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_drivers', status='platform_verified') }}" 
+     class="tab-link {% if current_status == 'platform_verified' %}active{% endif %}">
+    <i class="fas fa-shield-alt"></i> Platform Verified
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_drivers', status='event_certified') }}" 
+     class="tab-link {% if current_status == 'event_certified' %}active{% endif %}">
+    <i class="fas fa-trophy"></i> Event Certified
+  </a>
+</div>
+
+<!-- Search and Actions -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-search" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Search & Filter
+    </div>
+  </div>
+  <div class="panel-body">
+    <form method="GET" class="search-form">
+      <div class="search-row">
+        <input type="text" name="search" placeholder="Search by name, email, or phone..." 
+               value="{{ current_search }}" class="search-input">
+        <select name="status" class="filter-select">
+          <option value="all" {% if current_status == 'all' %}selected{% endif %}>All Status</option>
+          <option value="pending" {% if current_status == 'pending' %}selected{% endif %}>Pending</option>
+          <option value="basic_verified" {% if current_status == 'basic_verified' %}selected{% endif %}>Basic Verified</option>
+          <option value="platform_verified" {% if current_status == 'platform_verified' %}selected{% endif %}>Platform Verified</option>
+          <option value="event_certified" {% if current_status == 'event_certified' %}selected{% endif %}>Event Certified</option>
+        </select>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-search"></i> Search
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Drivers List -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-users" style="background:var(--green-lt);color:var(--green);"></i>
+      Drivers ({{ drivers.total }} total)
+    </div>
+    {% if drivers.pages > 1 %}
+    <div class="pagination-info">
+      Page {{ drivers.page }} of {{ drivers.pages }}
+    </div>
+    {% endif %}
+  </div>
+  <div class="panel-body">
+    {% if drivers.items %}
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th>Contact</th>
+              <th>Verification</th>
+              <th>Compliance</th>
+              <th>Vehicles</th>
+              <th>Joined</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for driver in drivers.items %}
+            <tr>
+              <td>
+                <div class="user-info">
+                  <div class="user-avatar">{{ driver.first_name[0] }}{{ driver.last_name[0] }}</div>
+                  <div>
+                    <div class="user-name">{{ driver.first_name }} {{ driver.last_name }}</div>
+                    <div class="user-code">{{ driver.driver_code }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="contact-info">
+                  <div class="email">{{ driver.email }}</div>
+                  <div class="phone">{{ driver.phone }}</div>
+                </div>
+              </td>
+              <td>
+                <span class="badge badge-{{ 
+                  'amber' if driver.verification_tier == 'pending' 
+                  else 'blue' if driver.verification_tier == 'basic_verified'
+                  else 'green' if driver.verification_tier == 'platform_verified'
+                  else 'purple' if driver.verification_tier == 'event_certified'
+                  else 'gray' }}">
+                  {{ driver.verification_tier.replace('_', ' ').title() }}
+                </span>
+              </td>
+              <td>
+                <span class="badge badge-{{ 
+                  'green' if driver.compliance_status == 'approved'
+                  else 'amber' if driver.compliance_status == 'pending_review'
+                  else 'red' if driver.compliance_status == 'suspended'
+                  else 'gray' }}">
+                  {{ driver.compliance_status.replace('_', ' ').title() }}
+                </span>
+              </td>
+              <td>
+                <div class="vehicle-count">
+                  <i class="fas fa-car"></i>
+                  {{ driver.vehicles|length if driver.vehicles else 0 }}
+                </div>
+              </td>
+              <td>
+                <div class="date-info">
+                  {{ driver.created_at.strftime('%Y-%m-%d') }}
+                </div>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <a href="{{ url_for('admin.moderator.view_transport_driver', driver_id=driver.id) }}" 
+                     class="btn btn-xs btn-outline">
+                    <i class="fas fa-eye"></i> View
+                  </a>
+                  {% if driver.verification_tier == 'pending' %}
+                  <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='approve') }}" 
+                        style="display:inline;">
+                    <button type="submit" class="btn btn-xs btn-success" 
+                            onclick="return confirm('Approve this driver?')">
+                      <i class="fas fa-check"></i> Approve
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <i class="fas fa-users" style="font-size:48px;color:var(--muted);margin-bottom:16px;"></i>
+        <h3>No drivers found</h3>
+        <p>No drivers match your current search criteria.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if drivers.pages > 1 %}
+<div class="pagination-wrapper">
+  <div class="pagination">
+    {% if drivers.has_prev %}
+      <a href="{{ url_for('admin.moderator.transport_drivers', page=drivers.prev_num, status=current_status, search=current_search) }}" 
+         class="pagination-link">
+        <i class="fas fa-chevron-left"></i> Previous
+      </a>
+    {% endif %}
+    
+    {% for page_num in drivers.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != drivers.page %}
+          <a href="{{ url_for('admin.moderator.transport_drivers', page=page_num, status=current_status, search=current_search) }}" 
+             class="pagination-link">{{ page_num }}</a>
+        {% else %}
+          <span class="pagination-current">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pagination-ellipsis">...</span>
+      {% endif %}
+    {% endfor %}
+    
+    {% if drivers.has_next %}
+      <a href="{{ url_for('admin.moderator.transport_drivers', page=drivers.next_num, status=current_status, search=current_search) }}" 
+         class="pagination-link">
+        Next <i class="fas fa-chevron-right"></i>
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<style>
+.search-form {
+  margin: 0;
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 150px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.user-code {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.contact-info {
+  font-size: 13px;
+}
+
+.email {
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.phone {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.vehicle-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.date-info {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.data-table-wrapper {
+  overflow-x: auto;
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.pagination {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pagination-link {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.pagination-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pagination-current {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: white;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pagination-ellipsis {
+  padding: 6px 8px;
+  color: var(--muted);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.empty-state h3 {
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-purple { background: rgba(196,181,253,0.15); color: var(--purple); border: 1px solid rgba(196,181,253,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+{% endblock %}

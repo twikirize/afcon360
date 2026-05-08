@@ -1,12 +1,12 @@
 # app/kyc/routes.py
 """
-KYC blueprint — Bank of Uganda compliance routes.
+KYC blueprint - Bank of Uganda compliance routes.
 
 Endpoints:
-  GET  /kyc/upgrade              — show available tier upgrades
-  GET  /kyc/limits               — show per-tier transaction limits
-  GET  /kyc/verify/national-id   — National ID (NIRA) verification form
-  POST /kyc/verify/national-id   — submit National ID verification
+  GET  /kyc/upgrade              - show available tier upgrades
+  GET  /kyc/limits               - show per-tier transaction limits
+  GET  /kyc/verify/national-id   - National ID (NIRA) verification form
+  POST /kyc/verify/national-id   - submit National ID verification
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
@@ -32,21 +32,21 @@ kyc_bp = Blueprint("kyc", __name__, url_prefix="/kyc")
 # ── Tier metadata (used by upgrade + limits pages) ────────────────────────────
 TIER_INFO = {
     TIER_0_UNREGISTERED: {
-        "name": "Tier 0 — Unregistered",
+        "name": "Tier 0 - Unregistered",
         "daily_limit":    0,
         "monthly_limit":  0,
         "description":    "No transactions permitted. Complete identity verification to proceed.",
         "requirements":   [],
     },
     TIER_1_BASIC: {
-        "name": "Tier 1 — Basic",
+        "name": "Tier 1 - Basic",
         "daily_limit":    1_000_000,   # UGX
         "monthly_limit":  5_000_000,
         "description":    "Phone-verified account. Limited transactions permitted.",
         "requirements":   ["Phone number verified"],
     },
     TIER_2_STANDARD: {
-        "name": "Tier 2 — Standard",
+        "name": "Tier 2 - Standard",
         "daily_limit":    10_000_000,
         "monthly_limit":  50_000_000,
         "description":    "National ID verified. Standard transaction limits apply.",
@@ -206,7 +206,7 @@ def submit_national_id():
     # ── 3. Persist KycRecord ─────────────────────────────────────────────────
     try:
         record = KycRecord(
-            user_id=current_user.id,           # BIGINT FK — internal id
+            user_id=current_user.id,           # BIGINT FK - internal id
             record_type="nira_national_id",    # Business Process ID
             id_type="national_id",             # Required field
             document_type="national_id",       # Required field

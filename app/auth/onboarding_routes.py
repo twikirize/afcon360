@@ -39,7 +39,7 @@ def _get_or_create_profile(user) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Landing page – choose your path
+# Landing page - choose your path
 # ---------------------------------------------------------------------------
 
 @onboarding_bp.route("/choose", methods=["GET"])
@@ -48,14 +48,14 @@ def choose():
     """
     Post-verification landing page.
     Shows all available roles/services and lets user pick their path.
-    Only shown once — if profile is already completed, redirect to dashboard.
+    Only shown once - if profile is already completed, redirect to dashboard.
     """
     from app.profile.models import get_profile_by_user
 
     profile = get_profile_by_user(current_user.public_id)
 
     if profile and profile.profile_completed:
-        # Already onboarded — check for saved deep-link redirect
+        # Already onboarded - check for saved deep-link redirect
         post_redirect = session.pop("post_onboarding_redirect", None)
         if post_redirect:
             from app.auth.routes import is_safe_url
@@ -66,6 +66,28 @@ def choose():
         return redirect(_dashboard_for_user(current_user))
 
     return render_template("onboarding/choose.html")
+
+
+# ---------------------------------------------------------------------------
+# Individual onboarding landing (after 2-card choice)
+# ---------------------------------------------------------------------------
+
+@onboarding_bp.route("/choose/individual", methods=["GET"])
+@login_required
+def choose_individual():
+    """Individual onboarding landing page."""
+    return render_template("onboarding/choose_individual.html")
+
+
+# ---------------------------------------------------------------------------
+# Organisation onboarding landing (after 2-card choice)
+# ---------------------------------------------------------------------------
+
+@onboarding_bp.route("/choose/organisation", methods=["GET"])
+@login_required
+def choose_organisation():
+    """Organisation onboarding landing page."""
+    return render_template("onboarding/choose_organisation.html")
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +115,7 @@ def fan_onboarding():
             flash("Session error. Please log in again.", "danger")
             return redirect(url_for("auth.login"))
 
-        with db_transaction("Fan onboarding — profile update"):
+        with db_transaction("Fan onboarding - profile update"):
             profile = get_profile_by_user(current_user.public_id)
             if profile:
                 profile.full_name = full_name
@@ -144,7 +166,7 @@ def driver_onboarding(step: int = 1):
             # Handle file upload for licence
             licence_file = request.files.get("licence_document")
             if licence_file and licence_file.filename:
-                # Save file – in production use a proper file storage service
+                # Save file - in production use a proper file storage service
                 try:
                     from app.utils.file_upload import save_upload
                     url = save_upload(licence_file, folder="driver_licences")
@@ -212,7 +234,7 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
 
         # Create DriverProfile using existing model fields
         driver = DriverProfile(
-            user_id=user.id,  # internal FK — correct
+            user_id=user.id,  # internal FK - correct
             license_number=step2.get("licence_number", ""),  # Will be encrypted by model
             license_expiry=(
                 datetime.strptime(step2["licence_expiry"], "%Y-%m-%d")
@@ -259,11 +281,11 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
                 assigned_by_id=user.id,
             )
         except ValueError:
-            current_app.logger.warning("'driver' role not found in DB — skipping role assignment")
+            current_app.logger.warning("'driver' role not found in DB - skipping role assignment")
 
 
 # ---------------------------------------------------------------------------
-# Organisation onboarding (universal – type determines sub-path)
+# Organisation onboarding (universal - type determines sub-path)
 # ---------------------------------------------------------------------------
 
 @onboarding_bp.route("/organisation", methods=["GET", "POST"])

@@ -1,4 +1,4 @@
-### Admin CSP Migration — Summary and Export
+### Admin CSP Migration - Summary and Export
 
 This document exports the key decisions and changes made during the CSP hardening and admin moderation reliability work.
 
@@ -35,7 +35,7 @@ This document exports the key decisions and changes made during the CSP hardenin
 - Inline scripts remain but are now ignored by CSP; external JS takes over.
 
 4) Docs
-- `app/Documentation/CSP_POLICY.md` — policy, rollout, reporting, and dev guidelines.
+- `app/Documentation/CSP_POLICY.md` - policy, rollout, reporting, and dev guidelines.
 
 ---
 

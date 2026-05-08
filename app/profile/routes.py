@@ -309,7 +309,7 @@ def edit_profile():
         profile.city = request.form.get("city", "").strip()
         profile.country = request.form.get("country", "").strip()
 
-        # fan_team is always mutable — not in IMMUTABLE_AFTER_VERIFICATION
+        # fan_team is always mutable - not in IMMUTABLE_AFTER_VERIFICATION
         fan_team = request.form.get("fan_team", "").strip() or None
         profile.fan_team = fan_team
 

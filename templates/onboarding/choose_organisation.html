@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Organisation Account — AFCON 360{% endblock %}
+{% block content %}
+
+<div class="ob-choose-root">
+  <div class="ob-choose-inner">
+
+    <div class="ob-choose-header">
+      <h1>Create your organisation account</h1>
+      <p>What type of organisation are you registering?</p>
+    </div>
+
+    <div class="ob-choose-grid ob-choose-grid--3">
+
+      <!-- TRANSPORT COMPANY -->
+      <a href="{{ url_for('onboarding.organisation_onboarding', type='transport') }}" class="ob-big-card">
+        <div class="ob-big-card-icon">🚌</div>
+        <div class="ob-big-card-body">
+          <h2>Transport Company</h2>
+          <p>Register your fleet, manage drivers, and handle dispatch operations.</p>
+        </div>
+        <span class="ob-big-card-cta">Register Fleet →</span>
+      </a>
+
+      <!-- HOTEL / LODGE -->
+      <a href="{{ url_for('onboarding.organisation_onboarding', type='accommodation') }}" class="ob-big-card">
+        <div class="ob-big-card-icon">🏨</div>
+        <div class="ob-big-card-body">
+          <h2>Hotel / Lodge</h2>
+          <p>Manage rooms, staff, and central billing for your property.</p>
+        </div>
+        <span class="ob-big-card-cta">Register Establishment →</span>
+      </a>
+
+      <!-- CONSUMER ORGANISATION -->
+      <a href="{{ url_for('onboarding.organisation_onboarding', type='consumer') }}" class="ob-big-card">
+        <div class="ob-big-card-icon">🏢</div>
+        <div class="ob-big-card-body">
+          <h2>Consumer Organisation</h2>
+          <p>Book services at scale for your company, team, or delegation.</p>
+        </div>
+        <span class="ob-big-card-cta">Register Organisation →</span>
+      </a>
+
+    </div>
+
+    <p class="ob-choose-note">
+      You can add multiple organisation types later if needed.
+    </p>
+
+  </div>
+</div>
+
+<style>
+.ob-choose-root {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: var(--bs-body-bg, #f8f9fa);
+}
+.ob-choose-inner {
+  max-width: 900px;
+  width: 100%;
+}
+.ob-choose-header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+.ob-choose-header h1 {
+  font-size: clamp(24px, 4vw, 36px);
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.ob-choose-header p {
+  font-size: 16px;
+  color: #6c757d;
+  margin: 0;
+}
+.ob-choose-grid--3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+@media (max-width: 768px) {
+  .ob-choose-grid--3 { grid-template-columns: 1fr; }
+}
+.ob-big-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1.5px solid #e9ecef;
+  border-radius: 16px;
+  padding: 32px 28px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+.ob-big-card:hover {
+  border-color: #FFC107;
+  box-shadow: 0 8px 32px rgba(255,193,7,0.12);
+  transform: translateY(-3px);
+  text-decoration: none;
+  color: inherit;
+}
+.ob-big-card-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+  line-height: 1;
+}
+.ob-big-card-body h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.ob-big-card-body p {
+  font-size: 14px;
+  color: #6c757d;
+  margin: 0 0 14px;
+  line-height: 1.6;
+}
+.ob-big-card-cta {
+  display: block;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #856404;
+}
+.ob-choose-note {
+  text-align: center;
+  font-size: 13px;
+  color: #6c757d;
+  margin: 0;
+}
+</style>
+
+{% endblock %}

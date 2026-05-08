@@ -1,0 +1,565 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Third-Party Applications — AFCON360{% endblock %}
+
+{% block topbar_title %}Third-Party Applications{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Third-Party Applications</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Third-Party Applications</h1>
+    <p class="page-subtitle">Review external transport platform integration requests</p>
+  </div>
+</div>
+
+<!-- Applications Overview -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-handshake" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Integration Applications ({{ applications|length }})
+    </div>
+    <div class="panel-actions">
+      <div class="status-summary">
+        <span class="status-item pending">{{ applications|selectattr('status', 'equalto', 'pending_review')|list|length }} Pending</span>
+        <span class="status-item approved">{{ applications|selectattr('status', 'equalto', 'approved')|list|length }} Approved</span>
+        <span class="status-item rejected">{{ applications|selectattr('status', 'equalto', 'rejected')|list|length }} Rejected</span>
+      </div>
+    </div>
+  </div>
+  <div class="panel-body">
+    {% if applications %}
+      <div class="applications-list">
+        {% for app in applications %}
+        <div class="application-card">
+          <div class="application-header">
+            <div class="platform-info">
+              <div class="platform-name">{{ app.platform_name }}</div>
+              <div class="company-name">{{ app.company }}</div>
+            </div>
+            <div class="application-status">
+              <span class="badge badge-{{ 
+                'amber' if app.status == 'pending_review'
+                else 'green' if app.status == 'approved'
+                else 'red' if app.status == 'rejected'
+                else 'gray' }}">
+                {{ app.status.replace('_', ' ').title() }}
+              </span>
+              {% if app.priority == 'high' %}
+              <span class="badge badge-red">High Priority</span>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="application-content">
+            <div class="application-details">
+              <div class="detail-item">
+                <div class="detail-label">Contact Email</div>
+                <div class="detail-value">{{ app.contact_email }}</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">Application Date</div>
+                <div class="detail-value">{{ app.application_date }}</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">Integration Type</div>
+                <div class="detail-value">{{ app.integration_type.replace('_', ' ').title() }}</div>
+              </div>
+            </div>
+            
+            <div class="requested-features">
+              <div class="features-title">Requested Features</div>
+              <div class="features-list">
+                {% for feature in app.requested_features %}
+                <span class="feature-tag">{{ feature }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          
+          <div class="application-actions">
+            <button class="btn btn-outline" onclick="viewApplication({{ app.id }})">
+              <i class="fas fa-eye"></i> View Details
+            </button>
+            {% if app.status == 'pending_review' %}
+            <button class="btn btn-success" onclick="recommendApproval({{ app.id }})">
+              <i class="fas fa-thumbs-up"></i> Recommend Approval
+            </button>
+            <button class="btn btn-danger" onclick="recommendRejection({{ app.id }})">
+              <i class="fas fa-thumbs-down"></i> Recommend Rejection
+            </button>
+            {% endif %}
+            <button class="btn btn-outline" onclick="flagApplication({{ app.id }})">
+              <i class="fas fa-flag"></i> Flag
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <i class="fas fa-handshake" style="font-size:48px;color:var(--muted);margin-bottom:16px;"></i>
+        <h3>No applications found</h3>
+        <p>No third-party integration applications at this time.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Role Guidelines -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-info-circle" style="background:var(--amber-lt);color:var(--amber);"></i>
+      Role Guidelines
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="guidelines-grid">
+      <div class="guideline-card">
+        <div class="guideline-icon moderator">
+          <i class="fas fa-user-shield"></i>
+        </div>
+        <div class="guideline-content">
+          <div class="guideline-title">Moderator Role</div>
+          <div class="guideline-description">
+            Can review applications for basic compliance, flag problematic requests, and provide initial recommendations.
+          </div>
+          <ul class="guideline-list">
+            <li>Review basic compliance requirements</li>
+            <li>Check documentation completeness</li>
+            <li>Flag suspicious applications</li>
+            <li>Provide initial recommendations</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="guideline-card">
+        <div class="guideline-icon admin">
+          <i class="fas fa-user-cog"></i>
+        </div>
+        <div class="guideline-content">
+          <div class="guideline-title">Admin+ Role</div>
+          <div class="guideline-description">
+            Can approve technical requirements, manage API access, and handle business terms negotiations.
+          </div>
+          <ul class="guideline-list">
+            <li>Review technical specifications</li>
+            <li>Approve API access credentials</li>
+            <li>Negotiate business terms</li>
+            <li>Make final approval decisions</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="guideline-card">
+        <div class="guideline-icon owner">
+          <i class="fas fa-crown"></i>
+        </div>
+        <div class="guideline-content">
+          <div class="guideline-title">Owner Role</div>
+          <div class="guideline-description">
+            Can approve strategic partnerships, authorize revenue sharing, and oversee major integration decisions.
+          </div>
+          <ul class="guideline-list">
+            <li>Approve strategic partnerships</li>
+            <li>Authorize revenue sharing</li>
+            <li>Review legal frameworks</li>
+            <li>Approve deep platform integration</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Integration Process -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-cogs" style="background:var(--green-lt);color:var(--green);"></i>
+      Integration Process
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="process-timeline">
+      <div class="process-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Application Submission</div>
+          <div class="step-description">External platform submits integration request with documentation</div>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Moderator Review</div>
+          <div class="step-description">Initial compliance check and basic validation</div>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Technical Evaluation</div>
+          <div class="step-description">Admin reviews API requirements and technical specifications</div>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Business Approval</div>
+          <div class="step-description">Owner approves partnership terms and revenue sharing</div>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+          <div class="step-title">API Integration</div>
+          <div class="step-description">Technical team implements API access and monitoring</div>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-number">6</div>
+        <div class="step-content">
+          <div class="step-title">Go Live</div>
+          <div class="step-description">Platform integration goes live with ongoing monitoring</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.applications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.application-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.application-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.platform-info {
+  flex: 1;
+}
+
+.platform-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.company-name {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.application-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.application-content {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.application-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.requested-features {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.features-title {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.features-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feature-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--accent-lt);
+  color: var(--accent);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.application-actions {
+  padding: 20px;
+  border-top: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.status-summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-item.pending {
+  color: var(--amber);
+}
+
+.status-item.approved {
+  color: var(--green);
+}
+
+.status-item.rejected {
+  color: var(--red);
+}
+
+.guidelines-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.guideline-card {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.guideline-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.guideline-icon.moderator {
+  background: rgba(96,165,250,0.15);
+  color: var(--blue);
+}
+
+.guideline-icon.admin {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.guideline-icon.owner {
+  background: rgba(196,181,253,0.15);
+  color: var(--purple);
+}
+
+.guideline-content {
+  flex: 1;
+}
+
+.guideline-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.guideline-description {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.guideline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.guideline-list li {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  padding-left: 16px;
+  position: relative;
+}
+
+.guideline-list li:before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.process-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.process-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.step-content {
+  flex: 1;
+}
+
+.step-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.step-description {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.empty-state h3 {
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+
+<script>
+function viewApplication(appId) {
+  // In a real implementation, this would open a modal or navigate to detail view
+  alert('View application details for ID: ' + appId);
+}
+
+function recommendApproval(appId) {
+  if (confirm('Recommend this application for approval?')) {
+    // In a real implementation, this would submit a recommendation
+    alert('Recommendation submitted for application ID: ' + appId);
+  }
+}
+
+function recommendRejection(appId) {
+  if (confirm('Recommend this application for rejection?')) {
+    // In a real implementation, this would submit a recommendation
+    alert('Recommendation submitted for application ID: ' + appId);
+  }
+}
+
+function flagApplication(appId) {
+  if (confirm('Flag this application for review?')) {
+    // In a real implementation, this would flag the application
+    alert('Application flagged for review: ' + appId);
+  }
+}
+</script>
+{% endblock %}

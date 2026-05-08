@@ -1,6 +1,6 @@
 # afcon 360_app/app/config.py
 # ============================================================================
-#  FLASK CONFIGURATION — Security-hardened production settings
+#  FLASK CONFIGURATION - Security-hardened production settings
 # ============================================================================
 
 import os

@@ -1,0 +1,227 @@
+{# mfa_status.html - Macro to display MFA status with enhanced features #}
+{% macro mfa_status(mfa_secrets, user) %}
+<div class="mfa-status-enhanced">
+    {% set active_mfa = mfa_secrets|selectattr('is_active', 'equalto', true)|list|first %}
+    
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">Multi-Factor Authentication</h6>
+        {% if active_mfa %}
+        <span class="badge bg-success">
+            <i class="fas fa-shield-alt me-1"></i>Enabled
+        </span>
+        {% else %}
+        <span class="badge bg-secondary">
+            <i class="fas fa-shield-alt me-1"></i>Disabled
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if active_mfa %}
+    <div class="card">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h6 class="card-title mb-1">
+                        {% if active_mfa.mfa_type == 'totp' %}
+                        <i class="fas fa-mobile-alt me-2"></i>Authenticator App
+                        {% elif active_mfa.mfa_type == 'sms' %}
+                        <i class="fas fa-sms me-2"></i>SMS Verification
+                        {% elif active_mfa.mfa_type == 'webauthn' %}
+                        <i class="fas fa-fingerprint me-2"></i>Security Key
+                        {% endif %}
+                    </h6>
+                    <p class="card-text small text-muted">
+                        Device: {{ active_mfa.device_name or 'Default Device' }}<br>
+                        {% if active_mfa.last_used %}
+                        Last used: {{ active_mfa.last_used|datetime }}<br>
+                        {% endif %}
+                        Created: {{ active_mfa.created_at|datetime }}
+                    </p>
+                </div>
+                <div class="col-md-4 text-end">
+                    {% set backup_codes = active_mfa.get_backup_codes() %}
+                    {% if backup_codes %}
+                    <div class="mb-2">
+                        <small class="text-success">
+                            <i class="fas fa-key me-1"></i>
+                            {{ backup_codes|length }} backup codes available
+                        </small>
+                    </div>
+                    {% endif %}
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#mfaManageModal">
+                            <i class="fas fa-cog"></i> Manage
+                        </button>
+                        <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#mfaDisableModal">
+                            <i class="fas fa-times"></i> Disable
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Backup codes section -->
+    {% set backup_codes = active_mfa.get_backup_codes() %}
+    {% if backup_codes %}
+    <div class="mt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0 small">Backup Codes</h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="regenerateBackupCodes()">
+                <i class="fas fa-sync-alt"></i> Regenerate
+            </button>
+        </div>
+        <div class="alert alert-info" role="alert">
+            <small>
+                <i class="fas fa-info-circle me-1"></i>
+                Save these backup codes in a secure location. Each code can only be used once.
+            </small>
+        </div>
+        <div class="row g-2" id="backupCodesContainer">
+            {% for code in backup_codes %}
+            <div class="col-3">
+                <div class="card card-sm text-center">
+                    <div class="card-body py-2">
+                        <code class="small">{{ code }}</code>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <!-- MFA not enabled -->
+    <div class="alert alert-warning" role="alert">
+        <div class="d-flex align-items-center">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-triangle fa-2x"></i>
+            </div>
+            <div class="flex-grow-1 ms-3">
+                <h6 class="alert-heading">MFA Not Enabled</h6>
+                <p class="mb-2">
+                    Multi-factor authentication adds an extra layer of security to your account. 
+                    We recommend enabling MFA to protect your financial transactions.
+                </p>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mfaSetupModal">
+                    <i class="fas fa-shield-alt me-1"></i>Enable MFA
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# MFA Setup Modal #}
+{% macro mfa_setup_modal() %}
+<div class="modal fade" id="mfaSetupModal" tabindex="-1" aria-labelledby="mfaSetupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mfaSetupModalLabel">
+                    <i class="fas fa-shield-alt me-2"></i>Enable Multi-Factor Authentication
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" id="mfaTypeTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="totp-tab" data-bs-toggle="tab" data-bs-target="#totp" type="button" role="tab" aria-controls="totp" aria-selected="true">
+                            <i class="fas fa-mobile-alt me-1"></i>Authenticator App
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="sms-tab" data-bs-toggle="tab" data-bs-target="#sms" type="button" role="tab" aria-controls="sms" aria-selected="false">
+                            <i class="fas fa-sms me-1"></i>SMS
+                        </button>
+                    </li>
+                </ul>
+                <div class="tab-content mt-3" id="mfaTypeTabContent">
+                    <div class="tab-pane fade show active" id="totp" role="tabpanel" aria-labelledby="totp-tab">
+                        <div id="totpSetupContent">
+                            <p>Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.):</p>
+                            <div class="text-center my-3">
+                                <div id="qrCodeContainer">
+                                    <!-- QR code will be generated here -->
+                                </div>
+                            </div>
+                            <p>Or enter this secret key manually:</p>
+                            <div class="input-group mb-3">
+                                <input type="text" class="form-control" id="totpSecret" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copySecret()">
+                                    <i class="fas fa-copy"></i> Copy
+                                </button>
+                            </div>
+                            <p>Enter the 6-digit code from your app:</p>
+                            <div class="input-group mb-3">
+                                <input type="text" class="form-control" id="totpCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}">
+                                <button class="btn btn-primary" type="button" onclick="verifyTOTP()">Verify</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="sms" role="tabpanel" aria-labelledby="sms-tab">
+                        <p>We'll send a verification code to your registered phone number:</p>
+                        <div class="alert alert-info">
+                            <i class="fas fa-phone me-1"></i>
+                            {{ user.phone|format_phone if user.phone else 'No phone number registered' }}
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="sendSMSCode()">
+                            <i class="fas fa-paper-plane me-1"></i>Send Code
+                        </button>
+                        <div class="mt-3" id="smsVerification" style="display: none;">
+                            <p>Enter the 6-digit code sent to your phone:</p>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="smsCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}">
+                                <button class="btn btn-primary" type="button" onclick="verifySMS()">Verify</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{# MFA verification modal for login #}
+{% macro mfa_verification_modal() %}
+<div class="modal fade" id="mfaVerificationModal" tabindex="-1" aria-labelledby="mfaVerificationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mfaVerificationModalLabel">
+                    <i class="fas fa-shield-alt me-2"></i>Enter MFA Code
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Enter your 6-digit verification code:</p>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control form-control-lg text-center" id="loginMfaCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" autofocus>
+                </div>
+                <div class="text-center">
+                    <small class="text-muted">
+                        <a href="#" onclick="useBackupCode()">Use backup code instead</a>
+                    </small>
+                </div>
+                <div class="mt-3" id="backupCodeInput" style="display: none;">
+                    <p class="mb-2">Enter your 8-character backup code:</p>
+                    <div class="input-group">
+                        <input type="text" class="form-control text-center" id="backupCode" placeholder="A1B2C3D4" maxlength="8" style="text-transform: uppercase;">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary btn-lg w-100" onclick="verifyLoginMFA()">
+                    <i class="fas fa-sign-in-alt me-1"></i>Verify & Login
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

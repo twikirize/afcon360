@@ -9,7 +9,7 @@ Design principles:
 - JSON fallback on all routes for AJAX compatibility
 - Consistent logging with user_id context on all actions
 - Granular exception handling (NotFoundError, ValidationError, ServiceUnavailableError)
-- Single responsibility: routing only — business logic lives in services
+- Single responsibility: routing only - business logic lives in services
 """
 from datetime import datetime, timezone
 import logging
@@ -86,7 +86,7 @@ def _uid():
 
 
 # =========================================================================
-# Health & Status  (no auth — intentional)
+# Health & Status  (no auth - intentional)
 # =========================================================================
 
 @transport_bp.route("/api/status", methods=["GET"])
@@ -218,7 +218,7 @@ def book_transport():
         from app.schemas.transport import BookingSchema
         data = BookingSchema().load(request.form)
     except ImportError:
-        logger.warning("BookingSchema not found — using raw form data")
+        logger.warning("BookingSchema not found - using raw form data")
         data = request.form.to_dict()
     except ValidationError as err:
         logger.warning(f"Booking validation failed for user_id={_uid()}: {err.messages}")
@@ -644,7 +644,7 @@ def incidents_show(id):
 @login_required
 @role_required("admin")
 def incidents_investigate(id):
-    """Incident investigation panel — admin only"""
+    """Incident investigation panel - admin only"""
     logger.info(f"Incident investigation {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/incidents/investigate.html", id=id)
 
@@ -676,7 +676,7 @@ def organisations_index():
 @login_required
 @role_required("admin")
 def organisations_new():
-    """New organisation form — admin only"""
+    """New organisation form - admin only"""
     return render_template("transport/organisations/new.html")
 
 
@@ -725,7 +725,7 @@ def routes_index():
 @login_required
 @role_required("admin")
 def routes_new():
-    """New route form — admin only"""
+    """New route form - admin only"""
     return render_template("transport/routes/new.html")
 
 
@@ -757,7 +757,28 @@ def routes_schedule(id):
 def analytics_index():
     """Analytics index"""
     logger.info(f"Analytics index accessed by user_id={_uid()}")
-    return _json_or_template("transport/analytics/index.html")
+    # Provide default context to avoid template errors
+    ctx = {
+        "tab": "overview",
+        "current_days": 30,
+        "from_date": "",
+        "to_date": "",
+        "summary": {
+            "total_bookings": 0,
+            "completion_rate": 0,
+            "avg_rating": "-",
+            "total_revenue": "0",
+            "on_time_rate": 0,
+        },
+        "chart_labels": [],
+        "chart_bookings": [],
+        "chart_revenue": [],
+        "service_labels": [],
+        "service_data": [],
+        "chart_ontime": [],
+        "top_drivers": [],
+    }
+    return _json_or_template("transport/analytics/index.html", **ctx)
 
 
 @transport_bp.route("/analytics/revenue")
@@ -787,7 +808,7 @@ def analytics_performance():
 @login_required
 @role_required("admin")
 def settings_index():
-    """Settings — admin only"""
+    """Settings - admin only"""
     logger.info(f"Settings accessed by user_id={_uid()}")
     return _json_or_template("transport/settings/index.html")
 
@@ -821,7 +842,7 @@ def organisation_dashboard():
 
 
 # -------------------------------------------------------------------------
-# Admin — Bookings
+# Admin - Bookings
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/bookings", methods=["GET"])
@@ -859,27 +880,27 @@ def cancel_booking(booking_id):
         flash(f"Booking {booking_id} cancelled successfully", "success")
 
     except NotFoundError as e:
-        logger.warning(f"Cancel booking {booking_id} — not found — user_id={_uid()}: {e}")
+        logger.warning(f"Cancel booking {booking_id} - not found - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except ServiceUnavailableError as e:
-        logger.error(f"Service unavailable cancelling booking {booking_id} — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Service unavailable cancelling booking {booking_id} - user_id={_uid()}: {e}", exc_info=True)
         flash("Booking service unavailable", "danger")
 
     except ValidationError as e:
-        logger.warning(f"Validation error cancelling booking {booking_id} — user_id={_uid()}: {e}")
+        logger.warning(f"Validation error cancelling booking {booking_id} - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Unexpected error cancelling booking {booking_id} — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Unexpected error cancelling booking {booking_id} - user_id={_uid()}: {e}", exc_info=True)
         flash("Unexpected error cancelling booking", "danger")
 
     return redirect(url_for("transport_admin.list_bookings"))
 
 
 # -------------------------------------------------------------------------
-# Admin — Drivers
+# Admin - Drivers
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/drivers", methods=["GET"])
@@ -908,7 +929,7 @@ def list_drivers():
 @login_required
 @role_required("admin")
 def drivers_filter():
-    """Filtered drivers list — used for ?status=pending, ?online=true"""
+    """Filtered drivers list - used for ?status=pending, ?online=true"""
     page, per_page = _paginate_args()
     status = request.args.get("status")
     online = request.args.get("online")
@@ -945,16 +966,16 @@ def approve_driver(driver_id):
         flash(f"Driver {driver_id} approved", "success")
 
     except NotFoundError as e:
-        logger.warning(f"Approve driver {driver_id} — not found — user_id={_uid()}: {e}")
+        logger.warning(f"Approve driver {driver_id} - not found - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except ValidationError as e:
-        logger.warning(f"Validation error approving driver {driver_id} — user_id={_uid()}: {e}")
+        logger.warning(f"Validation error approving driver {driver_id} - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error approving driver {driver_id} — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Error approving driver {driver_id} - user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to approve driver", "danger")
 
     return redirect(url_for("transport_admin.list_drivers"))
@@ -974,23 +995,23 @@ def reject_driver(driver_id):
         flash(f"Driver {driver_id} rejected", "warning")
 
     except NotFoundError as e:
-        logger.warning(f"Reject driver {driver_id} — not found — user_id={_uid()}: {e}")
+        logger.warning(f"Reject driver {driver_id} - not found - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except ValidationError as e:
-        logger.warning(f"Validation error rejecting driver {driver_id} — user_id={_uid()}: {e}")
+        logger.warning(f"Validation error rejecting driver {driver_id} - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error rejecting driver {driver_id} — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Error rejecting driver {driver_id} - user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to reject driver", "danger")
 
     return redirect(url_for("transport_admin.list_drivers"))
 
 
 # -------------------------------------------------------------------------
-# Admin — Vehicles
+# Admin - Vehicles
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/vehicles", methods=["GET"])
@@ -1028,16 +1049,16 @@ def approve_vehicle(vehicle_id):
         flash(f"Vehicle {vehicle_id} approved", "success")
 
     except NotFoundError as e:
-        logger.warning(f"Approve vehicle {vehicle_id} — not found — user_id={_uid()}: {e}")
+        logger.warning(f"Approve vehicle {vehicle_id} - not found - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except ValidationError as e:
-        logger.warning(f"Validation error approving vehicle {vehicle_id} — user_id={_uid()}: {e}")
+        logger.warning(f"Validation error approving vehicle {vehicle_id} - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error approving vehicle {vehicle_id} — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Error approving vehicle {vehicle_id} - user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to approve vehicle", "danger")
 
     return redirect(url_for("transport_admin.list_vehicles"))
@@ -1057,23 +1078,23 @@ def reject_vehicle(vehicle_id):
         flash(f"Vehicle {vehicle_id} rejected", "warning")
 
     except NotFoundError as e:
-        logger.warning(f"Reject vehicle {vehicle_id} — not found — user_id={_uid()}: {e}")
+        logger.warning(f"Reject vehicle {vehicle_id} - not found - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except ValidationError as e:
-        logger.warning(f"Validation error rejecting vehicle {vehicle_id} — user_id={_uid()}: {e}")
+        logger.warning(f"Validation error rejecting vehicle {vehicle_id} - user_id={_uid()}: {e}")
         flash(str(e), "danger")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error rejecting vehicle {vehicle_id} — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Error rejecting vehicle {vehicle_id} - user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to reject vehicle", "danger")
 
     return redirect(url_for("transport_admin.list_vehicles"))
 
 
 # -------------------------------------------------------------------------
-# Admin — Routes
+# Admin - Routes
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/routes", methods=["GET"])
@@ -1088,7 +1109,7 @@ def admin_routes():
 
 
 # -------------------------------------------------------------------------
-# Admin — Incidents
+# Admin - Incidents
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/incidents", methods=["GET"])
@@ -1103,7 +1124,7 @@ def admin_incidents():
 
 
 # -------------------------------------------------------------------------
-# Admin — Settings
+# Admin - Settings
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/settings", methods=["GET", "POST"])
@@ -1117,7 +1138,7 @@ def admin_settings():
 
 
 # -------------------------------------------------------------------------
-# Admin — Reports
+# Admin - Reports
 # -------------------------------------------------------------------------
 
 @transport_admin_bp.route("/reports/bookings", methods=["GET"])
@@ -1132,13 +1153,13 @@ def bookings_report():
         return _json_or_template("transport/admin/reports/bookings.html", report=report_data)
 
     except ServiceUnavailableError as e:
-        logger.error(f"Service unavailable generating report — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Service unavailable generating report - user_id={_uid()}: {e}", exc_info=True)
         flash("Reporting service temporarily unavailable", "danger")
         return redirect(url_for("transport_admin.admin_dashboard"))
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error generating booking report — user_id={_uid()}: {e}", exc_info=True)
+        logger.error(f"Error generating booking report - user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to generate report", "danger")
         return redirect(url_for("transport_admin.admin_dashboard"))
 
@@ -1208,7 +1229,10 @@ def dashboard():
 
             # Today's stats
             today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-            ctx['today_bookings'] = get_booking_service().count_bookings_since(today_start)
+            try:
+                ctx['today_bookings'] = get_booking_service().count_bookings_since(today_start)
+            except AttributeError:
+                ctx['today_bookings'] = 0
 
             # Recent bookings
             ctx['recent_bookings'] = get_booking_service().get_recent_bookings(limit=5)

@@ -35,7 +35,7 @@ MAX_ATTEMPTS = 5
 
 
 # ---------------------------------------------------------------------------
-# Main scheduled task — runs every 60 seconds via Celery beat
+# Main scheduled task - runs every 60 seconds via Celery beat
 # ---------------------------------------------------------------------------
 
 @shared_task(name="wallet.process_webhook_events", bind=True, max_retries=0)
@@ -120,7 +120,7 @@ def process_webhook_events(self):
                 else:
                     # If this event was moved to dead_letter, alert the owner
                     # and increment a Redis counter so dashboards can surface
-                    # the problem. Wrap everything in try/except — a broken
+                    # the problem. Wrap everything in try/except - a broken
                     # notification must never prevent the dead_letter state
                     # from being saved.
                     if event.status == "dead_letter":
@@ -160,7 +160,7 @@ def _process_single_event(event, db):
     elif provider == "airtel_money":
         _handle_airtel_money(event, payload, db)
     else:
-        # Unknown provider — log and mark processed so it doesn't loop forever
+        # Unknown provider - log and mark processed so it doesn't loop forever
         logger.warning(f"Unknown webhook provider '{provider}' for event {event.id}")
 
 
@@ -227,7 +227,7 @@ def _handle_flutterwave(event, payload, db):
     elif event_type == "transfer.completed":
         reference = payload.get("data", {}).get("reference")
         logger.info(f"Flutterwave transfer completed: {reference}")
-        # Payout confirmed — update payout record if you have one
+        # Payout confirmed - update payout record if you have one
         _mark_payout_complete(reference, "flutterwave", db)
 
 
@@ -339,7 +339,7 @@ def _handle_airtel_money(event, payload, db):
 
 
 # ---------------------------------------------------------------------------
-# Core wallet credit — the only place a webhook credits a wallet
+# Core wallet credit - the only place a webhook credits a wallet
 # ---------------------------------------------------------------------------
 
 def _credit_wallet_safe(
@@ -366,11 +366,11 @@ def _credit_wallet_safe(
     from app.wallet.services.wallet_service import WalletService
 
     if not provider_reference:
-        logger.warning(f"No provider_reference in {provider} webhook — skipping credit")
+        logger.warning(f"No provider_reference in {provider} webhook - skipping credit")
         return
 
     if amount is None:
-        logger.warning(f"No amount in {provider} webhook ref={provider_reference} — skipping")
+        logger.warning(f"No amount in {provider} webhook ref={provider_reference} - skipping")
         return
 
     amount = Decimal(str(amount))
@@ -379,7 +379,7 @@ def _credit_wallet_safe(
     # IDEMPOTENCY CHECK
     # Look up the transaction we created when the user initiated the payment.
     # This holds the user_id and is our proof the payment was expected.
-    # If already COMPLETED, do nothing — this is a duplicate webhook delivery.
+    # If already COMPLETED, do nothing - this is a duplicate webhook delivery.
     # -----------------------------------------------------------------------
     existing_tx = TransactionModel.query.filter_by(
         client_request_id=provider_reference
@@ -388,7 +388,7 @@ def _credit_wallet_safe(
     if existing_tx:
         if existing_tx.status == TransactionStatus.COMPLETED:
             logger.info(
-                f"Webhook duplicate — {provider} ref={provider_reference} "
+                f"Webhook duplicate - {provider} ref={provider_reference} "
                 f"already credited as tx={existing_tx.id}. Skipping."
             )
             return
@@ -396,13 +396,13 @@ def _credit_wallet_safe(
     else:
         # No matching initiated transaction found.
         # This can happen if the payment was initiated outside our system
-        # or the initiation record was lost. Log and skip — we cannot
+        # or the initiation record was lost. Log and skip - we cannot
         # safely credit an unknown user.
         logger.error(
             f"No initiated transaction found for {provider} ref={provider_reference}. "
             f"Cannot credit wallet. Manual review required."
         )
-        # Don't raise — let the event be marked processed so it doesn't
+        # Don't raise - let the event be marked processed so it doesn't
         # loop. The error log is the alert.
         return
 
@@ -515,7 +515,7 @@ def _alert_owner_dead_letter(event):
             logger.exception("Failed to record dead_letter observability signals")
 
     except Exception:
-        # Catch-all — notifications are best-effort
+        # Catch-all - notifications are best-effort
         logger.exception("Unexpected error while alerting owner for dead_letter event %s", event.id)
 
 

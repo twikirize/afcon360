@@ -56,7 +56,7 @@ class AccommodationVerificationStatus(enum.Enum):
 
 # FIX 1: Removed AccommodationBlockedReason from here.
 # It was defined in BOTH property.py and availability.py, causing a shadowing conflict.
-# It belongs in availability.py (alongside BlockedDate which uses it) — import it from there
+# It belongs in availability.py (alongside BlockedDate which uses it) - import it from there
 # if property.py ever needs it directly.
 
 

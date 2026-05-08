@@ -1,4 +1,4 @@
-# AFCON 360 — User Onboarding & Role Selection System
+# AFCON 360 - User Onboarding & Role Selection System
 ## Complete Implementation Guide for Codeium Agent
 
 **Document Version:** 1.0  
@@ -44,20 +44,20 @@ Terms acceptance → AccountModel created → KYC-gated limits
 
 ## CORE RULES (DO NOT VIOLATE)
 
-1. **Never expose `user.id` (BIGINT)** — always use `user.public_id` (UUID) in URLs, sessions, templates, logs
+1. **Never expose `user.id` (BIGINT)** - always use `user.public_id` (UUID) in URLs, sessions, templates, logs
 2. **`get_profile_by_user()`** always receives `user.public_id` string, never an integer
-3. **Wallet is never auto-created** — only on explicit user request with terms acceptance
+3. **Wallet is never auto-created** - only on explicit user request with terms acceptance
 4. **All role assignments go through `assign_global_role()` or `assign_org_role()`** in `app/auth/roles.py`
 5. **Every DB mutation must be wrapped in `db_transaction()`** from `app/utils/transactions.py`
-6. **Run `flask seed-roles` before testing** — roles must exist in DB before assignment
-7. **OTP verification state** is tracked via `session["pending_onboarding"]` — clear it after use
+6. **Run `flask seed-roles` before testing** - roles must exist in DB before assignment
+7. **OTP verification state** is tracked via `session["pending_onboarding"]` - clear it after use
 8. **Org creation** always creates an `Organisation` record + `OrganisationMember` record + assigns `org_owner` role
-9. **KYC tier** is calculated dynamically by `calculate_kyc_tier(user.id)` — never store tier as a static value in the user record
-10. **Profile completion** is calculated by `profile.get_completion_percentage()` — never hardcode it
+9. **KYC tier** is calculated dynamically by `calculate_kyc_tier(user.id)` - never store tier as a static value in the user record
+10. **Profile completion** is calculated by `profile.get_completion_percentage()` - never hardcode it
 
 ---
 
-## PHASE 1 — POST-VERIFICATION LANDING PAGE
+## PHASE 1 - POST-VERIFICATION LANDING PAGE
 
 ### 1.1 Route to Create
 
@@ -76,13 +76,13 @@ def choose():
     """
     Post-verification landing page.
     Shows all available roles/services and lets user pick their path.
-    Only shown once — if profile is already completed, redirect to dashboard.
+    Only shown once - if profile is already completed, redirect to dashboard.
     """
     from app.profile.models import get_profile_by_user
     profile = get_profile_by_user(current_user.public_id)
     
     if profile and profile.profile_completed:
-        # Already onboarded — go to their dashboard
+        # Already onboarded - go to their dashboard
         from app.auth.routes import _dashboard_for_user
         return redirect(_dashboard_for_user(current_user))
     
@@ -104,7 +104,7 @@ This is the most important page. It must clearly explain what each role/path mea
 **Card Definitions (render these exactly):**
 
 ```
-CARD 1 — "Fan / Event-Goer"
+CARD 1 - "Fan / Event-Goer"
 Icon: 🎟️
 Title: I'm here to explore
 Description: Book events, accommodation and transport as an individual. No business registration needed.
@@ -112,7 +112,7 @@ KYC Required: Phone verified (already done at signup)
 Button: "Get Started →"
 Route: /onboarding/fan
 
-CARD 2 — "Independent Driver"  
+CARD 2 - "Independent Driver"  
 Icon: 🚗
 Title: I want to offer transport
 Description: Register yourself as a driver. Provide your licence and vehicle details. Get matched with passengers.
@@ -120,7 +120,7 @@ KYC Required: National ID + Driver's Licence + Vehicle registration
 Button: "Become a Driver →"
 Route: /onboarding/driver
 
-CARD 3 — "Vehicle Fleet / Transport Company"
+CARD 3 - "Vehicle Fleet / Transport Company"
 Icon: 🚌
 Title: I run a transport business
 Description: Register your company, add multiple vehicles and drivers. Manage bookings at scale.
@@ -128,7 +128,7 @@ KYC Required: Business registration + Fleet documents
 Button: "Register Fleet →"
 Route: /onboarding/organisation?type=transport
 
-CARD 4 — "Accommodation Host"
+CARD 4 - "Accommodation Host"
 Icon: 🏠
 Title: I want to list a property
 Description: List your home, apartment or rooms for short-term lets. Set your own pricing and availability.
@@ -136,7 +136,7 @@ KYC Required: National ID + Proof of ownership/tenancy
 Button: "List My Property →"
 Route: /onboarding/host
 
-CARD 5 — "Hotel / Lodge / Guesthouse"
+CARD 5 - "Hotel / Lodge / Guesthouse"
 Icon: 🏨
 Title: I run an accommodation business
 Description: Register your hotel, lodge or guesthouse. Manage multiple rooms, bookings and staff.
@@ -144,7 +144,7 @@ KYC Required: Business registration + Operating licence
 Button: "Register Establishment →"
 Route: /onboarding/organisation?type=accommodation
 
-CARD 6 — "Event Organiser"
+CARD 6 - "Event Organiser"
 Icon: 🎪
 Title: I want to host events
 Description: Create and manage events. Sell tickets, manage attendees and coordinate with venues.
@@ -152,7 +152,7 @@ KYC Required: National ID (individual) OR Business registration (company)
 Button: "Start Organising →"
 Route: /onboarding/event-organiser
 
-CARD 7 — "Organisation (Consumer)"
+CARD 7 - "Organisation (Consumer)"
 Icon: 🏢
 Title: We're a company using these services
 Description: Register your organisation to book transport, accommodation and events at scale. Manage team access and central billing.
@@ -163,7 +163,7 @@ Route: /onboarding/organisation?type=consumer
 
 ### 1.3 Register Blueprint
 
-**File:** `app/__init__.py` — add inside `create_app()` after other blueprint registrations:
+**File:** `app/__init__.py` - add inside `create_app()` after other blueprint registrations:
 
 ```python
 from app.auth.onboarding_routes import onboarding_bp
@@ -172,7 +172,7 @@ app.register_blueprint(onboarding_bp)
 
 ### 1.4 Redirect After Login
 
-**File:** `app/auth/routes.py` — modify `_dashboard_for_user()`:
+**File:** `app/auth/routes.py` - modify `_dashboard_for_user()`:
 
 ```python
 def _dashboard_for_user(user) -> str:
@@ -180,7 +180,7 @@ def _dashboard_for_user(user) -> str:
     from app.profile.models import get_profile_by_user
     profile = get_profile_by_user(user.public_id)
     if not profile or not profile.profile_completed:
-        # New user — send to onboarding
+        # New user - send to onboarding
         return url_for("onboarding.choose")
     
     # ... rest of existing function unchanged ...
@@ -188,7 +188,7 @@ def _dashboard_for_user(user) -> str:
 
 ---
 
-## PHASE 2 — ONBOARDING WIZARDS
+## PHASE 2 - ONBOARDING WIZARDS
 
 Each wizard is a multi-step form. Each step saves to session. Final step commits everything to DB atomically.
 
@@ -198,7 +198,7 @@ Each wizard is a multi-step form. Each step saves to session. Final step commits
 **Steps:** 1 step only  
 **Collects:** full_name, city, country  
 **Creates:** Updates UserProfile (profile_completed = True)  
-**Assigns Role:** `fan` (already assigned at signup — just mark complete)  
+**Assigns Role:** `fan` (already assigned at signup - just mark complete)  
 **Redirects to:** `fan.dashboard`
 
 ```python
@@ -251,7 +251,7 @@ def fan_onboarding():
 
 **KYC Tier Required:** Tier 2 (triggered after ID submission)
 
-**File:** `app/transport/models.py` — Add `DriverProfile` model if not exists:
+**File:** `app/transport/models.py` - Add `DriverProfile` model if not exists:
 
 ```python
 class DriverProfile(BaseModel):
@@ -369,7 +369,7 @@ def _commit_driver_onboarding(user, data):
         
         # Create DriverProfile
         driver = DriverProfile(
-            user_id=user.id,  # internal FK — correct
+            user_id=user.id,  # internal FK - correct
             licence_number=step2["licence_number"],
             licence_expiry=step2.get("licence_expiry"),
             licence_class=step2.get("licence_class"),
@@ -392,7 +392,7 @@ def _commit_driver_onboarding(user, data):
         db.session.add(vehicle)
 ```
 
-### 2.3 Organisation Onboarding (Universal — type determines sub-path)
+### 2.3 Organisation Onboarding (Universal - type determines sub-path)
 
 **Route:** `GET/POST /onboarding/organisation`  
 **Query param:** `?type=transport|accommodation|consumer`  
@@ -407,7 +407,7 @@ def _commit_driver_onboarding(user, data):
 - Assigns org role: `org_owner` via `assign_org_role()`
 - Sets `session["current_context"] = "organization"` and `session["current_org_id"]`
 
-**IMPORTANT — Org ID rule:** After creating the org, use `org.id` (BIGINT) only for FK assignments internally. Use `org.org_id` (UUID string) for URLs and public display.
+**IMPORTANT - Org ID rule:** After creating the org, use `org.id` (BIGINT) only for FK assignments internally. Use `org.org_id` (UUID string) for URLs and public display.
 
 ```python
 @onboarding_bp.route("/organisation", methods=["GET", "POST"])
@@ -540,7 +540,7 @@ def _commit_organisation_onboarding(user, data):
 **Creates:**
 - Updates `UserProfile`
 - Creates `Property` record with `verification_status = "pending"`
-- No new role — hosts use the `fan` base role + property ownership record
+- No new role - hosts use the `fan` base role + property ownership record
 
 ### 2.5 Event Organiser Onboarding (1-Step)
 
@@ -552,7 +552,7 @@ def _commit_organisation_onboarding(user, data):
 
 ---
 
-## PHASE 3 — DASHBOARD ROUTING FIX
+## PHASE 3 - DASHBOARD ROUTING FIX
 
 **File:** `app/auth/routes.py`
 
@@ -649,12 +649,12 @@ def _dashboard_for_user(user) -> str:
 
 ---
 
-## PHASE 4 — WALLET ACTIVATION (ON-DEMAND)
+## PHASE 4 - WALLET ACTIVATION (ON-DEMAND)
 
 **This is NOT part of onboarding. Build it as a separate opt-in flow.**
 
 **Route:** `GET/POST /wallet/activate`  
-**File:** `app/wallet/routes.py` (already exists — add this route)
+**File:** `app/wallet/routes.py` (already exists - add this route)
 
 ```python
 @wallet_bp.route("/activate", methods=["GET", "POST"])
@@ -707,7 +707,7 @@ def activate_wallet():
 
 ---
 
-## PHASE 5 — TEMPLATES TO BUILD
+## PHASE 5 - TEMPLATES TO BUILD
 
 ### 5.1 Required Templates (Create All)
 
@@ -739,12 +739,12 @@ templates/
   - Full viewport height layout
   - Dark background (#0a0a0a) with electric blue accents (#00d4ff)
   - Bold sans-serif headings (e.g. Syne or DM Sans from Google Fonts)
-  - Grid of cards — 3 columns on desktop, 1 on mobile
+  - Grid of cards - 3 columns on desktop, 1 on mobile
   - Each card: icon (large emoji or SVG), title, 2-line description, KYC badge, CTA button
   - Cards have hover effect: lift + border glow
   - Header text: "What brings you to AFCON 360?"
   - Subtext: "Choose your path. You can always add more later."
-  - NO sidebar, NO nav links — full focus on the choice
+  - NO sidebar, NO nav links - full focus on the choice
   - Bottom: small link "Not sure? Start as a Fan →"
 -->
 
@@ -831,7 +831,7 @@ templates/
 
 ---
 
-## PHASE 6 — DATABASE MIGRATIONS
+## PHASE 6 - DATABASE MIGRATIONS
 
 Run these in order after code changes:
 
@@ -851,7 +851,7 @@ flask shell
 
 ---
 
-## PHASE 7 — TESTS FOR CODEIUM TO RUN
+## PHASE 7 - TESTS FOR CODEIUM TO RUN
 
 Create `tests/test_onboarding.py`:
 
@@ -1095,32 +1095,32 @@ class TestWalletActivation:
 
 ---
 
-## PHASE 8 — EXECUTION ORDER FOR CODEIUM
+## PHASE 8 - EXECUTION ORDER FOR CODEIUM
 
 Follow this exact order. Do not skip steps. Report status after each.
 
 ### Step 1: Create `app/auth/onboarding_routes.py`
 - Implement all 6 routes: `choose`, `fan_onboarding`, `driver_onboarding`, `organisation_onboarding`, `host_onboarding`, `event_organiser_onboarding`
 - Include all helper functions: `_commit_driver_onboarding`, `_commit_organisation_onboarding`
-- **Test:** `from app.auth.onboarding_routes import onboarding_bp` — must import without errors
+- **Test:** `from app.auth.onboarding_routes import onboarding_bp` - must import without errors
 
 ### Step 2: Register Blueprint
 - Add `from app.auth.onboarding_routes import onboarding_bp` and `app.register_blueprint(onboarding_bp)` to `app/__init__.py`
-- **Test:** `flask routes | grep onboarding` — must show all onboarding routes
+- **Test:** `flask routes | grep onboarding` - must show all onboarding routes
 
 ### Step 3: Modify `_dashboard_for_user()` in `app/auth/routes.py`
 - Replace with the new version from Phase 3
-- **Test:** Import and call with a test user object — must return onboarding URL for incomplete profile
+- **Test:** Import and call with a test user object - must return onboarding URL for incomplete profile
 
 ### Step 4: Create All Templates
-- Build `templates/onboarding/choose.html` first — this is the highest priority
+- Build `templates/onboarding/choose.html` first - this is the highest priority
 - Then build `fan.html`, `driver_step1.html`, `driver_step2.html`, `driver_step3.html`
 - Then `organisation_step1.html`, `organisation_step2.html`
-- **Test:** `flask run` and visit `/onboarding/choose` — must render without errors
+- **Test:** `flask run` and visit `/onboarding/choose` - must render without errors
 
 ### Step 5: Add `DriverProfile` Model
 - Add to `app/transport/models.py` if not already present
-- **Test:** `flask db migrate --dry-run` — must detect new table
+- **Test:** `flask db migrate --dry-run` - must detect new table
 
 ### Step 6: Run Migrations
 ```bash
@@ -1128,11 +1128,11 @@ flask db migrate -m "add_driver_profile_onboarding"
 flask db upgrade
 flask seed-all
 ```
-- **Test:** `flask shell` → `from app.identity.models.roles_permission import Role; print(Role.query.count())` — must be > 0
+- **Test:** `flask shell` → `from app.identity.models.roles_permission import Role; print(Role.query.count())` - must be > 0
 
 ### Step 7: Add Wallet Activation Route
 - Add `activate_wallet` route to `app/wallet/routes.py`
-- **Test:** `flask routes | grep activate` — must show `/wallet/activate`
+- **Test:** `flask routes | grep activate` - must show `/wallet/activate`
 
 ### Step 8: Run All Tests
 ```bash
@@ -1149,7 +1149,7 @@ pytest tests/test_onboarding.py -v --tb=short
 |---|---|
 | `get_profile_by_user(user.id)` | `get_profile_by_user(user.public_id)` |
 | `session["user_id"] = user.id` | `session["user_id"] = user.public_id` |
-| Auto-creating wallet in register_user() | Never — wallet is opt-in only |
+| Auto-creating wallet in register_user() | Never - wallet is opt-in only |
 | Hardcoding role check `if user.role == "fan"` | Use `has_global_role(user, "fan")` from helpers.py |
 | Creating org without flushing before member | Always `db.session.flush()` after org to get org.id |
 | Redirect to dashboard without checking onboarding | Always check `profile.profile_completed` first |
