@@ -5,12 +5,16 @@ Guest-facing routes - Search, detail, and booking
 
 from flask import Blueprint, render_template, abort, request, jsonify, redirect, url_for, flash, session
 from flask_login import login_required, current_user
+from app import db
 from app.accommodation.services import search_service
 from app.accommodation.services.booking_service import BookingService
 from app.accommodation.services.availability_service import AvailabilityService
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.services.wallet_service import WalletService
 from app.accommodation.models.property import Property
+from app.accommodation.services.urgency_service import urgency_service
+from sqlalchemy import text
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -65,6 +69,69 @@ def api_search():
     })
 
 
+@guest_bp.route("/api/autocomplete", endpoint="autocomplete")
+def autocomplete():
+    """Booking.com-style destination autocomplete."""
+    from sqlalchemy import func
+    from app import db
+
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return jsonify({'suggestions': []})
+
+    # City suggestions
+    cities = db.session.query(
+        Property.city,
+        Property.country,
+        func.count(Property.id).label('cnt')
+    ).filter(
+        Property.status == 'active',
+        Property.is_verified == True,
+        Property.is_active == True,
+        func.lower(Property.city).like(f'{q.lower()}%')
+    ).group_by(Property.city, Property.country)\
+     .order_by(func.count(Property.id).desc())\
+     .limit(5).all()
+
+    # Top property name matches
+    props = Property.query.filter(
+        Property.status == 'active',
+        Property.is_verified == True,
+        Property.is_active == True,
+        func.lower(Property.title).like(f'%{q.lower()}%')
+    ).limit(3).all()
+
+    suggestions = []
+    for city, country, cnt in cities:
+        suggestions.append({
+            'type': 'city', 'label': f'{city}, {country}',
+            'city': city, 'country': country, 'count': cnt, 'icon': '📍'
+        })
+    for p in props:
+        suggestions.append({
+            'type': 'property', 'label': p.title,
+            'id': p.id, 'city': getattr(p, 'city', ''), 'icon': '🏨'
+        })
+
+    return jsonify({'suggestions': suggestions[:8]})
+
+
+@guest_bp.route("/api/analytics/event", methods=['POST'], endpoint="analytics_event")
+def track_event():
+    """Fire-and-forget analytics ingest — never blocks UX."""
+    try:
+        data = request.get_json(silent=True) or {}
+        from app.utils.monitoring import track_booking_funnel_event
+        track_booking_funnel_event(
+            data.get('event', 'unknown'),
+            {k: v for k, v in data.get('properties', {}).items()
+             if k in ['propertyId', 'session_id', 'page', 'price', 'city']}
+        )
+        return jsonify({'ok': True}), 200
+    except Exception:
+        return jsonify({'ok': False}), 200
+
+
 @guest_bp.route("/<identifier>", endpoint="detail")
 def detail(identifier):
     """Property detail page"""
@@ -79,6 +146,17 @@ def detail(identifier):
     else:
         property_model = Property.query.filter_by(slug=identifier).first()
 
+    # Increment view count (after getting property_id)
+    if property_model:
+        db.session.execute(
+            text("UPDATE accommodation_properties SET views_last_24h = views_last_24h + 1 WHERE id = :id"),
+            {'id': property_model.id}
+        )
+        db.session.commit()
+
+    # Get urgency signals
+    urgency = urgency_service.get_signals(property_model.id) if property_model else {}
+
     # Check availability for selected dates from URL
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
@@ -88,7 +166,6 @@ def detail(identifier):
     price_breakdown = None
 
     if check_in and check_out and property_model:
-        from datetime import datetime
         try:
             check_in_date = datetime.strptime(check_in, '%Y-%m-%d').date()
             check_out_date = datetime.strptime(check_out, '%Y-%m-%d').date()
@@ -117,7 +194,9 @@ def detail(identifier):
         price_breakdown=price_breakdown,
         selected_check_in=check_in,
         selected_check_out=check_out,
-        selected_guests=guests
+        selected_guests=guests,
+        urgency=urgency,
+        now=datetime.utcnow()
     )
 
 
