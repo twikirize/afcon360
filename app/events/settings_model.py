@@ -52,6 +52,36 @@ class EventSettings(BaseModel):
         doc="Events created by event_manager role are auto-approved."
     )
 
+    # ── Trust-based security settings ─────────────────────────────────────
+    enable_trust_based_publishing = Column(
+        Boolean, default=True, nullable=False,
+        doc="Enable trust-based auto-publishing system."
+    )
+    high_trust_threshold = Column(
+        Integer, default=70, nullable=False,
+        doc="Minimum score for HIGH trust auto-publish (0-100)."
+    )
+    medium_trust_threshold = Column(
+        Integer, default=40, nullable=False,
+        doc="Minimum score for MEDIUM trust auto-publish (0-100)."
+    )
+    enable_role_bypass = Column(
+        Boolean, default=True, nullable=False,
+        doc="Allow high-level roles to bypass trust scoring."
+    )
+    enable_kyc_boost = Column(
+        Boolean, default=True, nullable=False,
+        doc="KYC verification contributes to trust score."
+    )
+    enable_account_age_boost = Column(
+        Boolean, default=True, nullable=False,
+        doc="Account age contributes to trust score."
+    )
+    enable_event_history_boost = Column(
+        Boolean, default=True, nullable=False,
+        doc="Successful event history contributes to trust score."
+    )
+
     # ── Capacity & registration ────────────────────────────────────────────
     allow_free_events = Column(
         Boolean, default=True, nullable=False,

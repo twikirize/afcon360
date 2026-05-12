@@ -1,0 +1,513 @@
+{% extends "user/base_user_dashboard.html" %}
+
+{% block content_section %}
+<!-- Dashboard Section -->
+<div id="dashboard" class="content-section active">
+    <div class="content-header">
+        <h1 class="content-title">User Dashboard</h1>
+        <p class="content-subtitle">Welcome back! Here's your activity overview</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #bee3f8; color: #2b6cb0;">
+                <i class="fas fa-ticket-alt"></i>
+            </div>
+            <div class="stat-value">{{ registrations|length if registrations else 0 }}</div>
+            <div class="stat-label">Event Registrations</div>
+            <div class="stat-change positive">
+                <i class="fas fa-arrow-up"></i> Active events
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #c6f6d5; color: #22543d;">
+                <i class="fas fa-dollar-sign"></i>
+            </div>
+            <div class="stat-value">${{ "%.2f"|format(wallet_balance) }}</div>
+            <div class="stat-label">Wallet Balance</div>
+            <div class="stat-change positive">
+                <i class="fas fa-arrow-up"></i> Available funds
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #faf5ff; color: #6b46c1;">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-value">{{ registrations|selectattr('event.start_date')|selectattr('event.start_date', 'ge', current_date)|list|length if registrations else 0 }}</div>
+            <div class="stat-label">Upcoming Events</div>
+            <div class="stat-change">
+                <i class="fas fa-clock"></i> To attend
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Quick Actions</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('events.list') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';" onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
+                <i class="fas fa-search" style="font-size: 1.5rem;"></i>
+                <span>Browse Events</span>
+            </a>
+            <a href="{{ url_for('wallet.wallet_home') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';" onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
+                <i class="fas fa-wallet" style="font-size: 1.5rem;"></i>
+                <span>Manage Wallet</span>
+            </a>
+            <a href="{{ url_for('transport.home') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';" onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
+                <i class="fas fa-bus" style="font-size: 1.5rem;"></i>
+                <span>Book Transport</span>
+            </a>
+            <a href="{{ url_for('accommodation.index') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';" onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
+                <i class="fas fa-bed" style="font-size: 1.5rem;"></i>
+                <span>Find Stays</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border);">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Recent Activity</h3>
+        <div style="text-align: center; padding: 2rem; color: #718096;">
+            <i class="fas fa-chart-line" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+            <h4 style="margin-bottom: 0.5rem; color: var(--dark);">Your Activity Timeline</h4>
+            <p>View your recent events, transactions, and bookings in the dedicated sections.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Events Section -->
+<div id="events" class="content-section">
+    <div class="content-header">
+        <h1 class="content-title">My Events</h1>
+        <p class="content-subtitle">Your registered events and tickets</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #bee3f8; color: #2b6cb0;">
+                <i class="fas fa-ticket-alt"></i>
+            </div>
+            <div class="stat-value">{{ registrations|length if registrations else 0 }}</div>
+            <div class="stat-label">Total Registrations</div>
+            <div class="stat-change positive">
+                <i class="fas fa-arrow-up"></i> Active events
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #c6f6d5; color: #22543d;">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-value">{{ registrations|selectattr('event.start_date')|selectattr('event.start_date', 'ge', current_date)|list|length if registrations else 0 }}</div>
+            <div class="stat-label">Upcoming Events</div>
+            <div class="stat-change positive">
+                <i class="fas fa-clock"></i> To attend
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #faf5ff; color: #6b46c1;">
+                <i class="fas fa-history"></i>
+            </div>
+            <div class="stat-value">{{ registrations|selectattr('event.start_date')|selectattr('event.start_date', 'lt', current_date)|list|length if registrations else 0 }}</div>
+            <div class="stat-label">Past Events</div>
+            <div class="stat-change">
+                <i class="fas fa-check"></i> Attended
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Quick Actions</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('events.attendee_dashboard') }}" style="padding: 1rem; border-radius: 8px; border: 2px solid var(--primary); background: var(--primary); color: white; text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary-dark)'; this.style.borderColor='var(--primary-dark)';" onmouseout="this.style.background='var(--primary)'; this.style.borderColor='var(--primary)';">
+                <i class="fas fa-tachometer-alt" style="font-size: 1.5rem;"></i>
+                <span>Event Dashboard</span>
+            </a>
+            <a href="{{ url_for('events.list') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-search" style="font-size: 1.5rem;"></i>
+                <span>Browse Events</span>
+            </a>
+            <a href="{{ url_for('events.my_registrations') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-list" style="font-size: 1.5rem;"></i>
+                <span>All Registrations</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Event Cards Grid -->
+    <h3 style="color: var(--dark); margin-bottom: 1rem;">Your Event Registrations</h3>
+    <div class="events-grid">
+        {% if registrations %}
+            {% for registration in registrations %}
+            <div class="event-card" onclick="showEventDetails('{{ registration.event.id }}', '{{ registration.registration_ref }}')">
+                <div class="event-card-header">
+                    {% if registration.event.cover_image %}
+                    <img src="{{ registration.event.cover_image }}" alt="{{ registration.event.title }}" class="event-cover">
+                    {% else %}
+                    <div class="event-cover-placeholder">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    {% endif %}
+                    <div class="event-status-badge {{ 'upcoming' if registration.event.start_date >= current_date else 'past' }}">
+                        {% if registration.event.start_date >= current_date %}
+                            <i class="fas fa-clock"></i> Upcoming
+                        {% else %}
+                            <i class="fas fa-check"></i> Completed
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="event-card-body">
+                    <h4 class="event-title">{{ registration.event.title }}</h4>
+                    <div class="event-meta">
+                        <div class="event-date">
+                            <i class="fas fa-calendar"></i>
+                            {% if registration.event.start_date is string %}
+                                {{ registration.event.start_date }}
+                            {% else %}
+                                {{ registration.event.start_date.strftime('%b %d, %Y') }}
+                            {% endif %}
+                        </div>
+                        <div class="event-location">
+                            <i class="fas fa-map-marker-alt"></i>
+                            {{ registration.event.venue_name or 'TBD' }}
+                        </div>
+                    </div>
+                    <div class="event-ticket-info">
+                        <div class="ticket-type">
+                            <i class="fas fa-ticket-alt"></i>
+                            {{ registration.ticket_type.name }}
+                        </div>
+                        <div class="ticket-number">
+                            <span class="label">Ticket:</span>
+                            {{ registration.ticket_number }}
+                        </div>
+                    </div>
+                    <div class="event-actions">
+                        <span class="registration-status {{ registration.status }}">
+                            {{ registration.status.replace('_', ' ').title() }}
+                        </span>
+                        <button class="btn-view-details" onclick="event.stopPropagation(); showEventDetails('{{ registration.event.id }}', '{{ registration.registration_ref }}')">
+                            <i class="fas fa-eye"></i> View Details
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-calendar-times" style="font-size: 3rem; color: #cbd5e0; margin-bottom: 1rem;"></i>
+                <h4>No Event Registrations</h4>
+                <p>You haven't registered for any events yet. Browse our events and join the excitement!</p>
+                <a href="{{ url_for('events.list') }}" class="btn-browse-events">
+                    <i class="fas fa-search"></i> Browse Events
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Wallet Section -->
+<div id="wallet" class="content-section">
+    <div class="content-header">
+        <h1 class="content-title">Wallet</h1>
+        <p class="content-subtitle">Manage your funds and transactions</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #c6f6d5; color: #22543d;">
+                <i class="fas fa-dollar-sign"></i>
+            </div>
+            <div class="stat-value">${{ "%.2f"|format(wallet_balance) }}</div>
+            <div class="stat-label">Current Balance</div>
+            <div class="stat-change positive">
+                <i class="fas fa-arrow-up"></i> Available
+            </div>
+        </div>
+    </div>
+
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Wallet Actions</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('wallet.wallet_home') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-home" style="font-size: 1.5rem;"></i>
+                <span>Wallet Home</span>
+            </a>
+            <a href="{{ url_for('wallet.deposit_page') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-plus-circle" style="font-size: 1.5rem;"></i>
+                <span>Add Funds</span>
+            </a>
+            <a href="{{ url_for('wallet.send_page') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-paper-plane" style="font-size: 1.5rem;"></i>
+                <span>Send Money</span>
+            </a>
+            <a href="{{ url_for('wallet.transaction_history') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-history" style="font-size: 1.5rem;"></i>
+                <span>Transaction History</span>
+            </a>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 2rem; color: #718096;">
+        <i class="fas fa-wallet" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+        <h4 style="margin-bottom: 0.5rem; color: var(--dark);">Wallet Management</h4>
+        <p>Access your full wallet dashboard for detailed transactions, payment methods, and financial management.</p>
+        <a href="{{ url_for('wallet.wallet_home') }}" style="padding: 0.75rem 1.5rem; border-radius: 8px; background: var(--primary); color: white; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.3s ease;" onmouseover="this.style.background='var(--primary-dark)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='var(--primary)'; this.style.transform='translateY(0)';">
+            <i class="fas fa-arrow-right"></i>
+            Go to Wallet Home
+        </a>
+    </div>
+</div>
+
+<!-- Transport Section -->
+<div id="transport" class="content-section">
+    <div class="content-header">
+        <h1 class="content-title">AFCON Transport</h1>
+        <p class="content-subtitle">Get where you need to go, safely and quickly</p>
+    </div>
+
+    <!-- Main Booking Section -->
+    <div style="background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 2rem; margin-bottom: 2rem;">
+        <h3 style="margin-bottom: 1.5rem; font-weight: 600;">Where to?</h3>
+        
+        <!-- Location Inputs -->
+        <div style="margin-bottom: 1.5rem;">
+            <div style="position: relative; margin-bottom: 1rem;">
+                <span style="position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #6c757d; z-index: 10;">
+                    <i class="fas fa-circle"></i>
+                </span>
+                <input type="text" class="form-control" style="border: 2px solid #e9ecef; border-radius: 12px; padding: 16px 16px 16px 50px; font-size: 16px; transition: all 0.3s ease;" placeholder="Enter pickup location">
+            </div>
+            
+            <div style="position: relative;">
+                <span style="position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #6c757d; z-index: 10;">
+                    <i class="fas fa-map-marker-alt"></i>
+                </span>
+                <input type="text" class="form-control" style="border: 2px solid #e9ecef; border-radius: 12px; padding: 16px 16px 16px 50px; font-size: 16px; transition: all 0.3s ease;" placeholder="Enter destination">
+            </div>
+        </div>
+
+        <!-- Ride Type Selection -->
+        <div style="margin-bottom: 1.5rem;">
+            <h5 style="margin-bottom: 1rem; font-weight: 600;">Choose your ride</h5>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                <div class="ride-type-card" style="border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.3s ease; background: white;">
+                    <div style="font-size: 2rem; margin-bottom: 10px; color: #000;">
+                        <i class="fas fa-car"></i>
+                    </div>
+                    <h6 style="margin-bottom: 8px;">AFCON Go</h6>
+                    <p style="color: #6c757d; margin-bottom: 8px; font-size: 0.85rem;">Affordable, everyday rides</p>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #000;">UGX 15,000-25,000</div>
+                </div>
+                <div class="ride-type-card" style="border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.3s ease; background: white;">
+                    <div style="font-size: 2rem; margin-bottom: 10px; color: #000;">
+                        <i class="fas fa-car-side"></i>
+                    </div>
+                    <h6 style="margin-bottom: 8px;">AFCON Comfort</h6>
+                    <p style="color: #6c757d; margin-bottom: 8px; font-size: 0.85rem;">Comfortable sedans</p>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #000;">UGX 25,000-40,000</div>
+                </div>
+                <div class="ride-type-card" style="border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.3s ease; background: white;">
+                    <div style="font-size: 2rem; margin-bottom: 10px; color: #000;">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h6 style="margin-bottom: 8px;">AFCON XL</h6>
+                    <p style="color: #6c757d; margin-bottom: 8px; font-size: 0.85rem;">For up to 6 passengers</p>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #000;">UGX 35,000-50,000</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Book Button -->
+        <button class="book-ride-btn" style="background: #000; color: white; border: none; border-radius: 12px; padding: 18px 40px; font-size: 18px; font-weight: 600; transition: all 0.3s ease; width: 100%;">
+            <i class="fas fa-car me-2"></i> Book AFCON Go
+        </button>
+    </div>
+
+    <!-- Stats and Quick Actions -->
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 2rem;">
+        <!-- Stats -->
+        <div>
+            <h5 style="margin-bottom: 1rem; font-weight: 600;">Your Stats</h5>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="background: white; border-radius: 12px; padding: 1.5rem; text-align: center; border: 1px solid #e9ecef;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #000; margin-bottom: 5px;">12</div>
+                    <div style="color: #6c757d; font-size: 0.9rem;">Total Rides</div>
+                </div>
+                <div style="background: white; border-radius: 12px; padding: 1.5rem; text-align: center; border: 1px solid #e9ecef;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #000; margin-bottom: 5px;">4.8</div>
+                    <div style="color: #6c757d; font-size: 0.9rem;">Your Rating</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Rides -->
+        <div>
+            <h5 style="margin-bottom: 1rem; font-weight: 600;">Recent Rides</h5>
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; border: 1px solid #e9ecef; transition: all 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 600;">Kampala Stadium</div>
+                        <div style="color: #6c757d; font-size: 0.85rem;">to Entebbe Airport</div>
+                    </div>
+                    <span style="padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; background: #d4edda; color: #155724;">Completed</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #6c757d; font-size: 0.85rem;">Dec 8, 2025 • 2:30 PM</span>
+                    <span style="font-weight: 600;">UGX 35,000</span>
+                </div>
+            </div>
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; border: 1px solid #e9ecef; transition: all 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 600;">Hotel Africana</div>
+                        <div style="color: #6c757d; font-size: 0.85rem;">to Nakawa Market</div>
+                    </div>
+                    <span style="padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; background: #d4edda; color: #155724;">Completed</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #6c757d; font-size: 0.85rem;">Dec 7, 2025 • 10:15 AM</span>
+                    <span style="font-weight: 600;">UGX 18,000</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 2rem; margin-top: 2rem;">
+        <h4 style="margin-bottom: 1.5rem; font-weight: 600;">Quick Actions</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;">
+            <a href="#" style="background: white; border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; text-decoration: none; color: #000; transition: all 0.3s ease; display: block;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px; color: #000;">
+                    <i class="fas fa-calendar-plus"></i>
+                </div>
+                <div>Schedule</div>
+            </a>
+            <a href="#" style="background: white; border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; text-decoration: none; color: #000; transition: all 0.3s ease; display: block;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px; color: #000;">
+                    <i class="fas fa-gift"></i>
+                </div>
+                <div>Send Gift</div>
+            </a>
+            <a href="#" style="background: white; border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; text-decoration: none; color: #000; transition: all 0.3s ease; display: block;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px; color: #000;">
+                    <i class="fas fa-briefcase"></i>
+                </div>
+                <div>Business</div>
+            </a>
+            <a href="{{ url_for('transport.home') }}" style="background: white; border: 2px solid #e9ecef; border-radius: 12px; padding: 1.5rem; text-align: center; text-decoration: none; color: #000; transition: all 0.3s ease; display: block;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px; color: #000;">
+                    <i class="fas fa-cog"></i>
+                </div>
+                <div>Full Dashboard</div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Accommodation Section -->
+<div id="accommodation" class="content-section">
+    <div class="content-header">
+        <h1 class="content-title">Accommodation</h1>
+        <p class="content-subtitle">Your accommodation bookings and stays</p>
+    </div>
+
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Accommodation Services</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('accommodation.index') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-hotel" style="font-size: 1.5rem;"></i>
+                <span>Accommodation Home</span>
+            </a>
+            <a href="{{ url_for('accommodation.guest.search') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-search" style="font-size: 1.5rem;"></i>
+                <span>Find Stays</span>
+            </a>
+            <a href="{{ url_for('accommodation.guest.my_bookings') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-bed" style="font-size: 1.5rem;"></i>
+                <span>My Bookings</span>
+            </a>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 2rem; color: #718096;">
+        <i class="fas fa-bed" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+        <h4 style="margin-bottom: 0.5rem; color: var(--dark);">Accommodation Services</h4>
+        <p>Find and manage your accommodation for events and travel needs.</p>
+        <a href="{{ url_for('accommodation.index') }}" style="padding: 0.75rem 1.5rem; border-radius: 8px; background: var(--primary); color: white; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.3s ease;" onmouseover="this.style.background='var(--primary-dark)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='var(--primary)'; this.style.transform='translateY(0)';">
+            <i class="fas fa-arrow-right"></i>
+            Go to Accommodation Home
+        </a>
+    </div>
+</div>
+
+<!-- Profile Section -->
+<div id="profile" class="content-section">
+    <div class="content-header">
+        <h1 class="content-title">Profile</h1>
+        <p class="content-subtitle">Manage your public profile and information</p>
+    </div>
+
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Profile Management</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('profile.my_public_profile') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-user-circle" style="font-size: 1.5rem;"></i>
+                <span>Public Profile</span>
+            </a>
+            <a href="{{ url_for('profile.edit_profile') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-edit" style="font-size: 1.5rem;"></i>
+                <span>Edit Profile</span>
+            </a>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 2rem; color: #718096;">
+        <i class="fas fa-user" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+        <h4 style="margin-bottom: 0.5rem; color: var(--dark);">Profile Management</h4>
+        <p>Manage your public profile, personal information, and preferences.</p>
+        <a href="{{ url_for('profile.my_public_profile') }}" style="padding: 0.75rem 1.5rem; border-radius: 8px; background: var(--primary); color: white; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.3s ease;" onmouseover="this.style.background='var(--primary-dark)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='var(--primary)'; this.style.transform='translateY(0)';">
+            <i class="fas fa-arrow-right"></i>
+            Go to Profile
+        </a>
+    </div>
+</div>
+
+<!-- Account Section -->
+<div id="account" class="content-section">
+    <div class="content-header">
+        <h1 class="content-title">Account Settings</h1>
+        <p class="content-subtitle">Manage your account and security settings</p>
+    </div>
+
+    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
+        <h3 style="color: var(--dark); margin-bottom: 1rem;">Account Management</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('profile.account_overview') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-user-badge" style="font-size: 1.5rem;"></i>
+                <span>Account Overview</span>
+            </a>
+            <a href="{{ url_for('profile.edit_profile') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--primary); background: white; color: var(--primary); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--primary)';">
+                <i class="fas fa-cog" style="font-size: 1.5rem;"></i>
+                <span>Settings</span>
+            </a>
+            <a href="{{ url_for('auth.logout') }}" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--danger); background: white; color: var(--danger); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onmouseover="this.style.background='var(--danger)'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='var(--danger)';">
+                <i class="fas fa-sign-out-alt" style="font-size: 1.5rem;"></i>
+                <span>Logout</span>
+            </a>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 2rem; color: #718096;">
+        <i class="fas fa-cog" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+        <h4 style="margin-bottom: 0.5rem; color: var(--dark);">Account Settings</h4>
+        <p>Manage your account settings, security, and preferences.</p>
+        <a href="{{ url_for('profile.account_overview') }}" style="padding: 0.75rem 1.5rem; border-radius: 8px; background: var(--primary); color: white; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.3s ease;" onmouseover="this.style.background='var(--primary-dark)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='var(--primary)'; this.style.transform='translateY(0)';">
+            <i class="fas fa-arrow-right"></i>
+            Go to Account Settings
+        </a>
+    </div>
+</div>
+{% endblock %}

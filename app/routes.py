@@ -46,6 +46,22 @@ def register_blueprints(app):
     except ImportError as e:
         app.logger.warning(f"Could not import fan blueprint: {e}")
 
+    # Register user blueprint
+    try:
+        from app.user.routes import user_bp
+        app.register_blueprint(user_bp)
+        app.logger.info("Registered user blueprint")
+    except ImportError as e:
+        app.logger.warning(f"Could not import user blueprint: {e}")
+
+    # Register dashboard blueprint
+    try:
+        from app.dashboard.routes import dashboard_bp
+        app.register_blueprint(dashboard_bp)
+        app.logger.info("Registered dashboard blueprint")
+    except ImportError as e:
+        app.logger.warning(f"Could not import dashboard blueprint: {e}")
+
     # Note: The fan blueprint is already registered above, but we need to ensure
     # it's properly configured with the updated routes
 

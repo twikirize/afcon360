@@ -818,6 +818,7 @@
           <i class="fas fa-cog"></i>
         </a>
         <form method="POST" action="{{ url_for('auth.logout') }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="topbar-icon-btn" data-tip="Logout" onclick="return confirm('Are you sure you want to logout?')">
             <i class="fas fa-sign-out-alt"></i>
           </button>

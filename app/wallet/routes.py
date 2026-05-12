@@ -23,6 +23,7 @@ from app.wallet.middleware.wallet_check import (
     require_payout_access
 )
 from app.wallet.services.wallet_status_service import WalletFeature
+from app.auth.decorators import require_fresh_user
 from uuid import UUID
 from uuid import uuid4
 
@@ -129,6 +130,7 @@ def get_or_create_account(user_id, currency='UGX'):
 
 @wallet_bp.route("/activate", methods=["GET", "POST"])
 @login_required
+@require_fresh_user
 def activate_wallet():
     """User explicitly opts in to wallet activation with terms acceptance."""
     from app.identity.models.user import User
@@ -354,6 +356,7 @@ def deposit_page():
 @wallet_bp.route('/deposit', methods=['POST'])
 @login_required
 @require_deposit_access
+@require_fresh_user
 def deposit_form():
     """POST: Process deposit request"""
     try:
@@ -421,6 +424,7 @@ def send_page():
 @wallet_bp.route('/send', methods=['POST'])
 @login_required
 @require_send_access
+@require_fresh_user
 def send_funds():
     """POST: Process send/transfer request"""
     try:
@@ -519,6 +523,7 @@ def withdraw_page():
 @wallet_bp.route('/withdraw', methods=['POST'])
 @login_required
 @require_withdraw_access
+@require_fresh_user
 def withdraw_funds():
     """POST: Process withdrawal request"""
     try:
@@ -681,6 +686,7 @@ def agent_payout_request_page():
 
 @wallet_bp.route('/agent/payout/request', methods=['POST'])
 @login_required
+@require_fresh_user
 def payout_request_form():
     """Handle payout request submission from agent"""
     try:
@@ -761,6 +767,7 @@ def wallet_settings():
 
 @wallet_bp.route('/settings', methods=['POST'])
 @login_required
+@require_fresh_user
 def wallet_settings_update():
     """Update wallet settings"""
     try:
@@ -809,6 +816,7 @@ def pin_page():
 
 @wallet_bp.route('/pin/set', methods=['POST'])
 @login_required
+@require_fresh_user
 def set_pin():
     """Set or update user's transaction PIN."""
     try:

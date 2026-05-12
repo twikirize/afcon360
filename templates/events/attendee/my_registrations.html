@@ -117,7 +117,7 @@
                                 <div class="btn-group w-100">
                                     <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="btn btn-sm btn-primary">
-                                        <i class="fas fa-qrcode"></i> View Ticket
+                                        <i class="fas fa-qrcode"></i> View QR Code
                                     </a>
                                     <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}"
                                        class="btn btn-sm btn-outline-secondary">
@@ -191,7 +191,7 @@
                         <div class="btn-group w-100">
                             <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-qrcode"></i> View Ticket
+                                <i class="fas fa-qrcode"></i> View QR Code
                             </a>
                             <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}"
                                class="btn btn-sm btn-outline-secondary">

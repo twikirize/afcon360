@@ -19,6 +19,7 @@ from app.extensions import db, redis_client
 from app.events.models import Event, TicketType, EventRegistration, EventRole, Waitlist
 from app.admin.models import ContentFlag
 from app.events.constants import EventStatus
+from app.events.trust_service import EventTrustService, TrustLevel
 
 # Remove tight coupling to accommodation module
 # from app.accommodation.models.booking import AccommodationBooking
@@ -317,6 +318,14 @@ class EventService:
         if new_status == EventStatus.PUBLISHED:
             _assert_no_open_flags(event.id)
 
+        # NEW: Auto-publish for medium-trust users after approval
+        if (event.status == EventStatus.APPROVED and new_status == EventStatus.APPROVED and
+            event.event_metadata and event.event_metadata.get("auto_publish_on_approval")):
+            # This is an approval transition for a medium-trust user, auto-publish
+            new_status = EventStatus.PUBLISHED
+            action = 'publish'  # Override action for logging
+            logger.info(f"Auto-publishing event {event.id} for medium-trust user after approval")
+
         # Update event status
         old_status = event.status
         event.status = new_status
@@ -404,19 +413,46 @@ class EventService:
             approved_at = None
             approved_by_id = None
 
-            # Setting 1: auto_publish - skip moderation entirely
+            # NEW: Trust-based auto-publish system
+            trust_level = EventTrustService.calculate_trust_level(user)
+            should_auto_publish, trust_reason = EventTrustService.should_auto_publish(user, trust_level)
+            
+            # Log trust decision for audit
+            logger.info(f"Trust analysis for user {user.id} ({user.username}): "
+                       f"Level={trust_level}, Auto-publish={should_auto_publish}, Reason={trust_reason}")
+
+            # Setting 1: auto_publish - skip moderation entirely (legacy setting)
             if evt_settings.auto_publish:
                 status = EventStatus.PUBLISHED
                 approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
-            # Setting 2: event_manager_auto_approve - approve but not publish
+            # NEW: Trust-based publishing (overrides legacy settings)
+            elif trust_level == TrustLevel.HIGH:
+                # High trust users get immediate publishing
+                status = EventStatus.PUBLISHED
+                approved_at = datetime.now(timezone.utc)
+                approved_by_id = user_id
+                logger.info(f"High trust user {user.username} - event auto-published")
+
+            elif trust_level == TrustLevel.MEDIUM:
+                # Medium trust users get auto-approval, then auto-publish
+                status = EventStatus.APPROVED
+                approved_at = datetime.now(timezone.utc)
+                approved_by_id = user_id
+                # Set flag for auto-publish after approval
+                event_metadata = data.get("metadata", {})
+                event_metadata["auto_publish_on_approval"] = True
+                data["metadata"] = event_metadata
+                logger.info(f"Medium trust user {user.username} - event auto-approved for publishing")
+
+            # Legacy Setting 2: event_manager_auto_approve - approve but not publish
             elif evt_settings.event_manager_auto_approve and has_global_role(user, 'event_manager'):
                 status = EventStatus.APPROVED
                 approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
-            # Setting 3: require_approval is OFF - auto-approve for everyone
+            # Legacy Setting 3: require_approval is OFF - auto-approve for everyone
             elif not evt_settings.require_approval:
                 status = EventStatus.APPROVED
                 approved_at = datetime.now(timezone.utc)
@@ -465,25 +501,51 @@ class EventService:
             if data.get("registration_required"):
                 event_type = data.get("event_type", "free")
                 if event_type == "free":
-                    # Create a single free ticket type
-                    ticket = TicketType(
-                        event_id=event.id,
-                        name="Free Admission",
-                        price=0,
-                        capacity=data.get("max_capacity"),  # Use event's max_capacity for free events
-                        is_active=True
-                    )
-                    db.session.add(ticket)
+                    # Free events should NOT have ticket types
+                    # This allows the registration page to properly identify free events
+                    pass  # No ticket types created for free events
                 elif event_type in ("paid", "ticketed") and data.get("ticket_tiers"):
-                    # Create multiple ticket types from form data
+                    # Create enhanced ticket types from form data
                     for tier_data in data["ticket_tiers"]:
+                        # Parse datetime strings
+                        available_from = None
+                        available_until = None
+                        
+                        if tier_data.get("available_from"):
+                            try:
+                                available_from = datetime.fromisoformat(tier_data["available_from"].replace('Z', '+00:00'))
+                            except (ValueError, AttributeError):
+                                pass
+                        
+                        if tier_data.get("available_until"):
+                            try:
+                                available_until = datetime.fromisoformat(tier_data["available_until"].replace('Z', '+00:00'))
+                            except (ValueError, AttributeError):
+                                pass
+                        
                         ticket = TicketType(
                             event_id=event.id,
                             name=tier_data["name"],
                             price=tier_data["price"],
-                            capacity=tier_data["capacity"],
-                            is_active=True
+                            capacity=tier_data.get("capacity", 0),
+                            is_active=True,
+                            available_from=available_from,
+                            available_until=available_until
                         )
+                        
+                        # Store additional metadata
+                        metadata = {
+                            "description": tier_data.get("description", ""),
+                            "benefits": tier_data.get("benefits", []),
+                            "min_purchase": tier_data.get("min_purchase", 1),
+                            "payment_methods": data.get("payment_methods", [])
+                        }
+                        
+                        # Store metadata in event_metadata field
+                        if not event.event_metadata:
+                            event.event_metadata = {}
+                        event.event_metadata[f"ticket_tier_{ticket.id}"] = metadata
+                        
                         db.session.add(ticket)
                 else:
                     db.session.rollback()
@@ -751,20 +813,28 @@ class EventService:
 
     @classmethod
     def _ticket_type_to_dict(cls, ticket_type: TicketType) -> Dict:
-        """Convert TicketType model to dict"""
+        """Convert TicketType model to dict with enhanced metadata"""
         # Count registrations for this specific ticket type
         reg_count = EventRegistration.query.filter_by(ticket_type_id=ticket_type.id).count()
+        
+        # Get enhanced metadata from event
+        metadata = {}
+        if ticket_type.event and ticket_type.event.event_metadata:
+            metadata = ticket_type.event.event_metadata.get(f"ticket_tier_{ticket_type.id}", {})
 
         return {
             "id": ticket_type.id,
             "name": ticket_type.name,
-            "description": ticket_type.description,
+            "description": metadata.get("description", ticket_type.description or ""),
             "price": float(ticket_type.price),
             "capacity": ticket_type.capacity,
             "registration_count": reg_count,
             "available_from": ticket_type.available_from.isoformat() if ticket_type.available_from else None,
             "available_until": ticket_type.available_until.isoformat() if ticket_type.available_until else None,
-            "is_active": ticket_type.is_active
+            "is_active": ticket_type.is_active,
+            "benefits": metadata.get("benefits", []),
+            "min_purchase": metadata.get("min_purchase", 1),
+            "payment_methods": metadata.get("payment_methods", [])
         }
 
     @classmethod

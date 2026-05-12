@@ -29,7 +29,7 @@ from flask import (
 from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 
-from app.auth.decorators import require_role, require_permission
+from app.auth.decorators import require_role, require_permission, require_fresh_user
 
 from app.extensions import db
 from app.identity.models.user import User
@@ -1107,6 +1107,7 @@ def view_user(user_id):
 @moderator_bp.route('/users/<int:user_id>/suspend', methods=['POST'])
 @login_required
 @require_role(*_MOD)
+@require_fresh_user
 def suspend_user(user_id):
     from app.admin.models import ContentFlag
     user   = User.query.get_or_404(user_id)
@@ -1130,6 +1131,7 @@ def suspend_user(user_id):
 @moderator_bp.route('/users/<int:user_id>/unsuspend', methods=['POST'])
 @login_required
 @require_role(*_MOD)
+@require_fresh_user
 def unsuspend_user(user_id):
     from app.admin.models import ContentFlag
     user           = User.query.get_or_404(user_id)
@@ -1170,6 +1172,7 @@ def warn_user(user_id):
 @moderator_bp.route('/users/<int:user_id>/verify', methods=['POST'])
 @login_required
 @require_role(*_MOD)
+@require_fresh_user
 def verify_user(user_id):
     user             = User.query.get_or_404(user_id)
     user.is_verified = True
@@ -1184,6 +1187,7 @@ def verify_user(user_id):
 @moderator_bp.route('/users/<int:user_id>/reject-verification', methods=['POST'])
 @login_required
 @require_role(*_MOD)
+@require_fresh_user
 def reject_user_verification(user_id):
     """Reject user's KYC/verification record with reason. Does NOT create a flag."""
     user = User.query.get_or_404(user_id)
@@ -1236,6 +1240,7 @@ def reject_user_verification(user_id):
 @moderator_bp.route('/users/<int:user_id>/deactivate', methods=['POST'])
 @login_required
 @require_role(*_MOD)
+@require_fresh_user
 def deactivate_user(user_id):
     user = User.query.get_or_404(user_id)
     if user.id == current_user.id:
@@ -1251,6 +1256,7 @@ def deactivate_user(user_id):
 @moderator_bp.route('/users/<int:user_id>/activate', methods=['POST'])
 @login_required
 @require_role(*_MOD)
+@require_fresh_user
 def activate_user(user_id):
     user           = User.query.get_or_404(user_id)
     user.is_active = True

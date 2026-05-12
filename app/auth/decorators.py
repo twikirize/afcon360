@@ -45,8 +45,63 @@ from typing import Callable, Optional
 from flask import abort, current_app, g, flash, redirect, url_for, request
 from flask_login import current_user
 from app.extensions import db
+from app.identity.models.user import User
 
 log = logging.getLogger(__name__)
+
+
+def get_fresh_user():
+    """
+    Get fresh user from database (source of truth) with security validation.
+    
+    Use this for sensitive operations where data integrity is critical:
+    - Financial transactions
+    - Permission checks
+    - Admin actions
+    - KYC/compliance operations
+    
+    Returns:
+        User: Fresh user instance from DB, or None if user not found/deleted
+    
+    Raises:
+        Redirect: To logout if user is not found or inactive (security measure)
+    """
+    from flask_login import current_user
+    user = User.query.get(current_user.id)
+    
+    # Security: User not found in DB (deleted/invalid session)
+    if not user:
+        current_app.logger.warning(f"User {current_user.id} not found in DB - possible session hijacking")
+        return None
+    
+    # Security: User is inactive/deleted
+    if not user.is_active:
+        current_app.logger.warning(f"User {current_user.id} is inactive - forcing logout")
+        return None
+    
+    return user
+
+
+def require_fresh_user(f):
+    """
+    Decorator that ensures fresh user data is loaded for sensitive operations.
+    
+    Usage:
+        @bp.route("/sensitive-operation")
+        @login_required
+        @require_fresh_user
+        def sensitive_operation():
+            user = g.fresh_user  # Fresh user from DB
+            ...
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_fresh_user()
+        if not user:
+            return redirect(url_for('auth.logout'))
+        g.fresh_user = user
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ---------------------------------------------------------------------------
 # Arrange roles for logging in

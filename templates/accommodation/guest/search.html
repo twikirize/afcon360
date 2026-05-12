@@ -12,133 +12,390 @@
         </div>
     </div>
 
-    <!-- Search Form -->
+    <!-- OTA-Grade Search Bar -->
     <div class="row mb-5">
         <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <form method="GET" action="{{ url_for('accommodation.guest.search') }}" class="row g-3">
-                        <!-- Search Form -->
-                        <div class="col-md-4">
-                            <label class="form-label">City / Venue</label>
-                            <input type="text" class="form-control" name="city"
-                                   value="{{ request.args.get('city', '') }}"
-                                   placeholder="e.g., Kampala, Nairobi, Cairo">
+            <div class="search-container">
+                <form method="GET" action="{{ url_for('accommodation.guest.search') }}">
+                    <div class="ota-search-bar">
+                        <!-- Destination -->
+                        <div class="search-field search-field--destination">
+                            <label for="destinationInput">Where are you going?</label>
+                            <input
+                                type="text"
+                                id="destinationInput"
+                                name="query"
+                                autocomplete="off"
+                                placeholder="City, area, or property name"
+                                value="{{ request.args.get('query', request.args.get('city', '')) }}"
+                                class="search-input"
+                                aria-autocomplete="list"
+                                aria-controls="autocompleteList"
+                            />
+                            <ul id="autocompleteList" class="autocomplete-list" role="listbox" hidden></ul>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Check-in</label>
-                            <input type="date" class="form-control" name="check_in"
-                                   value="{{ request.args.get('check_in', '') }}">
+
+                        <!-- Check-in -->
+                        <div class="search-field">
+                            <label for="checkIn">Check-in</label>
+                            <input type="date" id="checkIn" name="check_in"
+                                   class="search-input"
+                                   value="{{ request.args.get('check_in', '') }}"
+                                   min="{{ today | default('') }}" />
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Check-out</label>
-                            <input type="date" class="form-control" name="check_out"
-                                   value="{{ request.args.get('check_out', '') }}">
+
+                        <!-- Check-out -->
+                        <div class="search-field">
+                            <label for="checkOut">Check-out</label>
+                            <input type="date" id="checkOut" name="check_out"
+                                   class="search-input"
+                                   value="{{ request.args.get('check_out', '') }}"
+                                   min="{{ request.args.get('check_in', today | default('')) }}" />
                         </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Guests</label>
-                            <input type="number" class="form-control" name="guests"
-                                   value="{{ request.args.get('guests', 2) }}" min="1" max="20">
+
+                        <!-- Guests -->
+                        <div class="search-field search-field--guests">
+                            <label for="guests">Guests</label>
+                            <input type="number" id="guests" name="guests"
+                                   class="search-input"
+                                   value="{{ request.args.get('guests', 2) }}"
+                                   min="1" max="30" />
                         </div>
-                        <div class="col-12">
-                            <button type="submit" class="btn btn-primary btn-lg w-100">
-                                <i class="fas fa-search"></i> Search Properties
-                            </button>
-                        </div>
-                    </form>
-                </div>
+
+                        <button type="submit" class="search-submit">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            Search
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
     <!-- Results -->
-    <div class="row">
-        <div class="col-12 mb-3">
-            <h2>Available Properties</h2>
-            <p class="text-muted">{{ properties|length }} properties found</p>
-        </div>
-
+    <div class="property-grid">
         {% if properties %}
             {% for property in properties %}
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100 shadow-sm hover-shadow">
-                    <!-- Property Image -->
-                    <div class="card-img-top" style="height: 200px; background-color: #f8f9fa; display: flex; align-items: center; justify-content: center;">
-                        {% if property.images and property.images|length > 0 %}
-                            <img src="{{ property.images[0] }}" class="img-fluid h-100 w-100 object-fit-cover" alt="{{ property.name }}">
+            <article class="property-card" data-property-id="{{ property.id }}">
+
+                <!-- IMAGE -->
+                <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}"
+                   class="property-card__img-link">
+                    <div class="property-card__img-wrap">
+                        {% set thumb = property.images[0] if property.images else none %}
+                        {% if thumb %}
+                        <img src="{{ thumb }}" alt="{{ property.name }}"
+                             loading="lazy" decoding="async" class="property-card__img"
+                             onerror="this.parentElement.classList.add('no-img')" />
                         {% else %}
-                            <div class="text-center text-muted">
-                                <i class="fas fa-hotel fa-3x"></i>
-                                <p>No image</p>
-                            </div>
+                        <div class="property-card__img property-card__img--empty">
+                            <span>No photo yet</span>
+                        </div>
+                        {% endif %}
+
+                        <!-- SAVE BUTTON -->
+                        <button class="card-save-btn" onclick="toggleSave(event, {{ property.id }})"
+                                aria-label="Save to wishlist" data-saved="false">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2">
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06
+                                         a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78
+                                         1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                            </svg>
+                        </button>
+
+                        {% if property.images|length > 1 %}
+                        <span class="img-count">📷 {{ property.images|length }}</span>
+                        {% endif %}
+                    </div>
+                </a>
+
+                <!-- BODY -->
+                <div class="property-card__body">
+
+                    <!-- Type + Location -->
+                    <div class="card-meta">
+                        {% if property.property_type %}
+                        <span class="card-type">{{ property.property_type|title }}</span>
+                        {% endif %}
+                        <span class="card-location">{{ property.city }}{% if property.country %}, {{ property.country }}{% endif %}</span>
+                    </div>
+
+                    <!-- Title -->
+                    <h3 class="card-title">
+                        <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}">
+                            {{ property.name }}
+                        </a>
+                    </h3>
+
+                    <!-- TRUST BADGES -->
+                    <div class="trust-row">
+                        {% if property.is_verified %}
+                        <span class="badge badge-verified">✓ Verified</span>
+                        {% endif %}
+                        {% if property.host_response_rate and property.host_response_rate >= 90 %}
+                        <span class="badge badge-fast">⚡ Fast reply</span>
+                        {% endif %}
+                        {% if property.cancellation_policy == 'flexible' %}
+                        <span class="badge badge-cancel">✓ Free cancellation</span>
+                        {% endif %}
+                        {% if property.last_booked_at %}
+                        {% set hrs = ((now - property.last_booked_at).total_seconds() / 3600)|int %}
+                        {% if hrs < 48 %}
+                        <span class="badge badge-hot">🔥 Booked {{ hrs }}h ago</span>
+                        {% endif %}
                         {% endif %}
                     </div>
 
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">{{ property.name }}</h5>
-                            {% if property.rating %}
-                                <span class="badge bg-warning text-dark">
-                                    <i class="fas fa-star"></i> {{ property.rating }}
-                                </span>
-                            {% endif %}
-                        </div>
-
-                        <p class="card-text text-muted small">
-                            <i class="fas fa-map-marker-alt"></i> {{ property.city }}
-                        </p>
-
-                        <p class="card-text">{{ property.summary|truncate(100) }}</p>
-
-                        <div class="row small text-muted mb-3">
-                            <div class="col-6">
-                                <i class="fas fa-user"></i> {{ property.max_guests }} guests
-                            </div>
-                            <div class="col-6">
-                                <i class="fas fa-bed"></i> {{ property.bedrooms }} bedroom{% if property.bedrooms != 1 %}s{% endif %}
-                            </div>
-                        </div>
-
-                        <div class="d-flex justify-content-between align-items-end">
-                            <div>
-                                <strong class="h5 text-primary">${{ property.price }}</strong>
-                                <small class="text-muted">/ night</small>
-                            </div>
-                            <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}"
-                               class="btn btn-outline-primary">
-                                View Details <i class="fas fa-arrow-right"></i>
-                            </a>
-                        </div>
+                    <!-- RATING -->
+                    {% if property.rating %}
+                    <div class="card-rating">
+                        <span class="rating-chip {% if property.rating >= 9 %}chip-exceptional{% elif property.rating >= 8 %}chip-excellent{% else %}chip-good{% endif %}">
+                            {{ '%.1f'|format(property.rating) }}
+                        </span>
+                        <span class="rating-word">
+                            {% if property.rating >= 9 %}Exceptional
+                            {% elif property.rating >= 8 %}Excellent
+                            {% elif property.rating >= 7 %}Very Good
+                            {% else %}Good{% endif %}
+                        </span>
+                        <span class="review-count">{{ property.reviews|default(0) }} reviews</span>
                     </div>
-                </div>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="col-12">
-                <div class="alert alert-info text-center py-5">
-                    <i class="fas fa-info-circle fa-3x mb-3"></i>
-                    <h4>No properties found</h4>
-                    <p>Try adjusting your search criteria or check back later for new listings.</p>
-                    <!-- Clear Filters -->
-                    {% if request.args.get('city') %}
-                        <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
-                            Clear Filters
+                    {% endif %}
+
+                    <!-- PRICE + CTA -->
+                    <div class="card-footer">
+                        <div class="card-price">
+                            <span class="price-main">
+                                {{ property.currency_symbol|default('$') }}{{ property.price|int }}
+                            </span>
+                            <span class="price-night">/ night</span>
+                        </div>
+                        <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}"
+                           class="card-cta">
+                            See availability
                         </a>
+                    </div>
+
+                    {% if property.cancellation_policy == 'flexible' %}
+                    <p class="free-cancel-note">✓ Free cancellation available</p>
                     {% endif %}
                 </div>
-            </div>
+            </article>
+            {% endfor %}
+        {% else %}
+        <div class="no-results">
+            <p>No properties found. Try adjusting your search.</p>
+            {% if request.args.get('city') or request.args.get('query') %}
+                <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
+                    Clear Filters
+                </a>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 </div>
 
 <style>
-.hover-shadow:hover {
-    transform: translateY(-5px);
-    transition: transform 0.3s ease;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+/* ===== OTA SEARCH BAR ===== */
+.ota-search-bar {
+    display: flex; align-items: flex-end;
+    background: white; border-radius: 50px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.15);
+    padding: 6px 6px 6px 12px;
+    border: 1px solid #e0e0e0; gap: 0;
 }
-.object-fit-cover {
-    object-fit: cover;
+.search-field {
+    display: flex; flex-direction: column;
+    padding: 8px 14px; flex: 1;
+    border-right: 1px solid #ebebeb; position: relative;
+}
+.search-field--destination { flex: 2; }
+.search-field label { font-size: 11px; font-weight: 700; color: #1a1a1a;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+.search-input { border: none; outline: none; font-size: 14px; background: transparent;
+    color: #1a1a1a; min-height: 26px; width: 100%; }
+.search-submit {
+    background: #003580; color: white; border: none; border-radius: 40px;
+    padding: 13px 22px; font-size: 14px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; white-space: nowrap;
+    min-height: 50px; transition: background 0.2s; flex-shrink: 0;
+}
+.search-submit:hover { background: #00224f; }
+
+/* Autocomplete */
+.autocomplete-list {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+    background: white; border-radius: 12px; z-index: 1000;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15); border: 1px solid #e0e0e0;
+    list-style: none; margin: 0; padding: 4px 0;
+    max-height: 300px; overflow-y: auto;
+}
+.autocomplete-item {
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; font-size: 13px; transition: background 0.1s;
+}
+.autocomplete-item:hover { background: #f5f7fa; }
+.ac-count { font-size: 11px; color: #999; margin-left: auto; }
+
+/* ===== PROPERTY CARDS GRID ===== */
+.property-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 24px; padding: 24px 0;
+}
+.property-card {
+    background: white; border-radius: 12px; overflow: hidden;
+    border: 1px solid #f0f0f0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    transition: box-shadow 0.2s, transform 0.2s;
+    display: flex; flex-direction: column;
+}
+.property-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.12); transform: translateY(-2px); }
+
+.property-card__img-wrap {
+    position: relative; aspect-ratio: 4/3; overflow: hidden; background: #f5f5f5;
+}
+.property-card__img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s; }
+.property-card:hover .property-card__img { transform: scale(1.04); }
+.property-card__img--empty {
+    width: 100%; height: 100%; display: flex; align-items: center;
+    justify-content: center; color: #ccc; font-size: 13px;
+}
+
+.card-save-btn {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(0,0,0,0.3); border: none; border-radius: 50%;
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: background 0.2s; backdrop-filter: blur(4px);
+}
+.card-save-btn:hover { background: rgba(255,255,255,0.9); }
+.card-save-btn[data-saved="true"] svg { fill: #e74c3c; stroke: #e74c3c; }
+.card-save-btn svg { stroke: white; }
+
+.img-count {
+    position: absolute; bottom: 8px; left: 8px;
+    background: rgba(0,0,0,0.5); color: white; font-size: 11px;
+    font-weight: 600; padding: 2px 7px; border-radius: 4px;
+}
+
+.property-card__body {
+    padding: 14px 15px 15px; display: flex; flex-direction: column; gap: 6px; flex: 1;
+}
+.card-meta { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #888; }
+.card-type { background: #f0f0f0; padding: 2px 7px; border-radius: 4px;
+    font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.3px; }
+.card-title { font-size: 15px; font-weight: 700; color: #1a1a1a;
+    line-height: 1.35; margin: 0; }
+.card-title a { color: inherit; text-decoration: none; }
+.card-title a:hover { color: #003580; }
+
+/* Trust badges */
+.trust-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.badge { display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.badge-verified { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.badge-fast { background: #fff8e1; color: #e65100; border: 1px solid #ffe082; }
+.badge-cancel { background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; }
+.badge-hot { background: #fce4ec; color: #c62828; border: 1px solid #ef9a9a;
+    animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+
+/* Rating */
+.card-rating { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.rating-chip {
+    color: white; font-weight: 800; font-size: 13px;
+    padding: 3px 8px; border-radius: 5px 5px 5px 0;
+}
+.chip-exceptional { background: #003580; }
+.chip-excellent { background: #0071c2; }
+.chip-good { background: #4caf50; }
+.rating-word { font-weight: 700; color: #1a1a1a; }
+.review-count { color: #888; }
+
+/* Card footer */
+.card-footer { display: flex; align-items: center; justify-content: space-between;
+    margin-top: auto; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+.price-main { font-size: 20px; font-weight: 800; color: #1a1a1a; }
+.price-night { font-size: 12px; color: #888; margin-left: 2px; }
+.card-cta {
+    background: #0071c2; color: white; padding: 9px 15px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap;
+    min-height: 38px; display: flex; align-items: center; transition: background 0.2s;
+}
+.card-cta:hover { background: #003580; color: white; }
+.free-cancel-note { font-size: 11px; color: #2e7d32; font-weight: 600; margin: 0; }
+
+/* Mobile */
+@media (max-width: 768px) {
+    .ota-search-bar { flex-direction: column; border-radius: 16px; padding: 12px; gap: 4px; }
+    .search-field { border-right: none; border-bottom: 1px solid #f0f0f0; }
+    .search-submit { width: 100%; justify-content: center; margin-top: 4px; border-radius: 12px; }
+    .property-grid { grid-template-columns: 1fr; gap: 16px; }
+}
+
+.no-results {
+    text-align: center; padding: 60px 20px;
+    color: #666; font-size: 16px;
+}
+.no-results p {
+    margin-bottom: 20px;
 }
 </style>
+
+<script>
+// OTA AUTOCOMPLETE
+(function() {
+    const input = document.getElementById('destinationInput');
+    const list = document.getElementById('autocompleteList');
+    if (!input || !list) return;
+
+    let timer;
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+            const q = input.value.trim();
+            if (q.length < 2) { list.hidden = true; return; }
+            try {
+                const res = await fetch(`/accommodation/api/autocomplete?q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                list.innerHTML = '';
+                if (!data.suggestions?.length) { list.hidden = true; return; }
+                data.suggestions.forEach(s => {
+                    const li = document.createElement('li');
+                    li.className = 'autocomplete-item';
+                    li.setAttribute('role', 'option');
+                    li.innerHTML = `<span>${s.icon}</span><span>${s.label}</span>${s.count ? `<span class="ac-count">${s.count} properties</span>` : ''}`;
+                    li.addEventListener('click', () => {
+                        input.value = s.label;
+                        list.hidden = true;
+                        if (s.type === 'property') window.location.href = `/accommodation/property/${s.id}`;
+                    });
+                    list.appendChild(li);
+                });
+                list.hidden = false;
+            } catch(e) { list.hidden = true; }
+        }, 250);
+    });
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.search-field--destination')) list.hidden = true;
+    });
+})();
+
+// WISHLIST TOGGLE
+function toggleSave(e, propertyId) {
+    e.preventDefault(); e.stopPropagation();
+    const btn = e.currentTarget;
+    const saved = btn.getAttribute('data-saved') === 'true';
+    btn.setAttribute('data-saved', !saved);
+    // Persist to backend if user is logged in
+    fetch(`/accommodation/api/wishlist/${propertyId}`, {
+        method: saved ? 'DELETE' : 'POST',
+        headers: { 'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || '' }
+    }).catch(() => {});
+}
+</script>
 {% endblock %}

@@ -17,6 +17,7 @@ print("Settings routes registered to events blueprint")  # Debug line
 from app.events import routes
 from app.events.settings_model import EventSettings  # noqa: F401
 
+
 # Expose service for easier imports
 from app.events.services import EventService
 

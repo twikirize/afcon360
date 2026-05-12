@@ -3,6 +3,7 @@ from flask_login import current_user, login_required
 from app.identity.models.user import User
 from app.profile.models import UserProfile, get_profile_by_user
 from app.extensions import db
+from app.auth.decorators import require_fresh_user
 from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits, TIER_REQUIREMENTS, TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD, TIER_3_ENHANCED, TIER_4_PREMIUM, TIER_5_CORPORATE
 from app.wallet.services.wallet_service import WalletService
 import math
@@ -28,6 +29,47 @@ def view_profile(public_id):
     }
 
     # Get user roles
+    user_roles = []
+    # Check for owner/admin roles
+    if user.is_app_owner():
+        user_roles.append('owner')
+    # Check for global admin role
+    if user.has_global_role('admin'):
+        user_roles.append('admin')
+    # Check for driver role (assuming there's a 'driver' role)
+    if user.has_global_role('driver'):
+        user_roles.append('driver')
+    # Check for host role
+    if user.has_global_role('host'):
+        user_roles.append('host')
+
+    # Get real stats
+    stats = {
+        'events_count': 0,
+        'reviews_count': 0,
+        'stays_count': 0,
+        'trips_count': 0,
+    }
+
+    # Badges
+    badges = []
+    if profile and profile.verification_status == 'verified':
+        badges.append({'icon': 'check-circle-fill', 'name': 'Verified'})
+
+    is_own_profile = current_user.is_authenticated and current_user.public_id == public_id
+
+    return render_template(
+        "profile/public.html",
+        user=user,
+        profile=profile,
+        public_info=public_info,
+        stats=stats,
+        recent_activity=[],
+        badges=badges,
+        is_own_profile=is_own_profile,
+        user_roles=user_roles
+    )
+
     user_roles = []
     # Check for owner/admin roles
     if user.is_app_owner():
@@ -262,6 +304,7 @@ def profile_overview():
 
 @profile_bp.route("/profile/edit", methods=["GET", "POST"])
 @login_required
+@require_fresh_user
 def edit_profile():
     """Edit profile page with form for updating personal information"""
     from app.profile.models import IMMUTABLE_AFTER_VERIFICATION

@@ -19,7 +19,8 @@ from app.auth.decorators import (
     admin_required,
     owner_only,
     require_permission,
-    require_role
+    require_role,
+    require_fresh_user
 )
 from app.admin.decorators import (
     require_emergency_access_or_role,
@@ -119,9 +120,14 @@ def get_user_roles_map(users):
 @login_required
 @admin_required
 def super_dashboard():
-    from app.identity.models.user import User
-    from app.identity.models import OrganisationAuditLog
-    from app.admin.models import ManageableCategory, ManageableItem
+    try:
+        from app.identity.models.user import User
+        from app.identity.models.licence_document import OrganisationAuditLog
+        from app.admin.models import ManageableCategory, ManageableItem
+    except ImportError as e:
+        logger.error(f"Import error in super_dashboard: {e}")
+        flash("Error loading dashboard components", "danger")
+        return redirect(url_for('admin.dashboard'))
 
     try:
         total_users = User.query.count()
@@ -164,7 +170,7 @@ def super_dashboard():
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
 
         return render_template(
-            "super_admindashboard.html",
+            "super_admin_dashboard.html",
             total_users=total_users,
             verified_users=verified_users,
             unverified_users=unverified_users,
@@ -309,6 +315,7 @@ def deactivate_user(user_id):
 @admin_bp.route("/users/<string:user_id>/suspend", methods=["POST"], endpoint="suspend_user")
 @login_required
 @admin_required
+@require_fresh_user
 def suspend_user(user_id):
     """Suspend a user account with tenure-based protections."""
     from app.identity.models.user import User
@@ -340,6 +347,7 @@ def suspend_user(user_id):
 @admin_bp.route("/users/<string:user_id>/delete", methods=["POST"], endpoint="delete_user")
 @login_required
 @require_emergency_access_or_role("owner", action="delete_user")
+@require_fresh_user
 def delete_user(user_id):
     """Permanently delete a user account with tenure-based protections."""
     from app.identity.models.user import User
@@ -404,6 +412,7 @@ def resend_activation(user_id):
 @admin_bp.route("/users/<string:user_id>/promote", methods=["POST"], endpoint="promote_user")
 @login_required
 @admin_required
+@require_fresh_user
 def promote_user(user_id):
     """Promote a user to the next higher role in hierarchy."""
     from app.identity.models.user import User
@@ -472,6 +481,7 @@ def promote_user(user_id):
 @admin_bp.route("/users/<string:user_id>/demote", methods=["POST"], endpoint="demote_user")
 @login_required
 @admin_required
+@require_fresh_user
 def demote_user(user_id):
     """Demote a user to the next lower role in hierarchy."""
     from app.identity.models.user import User
@@ -546,6 +556,7 @@ def demote_user(user_id):
 @admin_bp.route("/users/<string:user_id>/sign-in-as", methods=["POST"], endpoint="sign_in_as")
 @login_required
 @admin_required
+@require_fresh_user
 def sign_in_as(user_id):
     """Allow admin to sign in as another user (impersonation)."""
     from app.identity.models.user import User
@@ -592,6 +603,7 @@ def stop_impersonating():
 @admin_bp.route("/users/bulk-verify", methods=["POST"], endpoint="bulk_verify_users")
 @login_required
 @admin_required
+@require_fresh_user
 def bulk_verify_users():
     """Bulk verify multiple users."""
     from app.identity.models.user import User
@@ -622,6 +634,7 @@ def bulk_verify_users():
 @admin_bp.route("/users/bulk-activate", methods=["POST"], endpoint="bulk_activate_users")
 @login_required
 @admin_required
+@require_fresh_user
 def bulk_activate_users():
     """Bulk activate multiple users."""
     from app.identity.models.user import User
@@ -652,6 +665,7 @@ def bulk_activate_users():
 @admin_bp.route("/users/bulk-deactivate", methods=["POST"], endpoint="bulk_deactivate_users")
 @login_required
 @admin_required
+@require_fresh_user
 def bulk_deactivate_users():
     """Bulk deactivate multiple users."""
     from app.identity.models.user import User
@@ -1331,6 +1345,33 @@ def wallet_stats():
 @admin_required
 def wallet_control():
     return render_template('admin/wallet_control.html')
+
+
+@admin_bp.route('/payment-methods')
+@login_required
+@admin_required
+def payment_methods():
+    """Payment methods configuration page"""
+    from app.events.models.payment_config import PaymentMethodConfig
+    
+    # Initialize defaults if none exist
+    PaymentMethodConfig.initialize_defaults()
+    
+    # Get all payment methods
+    methods = PaymentMethodConfig.query.all()
+    
+    # Count statuses
+    active_count = len([m for m in methods if m.is_enabled and m.is_active])
+    disabled_count = len([m for m in methods if not m.is_enabled])
+    inactive_count = len([m for m in methods if m.is_enabled and not m.is_active])
+    
+    return render_template(
+        'admin/payment_methods.html',
+        payment_methods=methods,
+        active_count=active_count,
+        disabled_count=disabled_count,
+        inactive_count=inactive_count
+    )
 
 
 # -----------------------------

@@ -1,7 +1,47 @@
 {# templates/accommodation/guest/detail.html #}
 {% extends "base.html" %}
 
-{% block title %}{{ property.name }} - AFCON360 Accommodation{% endblock %}
+{% block head %}
+<!-- ADD SEO structured data -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "LodgingBusiness",
+    "name": "{{ property.name | e }}",
+    "description": "{{ (property.description or '')[:200] | e }}",
+    "url": "{{ request.url }}",
+    {% if property.images %}
+    "image": [{% for p in property.images[:5] %}"{{ p }}"{% if not loop.last %},{% endif %}{% endfor %}],
+    {% endif %}
+    "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "{{ property.city | e }}",
+        "addressCountry": "{{ property.country | e }}"
+    },
+    {% if property.rating %}
+    "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "{{ '%.1f' | format(property.rating) }}",
+        "reviewCount": "{{ property.reviews }}",
+        "bestRating": "10",
+        "worstRating": "1"
+    },
+    {% endif %}
+    "priceRange": "{{ property.currency_symbol | default('$') }}{{ property.price | int }}"
+}
+</script>
+
+<!-- Dynamic meta tags -->
+<title>{{ property.name }} in {{ property.city }} — {{ property.price | int }}/night</title>
+<meta name="description" content="Book {{ property.name }} in {{ property.city }}. {% if property.rating %}Rated {{ '%.1f' | format(property.rating) }}/10. {% endif %}From {{ property.currency_symbol | default('$') }}{{ property.price | int }} per night.">
+<link rel="canonical" href="{{ request.url }}">
+<meta property="og:title" content="{{ property.name }} — {{ property.city }}">
+<meta property="og:type" content="place">
+<meta property="og:url" content="{{ request.url }}">
+{% if property.images %}
+<meta property="og:image" content="{{ property.images[0] }}">
+{% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="container py-4">
@@ -35,25 +75,45 @@
                 {% endif %}
             </div>
 
-            <!-- Gallery -->
-            <div class="mb-4">
-                <div class="row g-2">
-                    {% if property.images and property.images|length > 0 %}
-                        {% for image in property.images[:4] %}
-                        <div class="col-md-6 mb-2">
-                            <img src="{{ image }}" class="img-fluid rounded w-100" style="height: 200px; object-fit: cover;" alt="{{ property.name }}">
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="col-12">
-                            <div class="bg-light rounded text-center py-5">
-                                <i class="fas fa-hotel fa-4x text-muted mb-3"></i>
-                                <p class="text-muted">No images available</p>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
+            <!-- ADD/REPLACE image display section in detail.html -->
+{% if property.images and property.images|length > 0 %}
+<div class="detail-gallery">
+    <div class="gallery-main">
+        <img id="galleryHero"
+             src="{{ property.images[0] }}"
+             alt="{{ property.name }}"
+             loading="eager"
+             fetchpriority="high"
+             class="gallery-hero-img" />
+        <button class="gallery-all-btn" onclick="openAllPhotos()" aria-label="View all photos">
+            ⊞ Show all {{ property.images|length }} photos
+        </button>
+    </div>
+    {% if property.images|length > 1 %}
+    <div class="gallery-thumbs-grid">
+        {% for image in property.images[1:5] %}
+        <img src="{{ image }}"
+             alt="{{ property.name }} photo {{ loop.index + 1 }}"
+             loading="lazy"
+             onclick="document.getElementById('galleryHero').src='{{ image }}'"
+             class="gallery-thumb {% if loop.index == 4 and property.images|length > 5 %}gallery-thumb-more{% endif %}"
+             {% if loop.index == 4 and property.images|length > 5 %}
+             data-more="+{{ property.images|length - 5 }}"
+             {% endif %}
+        />
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="detail-gallery">
+    <div class="gallery-main">
+        <div class="gallery-hero-img gallery-hero-img--empty">
+            <span>No photos yet</span>
+        </div>
+    </div>
+</div>
+{% endif %}
 
             <!-- Description -->
             <div class="card mb-4">
@@ -228,4 +288,115 @@
         </div>
     </div>
 </div>
+
+<!-- ADD just before </body> in detail.html -->
+<div class="sticky-book-bar" id="stickyBar">
+    <div class="sbb-price">
+        <span class="sbb-amount">{{ property.currency_symbol | default('$') }}{{ property.price | int }}</span>
+        <span class="sbb-per">/ night</span>
+    </div>
+    {% if property.rating %}
+    <div class="sbb-rating">
+        ⭐ {{ '%.1f' | format(property.rating) }}
+        <span>({{ property.reviews | default(0) }})</span>
+    </div>
+    {% endif %}
+    <a href="#booking-form" class="sbb-cta" onclick="smoothToBooking(event)">
+        Reserve Now
+    </a>
+</div>
+
+<!-- Urgency signals (inject from route via urgency dict) -->
+{% if urgency is defined %}
+    {% if urgency.get('high_demand') %}
+    <div class="urgency-bar urgency-demand">
+        🔥 High demand — limited availability in the next 30 days
+    </div>
+    {% endif %}
+    {% if urgency.get('recently_booked') %}
+    <div class="urgency-bar urgency-social">
+        ✅ Booked {{ urgency.get('recent_booking_count', '') }} times this week
+    </div>
+    {% endif %}
+{% endif %}
+
+<style>
+.detail-gallery { display: grid; grid-template-columns: 3fr 2fr; gap: 6px;
+    border-radius: 12px; overflow: hidden; max-height: 480px; margin-bottom: 24px; }
+.gallery-main { position: relative; }
+.gallery-hero-img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+.gallery-hero-img--empty {
+    width: 100%; height: 100%; display: flex; align-items: center;
+    justify-content: center; color: #ccc; font-size: 13px;
+    background: #f5f5f5;
+}
+.gallery-thumbs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gallery-thumb { width: 100%; height: 100%; object-fit: cover; cursor: pointer;
+    transition: filter 0.2s; }
+.gallery-thumb:hover { filter: brightness(0.88); }
+.gallery-all-btn {
+    position: absolute; bottom: 14px; right: 14px;
+    background: white; border: 1px solid #ddd; border-radius: 8px;
+    padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.gallery-all-btn:hover { background: #f5f5f5; }
+@media(max-width:768px) {
+    .detail-gallery { grid-template-columns: 1fr; }
+    .gallery-thumbs-grid { display: none; }
+}
+
+/* Sticky bar */
+.sticky-book-bar {
+    display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+    background: white; border-top: 1px solid #e0e0e0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+    align-items: center; justify-content: space-between; gap: 12px;
+}
+@media(max-width:768px) { .sticky-book-bar { display: flex; } body { padding-bottom: 80px; } }
+.sbb-amount { font-size: 20px; font-weight: 800; color: #1a1a1a; }
+.sbb-per { font-size: 12px; color: #888; }
+.sbb-rating { font-size: 12px; color: #555; }
+.sbb-cta {
+    background: #003580; color: white; padding: 12px 22px; border-radius: 8px;
+    font-weight: 700; font-size: 14px; text-decoration: none; min-height: 46px;
+    display: flex; align-items: center; white-space: nowrap;
+}
+.sbb-cta:hover { background: #00224f; color: white; }
+
+/* Urgency */
+.urgency-bar { padding: 8px 14px; border-radius: 6px; font-size: 13px;
+    font-weight: 600; margin: 8px 0; display: flex; align-items: center; gap: 6px; }
+.urgency-demand { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+.urgency-social { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+</style>
+
+<script>
+// Sticky bar: show when booking form scrolls out of view
+(function() {
+    const bar = document.getElementById('stickyBar');
+    const form = document.getElementById('booking-form') ||
+                 document.querySelector('.booking-widget') ||
+                 document.querySelector('form[action*="book"]');
+    if (!bar || !form) return;
+    const obs = new IntersectionObserver(([e]) => {
+        bar.style.display = e.isIntersecting ? 'none' : 'flex';
+    }, { threshold: 0.1 });
+    obs.observe(form);
+})();
+
+function smoothToBooking(e) {
+    e.preventDefault();
+    const form = document.getElementById('booking-form') ||
+                 document.querySelector('.booking-widget');
+    form?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function openAllPhotos() {
+    // Trigger existing modal if present, otherwise log
+    const modal = document.getElementById('photoModal') ||
+                  document.querySelector('.photo-modal');
+    if (modal) modal.style.display = 'flex';
+}
+</script>
 {% endblock %}

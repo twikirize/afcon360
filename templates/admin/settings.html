@@ -146,6 +146,101 @@
             background: var(--warning-color);
         }
 
+        /* Trust Settings Styles */
+        .threshold-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+            margin: 10px 0;
+        }
+
+        .threshold-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+        }
+
+        .threshold-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            border: none;
+        }
+
+        .threshold-display {
+            text-align: center;
+            margin-top: 5px;
+        }
+
+        .threshold-display span {
+            background: var(--primary-color);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--success-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .setting-tag.security {
+            background: #e6f7ff;
+            color: #1890ff;
+            border: 1px solid #91d5ff;
+        }
+
         .category-tabs {
             display: flex;
             gap: 5px;
@@ -776,6 +871,7 @@
         <!-- Category Tabs -->
         <div class="category-tabs" id="categoryTabs">
             <div class="category-tab active" data-category="all">All Settings</div>
+            <div class="category-tab" data-category="trust">Trust Security</div>
             {% for category in categories %}
             <div class="category-tab" data-category="{{ category[0] }}">{{ category[0]|title }}</div>
             {% endfor %}
@@ -784,6 +880,165 @@
         <!-- Settings Form -->
         <form id="settingsForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            
+            <!-- Trust Security Settings -->
+            <div class="category-card" data-category="trust" id="category-trust">
+                <div class="category-header">
+                    <h3><i class="fas fa-shield-alt"></i> Trust-Based Security Settings</h3>
+                    <span class="category-count">7</span>
+                </div>
+                <div class="settings-list">
+                    <!-- Enable Trust-Based Publishing -->
+                    <div class="setting-item" data-key="enable_trust_based_publishing" data-type="boolean" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">enable_trust_based_publishing</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">Enable trust-based auto-publishing system</div>
+                            <div class="setting-meta">Type: boolean</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="enable_trust_based_publishing" 
+                                       {% if trust_settings.enable_trust_based_publishing %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- High Trust Threshold -->
+                    <div class="setting-item" data-key="high_trust_threshold" data-type="integer" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">high_trust_threshold</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">Minimum score for HIGH trust auto-publish (0-100)</div>
+                            <div class="setting-meta">Type: integer | Default: 70</div>
+                        </div>
+                        <div class="setting-control">
+                            <input type="range" class="threshold-slider" name="high_trust_threshold" 
+                                   min="0" max="100" value="{{ trust_settings.high_trust_threshold }}"
+                                   oninput="updateThresholdDisplay('high', this.value)">
+                            <div class="threshold-display">
+                                <span id="high_threshold_value">{{ trust_settings.high_trust_threshold }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Medium Trust Threshold -->
+                    <div class="setting-item" data-key="medium_trust_threshold" data-type="integer" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">medium_trust_threshold</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">Minimum score for MEDIUM trust auto-publish (0-100)</div>
+                            <div class="setting-meta">Type: integer | Default: 40</div>
+                        </div>
+                        <div class="setting-control">
+                            <input type="range" class="threshold-slider" name="medium_trust_threshold" 
+                                   min="0" max="100" value="{{ trust_settings.medium_trust_threshold }}"
+                                   oninput="updateThresholdDisplay('medium', this.value)">
+                            <div class="threshold-display">
+                                <span id="medium_threshold_value">{{ trust_settings.medium_trust_threshold }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Enable Role Bypass -->
+                    <div class="setting-item" data-key="enable_role_bypass" data-type="boolean" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">enable_role_bypass</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">Allow high-level roles to bypass trust scoring</div>
+                            <div class="setting-meta">Type: boolean</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="enable_role_bypass" 
+                                       {% if trust_settings.enable_role_bypass %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Enable KYC Boost -->
+                    <div class="setting-item" data-key="enable_kyc_boost" data-type="boolean" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">enable_kyc_boost</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">KYC verification contributes to trust score</div>
+                            <div class="setting-meta">Type: boolean</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="enable_kyc_boost" 
+                                       {% if trust_settings.enable_kyc_boost %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Enable Account Age Boost -->
+                    <div class="setting-item" data-key="enable_account_age_boost" data-type="boolean" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">enable_account_age_boost</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">Account age contributes to trust score</div>
+                            <div class="setting-meta">Type: boolean</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="enable_account_age_boost" 
+                                       {% if trust_settings.enable_account_age_boost %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Enable Event History Boost -->
+                    <div class="setting-item" data-key="enable_event_history_boost" data-type="boolean" data-category="trust">
+                        <div class="setting-info">
+                            <div class="setting-header">
+                                <span class="setting-key">enable_event_history_boost</span>
+                                <div class="setting-tags">
+                                    <span class="setting-tag security">Security</span>
+                                </div>
+                            </div>
+                            <div class="setting-desc">Successful event history contributes to trust score</div>
+                            <div class="setting-meta">Type: boolean</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="enable_event_history_boost" 
+                                       {% if trust_settings.enable_event_history_boost %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             {% for category, settings in settings_by_category.items() %}
             <div class="category-card" data-category="{{ category }}" id="category-{{ category }}">
                 <div class="category-header">
@@ -1042,6 +1297,155 @@
 
         function setupEventListeners() {
             // Track changes
+            document.querySelectorAll('input, textarea, select').forEach(el => {
+                if (el.name) {
+                    el.addEventListener('change', function() {
+                        hasUnsavedChanges = true;
+                        updateSaveButton();
+                    });
+                }
+            });
+            
+            // Trust settings specific listeners
+            setupTrustSettingsListeners();
+        }
+
+        function setupTrustSettingsListeners() {
+            // Threshold sliders
+            document.querySelectorAll('.threshold-slider').forEach(slider => {
+                slider.addEventListener('input', function() {
+                    updateThresholdDisplay(this.name.replace('_threshold', ''), this.value);
+                });
+            });
+        }
+
+        function updateThresholdDisplay(level, value) {
+            const displayElement = document.getElementById(level + '_threshold_value');
+            if (displayElement) {
+                displayElement.textContent = value;
+            }
+            
+            // Update trust level indicators
+            updateTrustLevelIndicators();
+        }
+
+        function updateTrustLevelIndicators() {
+            const highThreshold = parseInt(document.querySelector('input[name="high_trust_threshold"]').value);
+            const mediumThreshold = parseInt(document.querySelector('input[name="medium_trust_threshold"]').value);
+            
+            // Update visual indicators if they exist
+            const indicators = document.querySelectorAll('.trust-level-indicator');
+            indicators.forEach(indicator => {
+                const level = indicator.dataset.level;
+                if (level === 'high') {
+                    indicator.innerHTML = `<i class="fas fa-check-circle"></i> HIGH TRUST (${highThreshold}+)`;
+                } else if (level === 'medium') {
+                    indicator.innerHTML = `<i class="fas fa-exclamation-triangle"></i> MEDIUM TRUST (${mediumThreshold}-${highThreshold - 1})`;
+                } else if (level === 'low') {
+                    indicator.innerHTML = `<i class="fas fa-times-circle"></i> LOW TRUST (< ${mediumThreshold})`;
+                }
+            });
+        }
+
+        // Enhanced save function for trust settings
+        function saveTrustSettings() {
+            const formData = new FormData(document.getElementById('settingsForm'));
+            const trustData = {};
+            
+            // Extract trust settings
+            const trustKeys = [
+                'enable_trust_based_publishing',
+                'high_trust_threshold',
+                'medium_trust_threshold',
+                'enable_role_bypass',
+                'enable_kyc_boost',
+                'enable_account_age_boost',
+                'enable_event_history_boost'
+            ];
+            
+            trustKeys.forEach(key => {
+                const element = document.querySelector(`[name="${key}"]`);
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        trustData[key] = element.checked;
+                    } else {
+                        trustData[key] = element.value;
+                    }
+                }
+            });
+            
+            // Send to trust settings endpoint
+            fetch('/admin/admin/trust-settings/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': formData.get('csrf_token')
+                },
+                body: new URLSearchParams(trustData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    toastr.success('Trust settings updated successfully!', 'Success');
+                    hasUnsavedChanges = false;
+                    updateSaveButton();
+                } else {
+                    toastr.error(data.error || 'Failed to update trust settings', 'Error');
+                }
+            })
+            .catch(error => {
+                toastr.error('Network error: ' + error.message, 'Error');
+            });
+        }
+
+        // Override saveSettings to handle trust settings
+        function saveSettings() {
+            const activeTab = document.querySelector('.category-tab.active');
+            if (activeTab && activeTab.dataset.category === 'trust') {
+                saveTrustSettings();
+            } else {
+                // Call original saveSettings for other categories
+                saveOriginalSettings();
+            }
+        }
+
+        function saveOriginalSettings() {
+            // Original save logic for other settings
+            const formData = new FormData(document.getElementById('settingsForm'));
+            
+            fetch('/admin/settings/update', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    toastr.success('Settings saved successfully!', 'Success');
+                    hasUnsavedChanges = false;
+                    updateSaveButton();
+                } else {
+                    toastr.error(data.error || 'Failed to save settings', 'Error');
+                }
+            })
+            .catch(error => {
+                toastr.error('Network error: ' + error.message, 'Error');
+            });
+        }
+
+        function updateSaveButton() {
+            const saveBtn = document.querySelector('button[onclick="saveSettings()"]');
+            if (saveBtn) {
+                if (hasUnsavedChanges) {
+                    saveBtn.classList.add('btn-warning');
+                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Changes *';
+                } else {
+                    saveBtn.classList.remove('btn-warning');
+                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
+                }
+            }
+        }
+
+        // Track changes
             document.querySelectorAll('input, textarea').forEach(el => {
                 el.addEventListener('change', function() {
                     hasUnsavedChanges = true;

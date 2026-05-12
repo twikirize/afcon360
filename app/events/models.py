@@ -27,7 +27,7 @@ from sqlalchemy import (
     ForeignKey, Text, Numeric, JSON, Index, UniqueConstraint, CheckConstraint,
     Sequence,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from sqlalchemy import Enum as SAEnum
 
@@ -1000,3 +1000,4 @@ class EventAssignment(BaseModel):
 
     def __repr__(self):
         return f"<EventAssignment {self.id}: event {self.event_id}, attendee {self.attendee_id}>"
+

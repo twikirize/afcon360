@@ -160,3 +160,28 @@ def get_request_context():
 def set_request_context(data: Dict[str, Any]):
     """Set request context for monitoring"""
     _request_context.data = data
+
+
+def track_booking_funnel_event(event_name: str, properties: dict = None):
+    """
+    Lightweight funnel tracking. Logs structured events.
+    Integrates with PostHog/GA4 if configured, otherwise structured log.
+    """
+    import structlog
+    log = structlog.get_logger() if _has_structlog() else None
+    payload = {
+        'event': event_name,
+        'ts': __import__('datetime').datetime.utcnow().isoformat(),
+        **(properties or {})
+    }
+    if log:
+        log.info('funnel_event', **payload)
+    else:
+        __import__('logging').getLogger(__name__).info(f'FUNNEL: {payload}')
+
+
+def _has_structlog():
+    try:
+        import structlog; return True
+    except ImportError:
+        return False

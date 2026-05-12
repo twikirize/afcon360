@@ -103,24 +103,139 @@ body.afcon-root {
 /* Events dropdown */
 .menu-item.has-dropdown { position: relative; }
 .menu-item.has-dropdown > a::after { content: ' ▾'; font-size: 0.62rem; opacity: 0.55; }
-.drop-menu {
-  position: absolute; top: calc(100% + 5px); left: 0; z-index: 1050;
-  min-width: 215px; padding: 0.4rem 0; list-style: none;
-  background: var(--white); border: 1px solid rgba(0,0,0,0.1);
-  border-radius: 10px; box-shadow: var(--shadow-md);
-  opacity: 0; visibility: hidden; transform: translateY(-6px);
-  transition: opacity 0.18s, transform 0.18s, visibility 0.18s; pointer-events: none;
+
+/* /* Create invisible bridge between trigger and dropdown */
+.menu-item.has-dropdown::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: -10px;
+  right: -10px;
+  height: 10px;
+  z-index: 9998;
 }
+
+.drop-menu {
+  position: absolute;
+  left: 0;
+  z-index: 100000;
+  min-width: 215px;
+  padding: 0.4rem 0;
+  list-style: none;
+  background: var(--white);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.2s 0.1s, transform 0.2s 0.1s, visibility 0.3s;
+  pointer-events: none;
+}
+
+/* Default position - below the trigger */
+.drop-menu {
+  top: calc(100% + 2px);
+}
+
+/* When near bottom of viewport - position above the trigger */
+@media (max-height: 500px) {
+  .drop-menu {
+    top: auto;
+    bottom: calc(100% + 2px);
+    transform: translateY(6px);
+  }
+
+  .menu-item.has-dropdown:hover .drop-menu,
+  .menu-item.has-dropdown:focus-within .drop-menu {
+    transform: translateY(0);
+  }
+
+  /* Invisible bridge should be at bottom when positioned above */
+  .menu-item.has-dropdown::before {
+    top: auto;
+    bottom: 100%;
+  }
+}
+
+/* For right-side dropdowns that might overflow horizontally */
+.drop-menu--right {
+  left: auto !important;
+  right: 0 !important;
+}
+
+/* For very long dropdowns, add scrolling */
+.drop-menu {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* Scrollbar styling for long dropdowns */
+.drop-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.drop-menu::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.drop-menu::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.drop-menu::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
 .menu-item.has-dropdown:hover .drop-menu,
 .menu-item.has-dropdown:focus-within .drop-menu {
-  opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-delay: 0s;
 }
-.drop-item { display: block; padding: 0.44rem 1rem; color: #222 !important; text-decoration: none; font-family: var(--font-body); font-size: 0.84rem; transition: background 0.14s, padding-left 0.14s; }
-.drop-item:hover { background: var(--green-light); color: var(--green-dark) !important; padding-left: 1.3rem; }
-.drop-item:active { background: var(--gold) !important; }
-.drop-header { display: block; padding: 0.28rem 1rem 0.15rem; font-size: 0.67rem; font-family: var(--font-head); font-weight: 700; color: #bbb; text-transform: uppercase; letter-spacing: 0.7px; pointer-events: none; }
-.drop-divider { height: 1px; margin: 0.25rem 0; background: #eee; border: none; }
 
+.drop-item {
+  display: block;
+  padding: 0.44rem 1rem;
+  color: #222 !important;
+  text-decoration: none;
+  font-family: var(--font-body);
+  font-size: 0.84rem;
+  transition: background 0.14s, padding-left 0.14s;
+}
+
+.drop-item:hover {
+  background: var(--green-light);
+  color: var(--green-dark) !important;
+  padding-left: 1.3rem;
+}
+
+.drop-item:active {
+  background: var(--gold) !important;
+}
+
+.drop-header {
+  display: block;
+  padding: 0.28rem 1rem 0.15rem;
+  font-size: 0.67rem;
+  font-family: var(--font-head);
+  font-weight: 700;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  pointer-events: none;
+}
+
+.drop-divider {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: #eee;
+  border: none;
+}
 /* ── MOBILE DRAWER ──────────────────────────────────────────── */
 .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1100; backdrop-filter: blur(2px); opacity: 0; transition: opacity 0.3s ease; }
 .drawer-overlay.open { display: block; opacity: 1; }
@@ -710,6 +825,17 @@ h3 { font-size: 1.2rem; font-weight: 600; }
   left: auto;
 }
 
+/* Apply hover bridge to right-aligned dropdowns too */
+.nav-user-menu::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: -10px;
+  right: -10px;
+  height: 10px;
+  z-index: 9998;
+}
+
 /* Dropdown button styled as link */
 .drop-item--btn {
   width: 100%;
@@ -726,6 +852,34 @@ h3 { font-size: 1.2rem; font-weight: 600; }
 .drawer-link--primary {
   color: #1D9E75 !important;
   font-weight: 500;
+}
+
+/* Fix for dropdown appearing under admin bar on event pages */
+.event-hero,
+.event-hero .container,
+.event-hero .row,
+.event-hero [class*="col-"],
+main#main,
+.container.py-4 {
+  overflow: visible !important;
+}
+
+/* Lower admin bar z-index */
+.ev-admin-bar {
+  z-index: 8000 !important;
+}
+
+/* Ensure navigation stays above */
+.site-header,
+.main-nav {
+  z-index: 100001 !important;
+  position: relative;
+}
+
+/* Fix stacking context for menu items */
+.menu-item.has-dropdown {
+  position: relative;
+  isolation: isolate;
 }
 
 /* ══ END PASS 6 NAV ADDITIONS ══════════════════════════════════════ */

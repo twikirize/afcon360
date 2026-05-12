@@ -49,6 +49,22 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
 
     sla_due_at = now + timedelta(hours=sla_hours)
 
+    # Map entity_type to content_type for the content_type field
+    content_type_mapping = {
+        'event': 'event',
+        'user': 'profile',
+        'content_submission': 'submission',
+        'manageable_item': 'listing',
+        'accommodation': 'listing',
+        'transport': 'listing',
+        'tourism': 'listing'
+    }
+    content_type = content_type_mapping.get(entity_type, entity_type)
+    
+    # Set default category if none provided
+    if category is None:
+        category = 'review'  # Default category for general content review
+
     flag = ContentFlag(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -58,6 +74,7 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
         category=category,
         status="open",
         sla_due_at=sla_due_at,
+        content_type=content_type,
     )
     db.session.add(flag)
     db.session.flush()  # get ID

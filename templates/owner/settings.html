@@ -160,6 +160,15 @@
       </div>
       <span class="card-badge badge-security">Security</span>
     </a>
+
+    <a href="/admin/trust-settings" class="settings-card">
+      <div class="card-icon">🛡️</div>
+      <div class="card-title">Trust-Based Security</div>
+      <div class="card-description">
+        Configure trust scoring, auto-publishing thresholds, and security factors for event publishing
+      </div>
+      <span class="card-badge badge-security">Security</span>
+    </a>
   </div>
 
   <!-- Wallet Section -->
@@ -263,7 +272,7 @@
       </div>
     </div>
     
-    <a href="{{ url_for('admin.manage_orgs') }}" class="settings-card">
+    <a href="{{ url_for('admin.moderator.orgs_queue') }}" class="settings-card">
       <div class="card-icon">📊</div>
       <div class="card-title">Organization Management</div>
       <div class="card-description">

@@ -2,7 +2,7 @@
 from flask import render_template, request
 from flask_login import login_required, current_user
 from app.accommodation import accommodation_bp
-from app.auth.decorators import require_role, require_profile_completion, require_kyc_tier, require_moderator
+from app.auth.decorators import require_role, require_profile_completion, require_kyc_tier, require_moderator, require_fresh_user
 from app.audit.forensic_audit import ForensicAuditService
 from app.utils.id_guard import IDGuard
 

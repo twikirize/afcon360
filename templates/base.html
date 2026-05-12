@@ -370,8 +370,9 @@
                        {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
                        {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
                        {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
-                       {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
-                       {% else %}{{ url_for('fan.dashboard') }}{% endif %}"
+
+                      {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
+                       {% else %}{{ url_for('events.attendee_dashboard') }}{% endif %}"
                  class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
@@ -398,6 +399,12 @@
                 <i class="bi bi-chevron-down" style="font-size:10px;"></i>
               </button>
               <ul class="drop-menu drop-menu--right" role="menu">
+                {% if current_user.is_app_owner() or current_user.is_super_admin() or current_user.has_global_role('admin', 'moderator', 'support', 'auditor', 'compliance_officer', 'event_manager', 'transport_admin', 'wallet_admin', 'accommodation_admin', 'tourism_admin') %}
+                <li><span class="drop-header">👑 Admin Mode</span></li>
+                <li><a class="drop-item" href="{{ url_for('user.user_dashboard') }}">
+                  <i class="fas fa-user me-2"></i>Switch to Consumer View</a></li>
+                <li><hr class="drop-divider"></li>
+                {% endif %}
                 <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
                   <i class="bi bi-person-circle me-2"></i>My Profile</a></li>
                 <li><a class="drop-item" href="{{ url_for('profile.account_overview') }}">

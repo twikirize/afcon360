@@ -73,6 +73,8 @@ from app.extensions import db, migrate, login_manager, csrf, limiter, cache, red
 # Configure logging globally at the entry point
 def configure_logging():
     root = logging.getLogger()
+    if root.handlers:
+        return
     
     # Get log level from environment or use default based on FLASK_ENV
     log_level_str = os.getenv('LOG_LEVEL', '').upper()
@@ -114,24 +116,21 @@ def require_redis(url: str, purpose: str, existing_client=None):
     Raises RuntimeError if Redis connection fails.
     """
     if existing_client:
-        # Test the existing client connection
+        # Test the existing client connection with shorter timeout
         try:
             existing_client.ping()
-            logging.info(f"Redis connected for {purpose} using existing client at {url}")
             return existing_client
-        except Exception as e:
-            logging.warning(f"Existing Redis client failed ping for {purpose}: {e}. Creating new connection.")
-            # Fall through to create new connection
+        except Exception:
+            pass  # Fall through silently to create new connection
 
     if not REDIS_AVAILABLE:
         logging.warning(f"Redis not available for {purpose} - using fallback")
         return None
 
     try:
-        # Optimization: shorter timeout for startup check
-        client = redis.Redis.from_url(url, decode_responses=False, socket_connect_timeout=2)
+        # Optimization: much shorter timeout for startup, no decode for performance
+        client = redis.Redis.from_url(url, decode_responses=False, socket_connect_timeout=1, socket_timeout=1)
         client.ping()
-        logging.info(f"Redis connected for {purpose} at {url}")
         return client
     except Exception as e:
         error_msg = f"Redis must be running at {url} for AFCON360 to start ({purpose}). Error: {e}"
@@ -154,12 +153,17 @@ def create_app(config_object=None) -> Flask:
 
     app = Flask(__name__, static_folder=static_path, template_folder=template_path)
 
+    app = Flask(__name__, static_folder=static_path, template_folder=template_path)
+
+    # Remove Flask's default handler to prevent duplicate logging
+    app.logger.handlers.clear()
+
     # ------------------------------------------------------------------
     # PERMANENT FIX: Custom Jinja2 Loader with Encoding Fallback
-    # Prevents UnicodeDecodeError by forcing UTF-8 with fallback encodings
     # ------------------------------------------------------------------
-    from jinja2 import FileSystemLoader, ChoiceLoader
+    from jinja2 import FileSystemLoader
     import warnings
+
 
     class EncodingSafeLoader(FileSystemLoader):
         """Custom loader that handles encoding errors gracefully."""
@@ -168,35 +172,33 @@ def create_app(config_object=None) -> Flask:
             for searchpath in self.searchpath:
                 filename = os.path.join(searchpath, template)
                 if os.path.exists(filename):
-                    # Try UTF-8 first (standard)
                     encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'latin-1', 'iso-8859-1']
                     for encoding in encodings:
                         try:
                             with open(filename, 'r', encoding=encoding) as f:
                                 contents = f.read()
-                            # Log if we had to use fallback encoding
                             if encoding != 'utf-8':
                                 warnings.warn(
-                                    f"Template {template} was encoded as {encoding}, "
-                                    f"not UTF-8. Please re-save as UTF-8.",
+                                    f"Template {template} was encoded as {encoding}, not UTF-8.",
                                     UserWarning
                                 )
                             mtime = os.path.getmtime(filename)
+
                             def uptodate():
                                 try:
                                     return os.path.getmtime(filename) == mtime
                                 except OSError:
                                     return False
+
                             return contents, filename, uptodate
                         except UnicodeDecodeError:
                             continue
-                    # If all encodings fail, raise a helpful error
                     raise UnicodeDecodeError(
                         'utf-8', b'', 0, 0,
-                        f"Could not decode template {template} with any known encoding. "
-                        f"Please re-save the file as UTF-8."
+                        f"Could not decode template {template} with any known encoding."
                     )
             raise Exception(f"Template {template} not found")
+
 
     # Replace the default loader with our encoding-safe one
     app.jinja_env.loader = EncodingSafeLoader(template_path)
@@ -281,20 +283,15 @@ def create_app(config_object=None) -> Flask:
     # Also update the limiter instance
     limiter.storage_uri = redis_url
 
-    # Get Redis client for sessions
+    # Get Redis client for sessions - reuse existing connection
     redis_session_client = None
     try:
         redis_session_client = redis_client.client
-        redis_session_client.ping()
+        # Skip ping test to avoid delay - trust the existing connection
     except Exception:
-        redis_session_client = None
+        pass
 
-    if redis_session_client:
-        try:
-            redis_session_client = require_redis(redis_url, "sessions", existing_client=redis_session_client)
-        except Exception:
-            redis_session_client = require_redis(redis_url, "sessions")
-    else:
+    if not redis_session_client:
         redis_session_client = require_redis(redis_url, "sessions")
 
     if REDIS_AVAILABLE and redis_session_client and FLASK_SESSION_AVAILABLE:
@@ -325,13 +322,100 @@ def create_app(config_object=None) -> Flask:
     else:
         # In development, show all logs
         app.logger.setLevel(logging.DEBUG)
+    
+    # ============================================================
+# CLEAN REQUEST LOGGING (without clutter)
+# ============================================================
+    
+    # Ensure all Flask loggers are visible
+    flask_loggers = ['app', 'flask', 'admin', 'admin.owner', 'admin.trust_settings']
+    for logger_name in flask_loggers:
+        log = logging.getLogger(logger_name)
+        log.setLevel(logging.DEBUG)
+        log.propagate = False
+        if not log.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+            ))
+            log.addHandler(handler)
+    
+    # Show only one werkzeug development server warning
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.WARNING)  # Show warnings but suppress duplicates
+    
+    @app.before_request
+    def log_request():
+        """Clean request logging - one line per request"""
+        # Skip static assets and favicon
+        if request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
+            return
+        
+        # Determine log level based on method
+        if request.method == 'GET':
+            log_func = logger.debug
+        else:
+            log_func = logger.info
+        
+        # Log in a clean format
+        log_func(f"📡 {request.method} {request.path}")
 
-    # Verify Redis is available for rate limiting if configured
+    @app.after_request
+    def log_response(response):
+        """Clean response logging"""
+        # Skip static assets
+        if request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
+            return response
+        
+        # Determine icon based on status
+        if response.status_code >= 500:
+            icon = "💥"
+            log_func = logger.error
+        elif response.status_code >= 400:
+            icon = "⚠️"
+            log_func = logger.warning
+        else:
+            icon = "✅"
+            log_func = logger.debug
+        
+        # Log only non-200 responses in normal mode, all in debug
+        if response.status_code != 200 or app.debug:
+            log_func(f"{icon} {request.method} {request.path} → {response.status_code}")
+        
+        return response
+    
+    # Keep 404 handler but make it cleaner
+    @app.errorhandler(404)
+    def handle_404(error):
+        """Clean 404 handler"""
+        # Don't log missing favicon or static files
+        if request.path.startswith(('/favicon.ico', '/static/')):
+            return render_template('errors/404.html'), 404
+        
+        # Log once, clearly
+        logger.warning(f"❓ 404: {request.method} {request.path} - Page not found")
+        
+        # For API requests, return JSON
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "Not found", "path": request.path}), 404
+        
+        return render_template('errors/404.html'), 404
+
+    # Keep 500 handler for errors
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        """Clean error logging with full traceback for debugging"""
+        logger.error(f"💥 Exception: {type(e).__name__}: {str(e)}")
+        logger.debug(f"Full traceback:", exc_info=True)
+        
+        if request.path.startswith('/api/'):
+            return jsonify({"error": str(e)}), 500
+        return render_template('errors/500.html'), 500
+
+    # Verify Redis is available for rate limiting only if needed
     if REDIS_AVAILABLE and app.config.get("RATELIMIT_STORAGE_URI", "").startswith("redis://"):
-        try:
-            require_redis(app.config["RATELIMIT_STORAGE_URI"], "rate limiting")
-        except Exception as e:
-            logger.warning(f"Rate limiting Redis connection failed: {e}")
+        # Skip verification to avoid startup delay - trust the connection
+        pass
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -456,6 +540,7 @@ def create_app(config_object=None) -> Flask:
     from app.auth.routes import auth_bp
     from app.auth.onboarding_routes import onboarding_bp
     from app.fan.routes import fan_bp
+    from app.user.routes import user_bp  # Added user blueprint
     # from app.wallet.routes import wallet_bp  # DELETED - will be rebuilt
     from app.admin import admin_bp
     try:
@@ -521,6 +606,7 @@ def create_app(config_object=None) -> Flask:
         (auth_bp, None),
         (onboarding_bp, None),
         (fan_bp, None),
+        (user_bp, None),  # Added user blueprint for user dashboard
         # (wallet_bp, None),  # DELETED - routes.py removed
         (events_bp, None),
         (theme_bp, None),
@@ -582,6 +668,13 @@ def create_app(config_object=None) -> Flask:
         app.register_blueprint(pin_bp)
     except ImportError:
         logger.warning('wallet.routes_pin not found; PIN JSON API endpoints not registered')
+    
+    # Payment methods API (register under admin)
+    try:
+        from app.admin.services.payment_methods import payment_methods_bp
+        app.register_blueprint(payment_methods_bp)
+    except ImportError:
+        logger.warning('admin.services.payment_methods not found; payment methods API not registered')
 
     # 4. Event Listeners
     try:

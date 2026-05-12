@@ -4,16 +4,31 @@ Admin models module - exposes all models from the admin package
 """
 
 # Import models directly from their respective modules to avoid circular imports
-from app.admin.models.emergency_access import EmergencyAccess
-from app.admin.models.moderation import ContentSubmission, ModerationLog
+# Lazy import to prevent blueprint registration during model loading
+try:
+    from app.admin.models.emergency_access import EmergencyAccess
+except ImportError:
+    EmergencyAccess = None
+
+try:
+    from app.admin.models.moderation import ContentSubmission, ModerationLog
+except ImportError:
+    ContentSubmission = None
+    ModerationLog = None
 
 # Import from individual model files to avoid circular imports
-from app.admin.models.core import (
-    ManageableCategory,
-    ManageableItem,
-    UserDashboardConfig,
-    SystemConfiguration,
-)
+try:
+    from app.admin.models.core import (
+        ManageableCategory,
+        ManageableItem,
+        UserDashboardConfig,
+        SystemConfiguration,
+    )
+except ImportError:
+    ManageableCategory = None
+    ManageableItem = None
+    UserDashboardConfig = None
+    SystemConfiguration = None
 
 # Import ContentFlag from moderation module
 try:
@@ -23,7 +38,7 @@ except ImportError:
 
 __all__ = [
     'EmergencyAccess',
-    'ManageableCategory',
+    'ManageableCategory', 
     'ManageableItem',
     'ContentSubmission',
     'UserDashboardConfig',
@@ -31,3 +46,6 @@ __all__ = [
     'ModerationLog',
     'SystemConfiguration',
 ]
+
+# Filter out None values from __all__
+__all__ = [name for name in __all__ if locals().get(name) is not None]

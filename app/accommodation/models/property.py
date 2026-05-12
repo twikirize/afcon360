@@ -178,6 +178,15 @@ class Property(BaseModel):
     total_reviews = Column(Integer, default=0)
 
     # -------------------------------
+    # OTA Trust Signals (denormalized)
+    # -------------------------------
+    host_response_rate = Column(Numeric(5, 2), nullable=True)  # e.g. 95.5 = 95.5%
+    host_response_time_hours = Column(Integer, nullable=True)   # avg hours to respond
+    last_booked_at = Column(DateTime, nullable=True)
+    total_bookings = Column(Integer, default=0, server_default='0')
+    views_last_24h = Column(Integer, default=0, server_default='0')
+
+    # -------------------------------
     # SEO
     # -------------------------------
     meta_title = Column(String(255), nullable=True)

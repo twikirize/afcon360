@@ -253,3 +253,40 @@ def with_cache_lock(key: str, ttl: int = 10):
         return wrapper
 
     return decorator
+
+
+# ===== ACCOMMODATION-SPECIFIC CACHE HELPERS =====
+
+def cache_property_detail(property_id: int, timeout: int = 300):
+    """Decorator: cache property detail for 5 min, auto-keyed by ID."""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            key = f'property_detail:{property_id}'
+            result = get_cached(key)
+            if result is None:
+                result = f(*args, **kwargs)
+                set_cached(key, result, timeout=timeout)
+            return result
+        return wrapper
+    return decorator
+
+
+def invalidate_property_cache(property_id: int):
+    """Call whenever a property is updated/approved/rejected."""
+    from app.extensions import redis_client
+    redis_client.delete(f'property_detail:{property_id}')
+    redis_client.delete_many(
+        f'property_urgency:{property_id}',
+        f'property_reviews:{property_id}',
+    )
+
+
+def get_or_set(key: str, fn, timeout: int = 300):
+    """Generic read-through cache. Uses existing cache object."""
+    result = get_cached(key)
+    if result is None:
+        result = fn()
+        if result is not None:
+            set_cached(key, result, timeout=timeout)
+    return result

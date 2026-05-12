@@ -24,7 +24,7 @@ from app.auth.kyc_compliance import (
     TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD,
     calculate_kyc_tier
 )
-from app.auth.decorators import require_moderator
+from app.auth.decorators import require_moderator, require_fresh_user
 
 kyc_bp = Blueprint("kyc", __name__, url_prefix="/kyc")
 
@@ -102,6 +102,7 @@ def limits():
 # ── /kyc/verify/address ──────────────────────────────────────────────────────
 @kyc_bp.route("/verify/address", methods=["GET", "POST"])
 @login_required
+@require_fresh_user
 def verify_address():
     """Address verification page."""
     if request.method == 'POST':
@@ -164,6 +165,7 @@ def verify_national_id_page():
 
 @kyc_bp.route("/verify/national-id", methods=["POST"])
 @login_required
+@require_fresh_user
 def submit_national_id():
     """
     Process NIRA National ID verification submission.
@@ -435,6 +437,7 @@ def status():
 
 @kyc_bp.route('/verify/upload', methods=['GET', 'POST'])
 @login_required
+@require_fresh_user
 def verify_upload():
     """Upload KYC documents for individuals or organization KYB."""
     # Collect active organisations the user belongs to (explicit query avoids

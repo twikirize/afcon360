@@ -38,11 +38,12 @@ def register_all_models():
     except ImportError:
         pass
 
-    # Admin domain
+    # Admin domain - lazy import to avoid circular dependencies
     try:
         from app.admin.models.moderation import ContentFlag, ModerationLog
     except ImportError:
-        pass
+        ContentFlag = None
+        ModerationLog = None
 
     # Audit domain
     try:

@@ -13,7 +13,7 @@ from urllib.parse import urlparse, urljoin
 from flask import (Blueprint, current_app, flash, redirect, render_template, request, session, url_for,)
 from flask_login import current_user, login_required, login_user, logout_user
 
-from app.auth.decorators import require_role  # noqa: F401
+from app.auth.decorators import require_role, require_fresh_user  # noqa: F401
 from app.extensions import db, limiter
 from app.profile.models import get_profile_by_user
 
@@ -374,6 +374,7 @@ def verify():
 @auth_bp.route("/verify-email", methods=["POST"], endpoint="verify_email_code")
 @login_required
 @limiter.limit("10 per hour")
+@require_fresh_user
 def verify_email_code():
     """
     Verify email using 6-digit OTP code.
@@ -405,6 +406,7 @@ def verify_email_code():
 @auth_bp.route("/verify-phone", methods=["POST"], endpoint="verify_phone")
 @login_required
 @limiter.limit("10 per hour")
+@require_fresh_user
 def verify_phone():
     """
     Verify phone number using OTP code sent via SMS.
@@ -1023,6 +1025,7 @@ def mfa_setup():
 
 @auth_bp.route('/mfa/enable', methods=['POST'])
 @login_required
+@require_fresh_user
 def mfa_enable():
     """Enable MFA for user."""
     from app.identity.models.user import MFASecret

@@ -7,6 +7,36 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  
+  <style>
+    .btn-consumer-switch {
+      background: linear-gradient(135deg, #667eea, #764ba2) !important;
+      border: none !important;
+      color: white !important;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-consumer-switch:hover {
+      background: linear-gradient(135deg, #5a67d8, #6b46c1) !important;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+      color: white !important;
+    }
+    
+    @media (max-width: 768px) {
+      .btn-consumer-switch {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+      }
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -33,6 +63,11 @@
       </a>
       <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="nav-link">
         <i class="bi bi-wallet2"></i> Wallet Capabilities
+      </a>
+      <a href="{{ url_for('user.user_dashboard') }}" class="btn-switch btn-consumer-switch">
+        <i class="bi bi-person"></i>
+        Consumer View
+        <i class="bi bi-arrow-right"></i>
       </a>
       <a href="{{ url_for('admin.super_dashboard') }}" class="btn-switch">
         <i class="bi bi-shield-fill"></i>

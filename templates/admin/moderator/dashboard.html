@@ -46,8 +46,50 @@
         <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
             Level {{ current_moderator_level if current_moderator_level else '1' }} Access
         </div>
+        <a href="{{ url_for('user.user_dashboard') }}" class="btn-consumer-switch">
+            <i class="bi bi-person"></i>
+            Consumer View
+            <i class="bi bi-arrow-right"></i>
+        </a>
     </div>
 </div>
+
+<style>
+.btn-consumer-switch {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+    border: none;
+    font-size: 13px;
+}
+
+.btn-consumer-switch:hover {
+    background: linear-gradient(135deg, #5a67d8, #6b46c1) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+    color: white !important;
+}
+
+@media (max-width: 768px) {
+    .heading-row {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .btn-consumer-switch {
+        font-size: 12px;
+        padding: 6px 12px;
+    }
+}
+</style>
 
 <!-- Enterprise Moderation Queue Stats -->
 <div class="stat-grid">

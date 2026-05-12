@@ -5,6 +5,7 @@ Event routes - Unified entry points for all user roles
 """
 from flask import render_template, request, jsonify, redirect, url_for, flash, session, make_response, current_app
 from flask_login import login_required, current_user
+from datetime import date
 from app.events import events_bp
 from app.events.services import EventService, SoldOutException
 from app.events.models import Event, EventRegistration, TicketType, Waitlist
@@ -24,7 +25,7 @@ from app.events.permissions import (
     can_hard_delete_event,
 )
 from app.events.constants import EventStatus
-from app.auth.decorators import require_moderator
+from app.auth.decorators import require_moderator, require_fresh_user
 
 
 # Remove tight coupling - define fallback functions
@@ -253,6 +254,37 @@ def events_hub():
                            admin_stats=admin_stats)
 
 
+@events_bp.route("/attendee-dashboard")
+@login_required
+def attendee_dashboard():
+    """Attendee Dashboard - Post-registration hub (QR code, transport, accommodation, cancel, etc.)"""
+    try:
+        attendee_data = EventService.get_attendee_dashboard_data(current_user.id)
+
+        wallet = None
+        try:
+            wallet = WalletService.get_wallet_by_user_id(current_user.id)
+        except Exception:
+            pass
+
+        return render_template('events/attendee/attendee_dashboard.html',
+                           upcoming_registrations=attendee_data['upcoming_registrations'],
+                           past_registrations=attendee_data['past_registrations'],
+                           upcoming_count=attendee_data['upcoming_count'],
+                           attended_count=attendee_data['attended_count'],
+                           total_spent=attendee_data['total_spent'],
+                           wallet=wallet)
+    except Exception as e:
+        logger.error(f"Error loading attendee dashboard: {e}")
+        return render_template('events/attendee/attendee_dashboard.html',
+                           upcoming_registrations=[],
+                           past_registrations=[],
+                           upcoming_count=0,
+                           attended_count=0,
+                           total_spent='0.00',
+                           wallet=None)
+
+
 @events_bp.route("/my-registrations")
 @login_required
 def my_registrations():
@@ -293,7 +325,7 @@ def my_registrations():
         except Exception as e:
             logger.warning(f"Could not load assignment for registration {reg.get('id')}: {e}")
 
-    return render_template('events/attendee/my_registrations.html',
+    return render_template('user/my_registrations.html',
                            registrations=all_registrations,
                            wallet_balance=wallet_balance,
                            current_date=current_date)
@@ -581,8 +613,29 @@ def export_attendees(identifier):
 # REGISTRATION & CHECK-IN
 # ============================================================
 
+@events_bp.route("/api/<identifier>/payment-methods")
+@login_required
+def api_payment_methods(identifier):
+    """Get available payment methods for an event"""
+    event = EventService.get_event(identifier)
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    from app.events.services.payment_service import EventPaymentService
+    payment_service = EventPaymentService()
+    
+    payment_methods = payment_service.get_available_payment_methods(event.currency, event.id)
+    
+    return jsonify({
+        'success': True,
+        'payment_methods': payment_methods,
+        'currency': event.currency
+    })
+
+
 @events_bp.route("/<identifier>/register", methods=['GET', 'POST'])
 @login_required
+@require_fresh_user
 def register(identifier):
     """Register for an event with async processing and payment integration"""
     event = EventService.get_event(identifier)
@@ -605,22 +658,74 @@ def register(identifier):
         else:
             # Handle form data
             data = request.form.to_dict()
-            # Convert numeric fields
-            if 'ticket_type_id' in data:
+            # Convert numeric fields only if event has ticket types
+            if 'ticket_type_id' in data and data['ticket_type_id'] and event.ticket_types:
                 data['ticket_type_id'] = int(data['ticket_type_id'])
+            elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event.ticket_types):
+                # For free events, ensure no ticket_type_id
+                data['ticket_type_id'] = None
 
-        # 1. Perform database transaction (Atomic Registration)
-        registration, _, error = EventService.register_for_event(
-            identifier, current_user.id, data
-        )
+        # Extract group registration data
+        group_attendees = []
+        group_size = int(data.get('group_size', 0))
+        if group_size > 0:
+            for i in range(1, group_size + 1):
+                attendee_data = {
+                    'name': data.get(f'attendee_{i}_name'),
+                    'email': data.get(f'attendee_{i}_email'),
+                    'phone': data.get(f'attendee_{i}_phone'),
+                    'nationality': data.get(f'attendee_{i}_nationality'),
+                    'primary_user_id': current_user.id
+                }
+                if attendee_data['name'] and attendee_data['email']:
+                    group_attendees.append(attendee_data)
 
-        if error:
-            return jsonify({'success': False, 'error': error}), 400
+        # Check if this is a paid event
+        is_paid_event = event.ticket_types and any(tt.price > 0 for tt in event.ticket_types)
+        
+        if is_paid_event and data.get('ticket_type_id'):
+            # Process paid event with payment service
+            from app.events.services.payment_service import EventPaymentService
+            payment_service = EventPaymentService()
+            
+            # Get payment method from form
+            payment_method = data.get('payment_method', 'wallet')
+            mobile_money_operator = data.get('mobile_money_operator')
+            mobile_money_phone = data.get('mobile_money_phone')
+            
+            # Process payment
+            payment_result = payment_service.process_ticket_purchase(
+                user_id=current_user.id,
+                event_id=event.id,
+                ticket_type_id=data['ticket_type_id'],
+                quantity=len(group_attendees) + 1,  # +1 for primary registrant
+                payment_method=payment_method,
+                mobile_money_operator=mobile_money_operator,
+                mobile_money_phone=mobile_money_phone,
+                group_attendees=group_attendees
+            )
+            
+            if not payment_result.get('success'):
+                return jsonify({'success': False, 'error': payment_result.get('error')}), 400
+            
+            # Get the first registration for confirmation
+            registration_ref = payment_result['registrations'][0]['registration_ref']
+            
+        else:
+            # Process free event registration
+            registration, _, error = EventService.register_for_event(
+                identifier, current_user.id, data
+            )
+            
+            if error:
+                return jsonify({'success': False, 'error': error}), 400
+            
+            registration_ref = registration['registration_ref']
 
         # Store registration data in session for the confirmation page
         # We need to get the actual registration object to generate QR code
         from app.events.models import EventRegistration
-        reg_obj = EventRegistration.query.filter_by(registration_ref=registration['registration_ref']).first()
+        reg_obj = EventRegistration.query.filter_by(registration_ref=registration_ref).first()
         if reg_obj:
             # Generate QR code
             qr_code = EventService._generate_qr_code(reg_obj.qr_token, reg_obj.registration_ref)
@@ -2031,3 +2136,4 @@ def moderate_action(id, action):
             flash(f'Failed to flag: {flag}', 'danger')
     
     return redirect(url_for('events.moderate'))
+
