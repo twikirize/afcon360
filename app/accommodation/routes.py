@@ -953,10 +953,10 @@ def host_earnings():
 # ADMIN ROUTES (URL prefix: /admin)
 # ============================================================================
 
-@accommodation_bp.route("/admin/dashboard", endpoint="admin_dashboard")
+@accommodation_bp.route("/admin/main-dashboard", endpoint="admin_main_dashboard")
 @login_required
 def admin_admin_dashboard():
-    """Admin dashboard for accommodation module"""
+    """Admin main dashboard for accommodation module"""
     if not can(current_user, "accommodation.manage"):
         flash("Insufficient permissions", "danger")
         return redirect(url_for('index'))
