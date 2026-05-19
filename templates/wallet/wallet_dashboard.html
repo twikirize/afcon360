@@ -1,10 +1,7 @@
-{#templates/wallet/dashboard.html#}
 {% extends "wallet/base_wallet.html" %}
 
 {% block title %}Wallet Dashboard — AFCON360{% endblock %}
-
 {% block topbar_title %}Wallet Dashboard{% endblock %}
-
 {% block content %}
 {% if no_wallet %}
 <!-- No Wallet Banner -->
@@ -12,7 +9,7 @@
   <div style="padding:40px;text-align:center;">
     <h2 style="font-family:var(--font-display);font-weight:700;margin-bottom:12px;">Welcome to Your Wallet</h2>
     <p style="font-size:16px;opacity:0.9;margin-bottom:24px;">You don't have a wallet yet. Create one to start sending and receiving money.</p>
-    <a href="{{ url_for('wallet.wallet_create_page') }}" class="btn btn-lg" style="background:#fff;color:var(--blue);font-weight:600;">
+    <a href="{{ safe_url('wallet.wallet_create_page') }}" class="btn btn-lg" style="background:#fff;color:var(--blue);font-weight:600;">
       <i class="fas fa-wallet"></i> Create Wallet
     </a>
   </div>
@@ -24,14 +21,14 @@
     <h1 class="page-heading">Wallet Dashboard</h1>
     <p class="page-subheading">Manage your funds, transactions, and payments</p>
   </div>
-  <a href="{{ url_for('wallet.deposit_page') }}" class="btn btn-primary">
+  <a href="{{ safe_url('wallet.deposit_page') }}" class="btn btn-primary">
     <i class="fas fa-plus-circle"></i> Add Funds
   </a>
 </div>
 
 <!-- Balance Cards -->
 <div class="stat-grid">
-  <a href="{{ url_for('wallet.deposit_page') }}" class="stat-card success" style="text-decoration:none;color:inherit;">
+  <a href="{{ safe_url('wallet.deposit_page') }}" class="stat-card success" style="text-decoration:none;color:inherit;">
     <div class="stat-label">Available Balance</div>
     <div class="stat-value">{{ balance | round(2) }}</div>
     <div class="stat-sub">{{ account.currency if account else 'UGX' }}</div>
@@ -60,19 +57,19 @@
   </div>
   <div class="panel-body" style="padding:20px;">
     <div class="action-group" style="gap:12px;">
-      <a href="{{ url_for('wallet.deposit_page') }}" class="btn btn-primary">
+      <a href="{{ safe_url('wallet.deposit_page') }}" class="btn btn-primary">
         <i class="fas fa-arrow-down"></i> Deposit
       </a>
-      <a href="{{ url_for('wallet.send_page') }}" class="btn btn-warning">
+      <a href="{{ safe_url('wallet.send_page') }}" class="btn btn-warning">
         <i class="fas fa-paper-plane"></i> Send
       </a>
-      <a href="{{ url_for('wallet.withdraw_page') }}" class="btn btn-danger">
+      <a href="{{ safe_url('wallet.withdraw_page') }}" class="btn btn-danger">
         <i class="fas fa-arrow-up"></i> Withdraw
       </a>
-      <a href="{{ url_for('wallet.wallet_transactions') }}" class="btn btn-outline">
+      <a href="{{ safe_url('wallet.wallet_transactions') }}" class="btn btn-outline">
         <i class="fas fa-list"></i> History
       </a>
-      <a href="{{ url_for('wallet.fx_rates') }}" class="btn btn-ghost">
+      <a href="{{ safe_url('wallet.fx_rates') }}" class="btn btn-ghost">
         <i class="fas fa-exchange-alt"></i> FX Rates
       </a>
     </div>
@@ -86,7 +83,7 @@
       <i class="fas fa-clock-rotate-left panel-title-icon blue"></i>
       Recent Transactions
     </div>
-    <a href="{{ url_for('wallet.wallet_transactions') }}" class="btn btn-ghost btn-sm">
+    <a href="{{ safe_url('wallet.wallet_transactions') }}" class="btn btn-ghost btn-sm">
       View All <i class="fas fa-arrow-right"></i>
     </a>
   </div>
@@ -144,7 +141,7 @@
       <div class="empty-icon"><i class="fas fa-receipt"></i></div>
       <p>No transactions yet</p>
       <p style="font-size:12px;color:var(--muted-2);margin-top:4px;">Start by depositing funds</p>
-      <a href="{{ url_for('wallet.deposit_page') }}" class="btn btn-primary" style="margin-top:16px;">
+      <a href="{{ safe_url('wallet.deposit_page') }}" class="btn btn-primary" style="margin-top:16px;">
         <i class="fas fa-plus-circle"></i> Make a Deposit
       </a>
     </div>
@@ -164,7 +161,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div>
           <div class="form-label">Account ID</div>
-          <div class="mono" style="font-size:12px;">{{ account.id | slice(0, 12) if account else 'N/A' }}...</div>
+          <div class="mono" style="font-size:12px;">{{ account.id[:12] if account else 'N/A' }}...</div>
         </div>
         <div>
           <div class="form-label">Currency</div>

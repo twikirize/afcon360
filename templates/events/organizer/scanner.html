@@ -31,7 +31,7 @@
                     <button id="restart-btn" class="btn btn-primary d-none">
                         <i class="fas fa-sync-alt me-2"></i> Scan Next Ticket
                     </button>
-                    <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary">
+                    <a href="{{ safe_url('url_for\(['"]events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary">
                         Back to Dashboard
                     </a>
                 </div>
@@ -135,7 +135,7 @@
         resultDiv.className = "scanner-result p-3 mb-3 text-center border rounded bg-light";
         resultDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Verifying...</p>';
 
-        fetch("{{ url_for('events.api_checkin') }}", {
+        fetch("{{ safe_url('events.api_checkin') }}", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

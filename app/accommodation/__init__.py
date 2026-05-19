@@ -44,25 +44,11 @@ def require_accommodation_permission(permission):
 
 
 # ==============================
-# IMPORT BLUEPRINTS
-# ==============================
-from app.accommodation.routes import guest, host, admin
-
-# ==============================
-# REGISTER BLUEPRINTS
-# ==============================
-accommodation_bp.register_blueprint(guest, url_prefix='/guest')
-accommodation_bp.register_blueprint(host, url_prefix='/host')
-accommodation_bp.register_blueprint(admin, url_prefix='/admin')
-
-
-# ==============================
 # ROUTES
 # ==============================
-@accommodation_bp.route("/")
-@module_enabled
-def index():
-    return redirect(url_for('accommodation.guest.search'))
+# Note: All routes are now consolidated in routes.py
+# Import routes to attach them to the blueprint
+from app.accommodation import routes  # noqa: F401 – attaches main routes to blueprint
 
 
 @accommodation_bp.route("/<identifier>", endpoint="legacy_detail")

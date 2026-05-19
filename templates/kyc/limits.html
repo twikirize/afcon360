@@ -1,8 +1,16 @@
 {# templates/kyc/limits.html #}
-{% extends "base.html" %}
-{% block title %}KYC Transaction Limits{% endblock %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block content %}
+{% if not is_pane %}
+    {% block title %}KYC Transaction Limits{% endblock %}
+
+    {% block content %}
 <div class="kyc-limits-wrapper">
 
   <div class="kyc-header">
@@ -56,8 +64,10 @@
 
 </div>
 {% endblock %}
+{% endif %}
 
 {% block styles %}
+{% if not is_pane %}
 <style>
   .kyc-limits-wrapper { max-width: 760px; margin: 2.5rem auto; padding: 0 1rem; font-family: 'Georgia', serif; }
   .kyc-badge { display: inline-block; background: #1a3a2a; color: #7fffb0; font-size: 0.7rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.25rem 0.75rem; border-radius: 2px; margin-bottom: 0.75rem; }
@@ -169,4 +179,5 @@
     background: #5a6268;
   }
 </style>
+{% endif %}
 {% endblock %}

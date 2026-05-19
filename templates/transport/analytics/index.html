@@ -42,9 +42,9 @@
 
 <!-- Sub-navigation -->
 <div class="tabs">
-  <a href="{{ url_for('transport.analytics_index') }}"      class="tab {% if tab == 'overview'     or not tab %}active{% endif %}">Overview</a>
-  <a href="{{ url_for('transport.analytics_revenue') }}"    class="tab {% if tab == 'revenue'                 %}active{% endif %}">Revenue</a>
-  <a href="{{ url_for('transport.analytics_performance') }}" class="tab {% if tab == 'performance'             %}active{% endif %}">Performance</a>
+  <a href="{{ safe_url('transport.analytics_index') }}"      class="tab {% if tab == 'overview'     or not tab %}active{% endif %}">Overview</a>
+  <a href="{{ safe_url('transport.analytics_revenue') }}"    class="tab {% if tab == 'revenue'                 %}active{% endif %}">Revenue</a>
+  <a href="{{ safe_url('transport.analytics_performance') }}" class="tab {% if tab == 'performance'             %}active{% endif %}">Performance</a>
   <!-- Drivers and Vehicles tabs removed because endpoints do not exist -->
 </div>
 
@@ -115,7 +115,7 @@
 <div class="card" style="margin-top:16px;">
   <div class="card-header">
     <span class="card-title">Top Performing Drivers</span>
-    <a href="{{ url_for('transport.analytics_index') }}" class="btn btn-secondary btn-sm">Full Report</a>
+    <a href="{{ safe_url('transport.analytics_index') }}" class="btn btn-secondary btn-sm">Full Report</a>
   </div>
   <div class="t-table-wrap">
     <table class="t-table">
@@ -126,7 +126,7 @@
           <tr>
             <td style="color:var(--text-muted);font-family:var(--font-mono);">{{ loop.index }}</td>
             <td>
-              <a href="{{ url_for('transport.drivers_show', id=d.id) }}" class="td-primary">{{ d.display_name }}</a>
+              <a href="{{ safe_url('url_for\(['"]transport.drivers_show', id=d.id) }}" class="td-primary">{{ d.display_name }}</a>
             </td>
             <td>{{ d.total_trips|default(0) }}</td>
             <td style="color:var(--amber);">★ {{ d.average_rating|default('—') }}</td>

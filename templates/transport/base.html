@@ -1,3 +1,11 @@
+{# Pane mode detection - when _pane=1, don't use full HTML structure #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% set is_pane = false %}
+{% endif %}
+
+{% if not is_pane %}
 <!DOCTYPE html>
 <html lang="en" data-theme="transport">
 <head>
@@ -17,6 +25,21 @@
   {% block extra_css %}{% endblock %}
 </head>
 <body>
+{% endif %}
+
+{% if is_pane %}
+    <style>
+        /* Inline styles for pane mode */
+        .t-content { padding: 20px; }
+        .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .alert-red { background: #fee2e2; color: #742a2a; border: 1px solid #fca5a5; }
+        .alert-green { background: #c6f6d5; color: #22543d; border: 1px solid #86efac; }
+        .alert-amber { background: #fefcbf; color: #744210; border: 1px solid #fcd34d; }
+        .alert-close { background: none; border: none; cursor: pointer; color: inherit; margin-left: auto; }
+    </style>
+{% endif %}
+
+{% if not is_pane %}
 <div class="t-shell">
 
   <!-- Sidebar -->
@@ -28,32 +51,32 @@
 
     <nav class="sidebar-nav">
       <div class="nav-section-label">Overview</div>
-      <a href="{{ url_for('transport.dashboard_overview') }}" class="nav-item {% if request.endpoint == 'transport.dashboard' %}active{% endif %}">
+      <a href="{{ safe_url('transport.dashboard_overview') }}" class="nav-item {% if request.endpoint == 'transport.dashboard' %}active{% endif %}">
         <i class="fa-solid fa-gauge-high"></i> Dashboard
       </a>
 
       <div class="nav-section-label">Operations</div>
-      <a href="{{ url_for('transport.bookings_index') }}" class="nav-item {% if 'bookings' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.bookings_index') }}" class="nav-item {% if 'bookings' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-calendar-check"></i> Bookings
         {% if pending_bookings_count is defined and pending_bookings_count %}
         <span class="badge amber">{{ pending_bookings_count }}</span>
         {% endif %}
       </a>
-      <a href="{{ url_for('transport.drivers_index') }}" class="nav-item {% if 'drivers' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.drivers_index') }}" class="nav-item {% if 'drivers' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-id-card"></i> Drivers
       </a>
-      <a href="{{ url_for('transport.vehicles_index') }}" class="nav-item {% if 'vehicles' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.vehicles_index') }}" class="nav-item {% if 'vehicles' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-van-shuttle"></i> Vehicles
       </a>
-      <a href="{{ url_for('transport.routes_index') }}" class="nav-item {% if 'routes' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.routes_index') }}" class="nav-item {% if 'routes' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-route"></i> Routes
       </a>
 
       <div class="nav-section-label">Management</div>
-      <a href="{{ url_for('transport.organisations_index') }}" class="nav-item {% if 'organisation' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.organisations_index') }}" class="nav-item {% if 'organisation' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-building"></i> Organisations
       </a>
-      <a href="{{ url_for('transport.incidents_index') }}" class="nav-item {% if 'incident' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.incidents_index') }}" class="nav-item {% if 'incident' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-triangle-exclamation"></i> Incidents
         {% if open_incidents_count is defined and open_incidents_count %}
         <span class="badge">{{ open_incidents_count }}</span>
@@ -61,12 +84,12 @@
       </a>
 
       <div class="nav-section-label">Insights</div>
-      <a href="{{ url_for('transport.analytics_index') }}" class="nav-item {% if 'analytics' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.analytics_index') }}" class="nav-item {% if 'analytics' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-chart-line"></i> Analytics
       </a>
 
       <div class="nav-section-label">Config</div>
-      <a href="{{ url_for('transport.settings_index') }}" class="nav-item {% if 'settings' in request.endpoint %}active{% endif %}">
+      <a href="{{ safe_url('transport.settings_index') }}" class="nav-item {% if 'settings' in request.endpoint %}active{% endif %}">
         <i class="fa-solid fa-sliders"></i> Settings
       </a>
     </nav>
@@ -101,7 +124,7 @@
       </button>
 
       <nav class="breadcrumb">
-        <a href="{{ url_for('transport.dashboard_overview') }}">
+        <a href="{{ safe_url('transport.dashboard_overview') }}">
           <i class="fa-solid fa-house"></i>
         </a>
         {% block breadcrumb %}{% endblock %}
@@ -151,7 +174,9 @@
     </main>
   </div>
 </div>
+{% endif %}
 
+{% if not is_pane %}
 <!-- Utility functions first -->
 <script src="{{ url_for('static', filename='transport/js/utils.js') }}"></script>
 
@@ -171,3 +196,4 @@
 {% block extra_js %}{% endblock %}
 </body>
 </html>
+{% endif %}

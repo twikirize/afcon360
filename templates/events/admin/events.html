@@ -147,10 +147,10 @@
       <p>Browse, filter and act on every event on the platform</p>
     </div>
     <div class="header-actions">
-      <a href="{{ url_for('events.admin_dashboard') }}" class="btn-ghost">
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="btn-ghost">
         <i class="fas fa-tachometer-alt"></i> Command Centre
       </a>
-      <a href="{{ url_for('events.list') }}" class="btn-accent">
+      <a href="{{ safe_url('events.list') }}" class="btn-accent">
         <i class="fas fa-globe"></i> Public Portal
       </a>
     </div>
@@ -177,7 +177,7 @@
           ('taken_down',       'Taken Down',  taken_down_count),
         ] %}
         {% for val, label, count in status_tabs %}
-        <a href="{{ url_for('events.admin_events', status=val) }}"
+        <a href="{{ safe_url('url_for\(['"]events.admin_events', status=val) }}"
            class="filter-pill{% if current_filter == val %} active{% endif %}">
           {{ label }}
           <span class="pill-count">{{ count }}</span>
@@ -323,14 +323,14 @@
                 <div class="tbl-actions" style="overflow:visible;flex-wrap:wrap;gap:4px;">
 
                   {# ── View button always shown ── #}
-                  <a href="{{ url_for('events.landing', identifier=event.slug) }}"
+                  <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}"
                      class="tbl-btn tbl-btn-view" target="_blank" title="View public page">
                     <i class="fas fa-eye"></i>
                   </a>
 
                   {# ── Attendees link if registrations exist ── #}
                   {% if event.registrations %}
-                  <a href="{{ url_for('events.event_attendees', identifier=event.slug) }}"
+                  <a href="{{ safe_url('url_for\(['"]events.event_attendees', identifier=event.slug) }}"
                      class="tbl-btn tbl-btn-manage" title="View attendees">
                     <i class="fas fa-users"></i>
                   </a>
@@ -401,7 +401,7 @@
 
                   {% else %}
                     {# archived / rejected / deactivated / completed / cancelled — read-only #}
-                    <a href="{{ url_for('events.landing', identifier=event.slug) }}"
+                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}"
                        class="tbl-btn tbl-btn-manage" target="_blank">
                       <i class="fas fa-external-link-alt"></i> View
                     </a>
@@ -425,7 +425,7 @@
         <h3>No events{% if current_filter != 'all' %} with status "{{ current_filter }}"{% endif %}</h3>
         <p style="margin-top:6px;">
           {% if current_filter != 'all' %}
-          <a href="{{ url_for('events.admin_events') }}" style="color:var(--brand-accent);text-decoration:none;">
+          <a href="{{ safe_url('events.admin_events') }}" style="color:var(--brand-accent);text-decoration:none;">
             View all events →
           </a>
           {% else %}

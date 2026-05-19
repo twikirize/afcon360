@@ -510,11 +510,11 @@
             <div class="quick-actions">
                 <h3>Quick Actions</h3>
                 <div class="quick-actions-grid">
-                    <a href="{{ url_for('events.list') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('events.list') }}" class="quick-action-btn">
                         <i class="fas fa-search"></i>
                         <span>Browse Events</span>
                     </a>
-                    <a href="{{ url_for('wallet.wallet_home') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="quick-action-btn">
                         <i class="fas fa-plus-circle"></i>
                         <span>Top Up Wallet</span>
                     </a>
@@ -554,12 +554,12 @@
                                     </div>
                                 </div>
                                 <div class="event-actions">
-                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
                                        class="btn-action btn-primary">
                                         <i class="fas fa-qrcode"></i>
                                         QR Code
                                     </a>
-                                    <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}" 
+                                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=reg.event.slug) }}" 
                                        class="btn-action btn-outline">
                                         <i class="fas fa-info-circle"></i>
                                         Details
@@ -575,7 +575,7 @@
                         <i class="fas fa-calendar-alt"></i>
                         <h3>No Upcoming Events</h3>
                         <p>You haven't registered for any upcoming events yet.</p>
-                        <a href="{{ url_for('events.list') }}" class="btn-action btn-primary">
+                        <a href="{{ safe_url('events.list') }}" class="btn-action btn-primary">
                             <i class="fas fa-search"></i>
                             Browse Events
                         </a>
@@ -624,7 +624,7 @@
                                     </div>
                                 </div>
                                 <div class="event-actions">
-                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
                                        class="btn-action btn-outline">
                                         <i class="fas fa-qrcode"></i>
                                         View QR
@@ -660,19 +660,19 @@
             <div class="quick-actions">
                 <h3>Quick Actions</h3>
                 <div class="quick-actions-grid">
-                    <a href="{{ url_for('wallet.wallet_home') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="quick-action-btn">
                         <i class="fas fa-home"></i>
                         <span>Wallet Home</span>
                     </a>
-                    <a href="{{ url_for('wallet.deposit_page') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('wallet.deposit_page') }}" class="quick-action-btn">
                         <i class="fas fa-plus-circle"></i>
                         <span>Add Funds</span>
                     </a>
-                    <a href="{{ url_for('wallet.send_page') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('wallet.send_page') }}" class="quick-action-btn">
                         <i class="fas fa-paper-plane"></i>
                         <span>Send Money</span>
                     </a>
-                    <a href="{{ url_for('wallet.history') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('wallet.history') }}" class="quick-action-btn">
                         <i class="fas fa-history"></i>
                         <span>Transaction History</span>
                     </a>
@@ -683,7 +683,7 @@
                 <i class="fas fa-wallet"></i>
                 <h3>Wallet Management</h3>
                 <p>Click "Wallet Home" to manage your funds, view transactions, and more.</p>
-                <a href="{{ url_for('wallet.wallet_home') }}" class="btn-action btn-primary">
+                <a href="{{ safe_url('wallet.wallet_home') }}" class="btn-action btn-primary">
                     <i class="fas fa-arrow-right"></i>
                     Go to Wallet Home
                 </a>
@@ -700,15 +700,15 @@
             <div class="quick-actions">
                 <h3>Transport Services</h3>
                 <div class="quick-actions-grid">
-                    <a href="{{ url_for('transport.home') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('transport.home') }}" class="quick-action-btn">
                         <i class="fas fa-bus"></i>
                         <span>Transport Home</span>
                     </a>
-                    <a href="{{ url_for('transport.booking') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('transport.book_transport') }}" class="quick-action-btn">
                         <i class="fas fa-plus"></i>
                         <span>Book Transport</span>
                     </a>
-                    <a href="{{ url_for('transport.my_bookings') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('transport.bookings_index') }}" class="quick-action-btn">
                         <i class="fas fa-list"></i>
                         <span>My Bookings</span>
                     </a>
@@ -719,7 +719,7 @@
                 <i class="fas fa-bus"></i>
                 <h3>Transport Services</h3>
                 <p>Book and manage your transportation for events and travel.</p>
-                <a href="{{ url_for('transport.home') }}" class="btn-action btn-primary">
+                <a href="{{ safe_url('transport.home') }}" class="btn-action btn-primary">
                     <i class="fas fa-arrow-right"></i>
                     Go to Transport Home
                 </a>
@@ -736,15 +736,15 @@
             <div class="quick-actions">
                 <h3>Accommodation Services</h3>
                 <div class="quick-actions-grid">
-                    <a href="{{ url_for('accommodation.index') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-action-btn">
                         <i class="fas fa-hotel"></i>
                         <span>Accommodation Home</span>
                     </a>
-                    <a href="{{ url_for('accommodation.search') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('accommodation.search') }}" class="quick-action-btn">
                         <i class="fas fa-search"></i>
                         <span>Find Stays</span>
                     </a>
-                    <a href="{{ url_for('accommodation.my_bookings') }}" class="quick-action-btn">
+                    <a href="{{ safe_url('accommodation.my_bookings') }}" class="quick-action-btn">
                         <i class="fas fa-bed"></i>
                         <span>My Bookings</span>
                     </a>
@@ -755,7 +755,7 @@
                 <i class="fas fa-bed"></i>
                 <h3>Accommodation Services</h3>
                 <p>Find and manage your accommodation for events and travel.</p>
-                <a href="{{ url_for('accommodation.index') }}" class="btn-action btn-primary">
+                <a href="{{ safe_url('accommodation.guest.search') }}" class="btn-action btn-primary">
                     <i class="fas fa-arrow-right"></i>
                     Go to Accommodation Home
                 </a>

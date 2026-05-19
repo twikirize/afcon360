@@ -1,9 +1,16 @@
 {# templates/accommodation/guest/my_bookings.html #}
-{% extends "base.html" %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block title %}My Bookings - AFCON360{% endblock %}
+{% if not is_pane %}
+    {% block title %}My Bookings - AFCON360{% endblock %}
 
-{% block content %}
+    {% block content %}
 <div class="container py-4">
     <div class="row">
         <div class="col-12">
@@ -53,7 +60,7 @@
                                 </p>
                             </div>
                             <div class="col-md-2 text-end">
-                                <a href="{{ url_for('accommodation.guest.confirmation', reference=booking.booking_reference) }}"
+                                <a href="{{ safe_url('url_for\(['"]accommodation.guest.confirmation', reference=booking.booking_reference) }}"
                                    class="btn btn-sm btn-outline-primary mb-2">
                                     View Details
                                 </a>
@@ -72,7 +79,7 @@
                     <div class="modal fade" id="cancelModal{{ booking.id }}" tabindex="-1">
                         <div class="modal-dialog">
                             <div class="modal-content">
-                                <form method="POST" action="{{ url_for('accommodation.guest.cancel_booking', reference=booking.booking_reference) }}">
+                                <form method="POST" action="{{ safe_url('url_for\(['"]accommodation.guest.cancel_booking', reference=booking.booking_reference) }}">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <div class="modal-header">
                                         <h5 class="modal-title">Cancel Booking</h5>
@@ -107,7 +114,7 @@
                     <i class="fas fa-calendar-alt fa-3x text-muted mb-3"></i>
                     <h3>No Bookings Yet</h3>
                     <p class="text-muted">You haven't made any accommodation bookings.</p>
-                    <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
+                    <a href="{{ safe_url('accommodation.guest.search') }}" class="btn btn-primary">
                         Search for Stays
                     </a>
                 </div>
@@ -116,3 +123,4 @@
     </div>
 </div>
 {% endblock %}
+{% endif %}

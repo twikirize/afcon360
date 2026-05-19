@@ -28,7 +28,7 @@
                         <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Wallet Balance</small>
                         <span class="h5 mb-0 text-success">${{ "%.2f"|format(wallet_balance) }}</span>
                     </div>
-                    <a href="{{ url_for('wallet.wallet_home') }}" class="btn btn-sm btn-success ms-3">
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="btn btn-sm btn-success ms-3">
                         <i class="fas fa-wallet"></i>
                     </a>
                 </div>
@@ -40,7 +40,7 @@
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
             <h4 class="mb-0 text-primary"><i class="fas fa-ticket-alt me-2"></i>My Registrations</h4>
-            <a href="{{ url_for('events.my_registrations') }}" class="btn btn-sm btn-outline-primary">Full Dashboard</a>
+            <a href="{{ safe_url('events.my_registrations') }}" class="btn btn-sm btn-outline-primary">Full Dashboard</a>
         </div>
         <div class="card-body">
             {% if registrations %}
@@ -53,7 +53,7 @@
                             </span>
                             <h6 class="mb-1 text-truncate pe-5">{{ reg.event.name }}</h6>
                             <p class="small text-muted mb-2"><i class="fas fa-calendar-day me-1"></i>{{ reg.event.start_date[:10] }}</p>
-                            <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn btn-sm btn-primary w-100">
+                            <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn btn-sm btn-primary w-100">
                                 <i class="fas fa-qrcode me-1"></i> View Ticket
                             </a>
                         </div>
@@ -63,7 +63,7 @@
             {% else %}
                 <div class="text-center py-4">
                     <p class="text-muted mb-2">You haven't registered for any events yet.</p>
-                    <a href="{{ url_for('events.list') }}" class="btn btn-primary">Find Your Next Event</a>
+                    <a href="{{ safe_url('events.list') }}" class="btn btn-primary">Find Your Next Event</a>
                 </div>
             {% endif %}
         </div>
@@ -75,13 +75,13 @@
             <div class="card shadow-sm h-100 border-0">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                     <h4 class="mb-0 text-success"><i class="fas fa-briefcase me-2"></i>Events I Manage</h4>
-                    <a href="{{ url_for('events.my_events') }}" class="btn btn-sm btn-outline-success">Manage All</a>
+                    <a href="{{ safe_url('events.my_events') }}" class="btn btn-sm btn-outline-success">Manage All</a>
                 </div>
                 <div class="card-body">
                     {% if managed_events %}
                         <div class="list-group list-group-flush">
                             {% for event in managed_events[:4] %}
-                            <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="list-group-item list-group-item-action px-0 border-0 mb-2">
+                            <a href="{{ safe_url('url_for\(['"]events.organizer_dashboard', identifier=event.slug) }}" class="list-group-item list-group-item-action px-0 border-0 mb-2">
                                 <div class="d-flex w-100 justify-content-between align-items-center border rounded p-3">
                                     <div>
                                         <h6 class="mb-1">{{ event.name }}</h6>
@@ -96,7 +96,7 @@
                         </div>
                     {% endif %}
                     <div class="d-grid mt-3">
-                        <a href="{{ url_for('events.create_event') }}" class="btn btn-outline-success border-dashed py-3">
+                        <a href="{{ safe_url('events.create_event') }}" class="btn btn-outline-success border-dashed py-3">
                             <i class="fas fa-plus-circle me-2"></i>Create New Event
                         </a>
                     </div>
@@ -109,7 +109,7 @@
             <div class="card shadow-sm h-100 border-0">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                     <h4 class="mb-0 text-info"><i class="fas fa-handshake me-2"></i>Service Opportunities</h4>
-                    <a href="{{ url_for('events.service_provider_dashboard') }}" class="btn btn-sm btn-outline-info">Provider Dashboard</a>
+                    <a href="{{ safe_url('events.service_provider_dashboard') }}" class="btn btn-sm btn-outline-info">Provider Dashboard</a>
                 </div>
                 <div class="card-body">
                     <p class="small text-muted mb-3">Events near your properties or service areas:</p>
@@ -122,7 +122,7 @@
                                         <h6 class="mb-1">{{ event.name }}</h6>
                                         <small class="text-muted"><i class="fas fa-calendar-alt me-1"></i>{{ event.start_date[:10] }}</small>
                                     </div>
-                                    <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-sm btn-info text-white">Offer Services</a>
+                                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="btn btn-sm btn-info text-white">Offer Services</a>
                                 </div>
                             </div>
                             {% endfor %}
@@ -143,7 +143,7 @@
     <div class="card shadow-sm mb-4 border-warning">
         <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center py-3">
             <h4 class="mb-0 text-dark"><i class="fas fa-user-shield me-2"></i>Global Administration</h4>
-            <a href="{{ url_for('events.admin_dashboard') }}" class="btn btn-sm btn-warning">Admin Dashboard</a>
+            <a href="{{ safe_url('events.admin_dashboard') }}" class="btn btn-sm btn-warning">Admin Dashboard</a>
         </div>
         <div class="card-body">
             <div class="row text-center">

@@ -8,7 +8,8 @@ tourism_bp = Blueprint(
     template_folder="templates"
 )
 
-from app.tourism import routes  # noqa: F401,E402
+# DO NOT import routes here - causes circular import and app context issues
+# Routes will be imported when the blueprint is registered in app factory
 
 # Register with moderator system
 try:

@@ -1,7 +1,16 @@
-{% extends "base.html" %}
-{% block content %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
+
+{% if not is_pane %}
+    {% block content %}
 <section class="container py-4">
   <h1>Tourism</h1>
   <p>Travel packages and sightseeing.</p>
 </section>
 {% endblock %}
+{% endif %}

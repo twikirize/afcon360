@@ -1,9 +1,16 @@
 {# templates/kyc/verify_national_id.html #}
-{% extends "base.html" %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block title %}Verify National ID — KYC{% endblock %}
+{% if not is_pane %}
+    {% block title %}Verify National ID — KYC{% endblock %}
 
-{% block content %}
+    {% block content %}
 <div class="kyc-verify-wrapper">
 
   <div class="kyc-header">
@@ -143,9 +150,11 @@
 
 </div>
 {% endblock %}
+{% endif %}
 
 
 {% block styles %}
+{% if not is_pane %}
 <style>
   .kyc-verify-wrapper {
     max-width: 560px;
@@ -314,4 +323,5 @@
   .alert--success { background: #f0fff4; border: 1px solid #68d391; color: #1a4731; }
   .alert--info    { background: #ebf8ff; border: 1px solid #63b3ed; color: #1a365d; }
 </style>
+{% endif %}
 {% endblock %}

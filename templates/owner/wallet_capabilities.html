@@ -528,7 +528,7 @@
                         <div class="card-body">
                             <h6 class="card-title">Deposit</h6>
                             <p class="card-text small text-muted">Add funds to wallet</p>
-                            <a href="{{ url_for('wallet.deposit') }}" class="btn btn-sm btn-success">Go to Deposit</a>
+                            <a href="{{ safe_url('wallet.deposit') }}" class="btn btn-sm btn-success">Go to Deposit</a>
                         </div>
                     </div>
                 </div>
@@ -537,7 +537,7 @@
                         <div class="card-body">
                             <h6 class="card-title">Withdraw</h6>
                             <p class="card-text small text-muted">Withdraw funds</p>
-                            <a href="{{ url_for('wallet.withdraw') }}" class="btn btn-sm btn-success">Go to Withdraw</a>
+                            <a href="{{ safe_url('wallet.withdraw') }}" class="btn btn-sm btn-success">Go to Withdraw</a>
                         </div>
                     </div>
                 </div>
@@ -546,7 +546,7 @@
                         <div class="card-body">
                             <h6 class="card-title">Transfer</h6>
                             <p class="card-text small text-muted">Send to other users</p>
-                            <a href="{{ url_for('wallet.send') }}" class="btn btn-sm btn-success">Go to Transfer</a>
+                            <a href="{{ safe_url('wallet.send') }}" class="btn btn-sm btn-success">Go to Transfer</a>
                         </div>
                     </div>
                 </div>
@@ -555,7 +555,7 @@
                         <div class="card-body">
                             <h6 class="card-title">FX Conversion</h6>
                             <p class="card-text small text-muted">Currency exchange</p>
-                            <a href="{{ url_for('wallet.fx_convert') }}" class="btn btn-sm btn-success">Go to FX</a>
+                            <a href="{{ safe_url('wallet.fx_convert') }}" class="btn btn-sm btn-success">Go to FX</a>
                         </div>
                     </div>
                 </div>
@@ -564,7 +564,7 @@
                         <div class="card-body">
                             <h6 class="card-title">Transaction History</h6>
                             <p class="card-text small text-muted">View all transactions</p>
-                            <a href="{{ url_for('wallet.transaction_history') }}" class="btn btn-sm btn-success">View History</a>
+                            <a href="{{ safe_url('wallet.transaction_history') }}" class="btn btn-sm btn-success">View History</a>
                         </div>
                     </div>
                 </div>
@@ -573,7 +573,7 @@
                         <div class="card-body">
                             <h6 class="card-title">Wallet Settings</h6>
                             <p class="card-text small text-muted">Manage preferences</p>
-                            <a href="{{ url_for('wallet.wallet_settings') }}" class="btn btn-sm btn-success">Go to Settings</a>
+                            <a href="{{ safe_url('wallet.wallet_settings') }}" class="btn btn-sm btn-success">Go to Settings</a>
                         </div>
                     </div>
                 </div>

@@ -881,4 +881,105 @@
     justify-content: center;
   }
 }
+
+/* ============================================
+   COMPACT STAT CARDS - Reduce box sizes/Over ride
+   ============================================ */
+
+/* Make stat cards more compact */
+.stats-row {
+  gap: 0.75rem;  /* Reduce gap between cards */
+}
+
+.stat-card {
+  padding: 0.75rem 1rem;  /* Smaller padding */
+  gap: 0.75rem;  /* Reduced gap between icon and text */
+}
+
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  font-size: 1rem;
+}
+
+.stat-icon i {
+  font-size: 1rem;
+}
+
+.stat-value {
+  font-size: 1.25rem;  /* Smaller number font */
+  font-weight: 700;
+}
+
+.stat-label {
+  font-size: 0.6rem;  /* Smaller label text */
+}
+
+.stat-meta {
+  font-size: 0.65rem;
+  margin-top: 0.125rem;
+}
+
+/* For gradient cards, keep text white but compact */
+.stat-card.gradient-purple .stat-value,
+.stat-card.gradient-green .stat-value,
+.stat-card.gradient-pink .stat-value,
+.stat-card.gradient-blue .stat-value,
+.stat-card.gradient-dark .stat-value {
+  font-size: 1.25rem;
+}
+
+/* Reduce Events Overview section header margin */
+.section-header {
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+.section-header h2 {
+  font-size: 1rem;
+}
+
+
+/* ============================================
+   COMPACT STAT CARDS - Reduce box sizes/ More Over ride
+   ============================================ */
+
+/* Ultra compact stat cards */
+.stats-row {
+  gap: 0.5rem;
+}
+
+.stat-card {
+  padding: 0.5rem 0.75rem;
+  gap: 0.5rem;
+}
+
+.stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.stat-icon i {
+  font-size: 0.875rem;
+}
+
+.stat-value {
+  font-size: 1rem;
+}
+
+.stat-label {
+  font-size: 0.55rem;
+  letter-spacing: 0.3px;
+}
+
+.stat-meta {
+  font-size: 0.6rem;
+  display: none;  /* Hide meta text for ultra compact */
+}
+
+/* Or keep meta but smaller */
+.stat-meta {
+  font-size: 0.55rem;
+  margin-top: 0;
+}
 </style>

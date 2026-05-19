@@ -8,6 +8,13 @@
     <p>Quick links for administrators.</p>
 
     <ul>
+        <li><a href="{{ url_for('admin_settings.system_settings') }}">System Settings</a></li>
+        <li><a href="{{ url_for('admin_settings.platform_settings') }}">Platform Settings</a></li>
+        <li><a href="{{ url_for('admin_settings.analytics_settings') }}">Analytics Dashboard</a></li>
+        <li><a href="{{ url_for('admin_settings.impersonation_control') }}">Impersonation Control</a></li>
+        {% if admin_role_management_enabled %}
+        <li><a href="{{ safe_url('admin.owner.owner_role_management.role_management_dashboard') }}">Role Management</a></li>
+        {% endif %}
         <li><a href="{{ url_for('admin_ultimate.manage_users') }}">Manage Users</a></li>
         <li><a href="{{ url_for('admin_ultimate.manage_orgs') }}">Manage Organizations</a></li>
         <li><a href="{{ url_for('admin_ultimate.wallet_webhooks') }}">Webhook Events (Wallet)</a></li>

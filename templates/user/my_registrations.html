@@ -364,7 +364,7 @@
                             <i class="fas fa-qrcode"></i>
                             QR Code
                         </button>
-                        <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}" class="btn-action btn-outline">
+                        <a href="{{ safe_url('events.landing', identifier=reg.event.slug) }}" class="btn-action btn-outline">
                             <i class="fas fa-info-circle"></i>
                             Event Details
                         </a>
@@ -387,7 +387,7 @@
             <i class="fas fa-calendar-alt"></i>
             <h3>No Event Registrations</h3>
             <p>You haven't registered for any events yet.</p>
-            <a href="{{ url_for('events.list') }}" class="btn-action btn-primary">
+            <a href="{{ safe_url('events.list') }}" class="btn-action btn-primary">
                 <i class="fas fa-search"></i>
                 Browse Events
             </a>
@@ -471,7 +471,7 @@ function showQRCode(regRef) {
     // Load QR code
     qrContainer.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 2rem;"></i>';
     
-    fetch(`{{ url_for('events.registration_confirmation', reg_ref='') }}${regRef}`)
+    fetch(`{{ safe_url('events.registration_confirmation', reg_ref='') }}${regRef}`)
         .then(response => response.text())
         .then(html => {
             // Extract QR code from the HTML response

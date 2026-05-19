@@ -41,13 +41,13 @@
     {% elif driver_status == 'rejected' %}
     <div class="status-banner status-banner--rejected">⚠️ Driver application needs attention. <a href="{{ url_for('onboarding.driver_onboarding') }}">Resubmit</a>.</div>
     {% elif driver_status == 'verified' %}
-    <div class="status-banner status-banner--success">✅ You are a verified driver. <a href="{{ url_for('transport.driver_dashboard') }}">Driver dashboard</a>.</div>
+    <div class="status-banner status-banner--success">✅ You are a verified driver. <a href="{{ safe_url('transport.driver_dashboard') }}">Driver dashboard</a>.</div>
     {% endif %}
 
-    {% if wallet %}
-    <div class="wallet-quick-link"><a href="{{ url_for('wallet.wallet_dashboard') }}">Open Wallet</a></div>
+    {% if wallet_data.enabled %}
+    <div class="wallet-quick-link"><a href="{{ safe_url('wallet.wallet_dashboard') }}">Open Wallet</a></div>
     {% else %}
-    <div class="wallet-prompt"><a href="{{ url_for('wallet.activate_wallet') }}">Activate Wallet</a></div>
+    <div class="wallet-prompt"><a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.activate_wallet') }}{% else %}#{% endif %}">Activate Wallet</a></div>
     {% endif %}
 
     {% if tournament_mode %}

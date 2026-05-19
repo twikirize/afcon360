@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Wallet Admin Dashboard - AFCON360{% endblock %}
+
+{% block styles %}
+<style>
+.wallet-admin-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.dashboard-header {
+    background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-content h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.header-content p {
+    font-size: 1.1rem;
+    margin: 0.5rem 0 0 0;
+    opacity: 0.9;
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.btn-header {
+    background: rgba(255,255,255,0.2);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-header:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateY(-2px);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    color: #3182ce;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-change {
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.stat-change.positive {
+    color: #10b981;
+}
+
+.stat-change.negative {
+    color: #ef4444;
+}
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.action-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+}
+
+.action-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+    border-color: #3182ce;
+}
+
+.action-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    color: #3182ce;
+}
+
+.action-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.action-description {
+    color: #6b7280;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .quick-actions {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wallet-admin-container">
+    <!-- Header -->
+    <div class="dashboard-header">
+        <div class="header-content">
+            <div>
+                <h1><i class="fas fa-wallet"></i> Wallet Admin Dashboard</h1>
+                <p>Manage financial operations, payments, and transactions</p>
+            </div>
+            <div class="header-actions">
+                <a href="/wallet/admin/settings" class="btn-header">
+                    <i class="fas fa-cogs"></i> Settings
+                </a>
+                <a href="/wallet/admin/analytics" class="btn-header">
+                    <i class="fas fa-chart-line"></i> Analytics
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Overview -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
+            <div class="stat-value">${{ "%.2f"|format(total_balance or 0) }}</div>
+            <div class="stat-label">Total Balance</div>
+            <div class="stat-change positive">
+                <i class="fas fa-arrow-up"></i> {{ balance_growth or '+0%' }}
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon"><i class="fas fa-exchange-alt"></i></div>
+            <div class="stat-value">${{ "%.2f"|format(total_transactions or 0) }}</div>
+            <div class="stat-label">Total Transactions</div>
+            <div class="stat-change positive">
+                <i class="fas fa-arrow-up"></i> {{ transactions_growth or '+0%' }}
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon"><i class="fas fa-users"></i></div>
+            <div class="stat-value">{{ active_wallets or 0 }}</div>
+            <div class="stat-label">Active Wallets</div>
+            <div class="stat-change positive">
+                <i class="fas fa-check-circle"></i> {{ wallet_status or 'Healthy' }}
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon"><i class="fas fa-credit-card"></i></div>
+            <div class="stat-value">{{ payment_methods or 0 }}</div>
+            <div class="stat-label">Payment Methods</div>
+            <div class="stat-change positive">
+                <i class="fas fa-check-circle"></i> {{ payment_status or 'Active' }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <a href="/wallet/admin/transactions" class="action-card">
+            <div class="action-icon"><i class="fas fa-exchange-alt"></i></div>
+            <div class="action-title">Transactions</div>
+            <div class="action-description">View and manage all wallet transactions</div>
+        </a>
+
+        <a href="/wallet/admin/payments" class="action-card">
+            <div class="action-icon"><i class="fas fa-credit-card"></i></div>
+            <div class="action-title">Payment Processing</div>
+            <div class="action-description">Manage payment methods and gateways</div>
+        </a>
+
+        <a href="/wallet/admin/commissions" class="action-card">
+            <div class="action-icon"><i class="fas fa-percentage"></i></div>
+            <div class="action-title">Commissions</div>
+            <div class="action-description">Configure commission rates and payouts</div>
+        </a>
+
+        <a href="/wallet/admin/reconciliation" class="action-card">
+            <div class="action-icon"><i class="fas fa-balance-scale"></i></div>
+            <div class="action-title">Reconciliation</div>
+            <div class="action-description">Balance accounts and reconcile transactions</div>
+        </a>
+    </div>
+
+    <!-- Module Settings -->
+    <div class="quick-actions">
+        <a href="/wallet/admin/settings" class="action-card">
+            <div class="action-icon"><i class="fas fa-cogs"></i></div>
+            <div class="action-title">Wallet Settings</div>
+            <div class="action-description">Configure wallet rules, limits, and policies</div>
+        </a>
+
+        <a href="/wallet/admin/gateways" class="action-card">
+            <div class="action-icon"><i class="fas fa-plug"></i></div>
+            <div class="action-title">Payment Gateways</div>
+            <div class="action-description">Manage payment gateway integrations</div>
+        </a>
+
+        <a href="/wallet/admin/analytics" class="action-card">
+            <div class="action-icon"><i class="fas fa-chart-line"></i></div>
+            <div class="action-title">Financial Analytics</div>
+            <div class="action-description">View financial metrics and reports</div>
+        </a>
+    </div>
+</div>
+{% endblock %}

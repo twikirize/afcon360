@@ -5,7 +5,7 @@
   <ul>
     {% for s in services %}
       <li>
-        <a href="{{ url_for('transport.service_detail', service_id=s.id) }}">{{ s.name }}</a>
+        <a href="{{ safe_url('url_for\(['"]transport.service_detail', service_id=s.id) }}">{{ s.name }}</a>
         — {{ s.eta }} · {{ s.summary }}
       </li>
     {% else %}

@@ -1,6 +1,13 @@
-{% extends "base.html" %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block content %}
+{% if not is_pane %}
+    {% block content %}
 <h2>Tournament archive</h2>
 {% if archived %}
   <ul>
@@ -12,3 +19,4 @@
   <p>No archived items yet.</p>
 {% endif %}
 {% endblock %}
+{% endif %}

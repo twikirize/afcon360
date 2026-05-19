@@ -102,13 +102,13 @@
       <p>Monitor, approve, and moderate all platform events in real time</p>
     </div>
     <div class="header-actions">
-      <a href="{{ url_for('events.list') }}" class="btn-ghost">
+      <a href="{{ safe_url('events.list') }}" class="btn-ghost">
         <i class="fas fa-globe"></i> Public Portal
       </a>
-      <a href="{{ url_for('events.admin_settings') }}" class="btn-ghost">
+      <a href="{{ safe_url('events.admin_settings') }}" class="btn-ghost">
         <i class="fas fa-cog"></i> Settings
       </a>
-      <a href="{{ url_for('events.admin_events') }}" class="btn-accent">
+      <a href="{{ safe_url('events.admin_events') }}" class="btn-accent">
         <i class="fas fa-list"></i> All Events
       </a>
     </div>
@@ -195,7 +195,7 @@
                   <td><span class="badge badge-cat">{{ event.category }}</span></td>
                   <td>
                     <div class="tbl-actions">
-                      <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="tbl-btn tbl-btn-view" target="_blank"><i class="fas fa-eye"></i></a>
+                      <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="tbl-btn tbl-btn-view" target="_blank"><i class="fas fa-eye"></i></a>
                       <button class="tbl-btn tbl-btn-approve" onclick="quickAction('approve','{{ event.slug }}','{{ event.name|e }}')">
                         <i class="fas fa-check"></i> Approve
                       </button>
@@ -227,7 +227,7 @@
         <div class="panel">
           <div class="panel-head">
             <div class="panel-title"><i class="fas fa-stream icon"></i> Recent Activity</div>
-            <a href="{{ url_for('events.admin_events') }}" class="panel-link">
+            <a href="{{ safe_url('events.admin_events') }}" class="panel-link">
               View all <i class="fas fa-arrow-right" style="font-size:10px;"></i>
             </a>
           </div>
@@ -320,7 +320,7 @@
                         </button>
 
                       {% else %}
-                        <a href="{{ url_for('events.admin_events', status=st) }}" class="tbl-btn tbl-btn-manage">
+                        <a href="{{ safe_url('url_for\(['"]events.admin_events', status=st) }}" class="tbl-btn tbl-btn-manage">
                           <i class="fas fa-cog"></i> Manage
                         </a>
                       {% endif %}
@@ -387,27 +387,27 @@
             <div class="panel-title"><i class="fas fa-bolt icon"></i> Quick Actions</div>
           </div>
           <div class="quick-actions">
-            <a href="{{ url_for('events.admin_events') }}" class="qa-item">
+            <a href="{{ safe_url('events.admin_events') }}" class="qa-item">
               <div class="qa-icon qa-icon-green"><i class="fas fa-list"></i></div>
               <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">All Events</div><div style="font-size:11px;">Browse and manage every event</div></div>
               <span class="qa-arrow">›</span>
             </a>
-            <a href="{{ url_for('events.admin_events', status='pending_approval') }}" class="qa-item">
+            <a href="{{ safe_url('url_for\(['"]events.admin_events', status='pending_approval') }}" class="qa-item">
               <div class="qa-icon qa-icon-gold"><i class="fas fa-clock"></i></div>
               <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Pending Review</div><div style="font-size:11px;">{{ pending_events }} events awaiting decision</div></div>
               <span class="qa-arrow">›</span>
             </a>
-            <a href="{{ url_for('events.admin_events', status='published') }}" class="qa-item">
+            <a href="{{ safe_url('url_for\(['"]events.admin_events', status='published') }}" class="qa-item">
               <div class="qa-icon qa-icon-blue"><i class="fas fa-check-circle"></i></div>
               <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Published Events</div><div style="font-size:11px;">{{ published_events }} live on the platform</div></div>
               <span class="qa-arrow">›</span>
             </a>
-            <a href="{{ url_for('events.admin_events', status='approved') }}" class="qa-item">
+            <a href="{{ safe_url('url_for\(['"]events.admin_events', status='approved') }}" class="qa-item">
               <div class="qa-icon qa-icon-purple"><i class="fas fa-rocket"></i></div>
               <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Approved — Unpublished</div><div style="font-size:11px;">Approved but not yet live</div></div>
               <span class="qa-arrow">›</span>
             </a>
-            <a href="{{ url_for('events.list') }}" class="qa-item">
+            <a href="{{ safe_url('events.list') }}" class="qa-item">
               <div class="qa-icon" style="background:rgba(128,128,128,.1)"><i class="fas fa-globe"></i></div>
               <div><div style="font-weight:500;color:var(--brand-text);margin-bottom:2px;">Public Portal</div><div style="font-size:11px;">See what attendees see</div></div>
               <span class="qa-arrow">›</span>

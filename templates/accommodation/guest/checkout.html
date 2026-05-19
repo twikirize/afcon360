@@ -1,9 +1,16 @@
 {# templates/accommodation/guest/checkout.html #}
-{% extends "base.html" %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block title %}Checkout - AFCON360 Accommodation{% endblock %}
+{% if not is_pane %}
+    {% block title %}Checkout - AFCON360 Accommodation{% endblock %}
 
-{% block content %}
+    {% block content %}
 <div class="container py-4">
     <div class="row">
         <div class="col-lg-8">
@@ -12,7 +19,7 @@
                     <h4 class="mb-0">Complete Your Booking</h4>
                 </div>
                 <div class="card-body">
-                    <form method="POST" id="checkout-form" action="{{ url_for('accommodation.guest.checkout') }}">
+                    <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest.checkout') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <!-- Guest Information -->
                         <h5 class="mb-3">Guest Details</h5>
@@ -126,3 +133,4 @@ document.getElementById('checkout-form').addEventListener('submit', function(e) 
 });
 </script>
 {% endblock %}
+{% endif %}

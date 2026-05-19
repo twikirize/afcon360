@@ -804,7 +804,7 @@ body {
                     
                     <div class="event-footer">
                         <div class="event-actions">
-                            <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="event-btn-primary">
+                            <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="event-btn-primary">
                                 View Event
                             </a>
                             <button onclick="toggleFavorite(this, '{{ event.id }}')" data-favorited="false" style="
@@ -833,7 +833,7 @@ body {
                     </div>
                     <h3 class="empty-title">No Events Found</h3>
                     <p class="empty-description">Check back soon for upcoming events and amazing experiences in your area.</p>
-                    <a href="{{ url_for('events.create_event') }}" class="empty-btn">Create an Event</a>
+                    <a href="{{ safe_url('events.create_event') }}" class="empty-btn">Create an Event</a>
                 </div>
             {% endif %}
         </div>
@@ -848,15 +848,15 @@ body {
         <p class="actions-subtitle">Join thousands of event organizers bringing people together</p>
         
         <div class="action-buttons">
-            <a href="{{ url_for('events.create_event') }}" class="action-btn action-btn-primary">
+            <a href="{{ safe_url('events.create_event') }}" class="action-btn action-btn-primary">
                 <i class="fas fa-plus"></i>
                 Create New Event
             </a>
-            <a href="{{ url_for('events.my_events') }}" class="action-btn action-btn-outline">
+            <a href="{{ safe_url('events.my_events') }}" class="action-btn action-btn-outline">
                 <i class="fas fa-list"></i>
                 My Events
             </a>
-            <a href="{{ url_for('events.my_registrations') }}" class="action-btn action-btn-outline">
+            <a href="{{ safe_url('events.my_registrations') }}" class="action-btn action-btn-outline">
                 <i class="fas fa-ticket-alt"></i>
                 My Registrations
             </a>

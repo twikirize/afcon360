@@ -5,7 +5,7 @@
   <h2>Payout Request for Agent: {{ agent_id }}</h2>
   <p><strong>Available commission:</strong> UGX {{ total | round(2) }}</p>
 
-  <form method="POST" action="{{ url_for('wallet.payout_request_form') }}" class="mb-4">
+  <form method="POST" action="{{ safe_url('wallet.payout_request_form') }}" class="mb-4">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="mb-3">
       <label class="form-label">Amount</label>
@@ -42,6 +42,6 @@
     </tbody>
   </table>
 
-  <a href="{{ url_for('wallet.wallet_dashboard') }}" class="btn btn-outline-primary">Back</a>
+  <a href="{{ safe_url('wallet.wallet_dashboard') }}" class="btn btn-outline-primary">Back</a>
 </div>
 {% endblock %}

@@ -48,7 +48,7 @@
                     </div>
                 </div>
                 <div class="card-footer bg-transparent border-top-0 text-end">
-                    <a href="{{ url_for('wallet.wallet_home') }}" class="text-white text-decoration-none">
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="text-white text-decoration-none">
                         Manage Wallet <i class="fas fa-arrow-circle-right"></i>
                     </a>
                 </div>
@@ -59,10 +59,10 @@
                 <div class="card-body">
                     <h5 class="card-title">Quick Actions</h5>
                     <div class="d-grid gap-2">
-                        <a href="{{ url_for('events.list') }}" class="btn btn-outline-primary">
+                        <a href="{{ safe_url('events.list') }}" class="btn btn-outline-primary">
                             <i class="fas fa-search me-2"></i>Browse More Events
                         </a>
-                        <a href="{{ url_for('wallet.deposit_page') }}" class="btn btn-outline-success">
+                        <a href="{{ safe_url('wallet.deposit_page') }}" class="btn btn-outline-success">
                             <i class="fas fa-plus-circle me-2"></i>Top Up Wallet
                         </a>
                     </div>
@@ -115,11 +115,11 @@
                             </div>
                             <div class="card-footer bg-white">
                                 <div class="btn-group w-100">
-                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="btn btn-sm btn-primary">
                                         <i class="fas fa-qrcode"></i> View QR Code
                                     </a>
-                                    <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}"
+                                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=reg.event.slug) }}"
                                        class="btn btn-sm btn-outline-secondary">
                                         <i class="fas fa-info-circle"></i> Event Details
                                     </a>
@@ -189,11 +189,11 @@
                     </div>
                     <div class="card-footer bg-white">
                         <div class="btn-group w-100">
-                            <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                            <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                class="btn btn-sm btn-outline-primary">
                                 <i class="fas fa-qrcode"></i> View QR Code
                             </a>
-                            <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}"
+                            <a href="{{ safe_url('url_for\(['"]events.landing', identifier=reg.event.slug) }}"
                                class="btn btn-sm btn-outline-secondary">
                                 <i class="fas fa-info-circle"></i> Event Details
                             </a>

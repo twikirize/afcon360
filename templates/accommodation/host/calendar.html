@@ -1,0 +1,717 @@
+{% extends "base.html" %}
+{% from "macros/flash_messages.html" import render_flash_messages with context %}
+
+{% block title %}Host Availability Calendar{% endblock %}
+
+{% block content %}
+<div class="host-calendar-shell" data-property-id="{{ selected_property_id }}">
+    {{ render_flash_messages() }}
+    <header class="calendar-header">
+        <div class="calendar-title">
+            <span class="eyebrow">Availability Control</span>
+            <h1>{{ month_context.label }}</h1>
+            <p>Fine-tune when guests can book your stays across <strong>{{ properties|length }}</strong> listings.</p>
+        </div>
+        <div class="calendar-actions">
+            <label class="property-picker">
+                <span>Listing</span>
+                <select id="propertySelect" class="control-input">
+                    {% for prop in properties %}
+                    <option value="{{ prop.id }}" {% if prop.id == selected_property_id %}selected{% endif %}>
+                        {{ prop.title }} · {{ prop.city }}, {{ prop.country }}
+                        {% if prop.status != 'active' %}( {{ prop.status|replace('_', ' ') }} ){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="month-switch">
+                <button class="ghost" id="prevMonth" aria-label="Previous month">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="ghost" id="nextMonth" aria-label="Next month">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            <button class="primary" id="blockDatesBtn"><i class="fas fa-ban"></i> Block dates</button>
+        </div>
+    </header>
+
+    <section class="calendar-body">
+        <aside class="legend-card">
+            <h2>Legend</h2>
+            <ul>
+                <li><span class="badge available"></span> Available</li>
+                <li><span class="badge booked"></span> Booked</li>
+                <li><span class="badge blocked"></span> Manually blocked</li>
+            </ul>
+            <div class="upcoming">
+                <h3>Upcoming stays</h3>
+                <div id="bookingDigest" class="booking-digest">
+                    {% for booking in calendar_payload.bookings[:4] %}
+                    <article class="booking-snippet">
+                        <header>
+                            <span class="reference">#{{ booking.reference }}</span>
+                            <span class="status status-{{ booking.status }}">{{ booking.status|replace('_',' ') }}</span>
+                        </header>
+                        <p>{{ booking.guest_name }} · {{ booking.check_in }} → {{ booking.check_out }}</p>
+                        <footer>{{ booking.currency }} {{ "%.2f"|format(booking.total_amount) }}</footer>
+                    </article>
+                    {% else %}
+                    <p class="empty">No bookings in this window.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="context-card">
+                <h3>Property context</h3>
+                <dl>
+                    <div>
+                        <dt>Status</dt>
+                        <dd>{{ calendar_payload.property.status or 'draft' }}</dd>
+                    </div>
+                    <div>
+                        <dt>Active</dt>
+                        <dd>{{ 'Yes' if calendar_payload.property.is_active else 'No' }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </aside>
+
+        <div class="calendar-grid-area">
+            <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="Availability calendar">
+                <div class="calendar-grid-head" role="row">
+                    {% for day_name in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+                    <div role="columnheader">{{ day_name }}</div>
+                    {% endfor %}
+                </div>
+                <div class="calendar-grid-body" id="calendarGridBody" role="rowgroup">
+                    <!-- Grid rows rendered by JS -->
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<dialog id="blockDialog" class="calendar-dialog">
+    <form method="dialog" id="blockForm">
+        <header>
+            <h2>Block dates</h2>
+            <button type="button" class="ghost" data-close><i class="fas fa-times"></i></button>
+        </header>
+        <section>
+            <label>
+                <span>Start date</span>
+                <input type="date" name="start_date" required>
+            </label>
+            <label>
+                <span>End date</span>
+                <input type="date" name="end_date" required>
+            </label>
+            <label>
+                <span>Reason</span>
+                <select name="reason" required>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="owner_blocked">Owner blocked</option>
+                    <option value="seasonal">Seasonal closure</option>
+                </select>
+            </label>
+        </section>
+        <footer>
+            <button type="submit" class="primary">Confirm block</button>
+            <button type="button" class="ghost" data-close>Cancel</button>
+        </footer>
+    </form>
+</dialog>
+
+<dialog id="dayDetailDialog" class="calendar-dialog">
+    <div class="dialog-frame">
+        <header>
+            <h2 id="dayDetailTitle">Day details</h2>
+            <button type="button" class="ghost" data-close><i class="fas fa-times"></i></button>
+        </header>
+        <section id="dayDetailBody"></section>
+        <footer>
+            <button type="button" class="danger" id="unblockButton"><i class="fas fa-unlock"></i> Unblock</button>
+            <button type="button" class="ghost" data-close>Close</button>
+        </footer>
+    </div>
+</dialog>
+
+<style>
+:root {
+    --ink: #0d1821;
+    --ink-subtle: #415a77;
+    --stone: #e0e6ed;
+    --sky: #c3ddf6;
+    --violet: #5c6ac4;
+    --coral: #f87060;
+    --mint: #3ab795;
+    --bg: linear-gradient(160deg, #f7f9fc 0%, #edf2f8 60%, #ffffff 100%);
+    --shadow-soft: 0 12px 30px rgba(13, 24, 33, 0.08);
+}
+
+.host-calendar-shell {
+    background: var(--bg);
+    padding: 2.5rem clamp(1rem, 3vw, 4rem);
+    min-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.calendar-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.calendar-title .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 0.75rem;
+    color: var(--ink-subtle);
+}
+
+.calendar-title h1 {
+    margin: 0.35rem 0;
+    font-size: clamp(2rem, 3vw, 2.6rem);
+    color: var(--ink);
+}
+
+.calendar-title p {
+    margin: 0;
+    color: var(--ink-subtle);
+}
+
+.calendar-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.property-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--ink-subtle);
+}
+
+.control-input {
+    padding: 0.65rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.75rem;
+    background: white;
+    box-shadow: var(--shadow-soft);
+    font-weight: 600;
+    min-width: 240px;
+}
+
+.month-switch {
+    display: inline-flex;
+    background: white;
+    border-radius: 999px;
+    box-shadow: var(--shadow-soft);
+}
+
+.primary,
+.ghost,
+.danger {
+    border: none;
+    border-radius: 0.9rem;
+    padding: 0.65rem 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.primary {
+    background: radial-gradient(circle at top left, #768bff, #5c6ac4 70%);
+    color: white;
+    box-shadow: 0 14px 24px rgba(92, 106, 196, 0.25);
+}
+
+.primary:hover { transform: translateY(-1px); }
+
+.ghost {
+    background: transparent;
+    color: var(--ink);
+    padding: 0.5rem 0.75rem;
+}
+
+.ghost:hover { color: var(--violet); }
+
+.danger {
+    background: linear-gradient(135deg, #ff8f70, #f87060);
+    color: white;
+    box-shadow: 0 12px 22px rgba(248, 112, 96, 0.28);
+}
+
+.calendar-body {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    gap: 1.5rem;
+}
+
+.legend-card,
+.context-card {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.legend-card h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--ink);
+}
+
+.legend-card ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.legend-card li {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--ink-subtle);
+}
+
+.badge {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.badge.available { background: var(--mint); }
+.badge.booked { background: var(--coral); }
+.badge.blocked { background: var(--violet); }
+
+.upcoming h3,
+.context-card h3 { margin: 0; color: var(--ink); }
+
+.booking-digest {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.booking-snippet {
+    background: white;
+    border-radius: 0.85rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid #eef2f8;
+    box-shadow: 0 6px 16px rgba(13, 24, 33, 0.05);
+}
+
+.booking-snippet header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.35rem;
+}
+
+.booking-snippet .reference {
+    font-family: "Space Mono", monospace;
+    font-size: 0.8rem;
+    color: var(--ink-subtle);
+}
+
+.status {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    color: white;
+    background: var(--violet);
+}
+
+.status-confirmed { background: var(--mint); }
+.status-pending { background: linear-gradient(135deg, #f6d365, #fda085); }
+.status-checked_in { background: var(--violet); }
+
+.booking-snippet footer {
+    margin-top: 0.5rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.booking-snippet p {
+    margin: 0;
+    color: var(--ink-subtle);
+    font-size: 0.85rem;
+}
+
+.booking-digest .empty { color: var(--ink-subtle); }
+
+.context-card dl {
+    margin: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.context-card dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-subtle);
+}
+
+.context-card dd {
+    margin: 0;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.calendar-grid-area {
+    background: rgba(255,255,255,0.92);
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow-soft);
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.calendar-grid-head,
+.calendar-grid-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.5rem;
+}
+
+.calendar-grid-head {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-subtle);
+    margin-bottom: 1rem;
+}
+
+.calendar-day {
+    min-height: 120px;
+    background: white;
+    border-radius: 0.9rem;
+    border: 1px solid #eef2f8;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+    position: relative;
+}
+
+.calendar-day:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(13, 24, 33, 0.08);
+}
+
+.calendar-day .date-label {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.calendar-day .status-chip {
+    font-size: 0.7rem;
+    align-self: flex-start;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.calendar-day.available .status-chip { background: rgba(58,183,149,0.15); color: var(--mint); }
+.calendar-day.booked .status-chip { background: rgba(248,112,96,0.15); color: var(--coral); }
+.calendar-day.blocked .status-chip { background: rgba(92,106,196,0.15); color: var(--violet); }
+
+.calendar-day.today::after {
+    content: "today";
+    position: absolute;
+    top: 0.3rem;
+    right: 0.6rem;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--violet);
+    letter-spacing: 0.08em;
+}
+
+.calendar-day .badge-sum {
+    font-size: 0.7rem;
+    color: var(--ink-subtle);
+}
+
+.calendar-dialog {
+    border: none;
+    border-radius: 1rem;
+    padding: 0;
+    box-shadow: 0 40px 60px rgba(13,24,33,0.35);
+    max-width: min(520px, 90vw);
+}
+
+.calendar-dialog::backdrop { background: rgba(11, 20, 30, 0.45); }
+
+.calendar-dialog header,
+.calendar-dialog footer {
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.calendar-dialog header {
+    border-bottom: 1px solid #eef2f8;
+}
+
+.calendar-dialog section {
+    padding: 1.25rem 1.5rem;
+    display: grid;
+    gap: 1rem;
+}
+
+.calendar-dialog label {
+    display: grid;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    color: var(--ink-subtle);
+}
+
+.calendar-dialog input,
+.calendar-dialog select {
+    padding: 0.6rem 0.8rem;
+    border-radius: 0.65rem;
+    border: 1px solid #dce4f2;
+}
+
+.calendar-dialog footer { gap: 0.75rem; }
+
+@media (max-width: 1024px) {
+    .calendar-body {
+        grid-template-columns: 1fr;
+    }
+    .calendar-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .calendar-actions {
+        flex-wrap: wrap;
+    }
+}
+</style>
+
+<script nonce="{{ csp_nonce }}">
+(() => {
+    const shell = document.querySelector('.host-calendar-shell');
+    if (!shell) return;
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+    let currentMonth = new Date({{ month_context.year }}, {{ month_context.month }} - 1, 1);
+
+    const propertySelect = document.getElementById('propertySelect');
+    const calendarGridBody = document.getElementById('calendarGridBody');
+    const bookingDigest = document.getElementById('bookingDigest');
+    const blockDialog = document.getElementById('blockDialog');
+    const blockForm = document.getElementById('blockForm');
+    const dayDetailDialog = document.getElementById('dayDetailDialog');
+    const dayDetailTitle = document.getElementById('dayDetailTitle');
+    const dayDetailBody = document.getElementById('dayDetailBody');
+    const unblockButton = document.getElementById('unblockButton');
+
+    function formatDate(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    function monthParam(dateObj) {
+        return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}`;
+    }
+
+    function fetchCalendar() {
+        const propertyId = propertySelect.value;
+        const month = monthParam(currentMonth);
+        fetch(`{{ safe_url('accommodation.host.calendar_data') }}?property_id=${propertyId}&month=${month}`, {
+            credentials: 'same-origin'
+        })
+        .then(resp => {
+            if (!resp.ok) throw new Error('Failed to load calendar');
+            return resp.json();
+        })
+        .then(renderCalendar)
+        .catch(err => {
+            console.error(err);
+            calendarGridBody.innerHTML = `<div class="calendar-error">${err.message}</div>`;
+        });
+    }
+
+    function renderCalendar(payload) {
+        renderCalendarGrid(payload.days);
+        renderBookings(payload.bookings);
+        shell.dataset.propertyId = payload.property.id;
+    }
+
+    function renderCalendarGrid(days) {
+        calendarGridBody.innerHTML = '';
+        const startWeekday = new Date(days[0].date).getDay();
+        const offset = (startWeekday + 6) % 7; // convert Sunday=0 to Monday=0
+        let row = document.createElement('div');
+        row.className = 'calendar-grid-row';
+
+        for (let i = 0; i < offset; i++) {
+            const empty = document.createElement('div');
+            empty.className = 'calendar-day empty';
+            row.appendChild(empty);
+        }
+
+        days.forEach((day, idx) => {
+            if ((offset + idx) % 7 === 0 && (offset + idx) !== 0) {
+                calendarGridBody.appendChild(row);
+                row = document.createElement('div');
+                row.className = 'calendar-grid-row';
+            }
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = `calendar-day ${day.status} ${day.is_today ? 'today' : ''}`;
+            cell.dataset.date = day.date;
+            cell.innerHTML = `
+                <span class="date-label">${new Date(day.date).getDate()}</span>
+                <span class="status-chip">${day.status}</span>
+                ${day.blocked_reason ? `<span class="badge-sum">${day.blocked_reason.replace('_',' ')}</span>` : ''}
+                ${day.bookings.length ? `<span class="badge-sum">${day.bookings.length} stay(s)</span>` : ''}
+            `;
+            cell.addEventListener('click', () => openDayDetail(day));
+            row.appendChild(cell);
+        });
+
+        if (row.children.length) {
+            while (row.children.length < 7) {
+                const empty = document.createElement('div');
+                empty.className = 'calendar-day empty';
+                row.appendChild(empty);
+            }
+            calendarGridBody.appendChild(row);
+        }
+    }
+
+    function renderBookings(bookings) {
+        if (!bookingDigest) return;
+        if (!bookings.length) {
+            bookingDigest.innerHTML = '<p class="empty">No bookings in this window.</p>';
+            return;
+        }
+        bookingDigest.innerHTML = bookings.slice(0, 6).map(b => `
+            <article class="booking-snippet">
+                <header>
+                    <span class="reference">#${b.reference}</span>
+                    <span class="status status-${b.status}">${b.status.replace('_',' ')}</span>
+                </header>
+                <p>${b.guest_name} · ${b.check_in} → ${b.check_out}</p>
+                <footer>${b.currency} ${Number(b.total_amount).toFixed(2)}</footer>
+            </article>
+        `).join('');
+    }
+
+    function openDayDetail(day) {
+        dayDetailTitle.textContent = new Date(day.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        let html = `<p class="status-line">Status: <strong>${day.status}</strong></p>`;
+        if (day.blocked_reason) {
+            html += `<p class="status-line">Blocked because: <em>${day.blocked_reason.replace('_',' ')}</em></p>`;
+        }
+        if (day.bookings.length) {
+            html += '<div class="booking-list">' + day.bookings.map(b => `
+                <article>
+                    <header>#${b.reference}</header>
+                    <p>${b.guest_name}</p>
+                    <footer>${b.check_in} → ${b.check_out}</footer>
+                </article>
+            `).join('') + '</div>';
+        }
+        dayDetailBody.innerHTML = html;
+        unblockButton.dataset.date = day.date;
+        unblockButton.disabled = !(day.status === 'blocked' || day.blocked_reason);
+        dayDetailDialog.showModal();
+    }
+
+    function postJSON(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        }).then(async resp => {
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                const err = new Error(data.error || 'Request failed');
+                err.status = resp.status;
+                throw err;
+            }
+            return resp.json();
+        });
+    }
+
+    document.getElementById('prevMonth')?.addEventListener('click', () => {
+        currentMonth.setMonth(currentMonth.getMonth() - 1);
+        fetchCalendar();
+    });
+    document.getElementById('nextMonth')?.addEventListener('click', () => {
+        currentMonth.setMonth(currentMonth.getMonth() + 1);
+        fetchCalendar();
+    });
+
+    propertySelect?.addEventListener('change', () => fetchCalendar());
+
+    document.getElementById('blockDatesBtn')?.addEventListener('click', () => {
+        blockForm.reset();
+        blockDialog.showModal();
+    });
+
+    blockDialog?.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => blockDialog.close()));
+    dayDetailDialog?.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => dayDetailDialog.close()));
+
+    blockForm?.addEventListener('submit', evt => {
+        evt.preventDefault();
+        const formData = new FormData(blockForm);
+        const payload = Object.fromEntries(formData.entries());
+        const propertyId = propertySelect.value;
+        postJSON(`{{ safe_url('accommodation.host.calendar_block') }}`, {
+            ...payload,
+            property_id: Number(propertyId),
+        })
+        .then(() => {
+            blockDialog.close();
+            fetchCalendar();
+        })
+        .catch(err => alert(err.message));
+    });
+
+    unblockButton?.addEventListener('click', () => {
+        if (!unblockButton.dataset.date) return;
+        const propertyId = propertySelect.value;
+        postJSON(`{{ safe_url('accommodation.host.calendar_unblock') }}`, {
+            property_id: Number(propertyId),
+            start_date: unblockButton.dataset.date,
+            end_date: unblockButton.dataset.date,
+        })
+        .then(() => {
+            dayDetailDialog.close();
+            fetchCalendar();
+        })
+        .catch(err => alert(err.message));
+    });
+
+    fetchCalendar();
+})();
+</script>
+{% endblock %}

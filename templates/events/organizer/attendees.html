@@ -22,7 +22,7 @@
                     <p class="lead">Manage event attendees and check-ins</p>
                 </div>
                 <div>
-                    <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}"
+                    <a href="{{ safe_url('url_for\(['"]events.organizer_dashboard', identifier=event.slug) }}"
                        class="btn btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Dashboard
                     </a>
@@ -209,7 +209,7 @@ async function checkInAttendee(qrToken, attendeeName) {
     button.disabled = true;
 
     try {
-        const response = await fetch('{{ url_for("events.api_checkin") }}', {
+        const response = await fetch('{{ safe_url('url_for\(['"]events.api_checkin") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

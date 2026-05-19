@@ -1,5 +1,13 @@
-<!DOCTYPE html>
 {# templates/wallet/base_wallet.html #}
+{# Pane mode detection - when _pane=1, don't use full HTML structure #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% set is_pane = false %}
+{% endif %}
+
+{% if not is_pane %}
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -749,6 +757,57 @@
   {% block head_extra %}{% endblock %}
 </head>
 <body>
+{% endif %}
+
+{% if is_pane %}
+    <style>
+        /* Inline styles for pane mode */
+        .wallet-pane-content { padding: 20px; }
+        .panel { margin-bottom: 24px; border-radius: 8px; padding: 20px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: var(--blue); color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); }
+        .btn-outline { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+        .btn-success { background: var(--green); color: white; }
+        .btn-danger { background: var(--red); color: white; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 14px; }
+        .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .alert-success { background: var(--green-lt); color: var(--green); border: 1px solid var(--green); }
+        .alert-danger { background: var(--red-lt); color: var(--red); border: 1px solid var(--red); }
+        .alert-warning { background: var(--orange-lt); color: var(--orange); border: 1px solid var(--orange); }
+        .alert-info { background: var(--blue-lt); color: var(--blue); border: 1px solid var(--blue); }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 24px; }
+        .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+        .card-body { padding: 20px; }
+        .heading-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .heading-row h2 { margin: 0; font-size: 20px; font-weight: 600; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); font-weight: 600; }
+        .data-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+        .data-table tbody tr:hover { background: var(--bg); }
+        .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-success { background: var(--green-lt); color: var(--green); }
+        .badge-warning { background: var(--orange-lt); color: var(--orange); }
+        .badge-danger { background: var(--red-lt); color: var(--red); }
+        .badge-info { background: var(--blue-lt); color: var(--blue); }
+        .text-muted { color: var(--muted); }
+        .text-success { color: var(--green); }
+        .text-danger { color: var(--red); }
+        .text-warning { color: var(--orange); }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mt-4 { margin-top: 16px; }
+        .row { display: flex; flex-wrap: wrap; gap: 20px; }
+        .col { flex: 1; }
+    </style>
+{% endif %}
+
+{% if not is_pane %}
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
@@ -811,10 +870,10 @@
         <a href="/" class="topbar-icon-btn" data-tip="Home">
           <i class="fas fa-home"></i>
         </a>
-        <a href="{{ url_for('wallet.wallet_transactions') }}" class="topbar-icon-btn" data-tip="Transactions">
+        <a href="{{ safe_url('wallet.wallet_transactions') }}" class="topbar-icon-btn" data-tip="Transactions">
           <i class="fas fa-list"></i>
         </a>
-        <a href="{{ url_for('wallet.wallet_settings') }}" class="topbar-icon-btn" data-tip="Settings">
+        <a href="{{ safe_url('wallet.wallet_settings') }}" class="topbar-icon-btn" data-tip="Settings">
           <i class="fas fa-cog"></i>
         </a>
         <form method="POST" action="{{ url_for('auth.logout') }}" style="display:inline;">
@@ -864,3 +923,6 @@
   </script>
 </body>
 </html>
+{% else %}
+{{ self.content() }}
+{% endif %}

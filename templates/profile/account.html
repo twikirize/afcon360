@@ -1,9 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Account - {{ user.username or 'User' }}</title>
+{% extends "base.html" %}
+
+{% block title %}My Account - {{ user.username or 'User' }}{% endblock %}
+
+{% block styles %}
     <style>
         :root {
             --primary-color: #3b82f6;
@@ -16,19 +15,6 @@
             --gray-300: #d1d5db;
             --gray-700: #374151;
             --gray-900: #111827;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-        }
-
-        body {
-            background-color: #f9fafb;
-            color: var(--gray-900);
-            line-height: 1.5;
         }
 
         .container {
@@ -390,13 +376,14 @@
             font-size: 20px;
         }
     </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>My Account</h1>
-            <a href="{{ url_for('profile.my_public_profile') }}" class="btn">View Public Profile</a>
-        </div>
+    {% endblock %}
+
+    {% block content %}
+        <div class="container">
+            <div class="header">
+                <h1>My Account</h1>
+                <a href="{{ url_for('profile.my_public_profile') }}" class="btn">View Public Profile</a>
+            </div>
 
         {% if profile and not profile.profile_completed %}
         <div class="alert alert-warning">
@@ -416,7 +403,7 @@
                 <div class="subtext">Available funds</div>
                 {% else %}
                 <div class="subtext">No wallet yet.</div>
-                <a href="{{ url_for('wallet.activate_wallet') }}" class="btn">Activate Wallet</a>
+                <a href="{{ safe_url('wallet.activate_wallet') }}" class="btn">Activate Wallet</a>
                 {% endif %}
             </div>
             <div class="stat-card">
@@ -708,5 +695,4 @@
             </div>
         </div>
     </div>
-</body>
-</html>
+{% endblock %}

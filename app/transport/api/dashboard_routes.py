@@ -16,7 +16,7 @@ from app.transport.models import (
     BookingStatus, PaymentStatus, ComplianceStatus,
     VerificationTier, IncidentSeverity
 )
-from app.admin.routes import admin_required
+from app.auth.decorators import admin_required
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, and_, or_
 import logging

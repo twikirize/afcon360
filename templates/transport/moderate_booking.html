@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Review Booking - AFCON360{% endblock %}
 
 {% block head %}
@@ -56,7 +56,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
     <span class="mod-badge">MODERATOR</span>
     <span class="mod-title">Review Booking</span>
   </div>
-  <a href="{{ url_for('transport.moderate') }}" class="btn-ghost">
+  <a href="{{ safe_url('transport.moderate') }}" class="btn-ghost">
     <i class="fas fa-arrow-left"></i> Back to Queue
   </a>
 </div>
@@ -65,7 +65,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
   <div class="breadcrumb-row">
     <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
     <span class="sep">/</span>
-    <a href="{{ url_for('transport.moderate') }}">Transport</a>
+    <a href="{{ safe_url('transport.moderate') }}">Transport</a>
     <span class="sep">/</span>
     <span class="active">Booking #{{ booking.id }}</span>
   </div>
@@ -105,7 +105,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
     </div>
 
     <div class="action-bar">
-      <form method="POST" action="{{ url_for('transport.moderate_action', entity_type='booking', id=booking.id, action='approve') }}" style="display: inline;">
+      <form method="POST" action="{{ safe_url('url_for\(['"]transport.moderate_action', entity_type='booking', id=booking.id, action='approve') }}" style="display: inline;">
         <button type="submit" class="btn btn-approve">
           <i class="fas fa-check"></i> Confirm Booking
         </button>
@@ -124,7 +124,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
       <div class="panel-title">Cancel Booking</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ url_for('transport.moderate_action', entity_type='booking', id=booking.id, action='reject') }}">
+      <form method="POST" action="{{ safe_url('url_for\(['"]transport.moderate_action', entity_type='booking', id=booking.id, action='reject') }}">
         <div class="form-group">
           <label class="form-label">Cancellation Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this booking is being cancelled..."></textarea>
@@ -142,7 +142,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
       <div class="panel-title">Flag for Review</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ url_for('transport.moderate_action', entity_type='booking', id=booking.id, action='flag') }}">
+      <form method="POST" action="{{ safe_url('url_for\(['"]transport.moderate_action', entity_type='booking', id=booking.id, action='flag') }}">
         <div class="form-group">
           <label class="form-label">Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this booking needs further review..."></textarea>

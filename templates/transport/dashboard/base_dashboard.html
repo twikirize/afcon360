@@ -206,7 +206,7 @@
             <li><a href="{{ url_for('transport_admin.list_bookings') }}">
               <i class="fa-solid fa-list fa-xs"></i> All Bookings
             </a></li>
-            <li><a href="{{ url_for('transport.book_transport') }}">
+            <li><a href="{{ safe_url('transport.book_transport') }}">
               <i class="fa-solid fa-plus fa-xs"></i> New Booking
             </a></li>
             <li><a href="{{ url_for('transport_admin.bookings_report') }}">
@@ -226,7 +226,7 @@
             <li><a href="{{ url_for('transport_admin.list_drivers') }}">
               <i class="fa-solid fa-list fa-xs"></i> All Drivers
             </a></li>
-            <li><a href="{{ url_for('transport.become_driver') }}">
+            <li><a href="{{ safe_url('transport.become_driver') }}">
               <i class="fa-solid fa-plus fa-xs"></i> Add Driver
             </a></li>
             <li><a href="{{ url_for('transport_admin.list_drivers') }}?status=pending">
@@ -246,7 +246,7 @@
             <li><a href="{{ url_for('transport_admin.list_vehicles') }}">
               <i class="fa-solid fa-list fa-xs"></i> All Vehicles
             </a></li>
-            <li><a href="{{ url_for('transport.register_vehicle') }}">
+            <li><a href="{{ safe_url('transport.register_vehicle') }}">
               <i class="fa-solid fa-plus fa-xs"></i> Add Vehicle
             </a></li>
           </ul>
@@ -254,17 +254,17 @@
 
         <div class="nav-section-label">Management</div>
 
-        <a href="{{ url_for('transport.organisations_index') }}"
+        <a href="{{ safe_url('transport.organisations_index') }}"
            class="nav-item {% if 'organisation' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-building"></i> Organisations
         </a>
 
-        <a href="{{ url_for('transport.routes_index') }}"
+        <a href="{{ safe_url('transport.routes_index') }}"
            class="nav-item {% if 'route' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-route"></i> Routes
         </a>
 
-        <a href="{{ url_for('transport.incidents_index') }}"
+        <a href="{{ safe_url('transport.incidents_index') }}"
            class="nav-item {% if 'incident' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-triangle-exclamation"></i> Incidents
           {% if open_incidents_count is defined and open_incidents_count %}
@@ -274,7 +274,7 @@
 
         <div class="nav-section-label">Insights</div>
 
-        <a href="{{ url_for('transport.analytics_index') }}"
+        <a href="{{ safe_url('transport.analytics_index') }}"
            class="nav-item {% if 'analytics' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-chart-line"></i> Analytics
         </a>
@@ -286,7 +286,7 @@
 
         <div class="nav-section-label">Config</div>
 
-        <a href="{{ url_for('transport.settings_index') }}"
+        <a href="{{ safe_url('transport.settings_index') }}"
            class="nav-item {% if 'settings' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-sliders"></i> Settings
         </a>
@@ -301,7 +301,7 @@
       {% elif is_org_admin %}
 
         <div class="nav-section-label">My Organisation</div>
-        <a href="{{ url_for('transport.organisations_index') }}"
+        <a href="{{ safe_url('transport.organisations_index') }}"
            class="nav-item {% if 'organisation' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-gauge-high"></i> Overview
         </a>
@@ -311,11 +311,11 @@
         <a href="#" class="nav-item">
           <i class="fa-solid fa-id-card"></i> My Drivers
         </a>
-        <a href="{{ url_for('transport.bookings_index') }}"
+        <a href="{{ safe_url('transport.bookings_index') }}"
            class="nav-item {% if 'booking' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-calendar-check"></i> Bookings
         </a>
-        <a href="{{ url_for('transport.analytics_revenue') }}" class="nav-item">
+        <a href="{{ safe_url('transport.analytics_revenue') }}" class="nav-item">
           <i class="fa-solid fa-chart-line"></i> Revenue
         </a>
 
@@ -323,26 +323,26 @@
       {% elif is_driver %}
 
         <div class="nav-section-label">My Day</div>
-        <a href="{{ url_for('transport.driver_dashboard') }}"
+        <a href="{{ safe_url('transport.driver_dashboard') }}"
            class="nav-item {% if request.endpoint == 'transport.driver_dashboard' %}active{% endif %}">
           <i class="fa-solid fa-gauge-high"></i> Overview
         </a>
         <a href="#" class="nav-item">
           <i class="fa-solid fa-calendar"></i> My Schedule
         </a>
-        <a href="{{ url_for('transport.bookings_index') }}"
+        <a href="{{ safe_url('transport.bookings_index') }}"
            class="nav-item {% if 'booking' in request.endpoint %}active{% endif %}">
           <i class="fa-solid fa-route"></i> My Trips
         </a>
 
         <div class="nav-section-label">My Details</div>
-        <a href="{{ url_for('transport.vehicle_dashboard') }}" class="nav-item">
+        <a href="{{ safe_url('transport.vehicle_dashboard') }}" class="nav-item">
           <i class="fa-solid fa-van-shuttle"></i> My Vehicle
         </a>
-        <a href="{{ url_for('transport.analytics_revenue') }}" class="nav-item">
+        <a href="{{ safe_url('transport.analytics_revenue') }}" class="nav-item">
           <i class="fa-solid fa-wallet"></i> Earnings
         </a>
-        <a href="{{ url_for('transport.bookings_index') }}" class="nav-item">
+        <a href="{{ safe_url('transport.bookings_index') }}" class="nav-item">
           <i class="fa-solid fa-clock-rotate-left"></i> History
         </a>
 
@@ -350,13 +350,13 @@
       {% else %}
 
         <div class="nav-section-label">Transport</div>
-        <a href="{{ url_for('transport.home') }}" class="nav-item">
+        <a href="{{ safe_url('transport.home') }}" class="nav-item">
           <i class="fa-solid fa-house"></i> Home
         </a>
-        <a href="{{ url_for('transport.book_transport') }}" class="nav-item">
+        <a href="{{ safe_url('transport.book_transport') }}" class="nav-item">
           <i class="fa-solid fa-calendar-plus"></i> Book a Ride
         </a>
-        <a href="{{ url_for('transport.bookings_index') }}" class="nav-item">
+        <a href="{{ safe_url('transport.bookings_index') }}" class="nav-item">
           <i class="fa-solid fa-calendar-check"></i> My Bookings
         </a>
 

@@ -960,7 +960,7 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
 
                     <!-- Form Actions -->
                     <div class="form-actions">
-                        <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn-cancel-modern">
+                        <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="btn-cancel-modern">
                             <i class="fas fa-arrow-left"></i>
                             <span>Back to Event</span>
                         </a>

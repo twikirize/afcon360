@@ -21,7 +21,7 @@
       </div>
     </div>
     <div class="panel-body" style="padding:24px;">
-      <form method="POST" action="{{ url_for('wallet.send_funds') }}">
+      <form method="POST" action="{{ safe_url('wallet.send_funds') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
         <div class="form-group">

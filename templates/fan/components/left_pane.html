@@ -59,21 +59,22 @@
     <div class="quick-actions">
         <h4>Quick Actions</h4>
         <div class="action-grid">
-            <a href="{{ url_for('transport.book_transport') }}" class="action-btn">
+            <a href="{{ safe_url('transport.book_transport') }}" class="action-btn">
                 <i class="bi bi-bus-front"></i>
                 <span>Book Transport</span>
             </a>
-            <a href="{{ url_for('accommodation.index') }}" class="action-btn">
+            <a href="{{ safe_url('accommodation.guest.search') }}" class="action-btn">
                 <i class="bi bi-house-door"></i>
                 <span>Find Stay</span>
             </a>
-            <a href="{{ url_for('events.list') }}" class="action-btn">
+            <a href="{{ safe_url('events.list') }}" class="action-btn">
                 <i class="bi bi-ticket-perforated"></i>
                 <span>Browse Events</span>
             </a>
-            <a href="{{ url_for('tourism.home') }}" class="action-btn">
+            <a href="{{ links.tourism_home }}" class="action-btn {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
                 <i class="bi bi-compass"></i>
                 <span>Explore Tours</span>
+                {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
             </a>
         </div>
     </div>

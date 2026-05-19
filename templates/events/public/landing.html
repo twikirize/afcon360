@@ -1191,9 +1191,9 @@
             <button class="ev-btn ev-btn--danger" onclick="let c=prompt('Category (fraud,illegal_activity,hate_speech,misinformation,spam,copyright,other):'); let r=prompt('Reason:'); if(c&&r) eventModerationAction('takedown', '{{ event.slug }}', {category: c, reason: r, notify_organiser: true})">⚑ Takedown</button>
           {% elif event.status in ['rejected', 'deactivated', 'archived'] %}
             <span class="ev-admin-bar__note">No further actions available.</span>
-            <a href="{{ url_for('events.admin_events') }}" class="ev-btn ev-btn--muted">← All Events</a>
+            <a href="{{ safe_url('events.admin_events') }}" class="ev-btn ev-btn--muted">← All Events</a>
           {% endif %}
-          <a href="{{ url_for('events.admin_dashboard') }}" class="ev-btn ev-btn--ghost">Command Centre</a>
+          <a href="{{ safe_url('events.admin_dashboard') }}" class="ev-btn ev-btn--ghost">Command Centre</a>
         </div>
       </div>
 
@@ -1309,7 +1309,7 @@
                                         <span class="price-amount">FREE</span>
                                         <span class="price-label">Entry</span>
                                     </div>
-                                    <a href="{{ url_for('events.register', identifier=event.slug) }}" class="btn-register btn-register-free">
+                                    <a href="{{ safe_url('url_for\(['"]events.register', identifier=event.slug) }}" class="btn-register btn-register-free">
                                         <i class="fas fa-gift"></i>
                                         <span>Register Now</span>
                                     </a>
@@ -1318,7 +1318,7 @@
                                         <span class="price-currency">{{ event.currency }}</span>
                                         <span class="price-amount">{{ "%.2f"|format(event.ticket_types[0].price) }}</span>
                                     </div>
-                                    <a href="{{ url_for('events.register', identifier=event.slug, ticket_type_id=event.ticket_types[0].id) }}" class="btn-register">
+                                    <a href="{{ safe_url('url_for\(['"]events.register', identifier=event.slug, ticket_type_id=event.ticket_types[0].id) }}" class="btn-register">
                                         <i class="fas fa-ticket-alt"></i>
                                         <span>Register Now</span>
                                     </a>
@@ -1496,7 +1496,7 @@
                                     <span class="price-big free">FREE</span>
                                 {% endif %}
                             </div>
-                            <a href="{{ url_for('events.register', identifier=event.slug) }}" class="btn-sidebar-modern">
+                            <a href="{{ safe_url('url_for\(['"]events.register', identifier=event.slug) }}" class="btn-sidebar-modern">
                                 <i class="fas fa-ticket-alt"></i>
                                 <span>Register Now</span>
                             </a>
@@ -1533,12 +1533,12 @@
                                         </div>
                                         <div class="property-action">
                                             <div class="property-price">${{ property.price }}/night</div>
-                                            <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="btn-property-modern">View</a>
+                                            <a href="{{ safe_url('url_for\(['"]accommodation.guest.detail', identifier=property.slug or property.id) }}" class="btn-property-modern">View</a>
                                         </div>
                                     </div>
                                     {% endfor %}
                                 </div>
-                                <a href="{{ url_for('accommodation.guest.search', city=event.city) }}" class="btn-view-all-modern">
+                                <a href="{{ safe_url('url_for\(['"]accommodation.guest.search', city=event.city) }}" class="btn-view-all-modern">
                                     <i class="fas fa-th-large"></i>
                                     <span>View All Properties</span>
                                 </a>

@@ -9,7 +9,7 @@
     <p class="page-subtitle">{{ total|default(0) }} routes · {{ active_count|default(0) }} active now</p>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('transport.routes_new') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New Route</a>
+    <a href="{{ safe_url('transport.routes_new') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New Route</a>
   </div>
 </div>
 
@@ -45,7 +45,7 @@
           <tr>
             <td><span class="td-mono" style="color:var(--amber);">{{ r.route_code }}</span></td>
             <td>
-              <a href="{{ url_for('transport.route_show', id=r.id) }}" class="td-primary">{{ r.name }}</a>
+              <a href="{{ safe_url('url_for\(['"]transport.route_show', id=r.id) }}" class="td-primary">{{ r.name }}</a>
               <div style="font-size:0.7rem;color:var(--text-muted);">{{ r.primary_zone|default('') }}</div>
             </td>
             <td>{{ r.route_type|replace('_',' ')|title }}</td>
@@ -80,8 +80,8 @@
             </td>
             <td>
               <div style="display:flex;gap:4px;">
-                <a href="{{ url_for('transport.route_show', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
-                <a href="{{ url_for('transport.route_edit', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
+                <a href="{{ safe_url('url_for\(['"]transport.route_show', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
+                <a href="{{ safe_url('url_for\(['"]transport.route_edit', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
               </div>
             </td>
           </tr>
@@ -91,7 +91,7 @@
             <div class="empty-state">
               <i class="fa-solid fa-route"></i>
               <h3>No Routes Found</h3>
-              <p><a href="{{ url_for('transport.routes_new') }}" style="color:var(--amber);">Create the first scheduled route</a></p>
+              <p><a href="{{ safe_url('transport.routes_new') }}" style="color:var(--amber);">Create the first scheduled route</a></p>
             </div>
           </td></tr>
         {% endif %}

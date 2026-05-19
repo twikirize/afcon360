@@ -11,7 +11,7 @@ from app.transport.models import (
     Booking, BookingPayment, BookingStatus,
     PaymentStatus, DriverProfile, Vehicle, ScheduledRoute
 )
-from app.admin.routes import admin_required
+from app.auth.decorators import admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
 from sqlalchemy import func, or_

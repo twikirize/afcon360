@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Moderate Events - AFCON360{% endblock %}
 
 {% block head %}
@@ -171,7 +171,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           </td>
           <td class="mono">{{ event.created_at.strftime('%Y-%m-%d') if event.created_at else '-' }}</td>
           <td>
-            <a href="{{ url_for('events.moderate_detail', id=event.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]events.moderate_detail', id=event.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>

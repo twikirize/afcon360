@@ -1040,6 +1040,22 @@ def wallet_home():
 
     GET /api/wallet/home
     """
+    # Log access - not a specific entity, so pass None for entity_id
+    try:
+        from flask_login import current_user
+        from flask import request
+        from app.audit.forensic_audit import ForensicAuditService
+        if current_user.is_authenticated:
+            ForensicAuditService.log_attempt(
+                entity_type="wallet",
+                entity_id=None,  # Not a specific entity, so pass None
+                action="view_home_api",
+                user_id=current_user.id,
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string if request.user_agent else None
+            )
+    except Exception:
+        pass  # Don't block response if logging fails
     return jsonify({
         "status": "success",
         "message": "Wallet home"

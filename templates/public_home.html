@@ -42,7 +42,7 @@
   </div>
   <div class="trending-tags">
     <span class="trending-label">🔥 Trending:</span>
-    <a href="{{ url_for('events.landing', identifier='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
+    <a href="{{ safe_url('events.landing', identifier='afcon-2027') }}" class="trending-tag">AFCON 2027</a>
     <a href="#" class="trending-tag">CHOGM 2026</a>
     <a href="#" class="trending-tag">World Cup Qualifiers</a>
     <a href="#" class="trending-tag">East Africa Crusade</a>
@@ -55,23 +55,26 @@
   <!-- ====== LEFT SIDEBAR ====== -->
   <aside class="home-left">
 
-    <a href="{{ url_for('accommodation.guest.search') }}" class="left-nav-item">
+    <a href="{{ safe_url('accommodation.guest.search') }}" class="left-nav-item {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
       <div class="left-nav-icon">🏨</div>
       Accommodation
+      {% if not modules.get('accommodation') %}<span class="disabled-badge">Disabled</span>{% endif %}
     </a>
-    <a href="{{ url_for('transport.home') }}" class="left-nav-item">
+    <a href="{{ safe_url('transport.home') }}" class="left-nav-item {% if not modules.get('transport') %}disabled{% endif %}" {% if not modules.get('transport') %}onclick="event.preventDefault(); flash('Transport module is currently disabled', 'warning');"{% endif %}>
       <div class="left-nav-icon">🚌</div>
       Transport
+      {% if not modules.get('transport') %}<span class="disabled-badge">Disabled</span>{% endif %}
     </a>
-    <a href="{{ url_for('tourism.home') }}" class="left-nav-item">
+    <a href="{{ links.tourism_home }}" class="left-nav-item {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
       <div class="left-nav-icon">🌴</div>
       Tourism
+      {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
     </a>
-    <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
+    <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
       <div class="left-nav-icon">👛</div>
       Wallet
     </a>
-    <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
+    <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="left-nav-item">
       <div class="left-nav-icon">🎟️</div>
       Tickets
     </a>
@@ -102,7 +105,7 @@
 
     <!-- Host CTA -->
     {% if session.get('user_id') %}
-    <a href="{{ url_for('events.create_event') }}" class="left-host-cta">
+    <a href="{{ safe_url('events.create_event') }}" class="left-host-cta">
     {% else %}
     <a href="{{ url_for('auth.login') }}" class="left-host-cta">
     {% endif %}
@@ -124,13 +127,13 @@
     <section>
       <div class="section-head">
         <h2 class="section-title">Featured Events</h2>
-        <a href="{{ url_for('events.list') }}" class="section-link">View All →</a>
+        <a href="{{ safe_url('events.list') }}" class="section-link">View All →</a>
       </div>
 
       <div class="featured-grid">
 
         <!-- AFCON 2027 -->
-        <a href="{{ url_for('events.landing', identifier='afcon-2027') }}" class="feat-card afcon">
+        <a href="{{ safe_url('events.landing', identifier='afcon-2027') }}" class="feat-card afcon">
           <div class="feat-card-bg"></div>
           <div class="feat-card-icon">🏟️</div>
           <div class="feat-card-overlay"></div>
@@ -231,23 +234,27 @@
     <!-- Quick Actions -->
     <section>
       <div class="quick-actions">
-        <a href="{{ url_for('transport.home') }}" class="quick-action">
+        <a href="{{ safe_url('transport.home') }}" class="quick-action {% if not modules.get('transport') %}disabled{% endif %}" {% if not modules.get('transport') %}onclick="event.preventDefault(); flash('Transport module is currently disabled', 'warning');"{% endif %}>
           <span class="quick-action-icon">✈️</span>
           <span>Book Flights</span>
+          {% if not modules.get('transport') %}<span class="disabled-badge">Disabled</span>{% endif %}
         </a>
-        <a href="{{ url_for('accommodation.guest.search') }}" class="quick-action">
+        <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-action {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
           <span class="quick-action-icon">🏨</span>
           <span>Find Accommodation</span>
+          {% if not modules.get('accommodation') %}<span class="disabled-badge">Disabled</span>{% endif %}
         </a>
-        <a href="{{ url_for('tourism.home') }}" class="quick-action">
+        <a href="{{ links.tourism_home }}" class="quick-action {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
           <span class="quick-action-icon">🗺️</span>
           <span>Explore Tourism</span>
+          {% if links.tourism_home == '#' %}<span class="disabled-badge">Disabled</span>{% endif %}
         </a>
-        <a href="{{ url_for('tourism.home') }}" class="quick-action">
+        <a href="{{ links.tourism_home }}" class="quick-action {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
           <span class="quick-action-icon">🌍</span>
           <span>Explore Tourism</span>
+          {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
         </a>
-        <a href="{% if session.get('user_id') %}{{ url_for('wallet.wallet_dashboard') }}{% else %}{{ url_for('wallet.wallet_home') }}{% endif %}" class="quick-action">
+        <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="quick-action">
           <span class="quick-action-icon">🎟️</span>
           <span>Buy Tickets &amp; Open Wallet</span>
         </a>
@@ -260,7 +267,7 @@
         <div class="host-banner-title">Host Your Event on <span>AFCON360</span></div>
         <div class="host-banner-sub">Reach Millions &amp; Make Your Event a Success!</div>
         {% if session.get('user_id') %}
-        <a href="{{ url_for('events.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        <a href="{{ safe_url('events.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
         {% else %}
         <a href="{{ url_for('auth.login') }}" class="host-banner-btn">Get Started &rsaquo;</a>
         {% endif %}

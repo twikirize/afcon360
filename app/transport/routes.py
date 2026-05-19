@@ -120,6 +120,8 @@ def health():
 @module_enabled_required("transport")
 def home():
     """Transport module homepage"""
+    is_pane = request.args.get('_pane') == '1'
+    
     try:
         booking_service = get_booking_service()
         services = booking_service.list_services() if hasattr(booking_service, "list_services") else []
@@ -128,13 +130,18 @@ def home():
         logger.error(f"Error loading transport services: {e}")
         services = []
 
-    logger.info(f"Transport home accessed by user_id={_uid()}")
-    return render_template(
-        "transport/home.html",
-        title="AFCON Transport & Travel",
-        services=services,
-        module_enabled=check_module_enabled("transport")
-    )
+    logger.info(f"Transport home accessed by user_id={_uid()}, pane={is_pane}")
+    
+    if is_pane:
+        # Return only the content for pane loading
+        return render_template("transport/home_pane.html", services=services)
+    else:
+        return render_template(
+            "transport/home.html",
+            title="AFCON Transport & Travel",
+            services=services,
+            transport_enabled=check_module_enabled("transport")
+        )
 
 
 @transport_bp.route("/service/<uuid:service_id>", methods=["GET"])

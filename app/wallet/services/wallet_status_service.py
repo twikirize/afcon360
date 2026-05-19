@@ -72,13 +72,24 @@ class WalletStatusService:
 
     @classmethod
     def get_wallet_status(cls, user, owner_type=None) -> WalletStatus:
-        """Get complete wallet status for a user or organisation
+        """Get complete wallet status for a user or organisation (g-cached per request).
         
         Args:
             user: User object or organisation id (for organisations)
             owner_type: AccountOwnerType (USER or ORGANISATION). If None, auto-detects.
         """
         from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        _g_cache = None
+        _g_key = f'_wallet_status_{getattr(user, "id", user)}_{owner_type}'
+        try:
+            from flask import g as _g
+            if not hasattr(_g, '_wallet_status_cache'):
+                _g._wallet_status_cache = {}
+            if _g_key in _g._wallet_status_cache:
+                return _g._wallet_status_cache[_g_key]
+            _g_cache = _g._wallet_status_cache
+        except RuntimeError:
+            pass  # Outside request context
 
         # Auto-detect owner type if not provided
         if owner_type is None:
@@ -124,7 +135,7 @@ class WalletStatusService:
         ).first()
 
         if not account:
-            return WalletStatus(
+            _no_wallet = WalletStatus(
                 exists=False,
                 is_activated=False,
                 tier=WalletTier.NO_WALLET,
@@ -142,6 +153,9 @@ class WalletStatusService:
                 missing_requirements=['Create a wallet first'],
                 feature_access=cls._get_feature_access(False, False, 0)
             )
+            if _g_cache is not None:
+                _g_cache[_g_key] = _no_wallet
+            return _no_wallet
 
         # Determine tier based on activation and KYC/verification
         is_activated = account.verified
@@ -180,7 +194,7 @@ class WalletStatusService:
         # Get feature access map
         feature_access = cls._get_feature_access(is_activated, can_send, user_kyc_level)
 
-        return WalletStatus(
+        _result = WalletStatus(
             exists=True,
             is_activated=is_activated,
             tier=tier,
@@ -198,6 +212,9 @@ class WalletStatusService:
             missing_requirements=missing,
             feature_access=feature_access
         )
+        if _g_cache is not None:
+            _g_cache[_g_key] = _result
+        return _result
 
     @classmethod
     def _get_feature_access(cls, is_activated: bool, can_send: bool, kyc_level: int) -> Dict[WalletFeature, bool]:

@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics Dashboard - AFCON360 Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="fas fa-chart-line"></i> Analytics Dashboard
+                <small class="text-muted">Admin & Super Admin</small>
+            </h1>
+        </div>
+    </div>
+
+    <!-- Properties Metrics -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-home"></i> Property Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-primary">
+                                <div class="metric-number">{{ metrics.properties.total }}</div>
+                                <div class="metric-label">Total Properties</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-success">
+                                <div class="metric-number">{{ metrics.properties.active }}</div>
+                                <div class="metric-label">Active Properties</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-info">
+                                <div class="metric-number">{{ metrics.properties.verified }}</div>
+                                <div class="metric-label">Verified Properties</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-warning">
+                                <div class="metric-number">{{ metrics.properties.verification_rate }}%</div>
+                                <div class="metric-label">Verification Rate</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bookings Metrics -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-calendar-check"></i> Booking Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-primary">
+                                <div class="metric-number">{{ metrics.bookings.total }}</div>
+                                <div class="metric-label">Total Bookings</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-success">
+                                <div class="metric-number">{{ metrics.bookings.confirmed }}</div>
+                                <div class="metric-label">Confirmed Bookings</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-info">
+                                <div class="metric-number">{{ metrics.bookings.recent }}</div>
+                                <div class="metric-label">Recent (30d)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="metric-box metric-box-warning">
+                                <div class="metric-number">{{ metrics.bookings.confirmation_rate }}%</div>
+                                <div class="metric-label">Confirmation Rate</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-tools"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <a href="{{ safe_url('accommodation.admin.listings') }}" class="btn btn-outline-primary btn-block">
+                                <i class="fas fa-list"></i> Manage Properties
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="{{ safe_url('accommodation.admin.moderate') }}" class="btn btn-outline-warning btn-block">
+                                <i class="fas fa-gavel"></i> Moderate Content
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="#" class="btn btn-outline-info btn-block" onclick="exportAnalytics()">
+                                <i class="fas fa-download"></i> Export Report
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="{{ url_for('admin_settings.moderation_settings') }}" class="btn btn-outline-secondary btn-block">
+                                <i class="fas fa-cog"></i> Moderation Settings
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.metric-box {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+.metric-box:hover {
+    transform: translateY(-2px);
+}
+.metric-number {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: #333;
+    line-height: 1;
+}
+.metric-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 5px;
+}
+.metric-box-primary { border-left: 4px solid #007bff; }
+.metric-box-success { border-left: 4px solid #28a745; }
+.metric-box-info { border-left: 4px solid #17a2b8; }
+.metric-box-warning { border-left: 4px solid #ffc107; }
+</style>
+
+<script>
+function exportAnalytics() {
+    // Export analytics data
+    const data = {
+        properties: {{ metrics | tojson }},
+        export_date: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `afcon360_analytics_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

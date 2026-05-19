@@ -523,7 +523,7 @@ class DataChangeLog(BaseModel):
 
         log_entry = DataChangeLog(
             entity_type=entity_type,
-            entity_id=str(entity_id),
+            entity_id=str(entity_id) if entity_id is not None else None,
             operation=operation,
             old_value=sanitized_old,
             new_value=sanitized_new,
@@ -642,6 +642,136 @@ class AuditService:
         """
         from app.compliance.logger import ComplianceLogger
         return ComplianceLogger.log_decision(**kwargs)
+
+    @staticmethod
+    def log_role_change(user_id: int, old_role: str, new_role: str, changed_by: int, reason: str = None):
+        """Log role change action"""
+        try:
+            from app.models.user import User
+            target_user = User.query.get(user_id)
+            performed_by_user = User.query.get(changed_by)
+            
+            audit_log = AuditLog(
+                user_id=changed_by,
+                action='role_change',
+                resource_type='user_role',
+                resource_id=user_id,
+                details={
+                    'target_user_id': user_id,
+                    'target_username': target_user.username if target_user else None,
+                    'old_role': old_role,
+                    'new_role': new_role,
+                    'reason': reason,
+                    'performed_by_username': performed_by_user.username if performed_by_user else None
+                },
+                ip_address=getattr(request, 'remote_addr', None) if 'request' in globals() else None
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+            return audit_log
+        except Exception as e:
+            logger.error(f"Error logging role change: {e}")
+            db.session.rollback()
+            return None
+
+    @staticmethod
+    def log_role_management_action(user_id: int, action: str, details: dict = None):
+        """Log role management action (toggle permissions, etc.)"""
+        try:
+            from app.models.user import User
+            performed_by_user = User.query.get(user_id)
+            
+            audit_log = AuditLog(
+                user_id=user_id,
+                action=action,
+                resource_type='role_management',
+                details=details or {},
+                ip_address=getattr(request, 'remote_addr', None) if 'request' in globals() else None
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+            return audit_log
+        except Exception as e:
+            logger.error(f"Error logging role management action: {e}")
+            db.session.rollback()
+            return None
+
+    @staticmethod
+    def get_recent_role_changes(limit: int = 10):
+        """Get recent role change audit logs"""
+        try:
+            from app.models.user import User
+            
+            # Get role change logs
+            logs = AuditLog.query.filter(
+                AuditLog.action.in_(['role_change', 'assign_role', 'revoke_role'])
+            ).order_by(AuditLog.created_at.desc()).limit(limit).all()
+            
+            result = []
+            for log in logs:
+                target_user = User.query.get(log.details.get('target_user_id')) if log.details else None
+                performed_by_user = User.query.get(log.user_id) if log.user_id else None
+                
+                result.append({
+                    'timestamp': log.created_at,
+                    'action': log.action,
+                    'target_user': target_user,
+                    'performed_by_user': performed_by_user,
+                    'old_role': log.details.get('old_role') if log.details else None,
+                    'new_role': log.details.get('new_role') if log.details else None,
+                    'reason': log.details.get('reason') if log.details else None
+                })
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting recent role changes: {e}")
+            return []
+
+    @staticmethod
+    def get_role_management_audit_log(page: int = 1, per_page: int = 50):
+        """Get paginated role management audit logs"""
+        try:
+            from app.models.user import User
+            from flask_sqlalchemy.pagination import Pagination
+            
+            # Get role management logs
+            query = AuditLog.query.filter(
+                AuditLog.action.in_(['role_change', 'assign_role', 'revoke_role', 'toggle_admin_role_management', 'toggle_super_admin_role_management'])
+            ).order_by(AuditLog.created_at.desc())
+            
+            # Paginate
+            items = query.limit(per_page).offset((page - 1) * per_page).all()
+            total = query.count()
+            
+            # Create pagination object
+            pagination = Pagination(
+                query=query,
+                page=page,
+                per_page=per_page,
+                total=total,
+                items=items
+            )
+            
+            result = []
+            for log in items:
+                target_user = User.query.get(log.details.get('target_user_id')) if log.details else None
+                performed_by_user = User.query.get(log.user_id) if log.user_id else None
+                
+                result.append({
+                    'timestamp': log.created_at,
+                    'action': log.action,
+                    'target_user': target_user,
+                    'performed_by_user': performed_by_user,
+                    'old_role': log.details.get('old_role') if log.details else None,
+                    'new_role': log.details.get('new_role') if log.details else None,
+                    'reason': log.details.get('reason') if log.details else None,
+                    'details': log.details
+                })
+            
+            return pagination, result
+        except Exception as e:
+            logger.error(f"Error getting role management audit log: {e}")
+            return None, []
 
     @staticmethod
     def moderator_view(entity_type: str, user_id: int, ip_address: str = None, **kwargs):

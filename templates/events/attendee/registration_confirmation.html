@@ -875,11 +875,11 @@
                         <i class="fas fa-print"></i>
                         <span>Print Ticket</span>
                     </button>
-                    <a href="{{ url_for('events.my_registrations') }}" class="btn-action btn-primary-action">
+                    <a href="{{ safe_url('events.my_registrations') }}" class="btn-action btn-primary-action">
                         <i class="fas fa-list"></i>
                         <span>My Registrations</span>
                     </a>
-                    <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn-action btn-outline-action">
+                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="btn-action btn-outline-action">
                         <i class="fas fa-calendar-alt"></i>
                         <span>Event Page</span>
                     </a>
@@ -900,7 +900,7 @@
                         <h4>QR Code Always Available</h4>
                         <p>You can always access your QR code from your dashboard. Go to <strong>"My Event Dashboard"</strong> to view all your event tickets anytime.</p>
                         <div class="qr-access-actions">
-                            <a href="{{ url_for('events.attendee_dashboard') }}" class="btn-action btn-outline-action">
+                            <a href="{{ safe_url('events.attendee_dashboard') }}" class="btn-action btn-outline-action">
                                 <i class="fas fa-tachometer-alt"></i>
                                 <span>Go to My Dashboard</span>
                             </a>
@@ -1061,7 +1061,7 @@ function takeScreenshot() {
         });
     } else {
         // Fallback - instruct user to take manual screenshot
-        alert('Please take a screenshot manually:\n\n1. Press Power + Volume Down buttons (Android)\n2. Press Power + Home buttons (iPhone)\n3. Or use your device\'s screenshot method');
+        alert('Please take a screenshot manually:\n\n1. Press Power + Volume Down buttons (Android)\n2. Press Power + Home buttons (iPhone)\n3. Or use your device's screenshot method');
     }
 }
 

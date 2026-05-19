@@ -15,7 +15,7 @@ from app.transport.models import (
     Vehicle, TransportIncident, Rating,
     BookingStatus, PaymentStatus, ComplianceStatus
 )
-from app.admin.routes import admin_required
+from app.auth.decorators import admin_required
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, case, and_
 import logging

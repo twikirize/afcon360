@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  
+
   <style>
     .btn-consumer-switch {
       background: linear-gradient(135deg, #667eea, #764ba2) !important;
@@ -22,19 +22,121 @@
       gap: 0.5rem;
       transition: all 0.3s ease;
     }
-    
+
     .btn-consumer-switch:hover {
       background: linear-gradient(135deg, #5a67d8, #6b46c1) !important;
       transform: translateY(-2px);
       box-shadow: 0 4px 15px rgba(102,126,234,0.3);
       color: white !important;
     }
-    
+
     @media (max-width: 768px) {
       .btn-consumer-switch {
         font-size: 0.8rem;
         padding: 0.4rem 0.8rem;
       }
+    }
+
+    .module-strip {
+      margin: 1.5rem 0;
+      background: #0f172a;
+      border-radius: 14px;
+      padding: 1.5rem;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 15px 35px rgba(15,23,42,0.35);
+      color: #f8fafc;
+    }
+    .module-strip__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .module-strip__title {
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .module-strip__hint {
+      font-size: 0.875rem;
+      color: rgba(148, 163, 184, 0.9);
+    }
+    .module-strip__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1rem;
+    }
+    .module-chip {
+      background: rgba(15,23,42,0.6);
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.2);
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .module-chip:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 35px rgba(59,130,246,0.25);
+    }
+    .module-chip--online {
+      border-color: rgba(74, 222, 128, 0.4);
+      background: linear-gradient(135deg, rgba(13,148,136,0.25), rgba(15,23,42,0.6));
+    }
+    .module-chip--offline {
+      border-color: rgba(249, 115, 22, 0.4);
+      background: linear-gradient(135deg, rgba(249,115,22,0.25), rgba(15,23,42,0.6));
+    }
+    .module-chip__status {
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .module-chip__dot {
+      display: inline-block;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      background: rgba(74, 222, 128, 0.85);
+    }
+    .module-chip--offline .module-chip__dot {
+      background: rgba(249, 115, 22, 0.85);
+    }
+    .module-chip__toggle {
+      border: none;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .module-chip__toggle.disable {
+      background: rgba(15,23,42,0.85);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3);
+    }
+    .module-chip__toggle.enable {
+      background: rgba(22,101,52,0.85);
+      color: #bbf7d0;
+      border: 1px solid rgba(134,239,172,0.35);
+    }
+    .module-chip__toggle:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px rgba(15,23,42,0.25);
     }
   </style>
 {% endblock %}
@@ -45,7 +147,7 @@
   <!-- TOP NAVIGATION BAR -->
   <header class="dashboard-header">
     <div class="header-left">
-      <a href="{{ url_for('transport.home') }}" class="back-btn">
+      <a href="{{ safe_url('transport.home') }}" class="back-btn">
         <i class="bi bi-arrow-left"></i>
         <span>Back to AFCON 360</span>
       </a>
@@ -55,13 +157,13 @@
       <span>Owner Panel</span>
     </div>
     <div class="header-right">
-      <a href="{{ url_for('admin.owner.audit_logs') }}" class="nav-link">
+      <a href="{{ safe_url('admin.owner.audit_logs') }}" class="nav-link">
         <i class="bi bi-clock-history"></i> Audit Logs
       </a>
-      <a href="{{ url_for('admin.owner.settings') }}" class="nav-link">
+      <a href="{{ safe_url('admin.owner.settings') }}" class="nav-link">
         <i class="bi bi-gear"></i> Settings
       </a>
-      <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="nav-link">
+      <a href="{{ safe_url('admin.owner.wallet_capabilities') }}" class="nav-link">
         <i class="bi bi-wallet2"></i> Wallet Capabilities
       </a>
       <a href="{{ url_for('user.user_dashboard') }}" class="btn-switch btn-consumer-switch">
@@ -96,7 +198,7 @@
           <a href="#" class="nav-item active">
             <i class="bi bi-speedometer2"></i> Dashboard
           </a>
-          <a href="{{ url_for('admin.owner.users') }}" class="nav-item">
+          <a href="{{ safe_url('admin.owner.users') }}" class="nav-item">
             <i class="bi bi-people"></i> Users
           </a>
           <a href="{{ url_for('admin.manage_orgs') }}" class="nav-item">
@@ -106,35 +208,36 @@
 
         <div class="nav-section">
           <div class="nav-title">MODULES</div>
-          <a href="{{ url_for('events.admin_dashboard') }}" class="nav-item">
+          <a href="{{ safe_url('events.admin_dashboard') }}" class="nav-item">
             <i class="bi bi-calendar-event"></i> Events
           </a>
-          <a href="{{ url_for('transport_admin.dashboard') }}" class="nav-item">
+          <a href="{{ safe_url('transport_admin.dashboard') }}" class="nav-item">
             <i class="bi bi-bus-front"></i> Transport
           </a>
-          <a href="{{ url_for('tourism.home') }}" class="nav-item">
+          <a href="{{ safe_url('tourism.home') }}" class="nav-item {% if not modules.get('tourism') %}disabled{% endif %}" {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
             <i class="bi bi-tree"></i> Tourism
+            {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
           </a>
-          <a href="{{ url_for('accommodation.admin.dashboard') }}" class="nav-item">
+          <a href="{{ safe_url('accommodation.admin.dashboard') }}" class="nav-item">
             <i class="bi bi-hotel"></i> Accommodation
           </a>
-          <a href="{{ url_for('wallet.wallet_dashboard') }}" class="nav-item">
+          <a href="{{ safe_url('wallet.wallet_dashboard') }}" class="nav-item">
             <i class="bi bi-wallet2"></i> Wallet
           </a>
         </div>
 
         <div class="nav-section">
           <div class="nav-title">WALLET MANAGEMENT</div>
-          <a href="{{ url_for('admin.wallet_list') }}" class="nav-item">
+          <a href="{{ safe_url('admin.wallet_list') }}" class="nav-item">
             <i class="bi bi-wallet"></i> All Wallets
           </a>
-          <a href="{{ url_for('admin.wallet_stats') }}" class="nav-item">
+          <a href="{{ safe_url('admin.wallet_stats') }}" class="nav-item">
             <i class="bi bi-graph-up"></i> Wallet Analytics
           </a>
-          <a href="{{ url_for('admin.wallet_control') }}" class="nav-item">
+          <a href="{{ safe_url('admin.wallet_control') }}" class="nav-item">
             <i class="bi bi-shield-exclamation"></i> Emergency Controls
           </a>
-          <a href="{{ url_for('wallet.agent_payout_history') }}" class="nav-item">
+          <a href="{{ safe_url('wallet.agent_payout_history') }}" class="nav-item">
             <i class="bi bi-cash-stack"></i> Payout Requests
           </a>
         </div>
@@ -171,6 +274,32 @@
           {% endif %}
         </div>
       </div>
+
+      {% if module_health %}
+      <section class="module-strip">
+        <header class="module-strip__header">
+          <span class="module-strip__title"><i class="bi bi-hdd-stack"></i> Module Control</span>
+          <span class="module-strip__hint">Owner controls with live status. Disabled modules show in amber.</span>
+        </header>
+        <div class="module-strip__grid">
+          {% for module in module_health %}
+          <div class="module-chip module-chip--{{ 'online' if module.enabled else 'offline' }}">
+            <div class="module-chip__status">
+              <span class="module-chip__dot"></span>
+              {{ module.name|replace('_',' ')|title }}
+            </div>
+            <form method="POST" action="{{ safe_url('admin.owner.owner_toggle_module', module=module.name) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="state" value="{{ '0' if module.enabled else '1' }}">
+              <button type="submit" class="module-chip__toggle {{ 'disable' if module.enabled else 'enable' }}">
+                {{ 'Disable' if module.enabled else 'Enable' }}
+              </button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
 
       <!-- STATS GRID ROW 1 -->
       <div class="stats-row">
@@ -311,7 +440,7 @@
             <div class="stat-value" style="font-size: 1.1rem; text-transform: uppercase;">{{ org_registration_mode or 'TESTING' }}</div>
             <div class="stat-label">ORG REGISTRATION</div>
             <div class="stat-meta">
-              <a href="{{ url_for('admin.owner.settings') }}" style="color: inherit; text-decoration: none;">
+              <a href="{{ safe_url('admin.owner.settings') }}" style="color: inherit; text-decoration: none;">
                 {{ 'Minimal requirements' if org_registration_mode == 'testing' else 'Full compliance required' }}
                 <i class="bi bi-gear" style="margin-left: 0.25rem;"></i>
               </a>
@@ -327,7 +456,7 @@
             <div class="stat-value">{{ pending_reviews_count or 0 }}</div>
             <div class="stat-label">PENDING REVIEWS</div>
             <div class="stat-meta">
-              <a href="{{ url_for('admin.owner.compliance_dashboard') }}">View Compliance ?</a>
+              <a href="{{ safe_url('admin.owner.compliance_dashboard') }}">View Compliance ?</a>
             </div>
           </div>
         </div>
@@ -344,58 +473,12 @@
         </div>
       </div>
 
-      <!-- MODULE CONTROL (Owner Only) -->
-      <div class="section-header" style="margin-top:2rem">
-        <h2><i class="bi bi-sliders"></i> Module Control</h2>
-        <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.75rem;padding:0.25rem 0.75rem;border-radius:20px;">
-          <i class="bi bi-shield-lock"></i> Owner Only
-        </span>
-      </div>
-
-      <div class="stats-row">
-        {% for module_name, module_status in modules.items() %}
-        <div class="stat-card" style="flex-direction:column;align-items:flex-start;gap:0.75rem;">
-          <div style="display:flex;align-items:center;gap:0.75rem;width:100%;">
-            <div class="stat-icon {{ 'green-bg' if module_status else 'orange-bg' }}">
-              <i class="bi bi-{{ 'check-circle' if module_status else 'x-circle' }}"></i>
-            </div>
-            <div class="stat-info" style="flex:1;">
-              <div class="stat-value" style="font-size:1.25rem;text-transform:capitalize;">{{ module_name }}</div>
-              <div class="stat-label">{{ 'ENABLED' if module_status else 'DISABLED' }}</div>
-            </div>
-          </div>
-          <form method="POST" action="{{ url_for('admin.toggle_module', module=module_name) }}"
-                id="owner-toggle-form-{{ module_name }}" style="width:100%;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="reason" id="owner-reason-{{ module_name }}" value="">
-            <input type="hidden" name="confirm" id="owner-confirm-{{ module_name }}" value="">
-            <label class="sad-toggle" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;width:100%;">
-              <input type="checkbox" {{ 'checked' if module_status else '' }}
-                     onchange="ownerPrepareModuleToggle('{{ module_name }}', this)"
-                     style="width:18px;height:18px;cursor:pointer;">
-              <span style="font-size:0.875rem;color:#6b7280;">
-                {{ 'Disable' if module_status else 'Enable' }} module
-              </span>
-            </label>
-          </form>
-        </div>
-        {% else %}
-        <div class="stat-card">
-          <div class="stat-icon orange-bg"><i class="bi bi-exclamation-triangle"></i></div>
-          <div class="stat-info">
-            <div class="stat-value">—</div>
-            <div class="stat-label">NO MODULES CONFIGURED</div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-
       {% if super_admin_can_toggle_modules %}
       <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.5rem;">
         <i class="bi bi-info-circle" style="color:#1e40af;"></i>
         <span style="font-size:0.875rem;color:#1e40af;">
           Super admins are <strong>authorized</strong> to toggle modules. You can revoke this in
-          <a href="{{ url_for('admin.owner.settings') }}" style="text-decoration:underline;color:#1e40af;font-weight:600;">Settings</a>.
+          <a href="{{ safe_url('admin.owner.settings') }}" style="text-decoration:underline;color:#1e40af;font-weight:600;">Settings</a>.
         </span>
       </div>
       {% endif %}
@@ -419,7 +502,7 @@
                     <strong>{{ admin.username }}</strong>
                     <span>{{ admin.email }}</span>
                   </div>
-                  <form method="POST" action="{{ url_for('admin.owner.remove_super_admin', user_id=admin.id) }}"
+                  <form method="POST" action="{{ safe_url('admin.owner.remove_super_admin', user_id=admin.id) }}"
                         onsubmit="return confirm('Remove super admin privileges from {{ admin.username }}?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-remove">
@@ -437,7 +520,7 @@
 
             <div class="list-section">
               <h4>Add New Super Admin</h4>
-              <form method="POST" action="{{ url_for('admin.owner.add_super_admin') }}" class="add-form">
+              <form method="POST" action="{{ safe_url('admin.owner.add_super_admin') }}" class="add-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <select name="user_id" class="form-select" required>
                   <option value="">Select user...</option>
@@ -463,7 +546,7 @@
           <div class="card">
             <div class="card-header">
               <h3><i class="bi bi-calendar-check"></i> Events Pending Approval</h3>
-              <a href="{{ url_for('events.admin_events', status='pending') }}" class="link-view">View all ?</a>
+              <a href="{{ safe_url('events.admin_events', status='pending') }}" class="link-view">View all ?</a>
             </div>
             <div class="card-body p-0">
               <div class="activity-list" id="pendingEventsList">
@@ -479,7 +562,7 @@
                       <div class="action-buttons">
                         <button onclick="eventModerationAction('approve', '{{ event.slug }}')" class="btn-approve">Approve</button>
                         <button onclick="let r=prompt('Rejection reason:'); if(r) eventModerationAction('reject', '{{ event.slug }}', {reason: r})" class="btn-reject">Reject</button>
-                        <a href="{{ url_for('events.event_detail', slug=event.slug) }}" class="btn-view">View</a>
+                        <a href="{{ safe_url('events.event_detail', slug=event.slug) }}" class="btn-view">View</a>
                       </div>
                     </div>
                   </div>
@@ -495,7 +578,7 @@
           <div class="card">
             <div class="card-header">
               <h3><i class="bi bi-clock-history"></i> Recent Owner Activity</h3>
-              <a href="{{ url_for('admin.owner.audit_logs') }}" class="link-view">View all ?</a>
+              <a href="{{ safe_url('admin.owner.audit_logs') }}" class="link-view">View all ?</a>
             </div>
             <div class="card-body p-0">
               <div class="activity-list">
@@ -528,7 +611,7 @@
           <div class="card">
             <div class="card-header">
               <h3><i class="bi bi-person-plus"></i> Recent Signups</h3>
-              <a href="{{ url_for('admin.owner.users') }}" class="link-view">View all ?</a>
+              <a href="{{ safe_url('admin.owner.users') }}" class="link-view">View all ?</a>
             </div>
             <div class="card-body p-0">
               <div class="activity-list">
@@ -560,31 +643,31 @@
             </div>
             <div class="card-body">
               <div class="actions-grid">
-                <a href="{{ url_for('admin.owner.users') }}" class="action-btn">
+                <a href="{{ safe_url('admin.owner.users') }}" class="action-btn">
                   <i class="bi bi-people"></i> Manage Users
                 </a>
-                <a href="{{ url_for('admin.owner.audit_logs') }}" class="action-btn">
+                <a href="{{ safe_url('admin.owner.audit_logs') }}" class="action-btn">
                   <i class="bi bi-journal-bookmark-fill"></i> Audit Logs
                 </a>
-                <a href="{{ url_for('admin.owner.settings') }}" class="action-btn">
+                <a href="{{ safe_url('admin.owner.settings') }}" class="action-btn">
                   <i class="bi bi-gear"></i> Settings
                 </a>
                 <a href="{{ url_for('theme.preferences_page') }}" class="action-btn">
                   <i class="bi bi-palette"></i> Theme
                 </a>
-                <a href="{{ url_for('admin.owner.system_health') }}" class="action-btn">
+                <a href="{{ safe_url('admin.owner.system_health') }}" class="action-btn">
                   <i class="bi bi-graph-up"></i> System Health
                 </a>
-                <a href="{{ url_for('admin.owner.manage_roles') }}" class="action-btn">
+                <a href="{{ safe_url('admin.owner.manage_roles') }}" class="action-btn">
                   <i class="bi bi-shield"></i> Manage Roles
                 </a>
-                <a href="{{ url_for('admin.owner.compliance_dashboard') }}" class="action-btn primary">
+                <a href="{{ safe_url('admin.owner.compliance_dashboard') }}" class="action-btn primary">
                   <i class="bi bi-shield-check"></i> Compliance
                 </a>
-                <a href="{{ url_for('admin.owner.danger_zone') }}" class="action-btn danger">
+                <a href="{{ safe_url('admin.owner.danger_zone') }}" class="action-btn danger">
                   <i class="bi bi-exclamation-triangle"></i> Danger Zone
                 </a>
-                <a href="{{ url_for('admin.owner.impersonate_page') }}" class="action-btn">
+                <a href="{{ safe_url('admin.owner.impersonate_page') }}" class="action-btn">
                   <i class="bi bi-mask"></i> Overseer Key
                 </a>
               </div>
@@ -611,7 +694,7 @@
           <i class="bi bi-clock"></i>
           Last updated: {{ now().strftime('%H:%M:%S') }}
         </div>
-        <a href="{{ url_for('admin.owner.system_health') }}" class="link-view">
+        <a href="{{ safe_url('admin.owner.system_health') }}" class="link-view">
           Full health report ?
         </a>
       </div>

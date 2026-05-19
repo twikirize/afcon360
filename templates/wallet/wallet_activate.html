@@ -149,7 +149,7 @@
         <div class="alert alert-warning" style="margin-bottom:20px;">
           <i class="fas fa-triangle-exclamation"></i>
           By activating your wallet, you agree to our
-          <a href="{{ url_for('wallet.terms') }}" style="color:var(--accent-dk);font-weight:600;text-decoration:underline;">Wallet Terms and Conditions</a>.
+          <a href="{{ safe_url('wallet.terms') }}" style="color:var(--accent-dk);font-weight:600;text-decoration:underline;">Wallet Terms and Conditions</a>.
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:16px;">
           <input type="checkbox" name="accept_terms" value="1" required>
@@ -286,7 +286,7 @@
             <input type="checkbox" id="accept-terms-checkbox" style="margin-top:3px;">
             <span style="font-size:13px;">
               I have read and agree to the
-              <a href="{{ url_for('wallet.terms') }}" target="_blank" style="color:var(--accent-dk);">Wallet Terms and Conditions</a>
+              <a href="{{ safe_url('wallet.terms') }}" target="_blank" style="color:var(--accent-dk);">Wallet Terms and Conditions</a>
             </span>
           </label>
         </div>

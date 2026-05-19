@@ -782,7 +782,7 @@
         <span class="nav-badge {% if moderation_stats.flags_critical > 0 %}amber{% else %}blue{% endif %}">{{ moderation_stats.flags_total }}</span>
       {% endif %}
     </a>
-    <a href="{{ url_for('events.moderate') }}"
+    <a href="{{ safe_url('events.moderate') }}"
        class="nav-item {% if 'events' in request.endpoint and 'moderate' in request.endpoint %}active{% endif %}">
       <i class="fas fa-calendar-days"></i> Events
       {% if moderation_stats is defined and moderation_stats.events_pending %}<span class="nav-badge amber">{{ moderation_stats.events_pending }}</span>{% endif %}
@@ -797,12 +797,12 @@
       <i class="fas fa-id-card"></i> KYC
       {% if moderation_stats is defined and moderation_stats.kyc_pending %}<span class="nav-badge amber">{{ moderation_stats.kyc_pending }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('accommodation.admin.moderate') }}"
+    <a href="{{ safe_url('accommodation.admin.moderate') }}"
        class="nav-item {% if 'accommodation' in request.endpoint and 'moderate' in request.endpoint %}active{% endif %}">
       <i class="fas fa-bed"></i> Accommodation
       {% if moderation_stats is defined and moderation_stats.accommodation_properties %}<span class="nav-badge amber">{{ moderation_stats.accommodation_properties }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('tourism.moderate') }}"
+    <a href="{{ safe_url('tourism.moderate') }}"
        class="nav-item {% if 'tourism' in request.endpoint and 'moderate' in request.endpoint %}active{% endif %}">
       <i class="fas fa-tree"></i> Tourism
       {% if moderation_stats is defined and moderation_stats.tourism_pending %}<span class="nav-badge amber">{{ moderation_stats.tourism_pending }}</span>{% endif %}

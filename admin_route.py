@@ -1,16 +1,24 @@
-from flask import render_template, redirect, url_for, current_app, request, flash
+from flask import render_template, redirect, url_for, current_app, flash
 from flask_login import login_required, current_user
-from app.admin import admin_bp
-from app.extensions import db
-from app.models.app_config import AppConfig
 
-ALLOWED_DYNAMIC_KEYS = {"MODULE_FLAGS", "WALLET_FEATURES"}
+from app.admin import admin_bp
+from app.services import ModuleToggleService
+
+
+def _user_is_owner() -> bool:
+    return hasattr(current_user, "has_global_role") and current_user.has_global_role("owner")
+
+
+def _user_is_super_admin() -> bool:
+    return bool(getattr(current_user, "is_super_admin", False) or (
+        hasattr(current_user, "has_global_role") and current_user.has_global_role("super_admin")
+    ))
 
 
 @admin_bp.before_request
 @login_required
 def require_super_admin():
-    if not getattr(current_user, "is_super_admin", False):
+    if not (_user_is_super_admin() or _user_is_owner()):
         flash("Unauthorized access.", "danger")
         return redirect(url_for("index"))
 
@@ -54,27 +62,32 @@ def update_withdraw_settings():
 
 @admin_bp.route("/toggle/<module>", methods=["POST"])
 def toggle_module(module):
-    cfg = AppConfig.query.filter_by(key="MODULE_FLAGS").first()
-
-    if not cfg or cfg.key not in ALLOWED_DYNAMIC_KEYS:
-        flash("Module configuration unavailable.", "danger")
+    module_key = module.strip().lower()
+    flags = ModuleToggleService.get_flags()
+    if module_key not in flags:
+        flash(f"Module '{module_key}' not found.", "warning")
         return redirect(url_for("admin.super_dashboard"))
 
-    if module not in cfg.value:
-        flash(f"Module '{module}' not found.", "warning")
-        return redirect(url_for("admin.super_dashboard"))
+    if not _user_is_owner():
+        # Only owners can toggle unless owner has delegated to super admins
+        from app.admin.owner.models import SystemSetting
 
-    cfg.value[module] = not bool(cfg.value[module])
-    db.session.commit()
+        if not SystemSetting.get("SUPER_ADMIN_CAN_TOGGLE_MODULES", False):
+            flash("Owner has restricted module toggles to themselves.", "warning")
+            return redirect(url_for("admin.super_dashboard"))
 
-    current_app.config["MODULE_FLAGS"] = cfg.value
+    new_state = not bool(flags.get(module_key))
+    ModuleToggleService.set_flag(module_key, new_state, updated_by=getattr(current_user, "id", None))
 
     current_app.logger.warning(
         "CONFIG_CHANGE | user=%s | MODULE_FLAGS.%s=%s",
-        current_user.user_id,
-        module,
-        cfg.value[module],
+        getattr(current_user, "user_id", getattr(current_user, "id", None)),
+        module_key,
+        new_state,
     )
 
-    flash(f"Module '{module}' updated.", "success")
+    flash(
+        f"Module '{module_key}' {'enabled' if new_state else 'disabled'}.",
+        "success" if new_state else "info",
+    )
     return redirect(url_for("admin.super_dashboard"))

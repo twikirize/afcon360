@@ -1,7 +1,14 @@
 {# templates/accommodation/guest/detail.html #}
-{% extends "base.html" %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block head %}
+{% if not is_pane %}
+    {% block head %}
 <!-- ADD SEO structured data -->
 <script type="application/ld+json">
 {
@@ -43,13 +50,14 @@
 {% endif %}
 {% endblock %}
 
-{% block content %}
+{% if not is_pane %}
+    {% block content %}
 <div class="container py-4">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb" class="mb-4">
         <ol class="breadcrumb">
             <li class="breadcrumb-item">
-                <a href="{{ url_for('accommodation.guest.search') }}">Accommodation</a>
+                <a href="{{ safe_url('accommodation.guest.search') }}">Accommodation</a>
             </li>
             <li class="breadcrumb-item active" aria-current="page">{{ property.name }}</li>
         </ol>
@@ -172,7 +180,7 @@
                     </div>
 
                     <!-- Availability Check Form -->
-                    <form method="GET" action="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
+                    <form method="GET" action="{{ safe_url('url_for\(['"]accommodation.guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
                         <div class="mb-3">
                             <label class="form-label">Check-in Date</label>
                             <input type="date" class="form-control" name="check_in"
@@ -232,7 +240,7 @@
                             </div>
 
                             <!-- Booking Form - POST to checkout -->
-                            <form method="POST" action="{{ url_for('accommodation.guest.checkout') }}">
+                            <form method="POST" action="{{ safe_url('accommodation.guest.checkout') }}">
                                 <!-- Add these hidden fields inside the booking form -->
                                 <input type="hidden" name="context_type" value="{{ request.args.get('context_type', 'none') }}">
                                 <input type="hidden" name="context_id" value="{{ request.args.get('context_id', '') }}">
@@ -400,3 +408,4 @@ function openAllPhotos() {
 }
 </script>
 {% endblock %}
+{% endif %}

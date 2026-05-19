@@ -4,6 +4,7 @@ from app.events.services import EventService
 from app.wallet.services.wallet_service import WalletService
 from datetime import date, datetime
 import logging
+from app.auth.kyc_compliance import calculate_kyc_tier
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ def user_dashboard():
         if not user:
             return redirect(url_for('auth.logout'))
 
+        # Get module status for dashboard - initialize early to avoid UnboundLocalError
+        modules = current_app.config.get('MODULE_FLAGS', {})
+
         # Get event registrations data
         attendee_data = EventService.get_attendee_dashboard_data(current_user.id)
         all_registrations = attendee_data['upcoming_registrations'] + attendee_data['past_registrations']
@@ -35,7 +39,29 @@ def user_dashboard():
         
         # Get current date for filtering
         current_date = date.today().isoformat()
-        
+
+        # KYC info for verification section
+        kyc_info = {}
+        try:
+            kyc_info = calculate_kyc_tier(current_user.id)
+        except Exception:
+            pass
+
+        # Tourism listings (lightweight fetch) - only if module enabled
+        tourism_listings = []
+        if modules.get('tourism'):
+            try:
+                from app.tourism.models import TourismListing
+                tourism_listings = TourismListing.query.filter_by(
+                    status='published', is_deleted=False
+                ).order_by(TourismListing.created_at.desc()).limit(6).all()
+            except ImportError:
+                # Tourism models not available - module disabled
+                pass
+            except Exception as e:
+                # Log but don't expose to user
+                logger.debug(f"Tourism listings fetch error: {e}")
+
         # Enrich registrations with assignment data
         for reg in all_registrations:
             # Fix: Format dates safely as strings for template
@@ -64,15 +90,23 @@ def user_dashboard():
                            registrations=all_registrations,
                            wallet_balance=wallet_balance,
                            current_date=current_date,
-                           user_organisations=user.organisations)
+                           user_organisations=user.organisations,
+                           kyc_info=kyc_info,
+                           tourism_listings=tourism_listings,
+                           modules=modules)
     except Exception as e:
         logger.error(f"Error loading user dashboard: {e}")
         # Return empty dashboard on error
+        modules = current_app.config.get('MODULE_FLAGS', {})
+
         return render_template('user/user_dashboard.html',
                            registrations=[],
                            wallet_balance=0,
                            current_date=date.today().isoformat(),
-                           user_organisations=[])
+                           user_organisations=[],
+                           kyc_info={},
+                           tourism_listings=[],
+                           modules=modules)
 
 @user_bp.route("/my-registrations")
 @login_required

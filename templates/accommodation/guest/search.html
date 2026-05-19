@@ -16,7 +16,7 @@
     <div class="row mb-5">
         <div class="col-12">
             <div class="search-container">
-                <form method="GET" action="{{ url_for('accommodation.guest.search') }}">
+                <form method="GET" action="{{ safe_url('accommodation.guest.search') }}">
                     <div class="ota-search-bar">
                         <!-- Destination -->
                         <div class="search-field search-field--destination">
@@ -189,7 +189,7 @@
         <div class="no-results">
             <p>No properties found. Try adjusting your search.</p>
             {% if request.args.get('city') or request.args.get('query') %}
-                <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
+                <a href="{{ safe_url('accommodation.guest.search') }}" class="btn btn-primary">
                     Clear Filters
                 </a>
             {% endif %}

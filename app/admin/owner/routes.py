@@ -22,6 +22,7 @@ from app.admin.owner.utils import log_owner_action, get_system_health
 from app.auth.roles import assign_global_role, revoke_global_role
 from app.profile.models import get_profile_by_user
 from app.auth.config_model import AuthConfiguration
+from app.services import ModuleToggleService
 
 # Import audit decorators
 from app.admin.owner.audit import audit_owner_action
@@ -31,6 +32,9 @@ from app.admin.owner import owner_bp
 
 # Import security dashboard routes
 from app.admin.owner.security_routes import add_security_routes
+
+# Import role management routes
+from app.owner.routes.role_management import role_management
 
 logger = logging.getLogger(__name__)
 
@@ -451,8 +455,17 @@ def dashboard():
         wallet_enabled = SystemSetting.get('ENABLE_WALLET', True)
 
         # Module flags
-        modules = current_app.config.get("MODULE_FLAGS", {})
+        modules = ModuleToggleService.get_flags()
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+
+        module_health = [
+            {
+                'name': name,
+                'enabled': bool(enabled),
+                'status': 'online' if enabled else 'offline'
+            }
+            for name, enabled in sorted(modules.items())
+        ]
 
         # Compliance metrics
         pending_reviews_count = 0
@@ -543,6 +556,7 @@ def dashboard():
 
                                # Module controls
                                modules=modules,
+                               module_health=module_health,
                                super_admin_can_toggle_modules=super_admin_can_toggle_modules,
 
                                # Compliance metrics
@@ -574,6 +588,7 @@ def dashboard():
                                owner_username=current_user.username,
                                owner_is_verified=current_user.is_verified,
                                modules={},
+                               module_health=[],
                                super_admin_can_toggle_modules=False,
                                total_revenue=0,
                                # Event statistics with defaults
@@ -845,8 +860,16 @@ def settings():
                              super_admin_can_toggle_modules=super_admin_can_toggle_modules,
                              org_registration_mode=org_registration_mode)
     except Exception as e:
-        logger.error(f"Settings error: {e}", exc_info=True)
-        flash(f"Error loading settings: {str(e)}", "danger")
+        current_app.logger.exception(
+            "❌ Owner settings page crashed"
+        )
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="SETTINGS_LOAD_ERROR",
+            error_message=str(e),
+        )
+        flash("Unable to load settings. Please try again later.", "warning")
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/settings/toggle-org-registration-mode', methods=['POST'])
@@ -928,6 +951,46 @@ def toggle_super_admin_module_access():
         flash("Failed to update permission.", "danger")
 
     return redirect(url_for('admin.owner.settings'))
+
+
+@owner_bp.route('/modules/<string:module>/toggle', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_module', 'modules')
+def owner_toggle_module(module):
+    """Owner-facing module toggle (DB-backed)."""
+    module_key = (module or '').strip().lower()
+    flags = ModuleToggleService.get_flags()
+
+    if module_key not in flags:
+        flash(f"Unknown module '{module_key}'.", "warning")
+        return redirect(url_for('admin.owner.dashboard'))
+
+    desired_state_raw = request.form.get('state')
+    if desired_state_raw is None:
+        desired_state = not bool(flags.get(module_key))
+    else:
+        desired_state = desired_state_raw.lower() in {'1', 'true', 'on', 'enable', 'enabled', 'yes'}
+
+    ModuleToggleService.set_flag(module_key, desired_state, updated_by=getattr(current_user, 'id', None))
+
+    log_owner_action(
+        action='toggled_module',
+        category='modules',
+        details={'module': module_key, 'enabled': desired_state}
+    )
+
+    current_app.logger.warning(
+        "OWNER_CONFIG_CHANGE | user=%s | MODULE_FLAGS.%s=%s",
+        getattr(current_user, 'id', None),
+        module_key,
+        desired_state,
+    )
+
+    flash(
+        f"{module_key.title()} module {'enabled' if desired_state else 'disabled' }.",
+        "success" if desired_state else "info"
+    )
+    return redirect(url_for('admin.owner.dashboard'))
 
 
 @owner_bp.route('/users')
@@ -1164,6 +1227,37 @@ def system_health():
     except Exception as e:
         logger.error(f"System health error: {e}")
         flash("Error loading system health", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/error-logs')
+@owner_login_required
+@audit_owner_action('viewed_error_logs', 'security')
+def error_logs():
+    """View application error logs for debugging"""
+    try:
+        from app.audit.models import AuditLog
+        from datetime import timedelta
+
+        # Get filter parameters
+        days = int(request.args.get('days', 7))
+        page = request.args.get('page', 1, type=int)
+
+        # Query for ERROR_OCCURRED action
+        since_date = datetime.utcnow() - timedelta(days=days)
+        query = AuditLog.query.filter_by(action='ERROR_OCCURRED')
+        query = query.filter(AuditLog.created_at >= since_date)
+
+        # Use pagination
+        logs = query.order_by(AuditLog.created_at.desc()).paginate(
+            page=page, per_page=50, error_out=False
+        )
+
+        return render_template('owner/error_logs.html',
+                               logs=logs,
+                               days=days)
+    except Exception as e:
+        logger.error(f"Error logs view error: {e}")
+        flash("Error loading error logs", "danger")
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/impersonate-page')
@@ -1894,3 +1988,6 @@ def auth_settings_preview():
 
 # Add security dashboard routes to the blueprint
 add_security_routes(owner_bp)
+
+# Register role management blueprint with owner blueprint
+owner_bp.register_blueprint(role_management)

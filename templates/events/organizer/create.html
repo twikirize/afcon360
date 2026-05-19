@@ -885,7 +885,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
                     <!-- Form Actions -->
                     <div class="form-actions">
-                        <a href="{{ url_for('events.my_events') }}" class="btn-cancel-modern">
+                        <a href="{{ safe_url('events.my_events') }}" class="btn-cancel-modern">
                             <i class="fas fa-arrow-left"></i>
                             <span>Cancel</span>
                         </a>

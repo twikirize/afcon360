@@ -1,9 +1,16 @@
 {# templates/accommodation/guest/confirmation.html #}
-{% extends "base.html" %}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
 
-{% block title %}Booking Confirmed - AFCON360{% endblock %}
+{% if not is_pane %}
+    {% block title %}Booking Confirmed - AFCON360{% endblock %}
 
-{% block content %}
+    {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center">
         <div class="col-lg-8">
@@ -38,10 +45,10 @@
                     <hr class="my-4">
 
                     <div class="d-flex justify-content-center gap-3">
-                        <a href="{{ url_for('accommodation.guest.my_bookings') }}" class="btn btn-outline-primary">
+                        <a href="{{ safe_url('accommodation.guest.my_bookings') }}" class="btn btn-outline-primary">
                             <i class="fas fa-calendar-alt"></i> View My Bookings
                         </a>
-                        <a href="{{ url_for('accommodation.guest.search') }}" class="btn btn-primary">
+                        <a href="{{ safe_url('accommodation.guest.search') }}" class="btn btn-primary">
                             <i class="fas fa-search"></i> Search More Stays
                         </a>
                     </div>
@@ -54,4 +61,5 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}

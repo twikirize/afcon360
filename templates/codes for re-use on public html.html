@@ -10,8 +10,9 @@
     <p class="lead">Live fixtures, travel packages, wallet payments and trusted local agents — all in one place.</p>
     <div class="hero-ctas">
       <a class="btn primary" href="{{ url_for('matches.index') }}">View Fixtures</a>
-      <a class="btn outline" href="{{ url_for('tourism.index') }}">Explore Tourism</a>
-    </div>
+      <a class="btn outline {% if not modules.get('tourism') %}disabled{% endif %}" href="{{ safe_url('tourism.home') }}" {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>Explore Tourism
+      {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
+      </a>
   </div>
 
   <div class="hero-right">
@@ -35,8 +36,10 @@
     <a class="tile" href="{{ url_for('auth.register') }}"><span class="icon">📝</span><strong>Register</strong><small>Create your Fan Profile</small></a>
     <a class="tile" href="{{ url_for('auth.login') }}"><span class="icon">🔐</span><strong>Login</strong><small>Access wallet & bookings</small></a>
     <a class="tile" href="{{ url_for('matches.index') }}"><span class="icon">⚽</span><strong>Match Fixtures</strong><small>Full schedule & tickets</small></a>
-    <a class="tile" href="{{ url_for('tourism.index') }}"><span class="icon">🏞️</span><strong>Tourism</strong><small>Curated travel packages</small></a>
-    <a class="tile" href="{{ url_for('wallet.home') }}"><span class="icon">💳</span><strong>Wallet</strong><small>Deposits & transfers</small></a>
+    <a class="tile {% if not modules.get('tourism') %}disabled{% endif %}" href="{{ safe_url('tourism.home') }}" {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}><span class="icon">🏞️</span><strong>Tourism</strong><small>Curated travel packages</small>
+    {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
+    </a>
+    <a class="tile" href="{{ safe_url('wallet.home') }}"><span class="icon">💳</span><strong>Wallet</strong><small>Deposits & transfers</small></a>
   </div>
 </section>
 
@@ -81,8 +84,12 @@
             <div class="card-meta">${{ package.price }}</div>
             <p class="card-desc">{{ package.description }}</p>
             <div class="card-actions">
-              <a class="btn small" href="{{ url_for('tourism.index') + '/' + package.package_id }}">Explore</a>
-              <a class="btn small outline" href="{{ url_for('auth.login') }}?next={{ url_for('tourism.index') + '/' + package.package_id }}">Book</a>
+              <a class="btn small {% if not modules.get('tourism') %}disabled{% endif %}" href="{{ safe_url('tourism.home') + '/' + package.package_id }}" {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>Explore
+              {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
+              </a>
+              <a class="btn small outline {% if not modules.get('tourism') %}disabled{% endif %}" href="{{ url_for('auth.login') }}?next={{ safe_url('tourism.home') + '/' + package.package_id }}" {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>Book
+              {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
+              </a>
             </div>
           </div>
         </li>

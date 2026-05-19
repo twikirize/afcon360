@@ -85,7 +85,7 @@ function eventModerationAction(action, slug, extraData = {}) {
       <div class="sad-nav-label">Modules</div>
 
       <!-- NEW: Events Module Link -->
-      <a href="{{ url_for('events.admin_dashboard') }}" class="sad-nav-item">
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="sad-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
           <rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/>
           <rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/>
@@ -102,19 +102,23 @@ function eventModerationAction(action, slug, extraData = {}) {
         {% if modules.get('transport') %}<span class="sad-nav-pill on">ON</span>
         {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
       </a>
-      <a href="{{ url_for('tourism.home') }}" class="sad-nav-item">
+      <a href="{{ links.tourism_home }}" class="sad-nav-item {% if not modules.get('tourism') %}disabled{% endif %}"
+         {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"
+         {% elif links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism is enabled — restart the server to activate.', 'info');"
+         {% endif %}>
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 7.5h5M7.5 5v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         Tourism
         {% if modules.get('tourism') %}<span class="sad-nav-pill on">ON</span>
         {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
+        {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
       </a>
-      <a href="{{ url_for('accommodation.guest.search') }}" class="sad-nav-item">
+      <a href="{{ safe_url('accommodation.guest.search') }}" class="sad-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="2" y="2" width="11" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 5h6M4.5 7.5h6M4.5 10h3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         Accommodation
         {% if modules.get('accommodation') %}<span class="sad-nav-pill on">ON</span>
         {% else %}<span class="sad-nav-pill">OFF</span>{% endif %}
       </a>
-      <a href="{{ url_for('wallet.wallet_dashboard') }}" class="sad-nav-item">
+      <a href="{{ safe_url('wallet.wallet_dashboard') }}" class="sad-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 8a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0z" fill="currentColor"/></svg>
         Wallet
         {% if modules.get('wallet') %}<span class="sad-nav-pill on">ON</span>
@@ -249,7 +253,7 @@ function eventModerationAction(action, slug, extraData = {}) {
             <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">📅</div>
             Events Overview
           </div>
-          <a href="{{ url_for('events.admin_dashboard') }}" class="sad-btn sm">Manage Events →</a>
+          <a href="{{ safe_url('events.admin_dashboard') }}" class="sad-btn sm">Manage Events →</a>
         </div>
         <div class="sad-card-body">
           <div class="sad-stats" style="grid-template-columns:repeat(4,1fr)">
@@ -271,7 +275,7 @@ function eventModerationAction(action, slug, extraData = {}) {
             </div>
           </div>
           <div class="sad-alert info" style="margin-top:12px;font-size:11px">
-            <a href="{{ url_for('events.admin_events') }}?status=pending" style="color:var(--sad-amber)">📋 {{ pending_events|default(0) }} events pending approval</a>
+            <a href="{{ safe_url('events.admin_events') }}?status=pending" style="color:var(--sad-amber)">📋 {{ pending_events|default(0) }} events pending approval</a>
           </div>
         </div>
       </div>
@@ -307,7 +311,7 @@ function eventModerationAction(action, slug, extraData = {}) {
               <div class="sad-qa-sub">Pending review</div>
             </a>
             <!-- NEW: Events Admin Quick Action -->
-            <a href="{{ url_for('events.admin_dashboard') }}" class="sad-qa-btn">
+            <a href="{{ safe_url('events.admin_dashboard') }}" class="sad-qa-btn">
               <div class="sad-qa-icon" style="background:rgba(108,143,255,0.1)">📅</div>
               <div class="sad-qa-label">Events Admin</div>
               <div class="sad-qa-sub">Manage events & registrations</div>
@@ -401,7 +405,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                       {% if name == 'transport' %}
                         <a href="{{ url_for('transport_admin.dashboard') }}" class="sad-btn sm">Open →</a>
                       {% elif name == 'wallet' %}
-                        <a href="{{ url_for('wallet.wallet_dashboard') }}" class="sad-btn sm">Open →</a>
+                        <a href="{{ safe_url('wallet.wallet_dashboard') }}" class="sad-btn sm">Open →</a>
                       {% else %}
                         <span style="color:var(--sad-text3);font-size:11px">—</span>
                       {% endif %}
@@ -827,13 +831,13 @@ function eventModerationAction(action, slug, extraData = {}) {
               <p style="font-size:12px;color:var(--sad-text2);margin-bottom:14px;line-height:1.5">
                 Manage events, registrations, check-ins, approvals, and event staff.
               </p>
-              <a href="{{ url_for('events.admin_dashboard') }}" class="sad-btn primary" style="width:100%;justify-content:center">
+              <a href="{{ safe_url('events.admin_dashboard') }}" class="sad-btn primary" style="width:100%;justify-content:center">
                 Open Events Admin →
               </a>
               <div style="margin-top:10px;display:flex;gap:8px">
-                <a href="{{ url_for('events.admin_events') }}?status=pending" class="sad-btn sm" style="flex:1;justify-content:center">⏳ Pending</a>
-                <a href="{{ url_for('events.admin_events') }}?status=active" class="sad-btn sm" style="flex:1;justify-content:center">✅ Active</a>
-                <a href="{{ url_for('events.admin_events') }}" class="sad-btn sm" style="flex:1;justify-content:center">📋 All</a>
+                <a href="{{ safe_url('events.admin_events') }}?status=pending" class="sad-btn sm" style="flex:1;justify-content:center">⏳ Pending</a>
+                <a href="{{ safe_url('events.admin_events') }}?status=active" class="sad-btn sm" style="flex:1;justify-content:center">✅ Active</a>
+                <a href="{{ safe_url('events.admin_events') }}" class="sad-btn sm" style="flex:1;justify-content:center">📋 All</a>
               </div>
             </div>
           </div>
@@ -868,7 +872,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                 </div>
               </div>
               {% endfor %}
-              <a href="{{ url_for('events.admin_events') }}?status=pending" class="sad-btn" style="width:100%;justify-content:center;margin-top:8px;font-size:11px;">
+              <a href="{{ safe_url('events.admin_events') }}?status=pending" class="sad-btn" style="width:100%;justify-content:center;margin-top:8px;font-size:11px;">
                 View All Pending →
               </a>
             </div>

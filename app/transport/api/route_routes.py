@@ -10,7 +10,7 @@ from app.extensions import db
 from app.transport.models import (
     ScheduledRoute, DriverProfile, Vehicle, Booking, BookingStatus
 )
-from app.admin.routes import admin_required
+from app.auth.decorators import admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
 import logging

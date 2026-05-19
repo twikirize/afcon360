@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}Platform Settings - AFCON360 Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="fas fa-cogs"></i> Platform Settings
+                <small class="text-muted">Admin & Super Admin</small>
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Booking Configuration -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-calendar-check"></i> Booking Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form id="bookingConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label">Auto-Confirm Bookings</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="auto_confirm" 
+                                       {{ 'checked' if config.booking.auto_confirm }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Cancellation Window (hours)</label>
+                            <input type="number" class="form-control" name="cancellation_window" 
+                                   value="{{ config.booking.cancellation_window }}" min="0" max="168">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Max Guests per Booking</label>
+                            <input type="number" class="form-control" name="max_guests" 
+                                   value="{{ config.booking.max_guests_per_booking }}" min="1" max="50">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Require Host Verification</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="require_verification" 
+                                       {{ 'checked' if config.booking.require_verification }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="saveBookingConfig()">
+                            <i class="fas fa-save"></i> Save Booking Settings
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing Configuration -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-dollar-sign"></i> Pricing Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form id="pricingConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label">Service Fee (%)</label>
+                            <input type="number" class="form-control" name="service_fee_percent" 
+                                   value="{{ config.pricing.service_fee_percent }}" min="0" max="50" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Minimum Nightly Rate ({{ config.pricing.currency }})</label>
+                            <input type="number" class="form-control" name="min_nightly_rate" 
+                                   value="{{ config.pricing.min_nightly_rate }}" min="0">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Maximum Nightly Rate ({{ config.pricing.currency }})</label>
+                            <input type="number" class="form-control" name="max_nightly_rate" 
+                                   value="{{ config.pricing.max_nightly_rate }}" min="0">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Default Currency</label>
+                            <select class="form-control" name="currency">
+                                <option value="UGX" {{ 'selected' if config.pricing.currency == 'UGX' }}>UGX</option>
+                                <option value="USD" {{ 'selected' if config.pricing.currency == 'USD' }}>USD</option>
+                                <option value="EUR" {{ 'selected' if config.pricing.currency == 'EUR' }}>EUR</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="savePricingConfig()">
+                            <i class="fas fa-save"></i> Save Pricing Settings
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Configuration -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-bell"></i> Notification Settings</h5>
+                </div>
+                <div class="card-body">
+                    <form id="notificationConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label">Email Notifications</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="email_enabled" 
+                                       {{ 'checked' if config.notifications.email_enabled }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">SMS Notifications</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="sms_enabled" 
+                                       {{ 'checked' if config.notifications.sms_enabled }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Push Notifications</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="push_enabled" 
+                                       {{ 'checked' if config.notifications.push_enabled }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Booking Alerts</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="booking_alerts" 
+                                       {{ 'checked' if config.notifications.booking_alerts }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Cancellation Alerts</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="cancellation_alerts" 
+                                       {{ 'checked' if config.notifications.cancellation_alerts }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="saveNotificationConfig()">
+                            <i class="fas fa-save"></i> Save Notification Settings
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Configuration -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-shield-alt"></i> Security Settings</h5>
+                </div>
+                <div class="card-body">
+                    <form id="securityConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label">Session Timeout (minutes)</label>
+                            <input type="number" class="form-control" name="session_timeout" 
+                                   value="{{ config.security.session_timeout }}" min="5" max="1440">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Max Login Attempts</label>
+                            <input type="number" class="form-control" name="max_login_attempts" 
+                                   value="{{ config.security.max_login_attempts }}" min="3" max="10">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Lockout Duration (minutes)</label>
+                            <input type="number" class="form-control" name="lockout_duration" 
+                                   value="{{ config.security.lockout_duration }}" min="5" max="1440">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Require 2FA for Admins</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="require_2fa_admin" 
+                                       {{ 'checked' if config.security.require_2fa_admin }}>
+                                <label class="form-check-label"></label>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="saveSecurityConfig()">
+                            <i class="fas fa-save"></i> Save Security Settings
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.form-check {
+    padding-left: 0;
+    list-style: none;
+}
+.form-check-input {
+    width: 50px;
+    height: 25px;
+}
+.form-check-label {
+    min-height: 25px;
+    padding-left: 35px;
+}
+</style>
+
+<script>
+function saveBookingConfig() {
+    const form = document.getElementById('bookingConfigForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    
+    fetch('{{ url_for("admin_settings.save_platform_settings") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ booking: data })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function savePricingConfig() {
+    const form = document.getElementById('pricingConfigForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    
+    fetch('{{ url_for("admin_settings.save_platform_settings") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ pricing: data })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function saveNotificationConfig() {
+    const form = document.getElementById('notificationConfigForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    
+    fetch('{{ url_for("admin_settings.save_platform_settings") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ notifications: data })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function saveSecurityConfig() {
+    const form = document.getElementById('securityConfigForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    
+    fetch('{{ url_for("admin_settings.save_platform_settings") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ security: data })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function showAlert(type, message) {
+    // Implementation depends on your UI framework
+    alert(`${type.toUpperCase()}: ${message}`);
+}
+</script>
+{% endblock %}

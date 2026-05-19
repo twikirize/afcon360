@@ -1,0 +1,87 @@
+<div class="transport-dashboard">
+    <!-- Header Section -->
+    <div class="container-fluid p-0">
+        <div class="row g-0">
+            <div class="col-12">
+                <div class="booking-card p-4 mb-4">
+                    <h1 class="mb-3">AFCON Transport & Travel</h1>
+                    <p class="lead mb-4">Book match-day shuttles, airport transfers and regional routes.</p>
+                    
+                    <!-- Quick Search -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <input type="text" class="form-control location-input" placeholder="From: Pick-up location">
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" class="form-control location-input" placeholder="To: Destination">
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary w-100">
+                                <i class="fas fa-search"></i> Search Routes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Services Section -->
+    {% if services %}
+        <div class="container-fluid p-0">
+            <div class="row g-3">
+                {% for service in services %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="booking-card p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h5 class="mb-1">{{ service.name }}</h5>
+                                <p class="text-muted mb-2">{{ service.summary }}</p>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-success">{{ service.status|default('Available') }}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <i class="fas fa-clock"></i> {{ service.eta|default('30 mins') }}
+                                </small>
+                                <small class="text-muted">
+                                    <i class="fas fa-users"></i> {{ service.capacity|default('4 seats') }}
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                {% if service.price %}
+                                <strong>${{ "%.2f"|format(service.price) }}</strong>
+                                {% else %}
+                                <span class="text-muted">Price varies</span>
+                                {% endif %}
+                            </div>
+                            <a href="{{ safe_url('transport.service_detail', service_id=service.id) }}" class="btn btn-sm btn-outline-primary">
+                                View Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% else %}
+        <div class="container-fluid p-0">
+            <div class="row">
+                <div class="col-12">
+                    <div class="booking-card p-4 text-center">
+                        <i class="fas fa-bus fa-3x text-muted mb-3"></i>
+                        <h4>No transport services available</h4>
+                        <p class="text-muted">Check back later for available transport options.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>

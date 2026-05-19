@@ -3,7 +3,7 @@ from flask import request
 from flask_restful import Resource
 from app.extensions import db
 from app.transport.models import DriverProfile, DriverVehicleHistory, Booking
-from app.admin.routes import admin_required
+from app.auth.decorators import admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, func

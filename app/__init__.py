@@ -18,7 +18,8 @@
 import os
 import logging
 import time
-from datetime import datetime, date, timedelta
+import threading
+from datetime import datetime
 
 # Load environment variables at the very beginning
 from dotenv import load_dotenv
@@ -52,7 +53,7 @@ try:
 except ImportError:
     IDGUARD_AVAILABLE = False
     logging.warning("IDGuard not available - ID mixing protection disabled")
-from flask import Flask, flash, redirect, render_template, session, current_app, url_for, request, Response, jsonify
+from flask import Flask, flash, redirect, render_template, session, current_app, url_for, request, jsonify
 
 try:
     from flask_session import Session
@@ -62,12 +63,11 @@ except ImportError:
     Session = None
     FLASK_SESSION_AVAILABLE = False
     logging.warning("Flask-Session not available - using fallback sessions")
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError
-from typing import Dict, List
+from typing import Dict
 from app.config import Config
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client
+from app.services.module_toggle_service import ModuleToggleService
 
 
 # Configure logging globally at the entry point
@@ -150,8 +150,6 @@ def create_app(config_object=None) -> Flask:
     static_path = os.path.join(project_root, "static")
 
     # Environment already loaded at module level
-
-    app = Flask(__name__, static_folder=static_path, template_folder=template_path)
 
     app = Flask(__name__, static_folder=static_path, template_folder=template_path)
 
@@ -340,9 +338,16 @@ def create_app(config_object=None) -> Flask:
             ))
             log.addHandler(handler)
     
-    # Show only one werkzeug development server warning
+    # Restore werkzeug INFO so the startup URL link and dev-server warning are visible.
+    # Filter only the per-request access lines (e.g. "127.0.0.1 - - GET /...")
+    # since we already have a custom request logger above.
+    class _SuppressAccessLogs(logging.Filter):
+        def filter(self, record):
+            return not (' HTTP/1.' in record.getMessage())
+
     werkzeug_logger = logging.getLogger('werkzeug')
-    werkzeug_logger.setLevel(logging.WARNING)  # Show warnings but suppress duplicates
+    werkzeug_logger.setLevel(logging.INFO)
+    werkzeug_logger.addFilter(_SuppressAccessLogs())
     
     @app.before_request
     def log_request():
@@ -405,12 +410,54 @@ def create_app(config_object=None) -> Flask:
     @app.errorhandler(Exception)
     def handle_exception(e):
         """Clean error logging with full traceback for debugging"""
+        import traceback
+        from flask_login import current_user
+        from app.audit.models import AuditLog
+        
+        # Log to console/file
         logger.error(f"💥 Exception: {type(e).__name__}: {str(e)}")
         logger.debug(f"Full traceback:", exc_info=True)
+        
+        # Log to database for admin visibility
+        try:
+            user_id = current_user.id if current_user.is_authenticated else None
+            org_id = current_user.org_id if hasattr(current_user, 'org_id') else None
+            
+            error_traceback = traceback.format_exc()
+            
+            AuditLog.log(
+                user_id=user_id,
+                org_id=org_id,
+                action="ERROR_OCCURRED",
+                resource_type="application_error",
+                resource_id=None,  # Not a specific entity, so pass None to avoid IDGuard violations
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string if request.user_agent else None,
+                meta={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "request_method": request.method,
+                    "request_path": request.path,  # Store path in meta instead
+                    "traceback": error_traceback,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+                db_session=db.session
+            )
+            db.session.commit()
+        except Exception as log_error:
+            # Don't let error logging crash the error handler
+            logger.error(f"Failed to log error to database: {log_error}")
+            db.session.rollback()
         
         if request.path.startswith('/api/'):
             return jsonify({"error": str(e)}), 500
         return render_template('errors/500.html'), 500
+
+    # ------------------------------------------------------------------
+    # CRITICAL: Register ALL models before SQLAlchemy initialization
+    # ------------------------------------------------------------------
+    from app.core.model_registry import register_all_models
+    register_all_models()
 
     # Verify Redis is available for rate limiting only if needed
     if REDIS_AVAILABLE and app.config.get("RATELIMIT_STORAGE_URI", "").startswith("redis://"):
@@ -421,6 +468,9 @@ def create_app(config_object=None) -> Flask:
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+
+    # Module flag DB overrides are loaded on first request (see _run_deferred_startup)
+    # This avoids a blocking DB query at startup.
 
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Your session has expired. Please log in again.'
@@ -522,10 +572,101 @@ def create_app(config_object=None) -> Flask:
                 pass
 
     # ------------------------------------------------------------------
-    # CRITICAL: Register ALL models before SQLAlchemy initialization
+    # Deferred Startup — runs once on first real request, not at boot time
+    # Moves blocking DB operations out of the startup critical path.
     # ------------------------------------------------------------------
-    from app.core.model_registry import register_all_models
-    register_all_models()
+    _deferred_done = threading.Event()
+    _deferred_lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Middleware - Module Runtime Checks
+    # ------------------------------------------------------------------
+    @app.before_request
+    def check_module_enabled():
+        """Check if requested module is enabled before processing request"""
+        from flask import request, render_template
+        from app.utils.module_guard import module_enabled
+        
+        # Skip checks for static files, health checks, and admin routes
+        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith('/admin'):
+            return
+        
+        # Extract module name from path (e.g., /tourism/... -> tourism)
+        path_parts = request.path.strip('/').split('/')
+        if path_parts and path_parts[0] in ['tourism', 'transport', 'accommodation', 'tournament', 'wallet', 'events']:
+            module_name = path_parts[0]
+            if not module_enabled(module_name):
+                return render_template('module_disabled.html', module=module_name), 404
+
+    # ------------------------------------------------------------------
+    # Redis Pub/Sub Subscriber for Real-Time Module Updates
+    # ------------------------------------------------------------------
+    def start_module_toggle_subscriber():
+        """Subscribe to Redis Pub/Sub for real-time module toggle updates"""
+        try:
+            from app.extensions import redis_client
+            redis_client.client  # Trigger connection
+            pubsub = redis_client.pubsub()
+            pubsub.subscribe('module_toggles')
+            logger.info("Redis Pub/Sub subscriber started for module toggles")
+            
+            def listen_for_toggles():
+                """Background thread to listen for module toggle events"""
+                try:
+                    for message in pubsub.listen():
+                        if message['type'] == 'message':
+                            data = message['data'].decode('utf-8')
+                            module, enabled = data.split(':')
+                            enabled = enabled.lower() == 'true'
+                            
+                            # Update in-memory config immediately
+                            app.config['MODULE_FLAGS'][module] = enabled
+                            app.config[f"{module.upper()}_ENABLED"] = enabled
+                            
+                            # Invalidate request-scoped cache
+                            from flask import g
+                            if hasattr(g, 'module_flags_loaded'):
+                                g.module_flags_loaded = False
+                            
+                            logger.info(f"Module toggle received via Pub/Sub: {module}={enabled}")
+                except Exception as e:
+                    logger.error(f"Error in module toggle subscriber: {e}")
+            
+            # Start listener in background thread
+            import threading
+            subscriber_thread = threading.Thread(target=listen_for_toggles, daemon=True)
+            subscriber_thread.start()
+            
+        except Exception as e:
+            logger.warning(f"Failed to start module toggle subscriber: {e}")
+
+    @app.before_request
+    def _run_deferred_startup():
+        if _deferred_done.is_set():
+            return
+        with _deferred_lock:
+            if _deferred_done.is_set():
+                return
+            _deferred_done.set()
+            # 1. DB module flags already loaded during create_app (single source of truth)
+            # No need to reload here
+            # 2. Validate DB schema (purely informational)
+            try:
+                from sqlalchemy import inspect as _sa_inspect
+                _ins = _sa_inspect(db.engine)
+                _cols = [c['name'] for c in _ins.get_columns('users')]
+                if 'id' in _cols and 'user_id' in _cols:
+                    logger.info("✅ Dual ID system validated.")
+                _idxs = _ins.get_indexes('transactions')
+                if any(i.get('column_names') == ['client_request_id'] and i.get('unique') for i in _idxs):
+                    logger.info("✅ transactions.client_request_id unique index present")
+                else:
+                    logger.critical(
+                        "Missing unique index on transactions.client_request_id – "
+                        "idempotency may be broken. Add a DB migration."
+                    )
+            except Exception as exc:
+                logger.warning(f"Deferred startup – DB validation: {exc}")
 
     # ------------------------------------------------------------------
     # Lazy Imports - Blueprints & Models
@@ -590,11 +731,7 @@ def create_app(config_object=None) -> Flask:
     from app.wallet.api.admin_api import admin_api_bp
     # from app.wallet.api.audit_api import audit_bp  # DELETED
 
-    # Feature-Based Blueprints
-    from app.tournament import tournament_bp
-    from app.tourism import tourism_bp
-    from app.transport import transport_bp, transport_admin_bp
-    from app.accommodation import accommodation_bp
+    # Feature-Based Blueprints — imported lazily inside each flag check below
 
     # ------------------------------------------------------------------
     # Register Blueprints
@@ -643,31 +780,69 @@ def create_app(config_object=None) -> Flask:
     for bp in api_blueprints:
         app.register_blueprint(bp)
 
-    # 3. Conditional Feature Blueprints
-    if app.config.get("TOURNAMENT_ENABLED", True):
+    # 3. Load database module flags BEFORE blueprint registration (single source of truth)
+    try:
+        from app.services.module_toggle_service import ModuleToggleService
+        ModuleToggleService.load_overrides_into_app()
+        logger.debug("✅ Module flags loaded from DB (single source of truth)")
+    except Exception as exc:
+        logger.warning(f"Failed to load module flags from DB: {exc}")
+
+    # Start Redis Pub/Sub subscriber for real-time module updates
+    start_module_toggle_subscriber()
+
+    # 4. Register ALL blueprints at startup (runtime checks handle module status)
+    # Tournament module
+    try:
+        from app.tournament import tournament_bp
         app.register_blueprint(tournament_bp)
+        app.logger.info("✅ Tournament module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register tournament module: {e}")
 
-    if app.config.get("TOURISM_ENABLED", True):
+    # Tourism module
+    try:
+        from app.tourism import tourism_bp
+        from app.tourism import routes  # noqa: F401 – attaches routes to blueprint
         app.register_blueprint(tourism_bp)
+        app.logger.info("✅ Tourism module registered with routes")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register tourism module: {e}")
 
-    if app.config.get("TRANSPORT_ENABLED", True):
-        from app.transport import init_transport_module
+    # Transport module
+    try:
+        from app.transport import transport_bp, transport_admin_bp, init_transport_module
         init_transport_module(app)
         app.register_blueprint(transport_bp, url_prefix='/transport')
         app.register_blueprint(transport_admin_bp, url_prefix='/transport/admin')
+        app.logger.info("✅ Transport module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register transport module: {e}")
 
-    if app.config.get("ACCOMMODATION_ENABLED", True):
+    # Accommodation module
+    try:
+        from app.accommodation import accommodation_bp
         app.register_blueprint(accommodation_bp)
+        app.logger.info("✅ Accommodation module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register accommodation module: {e}")
+
+    # Events module - already registered in core_blueprints
 
     # Wallet module
-    from app.wallet.routes import wallet_bp
-    app.register_blueprint(wallet_bp)
-    # JSON PIN API (register routes_pin blueprint so the frontend PIN modal can call the API)
+    try:
+        from app.wallet.routes import wallet_bp
+        app.register_blueprint(wallet_bp)
+        app.logger.info("✅ Wallet module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register wallet module: {e}")
+
+    # JSON PIN API
     try:
         from app.wallet.routes_pin import pin_bp
         app.register_blueprint(pin_bp)
     except ImportError:
-        logger.warning('wallet.routes_pin not found; PIN JSON API endpoints not registered')
+        app.logger.warning('wallet.routes_pin not found; PIN JSON API endpoints not registered')
     
     # Payment methods API (register under admin)
     try:
@@ -710,14 +885,28 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     try:
         from app.events.signal_handlers import connect_event_signal_handlers
-        # Connect event signal handlers
-        with app.app_context():
-            connect_event_signal_handlers()
+        connect_event_signal_handlers()
         logger.info("✅ Event signal handlers connected")
     except ImportError as e:
         logger.warning(f"Could not import event signal handlers: {e}")
     except Exception as e:
         logger.error(f"Failed to connect event signal handlers: {e}")
+
+    # ------------------------------------------------------------------
+    # Module disabled page handler (always register - handles disabled modules gracefully)
+    # ------------------------------------------------------------------
+    try:
+        from app.utils.module_disabled import module_disabled_bp
+        app.register_blueprint(module_disabled_bp)
+        app.logger.info("✅ Module disabled page handler registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register module disabled page handler: {e}")
+
+    # ------------------------------------------------------------------
+    # Template helpers for module isolation
+    # ------------------------------------------------------------------
+    from app.utils.template_helpers import register_template_helpers
+    register_template_helpers(app)
 
     # ------------------------------------------------------------------
     # Context processors
@@ -771,8 +960,14 @@ def create_app(config_object=None) -> Flask:
 
         if _cu.is_authenticated:
             try:
-                from app.profile.models import get_profile_by_user
-                _p = get_profile_by_user(_cu.public_id)
+                from flask import g as _g
+                if not hasattr(_g, '_req_profiles'):
+                    _g._req_profiles = {}
+                _pk = str(_cu.public_id)
+                if _pk not in _g._req_profiles:
+                    from app.profile.models import get_profile_by_user
+                    _g._req_profiles[_pk] = get_profile_by_user(_cu.public_id)
+                _p = _g._req_profiles[_pk]
                 _profile_completed = bool(_p and _p.profile_completed)
             except Exception:
                 pass
@@ -794,26 +989,69 @@ def create_app(config_object=None) -> Flask:
             "nav_org_name":          _org_name,
         }
 
+    def _safe_url(endpoint, *args, **kwargs):
+        """Generate URL if endpoint exists, otherwise return '#'.
+
+        This prevents BuildError when a module is disabled or endpoint is missing.
+        Catches all exceptions to ensure template rendering never crashes.
+        Used by context processors to prevent routing crashes.
+        """
+        try:
+            return url_for(endpoint, *args, **kwargs)
+        except Exception:
+            logger.debug(f"safe_url: endpoint '{endpoint}' not found or invalid, returning '#'")
+            return "#"
+
+    @app.context_processor
+    def inject_feature_flags() -> Dict:
+        """Inject module feature flags and safe config into all templates.
+
+        Templates MUST use `modules.<feature>` for feature toggling and
+        `config.<key>` for application settings.  Access to Flask internals
+        such as `current_app` or `view_functions` inside templates is
+        STRICTLY FORBIDDEN.
+        """
+        modules = current_app.config.get("MODULE_FLAGS", {})
+
+        return {
+            "modules": modules,
+            "config": {
+                "app_name": current_app.config.get("APP_NAME", "AFCON 360"),
+                "tournament_name": current_app.config.get("TOURNAMENT_NAME", "AFCON Tournament"),
+                "year": current_app.config.get("YEAR", 2025),
+                "require_email_verification": current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False),
+                "allow_username_login": current_app.config.get("ALLOW_USERNAME_LOGIN", True),
+            },
+            "safe_url": _safe_url,
+        }
+
     @app.context_processor
     def inject_links() -> Dict:
-        def resolve_endpoint(candidates, default="#"):
-            for ep in candidates:
-                try:
-                    return url_for(ep)
-                except:
-                    continue
-            return default
+        """Resolve safe links using module flags rather than runtime reflection.
 
-        modules = {
-            "wallet_home": ["wallet.wallet_home"],
-            "wallet_dashboard": ["wallet.wallet_dashboard"],
-            "tournament_home": ["tournament.home"],
-            "auth_login": ["auth.login"],
-            "auth_register": ["auth.register"],
-            "index": ["index"],
+        All URL generation uses _safe_url() to prevent BuildError crashes
+        when endpoints are missing or modules are disabled.
+        """
+        modules = current_app.config.get("MODULE_FLAGS", {})
+
+        # Use _safe_url for all URL generation to prevent BuildError
+        links = {
+            "auth_login": _safe_url("auth.login"),
+            "auth_register": _safe_url("auth.register"),
+            "index": _safe_url("index"),
         }
-        links = {k: resolve_endpoint(v, f"/{k}") for k, v in modules.items()}
-        return {"links": links, **inject_sitewide()}
+        vf = current_app.view_functions
+        links["wallet_home"] = _safe_url("wallet.wallet_home") if modules.get("wallet") and "wallet.wallet_home" in vf else "#"
+        links["wallet_dashboard"] = _safe_url("wallet.wallet_dashboard") if modules.get("wallet") and "wallet.wallet_dashboard" in vf else "#"
+        links["tournament_home"] = _safe_url("tournament.home") if modules.get("tournament") and "tournament.home" in vf else "#"
+        links["tourism_home"] = _safe_url("tourism.home") if modules.get("tourism") and "tourism.home" in vf else "#"
+        links["transport_home"] = _safe_url("transport.home") if modules.get("transport") and "transport.home" in vf else "#"
+        links["accommodation_index"] = _safe_url("accommodation.guest.search") if modules.get("accommodation") and "accommodation.guest.search" in vf else "#"
+        links["kyc_index"] = _safe_url("kyc.index") if "kyc.index" in vf else "#"
+        links["profile_public"] = _safe_url("profile.my_public_profile") if "profile.my_public_profile" in vf else "#"
+        links["profile_account"] = _safe_url("profile.account_overview") if "profile.account_overview" in vf else "#"
+        links["events_list"] = _safe_url("events.list") if "events.list" in vf else "#"
+        return {"links": links}
 
     # ------------------------------------------------------------------
     # CSRF FIX: Returning plain string to prevent double-encoding
@@ -864,7 +1102,6 @@ def create_app(config_object=None) -> Flask:
     @app.context_processor
     def wallet_utility_processor():
         """Make wallet status available in all templates"""
-        from flask import current_app
         from flask_login import current_user
         from app.wallet.services.wallet_status_service import WalletStatusService
         
@@ -913,73 +1150,86 @@ def create_app(config_object=None) -> Flask:
 
     @app.context_processor
     def inject_kyc_data():
-        """Inject KYC tier data into all templates."""
+        """Inject KYC tier data into all templates (cached 5 min per user)."""
         from flask_login import current_user
-        if current_user.is_authenticated:
-            try:
-                db.session.rollback()   # ensure clean state before any query
-                from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits
-                # current_user.id is internal BIGINT id (from User model)
-                kyc_info = calculate_kyc_tier(current_user.id)
-                user_limits = get_user_limits(current_user.id)
-                return {
-                    'kyc_info': kyc_info,
-                    'kyc_tier': kyc_info.get('tier', 0),
-                    'kyc_tier_name': kyc_info.get('tier_name', 'Unregistered'),
-                    'kyc_limits': user_limits,
-                    'kyc_missing_reqs': kyc_info.get('missing_requirements', []),
-                    'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
-                                   3: 'success', 4: 'warning', 5: 'danger'}
-                }
-            except Exception as e:
-                db.session.rollback()
-                logger.warning(f"KYC data injection error: {e}")
-        return {
-            'kyc_info': None,
-            'kyc_tier': 0,
-            'kyc_tier_name': 'Unregistered',
-            'kyc_limits': {},
-            'kyc_missing_reqs': [],
+        _empty = {
+            'kyc_info': None, 'kyc_tier': 0, 'kyc_tier_name': 'Unregistered',
+            'kyc_limits': {}, 'kyc_missing_reqs': [],
             'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
                            3: 'success', 4: 'warning', 5: 'danger'}
         }
+        if not current_user.is_authenticated:
+            return _empty
+        _cache_key = f'kyc_ctx_{current_user.id}'
+        _cached = cache.get(_cache_key)
+        if _cached is not None:
+            return _cached
+        try:
+            from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits
+            kyc_info = calculate_kyc_tier(current_user.id)
+            user_limits = get_user_limits(current_user.id)
+            result = {
+                'kyc_info': kyc_info,
+                'kyc_tier': kyc_info.get('tier', 0),
+                'kyc_tier_name': kyc_info.get('tier_name', 'Unregistered'),
+                'kyc_limits': user_limits,
+                'kyc_missing_reqs': kyc_info.get('missing_requirements', []),
+                'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
+                               3: 'success', 4: 'warning', 5: 'danger'}
+            }
+            cache.set(_cache_key, result, timeout=300)
+            return result
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(f"KYC data injection error: {e}")
+            return _empty
 
     @app.context_processor
     def inject_audit_summary():
-        """Inject recent audit events for current user."""
+        """Inject recent audit events for current user (cached 60s per user)."""
         from flask_login import current_user
-        if current_user.is_authenticated:
-            try:
-                db.session.rollback()   # ensure clean state before any query
-                from app.audit.forensic_audit import ForensicAuditService
-                # Use public_id for entity_id
-                timeline = ForensicAuditService.get_audit_timeline(
-                    entity_type="user",
-                    entity_id=str(current_user.public_id),
-                    days=7
-                )
-                return {'audit_summary': timeline[:5]}
-            except Exception as e:
-                db.session.rollback()
-                logger.warning(f"Audit summary injection error: {e}")
-                return {'audit_summary': []}
-        return {'audit_summary': []}
+        if not current_user.is_authenticated:
+            return {'audit_summary': []}
+        _cache_key = f'audit_summary_{current_user.public_id}'
+        _cached = cache.get(_cache_key)
+        if _cached is not None:
+            return {'audit_summary': _cached}
+        try:
+            from app.audit.forensic_audit import ForensicAuditService
+            timeline = ForensicAuditService.get_audit_timeline(
+                entity_type="user",
+                entity_id=str(current_user.public_id),
+                days=7
+            )
+            result = timeline[:5]
+            cache.set(_cache_key, result, timeout=60)
+            return {'audit_summary': result}
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(f"Audit summary injection error: {e}")
+            cache.set(_cache_key, [], timeout=60)
+            return {'audit_summary': []}
 
     # Add user context processor
     @app.context_processor
     def inject_user_context():
         """Inject user context into all templates."""
         from flask_login import current_user
-        from app.wallet.models.ledger import AccountModel
         from app.profile.models import get_profile_by_user
 
         if not current_user.is_authenticated:
             return {}
 
-        # Calculate profile completion percentage
+        # Calculate profile completion percentage (use g-cache to avoid duplicate DB query)
         profile_completion = 0
         try:
-            profile = get_profile_by_user(current_user.public_id)
+            from flask import g as _g
+            if not hasattr(_g, '_req_profiles'):
+                _g._req_profiles = {}
+            _pk = str(current_user.public_id)
+            if _pk not in _g._req_profiles:
+                _g._req_profiles[_pk] = get_profile_by_user(current_user.public_id)
+            profile = _g._req_profiles[_pk]
             if profile:
                 # Check various profile fields
                 fields_to_check = [
@@ -1010,21 +1260,19 @@ def create_app(config_object=None) -> Flask:
             elif current_user.has_global_role('support'):
                 user_highest_role = "Support"
 
-        # Get wallet balance
+        # Get wallet balance (cached 30s to avoid per-request DB hit)
         wallet_balance = "UGX 0"
         try:
-            from app.wallet.models.ledger import AccountModel
-            from app.wallet.services.wallet_service import WalletService
-            from app.identity.models.user import User
-            
-            # current_user.id is public_id (UUID), need internal id (BIGINT)
-            user = User.query.filter_by(public_id=str(current_user.id)).first()
-            internal_id = user.id if user else current_user.id
-            
-            service = WalletService()
-            balance_data = service.get_balance(internal_id)
-            balance_value = balance_data.get('balance', '0.00') if isinstance(balance_data, dict) else '0.00'
-            wallet_balance = f"UGX {balance_value}"
+            _wb_key = f'wallet_balance_{current_user.id}'
+            _wb_cached = cache.get(_wb_key)
+            if _wb_cached is None:
+                from app.wallet.services.wallet_service import WalletService
+                service = WalletService()
+                balance_data = service.get_balance(current_user.id)
+                balance_value = balance_data.get('balance', '0.00') if isinstance(balance_data, dict) else '0.00'
+                _wb_cached = f"UGX {balance_value}"
+                cache.set(_wb_key, _wb_cached, timeout=30)
+            wallet_balance = _wb_cached
         except Exception as e:
             logger.warning(f"Wallet balance query error: {e}")
 
@@ -1177,34 +1425,7 @@ def create_app(config_object=None) -> Flask:
             pass
         return ("", 204)
 
-    with app.app_context():
-        # Validate Dual ID System
-        from sqlalchemy import inspect
-        try:
-            inspector = inspect(db.engine)
-            columns = [col['name'] for col in inspector.get_columns('users')]
-            if 'id' in columns and 'user_id' in columns:
-                logger.info("✅ Dual ID system validated.")
-        except:
-            pass
-
-        # Validate transactions.client_request_id unique index exists (idempotency)
-        try:
-            inspector = inspect(db.engine)
-            idxs = inspector.get_indexes('transactions')
-            has_client_request_unique = any(
-                idx.get('column_names') == ['client_request_id'] and idx.get('unique')
-                for idx in idxs
-            )
-            if not has_client_request_unique:
-                logger.critical(
-                    "Missing unique index on transactions.client_request_id - idempotency may be broken. "
-                    "Create a DB migration to add a unique index on transactions(client_request_id)."
-                )
-            else:
-                logger.info("✅ transactions.client_request_id unique index present")
-        except Exception as e:
-            logger.warning(f"Could not validate transactions indexes: {e}")
+    # DB schema validation moved to _run_deferred_startup (first-request handler)
 
 
 
@@ -1246,6 +1467,32 @@ def create_app(config_object=None) -> Flask:
         <p><strong>SQLite files:</strong> {[f for f in os.listdir(current_app.instance_path) if f.endswith('.db')]}</p>
         <p><strong>ENV:</strong> FLASK_ENV={os.getenv('FLASK_ENV')}, APP_ENV={os.getenv('APP_ENV')}</p>
         """
+
+    # ------------------------------------------------------------------
+    # Module isolation API endpoints
+    # ------------------------------------------------------------------
+    try:
+        from app.admin.owner.api.module_api import module_api_bp
+        app.register_blueprint(module_api_bp)
+        app.logger.info("✅ Module API blueprint registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register module API blueprint: {e}")
+
+    try:
+        from app.api.health import health_bp
+        app.register_blueprint(health_bp)
+        app.logger.info("✅ Health API blueprint registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register health API blueprint: {e}")
+
+    # ------------------------------------------------------------------
+    # Module reload middleware for instant toggle effect
+    # ------------------------------------------------------------------
+    try:
+        from app.middleware.reload_modules import init_module_reload
+        init_module_reload(app)
+    except Exception as e:
+        app.logger.error(f"❌ Failed to initialize module reload middleware: {e}")
 
     # ── Theme CSS generation deferred to first request ──────────────────────────────
     # Global theme CSS will be generated on first access via theme routes

@@ -19,7 +19,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <span class="form-label" style="margin-bottom:0;">Base Currency</span>
-        <select class="form-control" style="width:auto;" onchange="location.href='{{ url_for('wallet.fx_rates') }}?base=' + this.value">
+        <select class="form-control" style="width:auto;" onchange="location.href='{{ safe_url('wallet.fx_rates') }}?base=' + this.value">
           <option value="UGX" {% if request.args.get('base') == 'UGX' or not request.args.get('base') %}selected{% endif %}>UGX — Ugandan Shilling</option>
           <option value="USD" {% if request.args.get('base') == 'USD' %}selected{% endif %}>USD — US Dollar</option>
           <option value="EUR" {% if request.args.get('base') == 'EUR' %}selected{% endif %}>EUR — Euro</option>

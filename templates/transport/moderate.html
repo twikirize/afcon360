@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Moderate Transport - AFCON360{% endblock %}
 
 {% block head %}
@@ -111,11 +111,11 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
         <tr>
           <td class="mono">{{ booking.id }}</td>
           <td>{{ booking.passenger_name if booking.passenger_name else 'Unknown' }}</td>
-          <td>{{ booking.pickup_location or '-' }} → {{ booking.dropoff_location or '-' }}</td>
+          <td>{{ booking.pickup_location or '-' }} ? {{ booking.dropoff_location or '-' }}</td>
           <td><span class="badge badge-pending">{{ booking.status }}</span></td>
           <td class="mono">{{ booking.created_at.strftime('%Y-%m-%d') if booking.created_at else '-' }}</td>
           <td>
-            <a href="{{ url_for('transport.moderate_booking', id=booking.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]transport.moderate_booking', id=booking.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>
@@ -157,7 +157,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           <td>{{ vehicle.owner.username if vehicle.owner else 'Unknown' }}</td>
           <td><span class="badge badge-pending">{{ vehicle.verification_status }}</span></td>
           <td>
-            <a href="{{ url_for('transport.moderate_vehicle', id=vehicle.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]transport.moderate_vehicle', id=vehicle.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>
@@ -197,7 +197,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           <td class="mono">{{ driver.license_number or '-' }}</td>
           <td><span class="badge badge-pending">{{ driver.verification_status }}</span></td>
           <td>
-            <a href="{{ url_for('transport.moderate_driver', id=driver.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]transport.moderate_driver', id=driver.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>

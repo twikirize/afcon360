@@ -77,20 +77,28 @@ class Config:
 
     # Database isolation level for transaction safety (P0 Critical)
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "isolation_level": os.getenv("DB_ISOLATION_LEVEL", "REPEATABLE_READ")
+        "isolation_level": os.getenv("DB_ISOLATION_LEVEL", "REPEATABLE_READ"),
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")),
+        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "1800")),
+        "pool_pre_ping": True,
     }
 
     # ============================================================================
     # MODULE TOGGLES (KILL SWITCHES)
     # ============================================================================
+    # NOTE: Dashboard is the single source of truth. These are only initial defaults.
+    # Actual module states are loaded from database via ModuleToggleService.
     MODULE_FLAGS = {
-        "wallet": os.getenv("ENABLE_WALLET", "true").lower() == "true",
-        "tourism": os.getenv("ENABLE_TOURISM", "false").lower() == "true",
-        "transport": os.getenv("ENABLE_TRANSPORT", "true").lower() == "true",
-        "accommodation": os.getenv("ENABLE_ACCOMMODATION", "true").lower() == "true",
-        "tournament": os.getenv("ENABLE_TOURNAMENT", "true").lower() == "true",
-        "agents": os.getenv("ENABLE_AGENTS", "false").lower() == "true",
-        "admin": os.getenv("ENABLE_ADMIN", "true").lower() == "true",
+        "wallet": True,
+        "tourism": True,
+        "transport": True,
+        "accommodation": True,
+        "tournament": True,
+        "events": True,
+        "agents": False,
+        "admin": True,
     }
 
     # ============================================================================
@@ -209,7 +217,7 @@ class TestingConfig(Config):
     # Module toggles for testing
     MODULE_FLAGS = {
         "wallet": True,
-        "tourism": False,
+        "tourism": True,
         "transport": True,
         "accommodation": True,
         "tournament": True,

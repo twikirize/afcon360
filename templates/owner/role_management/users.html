@@ -1,0 +1,524 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - Role Management - AFCON360{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+<style>
+  .user-management-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  
+  .user-header {
+    margin-bottom: 2rem;
+  }
+  
+  .user-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .user-header p {
+    color: #6b7280;
+    margin-top: 0.5rem;
+  }
+  
+  .filters-section {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .filters-row {
+    display: grid;
+    grid-template-columns: 1fr 200px 120px;
+    gap: 1rem;
+    align-items: end;
+  }
+  
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .form-group label {
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.875rem;
+  }
+  
+  .form-control {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+  }
+  
+  .form-control:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  
+  .btn-search {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .btn-search:hover {
+    background: #2563eb;
+  }
+  
+  .users-table {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+  }
+  
+  .table-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .table-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  
+  .user-count {
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
+  
+  .table-wrapper {
+    overflow-x: auto;
+  }
+  
+  .users-table table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .users-table th {
+    background: #f9fafb;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.875rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .users-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.875rem;
+  }
+  
+  .users-table tr:hover {
+    background: #f9fafb;
+  }
+  
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #6b7280;
+  }
+  
+  .user-details {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .user-name {
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  
+  .user-email {
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+  
+  .role-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+  
+  .role-owner {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  
+  .role-super_admin {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  
+  .role-admin {
+    background: #e0e7ff;
+    color: #3730a3;
+  }
+  
+  .role-moderator {
+    background: #f3e8ff;
+    color: #6b21a8;
+  }
+  
+  .role-user {
+    background: #f3f4f6;
+    color: #374151;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .btn-assign {
+    background: #3b82f6;
+    color: white;
+  }
+  
+  .btn-assign:hover {
+    background: #2563eb;
+  }
+  
+  .btn-revoke {
+    background: #ef4444;
+    color: white;
+  }
+  
+  .btn-revoke:hover {
+    background: #dc2626;
+  }
+  
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+  }
+  
+  .pagination a {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #374151;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+  }
+  
+  .pagination a:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+  
+  .pagination .current {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6b7280;
+  }
+  
+  .empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #d1d5db;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="user-management-container">
+  <div class="user-header">
+    <h1><i class="bi bi-people-fill"></i> User Management</h1>
+    <p>Manage user roles and permissions across the platform</p>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-section">
+    <form method="GET" class="filters-row">
+      <div class="form-group">
+        <label for="search">Search Users</label>
+        <input type="text" id="search" name="search" class="form-control" 
+               placeholder="Search by username or email..." value="{{ search }}">
+      </div>
+      
+      <div class="form-group">
+        <label for="role">Filter by Role</label>
+        <select id="role" name="role" class="form-control">
+          <option value="">All Roles</option>
+          {% for role in available_roles %}
+          <option value="{{ role }}" {{ 'selected' if role_filter == role }}>
+            {{ role.replace('_', ' ').title() }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <button type="submit" class="btn-search">
+        <i class="bi bi-search"></i> Search
+      </button>
+    </form>
+  </div>
+
+  <!-- Users Table -->
+  <div class="users-table">
+    <div class="table-header">
+      <div class="table-title">Users</div>
+      <div class="user-count">{{ users.total }} users found</div>
+    </div>
+    
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Current Role</th>
+            <th>Created</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users.items %}
+          <tr>
+            <td>
+              <div class="user-info">
+                <div class="user-avatar">
+                  {{ user.username[0].upper() if user.username else 'U' }}
+                </div>
+                <div class="user-details">
+                  <div class="user-name">{{ user.username }}</div>
+                  <div class="user-email">{{ user.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="role-badge role-{{ user.role }}">
+                {{ user.role.replace('_', ' ').title() }}
+              </span>
+            </td>
+            <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'Unknown' }}</td>
+            <td>
+              {% if user.is_active %}
+              <span style="color: #059669; font-weight: 500;">Active</span>
+              {% else %}
+              <span style="color: #dc2626; font-weight: 500;">Inactive</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="action-buttons">
+                {% if user.role != 'owner' %}
+                <button class="btn-sm btn-assign" onclick="showAssignRoleModal({{ user.id }}, '{{ user.username }}')">
+                  <i class="bi bi-person-plus"></i> Assign
+                </button>
+                {% if user.role != 'user' %}
+                <button class="btn-sm btn-revoke" onclick="showRevokeRoleModal({{ user.id }}, '{{ user.username }}')">
+                  <i class="bi bi-person-dash"></i> Revoke
+                </button>
+                {% endif %}
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5">
+              <div class="empty-state">
+                <i class="bi bi-people"></i>
+                <div>No users found</div>
+                <div style="font-size: 0.875rem; margin-top: 0.5rem;">
+                  Try adjusting your search or filters
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Pagination -->
+    {% if users.pages > 1 %}
+    <div class="pagination">
+      {% if users.has_prev %}
+        <a href="{{ url_for('owner_role_management.manage_users', page=users.prev_num, search=search, role=role_filter) }}">
+          <i class="bi bi-chevron-left"></i> Previous
+        </a>
+      {% endif %}
+      
+      {% for page_num in users.iter_pages() %}
+        {% if page_num %}
+          {% if page_num != users.page %}
+            <a href="{{ url_for('owner_role_management.manage_users', page=page_num, search=search, role=role_filter) }}">
+              {{ page_num }}
+            </a>
+          {% else %}
+            <span class="current">{{ page_num }}</span>
+          {% endif %}
+        {% else %}
+          <span>...</span>
+        {% endif %}
+      {% endfor %}
+      
+      {% if users.has_next %}
+        <a href="{{ url_for('owner_role_management.manage_users', page=users.next_num, search=search, role=role_filter) }}">
+          Next <i class="bi bi-chevron-right"></i>
+        </a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Assign Role Modal -->
+<div id="assignRoleModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 12px; padding: 2rem; width: 90%; max-width: 500px;">
+    <h3 style="margin-bottom: 1rem;">Assign Role</h3>
+    <form method="POST" action="{{ url_for('owner_role_management.assign_role') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" id="assignUserId" name="user_id">
+      
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="role">Select Role</label>
+        <select id="role" name="role" class="form-control" required>
+          <option value="">Select a role...</option>
+          {% for role in available_roles %}
+          <option value="{{ role }}">{{ role.replace('_', ' ').title() }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="reason">Reason (optional)</label>
+        <textarea id="reason" name="reason" class="form-control" rows="3" placeholder="Reason for role assignment..."></textarea>
+      </div>
+      
+      <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+        <button type="button" onclick="hideAssignRoleModal()" class="btn-sm" style="background: #f3f4f6; color: #374151;">
+          Cancel
+        </button>
+        <button type="submit" class="btn-sm btn-assign">
+          <i class="bi bi-person-plus"></i> Assign Role
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Revoke Role Modal -->
+<div id="revokeRoleModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 12px; padding: 2rem; width: 90%; max-width: 500px;">
+    <h3 style="margin-bottom: 1rem;">Revoke Role</h3>
+    <p style="color: #6b7280; margin-bottom: 1rem;">
+      Are you sure you want to revoke the role from <strong id="revokeUsername"></strong>? This will reset them to a regular user.
+    </p>
+    <form method="POST" action="{{ url_for('owner_role_management.revoke_role') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" id="revokeUserId" name="user_id">
+      
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="revokeReason">Reason (optional)</label>
+        <textarea id="revokeReason" name="reason" class="form-control" rows="3" placeholder="Reason for role revocation..."></textarea>
+      </div>
+      
+      <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+        <button type="button" onclick="hideRevokeRoleModal()" class="btn-sm" style="background: #f3f4f6; color: #374151;">
+          Cancel
+        </button>
+        <button type="submit" class="btn-sm btn-revoke">
+          <i class="bi bi-person-dash"></i> Revoke Role
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function showAssignRoleModal(userId, username) {
+  document.getElementById('assignUserId').value = userId;
+  document.getElementById('assignRoleModal').style.display = 'block';
+}
+
+function hideAssignRoleModal() {
+  document.getElementById('assignRoleModal').style.display = 'none';
+}
+
+function showRevokeRoleModal(userId, username) {
+  document.getElementById('revokeUserId').value = userId;
+  document.getElementById('revokeUsername').textContent = username;
+  document.getElementById('revokeRoleModal').style.display = 'block';
+}
+
+function hideRevokeRoleModal() {
+  document.getElementById('revokeRoleModal').style.display = 'none';
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+  if (event.target.id === 'assignRoleModal') {
+    hideAssignRoleModal();
+  }
+  if (event.target.id === 'revokeRoleModal') {
+    hideRevokeRoleModal();
+  }
+}
+</script>
+{% endblock %}

@@ -138,6 +138,21 @@
         </strong>
       </div>
     </div>
+
+    <a href="{{ safe_url('admin.owner.owner_role_management.role_management_dashboard') }}" class="settings-card" style="border-left:4px solid #8b5cf6;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">👥</div>
+        <span class="card-badge badge-security">Role Management</span>
+      </div>
+      <div class="card-title">Role Management</div>
+      <div class="card-description">
+        Manage user roles, permissions, and access controls. Assign roles, revoke access, and configure admin role management permissions.
+      </div>
+      <div style="margin-top:1rem;font-size:0.8125rem;color:#6b7280;background:#f9fafb;border-radius:8px;padding:0.75rem 1rem;">
+        <i class="bi bi-shield-check"></i>
+        Owner exclusive control with delegation options
+      </div>
+    </a>
   </div>
 
   <!-- Authentication Section -->
@@ -221,6 +236,37 @@
         Generate and view compliance reports and audits
       </div>
       <span class="card-badge badge-kyc">Compliance</span>
+    </a>
+  </div>
+
+  <!-- Accommodation Section -->
+  <h3 class="section-title">Accommodation & Hospitality</h3>
+  <div class="settings-grid">
+    <a href="#" class="settings-card">
+      <div class="card-icon">🏨</div>
+      <div class="card-title">Accommodation Platform</div>
+      <div class="card-description">
+        Configure booking rules, pricing, cancellation policies, and OTA-grade features
+      </div>
+      <span class="card-badge badge-system">Accommodation</span>
+    </a>
+
+    <a href="/accommodation/admin/settings" class="settings-card">
+      <div class="card-icon">🏠</div>
+      <div class="card-title">Property Management</div>
+      <div class="card-description">
+        Manage property listings, verification, and accommodation system settings
+      </div>
+      <span class="card-badge badge-system">Properties</span>
+    </a>
+
+    <a href="/accommodation/admin/analytics" class="settings-card">
+      <div class="card-icon">📊</div>
+      <div class="card-title">Accommodation Analytics</div>
+      <div class="card-description">
+        View booking metrics, occupancy rates, and accommodation performance data
+      </div>
+      <span class="card-badge badge-audit">Analytics</span>
     </a>
   </div>
 

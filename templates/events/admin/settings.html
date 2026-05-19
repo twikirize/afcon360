@@ -278,7 +278,7 @@
       <p>Platform-wide controls for event creation, moderation, and lifecycle</p>
     </div>
     <div class="header-actions">
-      <a href="{{ url_for('events.admin_dashboard') }}" class="btn-ghost">
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="btn-ghost">
         <i class="fas fa-tachometer-alt"></i> Command Centre
       </a>
     </div>
@@ -746,7 +746,7 @@ async function saveSettings() {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
 
   try {
-    const resp = await fetch('{{ url_for("events.admin_settings_save") }}', {
+    const resp = await fetch('{{ safe_url('url_for\(['"]events.admin_settings_save") }}', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

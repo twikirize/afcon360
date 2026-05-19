@@ -27,25 +27,25 @@ def dashboard():
     kyc_info = calculate_kyc_tier(current_user.id)
     user_limits = get_user_limits(current_user.id)
 
-    # Get wallet balance using AccountModel
-    # current_user.id is public_id (UUID), need internal id (BIGINT)
+    # Get user internal ID for widget loaders
     from app.identity.models.user import User
-    from app.wallet.models.ledger import AccountOwnerType
     user = User.query.filter_by(public_id=str(current_user.public_id)).first()
-    internal_id = user.id if user else current_user.id
+    internal_id = user.id if user else None
     
-    account = AccountModel.query.filter_by(
-        user_id=internal_id,
-        owner_type=AccountOwnerType.USER
-    ).first()
-    if account:
-        service = WalletService()
-        wallet_balance = service.get_balance(internal_id)
-    else:
-        wallet_balance = Decimal('0')
+    # Load widget data safely - each can fail independently
+    from app.utils.widget_loader import (
+        get_wallet_widget_data,
+        get_events_widget_data,
+        get_transport_widget_data,
+        get_accommodation_widget_data,
+        get_tourism_widget_data
+    )
     
-    # For backward compatibility with templates
-    wallet = account
+    wallet_data = get_wallet_widget_data(internal_id) if internal_id else {'enabled': False}
+    events_data = get_events_widget_data(limit=5)
+    transport_data = get_transport_widget_data(internal_id) if internal_id else {'enabled': False}
+    accommodation_data = get_accommodation_widget_data(internal_id) if internal_id else {'enabled': False}
+    tourism_data = get_tourism_widget_data(internal_id) if internal_id else {'enabled': False}
 
     # 🆕 Get profile and completion percentage
     profile = get_profile_by_user(current_user.public_id)
@@ -60,20 +60,9 @@ def dashboard():
         'total_spent': 0
     }
 
-    # 🆕 Upcoming events (placeholder - replace with actual EventService)
-    upcoming_events = []
-    try:
-        from app.events.services import EventService
-        if hasattr(EventService, 'get_upcoming_events'):
-            upcoming_events = EventService.get_upcoming_events(limit=5)
-    except ImportError:
-        pass  # Events module not available yet
-
-    # 🆕 Recent stays (placeholder - replace with actual accommodation service)
-    recent_stays = []
-
-    # 🆕 Recommended items (placeholder)
-    recommended = []
+    # Legacy wallet balance for template compatibility
+    wallet_balance = wallet_data.get('balance', 0)
+    wallet = None  # Keep None for now, templates should use wallet_data
 
     driver_status = None
     try:
@@ -94,9 +83,16 @@ def dashboard():
         user_limits=user_limits,
         wallet=wallet,
         wallet_balance=wallet_balance,
-        upcoming_events=upcoming_events,
-        recent_stays=recent_stays,
-        recommended=recommended,
+        # New widget data
+        wallet_data=wallet_data,
+        events_data=events_data,
+        transport_data=transport_data,
+        accommodation_data=accommodation_data,
+        tourism_data=tourism_data,
+        # Legacy compatibility
+        upcoming_events=events_data.get('events', []),
+        recent_stays=accommodation_data.get('bookings', []),
+        recommended=[],
         stats=stats,
         driver_status=driver_status,
     )

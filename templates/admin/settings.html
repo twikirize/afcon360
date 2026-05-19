@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transport Settings - AFCON360 Admin</title>
+    <title>Admin Settings - AFCON360</title>
     <link href="{{ url_for('static', filename='css/transport.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/admin.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -787,8 +787,8 @@
         <!-- Header -->
         <div class="header">
             <div>
-                <h1><i class="fas fa-cogs"></i> Transport Module Settings</h1>
-                <p class="text-muted">Manage transport module configuration and feature flags</p>
+                <h1><i class="fas fa-cogs"></i> Admin Settings</h1>
+                <p class="text-muted">Comprehensive admin configuration and platform management</p>
             </div>
             <div class="header-actions">
                 <button class="btn" onclick="refreshStatus()">
@@ -800,53 +800,130 @@
             </div>
         </div>
 
-        <!-- Status Grid -->
+        <!-- Admin Settings Grid -->
         <div class="status-grid">
-            <div class="status-card {{ 'critical' if not status.module_enabled else 'success' }}">
+            <div class="status-card success">
                 <div class="status-card-header">
-                    <h3><i class="fas fa-truck"></i> Module Status</h3>
-                    <span class="status-badge {{ 'enabled' if status.module_enabled else 'disabled' }}">
-                        {{ 'ENABLED' if status.module_enabled else 'DISABLED' }}
+                    <h3><i class="fas fa-cogs"></i> Platform Settings</h3>
+                    <span class="status-badge enabled">
+                        CONFIGURED
                     </span>
                 </div>
-                <p>Transport module {{ 'is active and running' if status.module_enabled else 'is disabled' }}</p>
+                <p>Platform-wide configuration and settings</p>
                 <div class="status-features">
                     <div class="status-feature">
-                        <span class="status-indicator {{ 'on' if not status.maintenance_mode else 'off' }}"></span>
-                        <span>Maintenance: {{ 'Off' if not status.maintenance_mode else 'On' }}</span>
+                        <span class="status-indicator on"></span>
+                        <span>Booking Rules: Active</span>
                     </div>
                     <div class="status-feature">
-                        <span class="status-indicator {{ 'on' if status.critical_features_ok else 'off' }}"></span>
-                        <span>Critical Features: {{ 'OK' if status.critical_features_ok else 'Issues' }}</span>
+                        <span class="status-indicator on"></span>
+                        <span>Pricing: Configured</span>
                     </div>
                 </div>
             </div>
 
-            <div class="status-card {{ 'warning' if status.environment != 'production' else 'success' }}">
+            <div class="status-card success">
                 <div class="status-card-header">
-                    <h3><i class="fas fa-server"></i> Environment</h3>
-                    <span class="status-badge {{ 'warning' if status.environment != 'production' else 'enabled' }}">
-                        {{ status.environment|upper }}
+                    <h3><i class="fas fa-chart-line"></i> Analytics</h3>
+                    <span class="status-badge enabled">
+                        MONITORING
                     </span>
                 </div>
-                <p>Current deployment environment</p>
+                <p>Platform analytics and metrics</p>
                 <div class="status-features">
                     <div class="status-feature">
-                        <span class="status-indicator {{ 'on' if status.integrations.payment_gateway else 'partial' if status.integrations.mock_payments else 'off' }}"></span>
-                        <span>Payments: {{ 'Live' if status.integrations.payment_gateway else 'Mock' if status.integrations.mock_payments else 'Off' }}</span>
+                        <span class="status-indicator on"></span>
+                        <span>Properties: Tracking</span>
                     </div>
                     <div class="status-feature">
-                        <span class="status-indicator {{ 'on' if status.integrations.external_platforms else 'off' }}"></span>
-                        <span>External Platforms: {{ 'On' if status.integrations.external_platforms else 'Off' }}</span>
+                        <span class="status-indicator on"></span>
+                        <span>Bookings: Active</span>
                     </div>
                 </div>
             </div>
 
-            <div class="status-card">
+            <div class="status-card success">
                 <div class="status-card-header">
-                    <h3><i class="fas fa-shield-alt"></i> Safety & Security</h3>
-                    <span class="status-badge {{ 'enabled' if status.safety_features.live_tracking or status.safety_features.sos_button else 'disabled' }}">
-                        {{ 'Partial' if status.safety_features.live_tracking or status.safety_features.sos_button else 'Off' }}
+                    <h3><i class="fas fa-gavel"></i> Moderation</h3>
+                    <span class="status-badge enabled">
+                        ACTIVE
+                    </span>
+                </div>
+                <p>Content moderation and review system</p>
+                <div class="status-features">
+                    <div class="status-feature">
+                        <span class="status-indicator on"></span>
+                        <span>Queue: Processing</span>
+                    </div>
+                    <div class="status-feature">
+                        <span class="status-indicator on"></span>
+                        <span>Filters: Configured</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Categories -->
+        <div class="category-tabs">
+            <div class="category-tab active" onclick="showCategory('platform')">Platform</div>
+            <div class="category-tab" onclick="showCategory('accommodation')">Accommodation</div>
+            <div class="category-tab" onclick="showCategory('events')">Events</div>
+            <div class="category-tab" onclick="showCategory('transport')">Transport</div>
+            <div class="category-tab" onclick="showCategory('users')">Users</div>
+        </div>
+
+        <!-- Platform Settings -->
+        <div class="category-card" id="platform-settings">
+            <div class="category-header">
+                <h3><i class="fas fa-cogs"></i> Platform Configuration</h3>
+                <span class="category-count">4 settings</span>
+            </div>
+            <div class="category-content">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>Auto-Confirm Bookings</h4>
+                        <p class="setting-desc">Automatically confirm bookings when requirements are met</p>
+                        <div class="setting-meta">
+                            <span class="setting-tag security">Booking</span>
+                            <span>Modified 2 days ago</span>
+                        </div>
+                    </div>
+                    <div class="setting-control">
+                        <div class="toggle-container">
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span>Enabled</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <div class="quick-action" onclick="window.location.href='{{ url_for('admin_settings.platform_settings') }}'">
+                <div class="quick-action-icon"><i class="fas fa-cogs"></i></div>
+                <h4>Platform Settings</h4>
+                <p>Configure platform-wide settings</p>
+            </div>
+            <div class="quick-action" onclick="window.location.href='{{ url_for('admin_settings.analytics_settings') }}'">
+                <div class="quick-action-icon"><i class="fas fa-chart-line"></i></div>
+                <h4>Analytics Dashboard</h4>
+                <p>View platform metrics</p>
+            </div>
+            <div class="quick-action" onclick="window.location.href='{{ url_for('admin_settings.moderation_settings') }}'">
+                <div class="quick-action-icon"><i class="fas fa-gavel"></i></div>
+                <h4>Moderation Queue</h4>
+                <p>Manage content moderation</p>
+            </div>
+            <div class="quick-action" onclick="window.location.href='{{ url_for('admin_settings.impersonation_control') }}'">
+                <div class="quick-action-icon"><i class="fas fa-user-secret"></i></div>
+                <h4>Impersonation</h4>
+                <p>Switch user roles</p>
+            </div>
+        </div>
                     </span>
                 </div>
                 <p>Safety features and security settings</p>
@@ -1636,7 +1713,7 @@
             showLoading('Saving settings...');
 
             try {
-                const response = await fetch('{{ url_for("transport.api_update_settings") }}', {
+                const response = await fetch('{{ safe_url('url_for\(['"]transport.api_update_settings") }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1664,7 +1741,7 @@
                         showConfirmation('Restart Required',
                             'Some changes require a system restart to take effect. Restart now?',
                             function() {
-                                window.location.href = '{{ url_for("transport.restart") }}';
+                                window.location.href = '{{ safe_url('url_for\(['"]transport.restart") }}';
                             }
                         );
                     }
@@ -1696,7 +1773,7 @@
             showLoading('Applying settings...');
 
             try {
-                const response = await fetch('{{ url_for("transport.api_apply_settings") }}', {
+                const response = await fetch('{{ safe_url('url_for\(['"]transport.api_apply_settings") }}', {
                     method: 'POST',
                     headers: {
                         'X-CSRF-Token': '{{ csrf_token }}'
@@ -1731,7 +1808,7 @@
             showLoading('Resetting to factory defaults...');
 
             try {
-                const response = await fetch('{{ url_for("transport.api_reset_settings") }}', {
+                const response = await fetch('{{ safe_url('url_for\(['"]transport.api_reset_settings") }}', {
                     method: 'POST',
                     headers: {
                         'X-CSRF-Token': '{{ csrf_token }}'
@@ -1765,7 +1842,7 @@
                     showLoading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing module...`);
 
                     try {
-                        const response = await fetch('{{ url_for("transport.api_toggle_module") }}', {
+                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_toggle_module") }}', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-Token': '{{ csrf_token }}'
@@ -1802,7 +1879,7 @@
                     showLoading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing maintenance mode...`);
 
                     try {
-                        const response = await fetch('{{ url_for("transport.api_toggle_maintenance") }}', {
+                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_toggle_maintenance") }}', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-Token': '{{ csrf_token }}'
@@ -1902,7 +1979,7 @@
             showLoading('Refreshing status...');
 
             try {
-                const response = await fetch('{{ url_for("transport.api_get_status") }}');
+                const response = await fetch('{{ safe_url('transport.api_get_status') }}');
                 const result = await response.json();
                 hideLoading();
 
@@ -1926,7 +2003,7 @@
                     showLoading('Initializing settings...');
 
                     try {
-                        const response = await fetch('{{ url_for("transport.api_initialize_settings") }}', {
+                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_initialize_settings") }}', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-Token': '{{ csrf_token }}'
@@ -2002,7 +2079,7 @@
                     try {
                         const settings = JSON.parse(e.target.result);
 
-                        const response = await fetch('{{ url_for("transport.api_import_settings") }}', {
+                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_import_settings") }}', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -2044,7 +2121,7 @@
         }
 
         function showAuditLog() {
-            window.open('{{ url_for("transport.audit_log") }}', '_blank');
+            window.open('{{ safe_url('url_for\(['"]transport.audit_log") }}', '_blank');
         }
     </script>
 </body>

@@ -174,6 +174,55 @@ def _dashboard_for_user(user) -> str:
         except:
             return url_for("index")
 
+    # STEP 7: New specialized admin roles
+    if "event_manager" in role_names:
+        try:
+            return url_for("admin.event_manager_dashboard")
+        except:
+            return url_for("index")
+
+    if "transport_admin" in role_names:
+        try:
+            return url_for("admin.transport_admin_dashboard")
+        except:
+            return url_for("index")
+
+    if "wallet_admin" in role_names:
+        try:
+            return url_for("admin.wallet_admin_dashboard")
+        except:
+            return url_for("index")
+
+    if "accommodation_admin" in role_names:
+        try:
+            return url_for("admin.accommodation_admin_dashboard")
+        except:
+            return url_for("index")
+
+    if "tourism_admin" in role_names:
+        try:
+            return url_for("admin.tourism_admin_dashboard")
+        except:
+            return url_for("index")
+
+    if "org_member" in role_names:
+        try:
+            return url_for("admin.org_member_dashboard")
+        except:
+            return url_for("index")
+
+    if "auditor" in role_names:
+        try:
+            return url_for("admin.role_dashboard", role_name="auditor")
+        except:
+            return url_for("index")
+
+    if "compliance_officer" in role_names:
+        try:
+            return url_for("admin.role_dashboard", role_name="compliance_officer")
+        except:
+            return url_for("index")
+
     # STEP 7: Check for driver profile
     try:
         from app.transport.models import DriverProfile, VerificationTier

@@ -18,7 +18,7 @@ def home():
     # Log access
     ForensicAuditService.log_attempt(
         entity_type="tourism",
-        entity_id="home",
+        entity_id=None,  # Not a specific entity, so pass None
         action="view_home",
         user_id=current_user.id,
         ip_address=request.remote_addr,

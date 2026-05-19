@@ -348,19 +348,19 @@
                                 {# Action Buttons #}
                                 <div class="reg-actions">
                                     {% if status != 'cancelled' %}
-                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="reg-btn reg-btn-primary">
                                         <i class="fas fa-qrcode"></i> View Ticket
                                     </a>
-                                    <a href="{{ url_for('transport.home') }}" class="reg-btn reg-btn-outline">
+                                    <a href="{{ safe_url('transport.home') }}" class="reg-btn reg-btn-outline">
                                         <i class="fas fa-bus"></i> Transport
                                     </a>
-                                    <a href="{{ url_for('accommodation.guest.search') }}" class="reg-btn reg-btn-outline">
+                                    <a href="{{ safe_url('accommodation.guest.search') }}" class="reg-btn reg-btn-outline">
                                         <i class="fas fa-bed"></i> Stay
                                     </a>
                                     {% if status not in ['cancelled', 'checked_in'] %}
                                     <button class="reg-btn reg-btn-danger"
-                                            onclick="confirmCancel('{{ reg.registration_ref }}', '{{ reg.event.name|default('this event')|replace("'", "\\'") }}')">
+                                            onclick="confirmCancel('{{ reg.registration_ref }}', '{{ reg.event.name|default('this event')|replace("'", "\'") }}')">
                                         <i class="fas fa-times"></i> Cancel
                                     </button>
                                     {% endif %}
@@ -378,7 +378,7 @@
                         <div class="empty-state-icon"><i class="fas fa-calendar-plus"></i></div>
                         <h5>No Upcoming Events</h5>
                         <p>You haven't registered for any upcoming events yet.</p>
-                        <a href="{{ url_for('events.list') }}" class="empty-browse-btn">
+                        <a href="{{ safe_url('events.list') }}" class="empty-browse-btn">
                             <i class="fas fa-search"></i> Browse Events
                         </a>
                     </div>
@@ -422,11 +422,11 @@
                                     <span class="badge-ref">REF: {{ reg.registration_ref }}</span>
                                 </div>
                                 <div class="reg-actions">
-                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="reg-btn reg-btn-outline">
                                         <i class="fas fa-receipt"></i> View Ticket
                                     </a>
-                                    <a href="{{ url_for('events.list') }}" class="reg-btn reg-btn-green">
+                                    <a href="{{ safe_url('events.list') }}" class="reg-btn reg-btn-green">
                                         <i class="fas fa-plus"></i> Register Again
                                     </a>
                                 </div>
@@ -474,7 +474,7 @@
                                     <span class="badge-ref">{{ reg.registration_ref }}</span>
                                 </div>
                                 <div class="reg-actions">
-                                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="reg-btn reg-btn-primary">
                                         <i class="fas fa-qrcode"></i> View Ticket
                                     </a>
@@ -488,7 +488,7 @@
                         <div class="empty-state-icon"><i class="fas fa-ticket-alt"></i></div>
                         <h5>No Registrations Yet</h5>
                         <p>Register for an event to see your tickets here.</p>
-                        <a href="{{ url_for('events.list') }}" class="empty-browse-btn">
+                        <a href="{{ safe_url('events.list') }}" class="empty-browse-btn">
                             <i class="fas fa-search"></i> Browse Events
                         </a>
                     </div>
@@ -510,14 +510,14 @@
                     <div class="wallet-balance">{{ wallet.balance }}</div>
                     <div class="wallet-currency">{{ wallet.currency }} · Available Balance</div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:1rem;">
-                        <a href="{{ url_for('wallet.deposit_page') }}" class="wallet-cta" style="font-size:0.8rem;">
+                        <a href="{{ safe_url('wallet.deposit_page') }}" class="wallet-cta" style="font-size:0.8rem;">
                             <i class="fas fa-plus-circle"></i> Top Up
                         </a>
-                        <a href="{{ url_for('wallet.transaction_history') }}" class="wallet-cta" style="font-size:0.8rem;">
+                        <a href="{{ safe_url('wallet.transaction_history') }}" class="wallet-cta" style="font-size:0.8rem;">
                             <i class="fas fa-history"></i> History
                         </a>
                     </div>
-                    <a href="{{ url_for('wallet.wallet_home') }}" class="wallet-cta">
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="wallet-cta">
                         <i class="fas fa-external-link-alt"></i> Manage Wallet
                     </a>
                     {% else %}
@@ -526,7 +526,7 @@
                             <i class="fas fa-wallet"></i>
                         </div>
                         <p class="text-muted small mb-0">No wallet set up yet.</p>
-                        <a href="{{ url_for('wallet.wallet_home') }}" class="wallet-cta mt-3">
+                        <a href="{{ safe_url('wallet.wallet_home') }}" class="wallet-cta mt-3">
                             <i class="fas fa-plus"></i> Set Up Wallet
                         </a>
                     </div>
@@ -540,7 +540,7 @@
                     <i class="fas fa-bolt" style="color:var(--afcon-orange)"></i> Quick Actions
                 </div>
                 <div class="sidebar-card-body" style="padding-top:0.5rem;">
-                    <a href="{{ url_for('events.list') }}" class="quick-link">
+                    <a href="{{ safe_url('events.list') }}" class="quick-link">
                         <div class="quick-link-icon ql-purple"><i class="fas fa-search"></i></div>
                         <div>
                             <div style="font-weight:600;">Browse Events</div>
@@ -548,7 +548,7 @@
                         </div>
                         <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
                     </a>
-                    <a href="{{ url_for('events.my_registrations') }}" class="quick-link">
+                    <a href="{{ safe_url('events.my_registrations') }}" class="quick-link">
                         <div class="quick-link-icon ql-blue"><i class="fas fa-list-ul"></i></div>
                         <div>
                             <div style="font-weight:600;">All Registrations</div>
@@ -556,7 +556,7 @@
                         </div>
                         <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
                     </a>
-                    <a href="{{ url_for('transport.home') }}" class="quick-link">
+                    <a href="{{ safe_url('transport.home') }}" class="quick-link">
                         <div class="quick-link-icon ql-green"><i class="fas fa-bus"></i></div>
                         <div>
                             <div style="font-weight:600;">Book Transport</div>
@@ -564,7 +564,7 @@
                         </div>
                         <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
                     </a>
-                    <a href="{{ url_for('accommodation.guest.search') }}" class="quick-link">
+                    <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-link">
                         <div class="quick-link-icon ql-orange"><i class="fas fa-bed"></i></div>
                         <div>
                             <div style="font-weight:600;">Book Accommodation</div>

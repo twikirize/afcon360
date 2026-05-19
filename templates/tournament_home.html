@@ -10,7 +10,7 @@
     <a class="btn" href="/tournament/fixtures">View fixtures</a>
   {% else %}
     <p class="status archived">Status: Archived</p>
-    <a class="btn" href="{{ url_for('tournament.archive') }}">Browse archive</a>
+    <a class="btn" href="{{ safe_url('tournament.archive') }}">Browse archive</a>
   {% endif %}
 </section>
 {% endblock %}

@@ -2,7 +2,7 @@
 {% block title %}Bookings{% endblock %}
 {% block breadcrumb %}
 <span class="sep">/</span>
-<a href="{{ url_for('transport.bookings_index') }}">Bookings</a>
+<a href="{{ safe_url('transport.bookings_index') }}">Bookings</a>
 {% endblock %}
 
 {% block extra_css %}
@@ -42,7 +42,7 @@
     <button class="btn btn-secondary btn-sm" onclick="exportBookings()">
       <i class="fa-solid fa-download"></i> Export
     </button>
-    <a href="{{ url_for('transport.bookings_new') }}" class="btn btn-primary btn-sm">
+    <a href="{{ safe_url('transport.bookings_new') }}" class="btn btn-primary btn-sm">
       <i class="fa-solid fa-plus"></i> New Booking
     </a>
   </div>
@@ -94,7 +94,7 @@
           <tr>
             <td><input type="checkbox" value="{{ b.id }}" class="row-check" style="accent-color:var(--amber);" /></td>
             <td>
-              <a href="{{ url_for('transport.booking_show', id=b.id) }}" class="td-primary td-mono" style="color:var(--amber);">
+              <a href="{{ safe_url('url_for\(['"]transport.booking_show', id=b.id) }}" class="td-primary td-mono" style="color:var(--amber);">
                 {{ b.booking_reference }}
               </a>
             </td>
@@ -133,15 +133,15 @@
             <td class="td-primary td-mono">${{ b.total_amount|default('0.00') }}</td>
             <td>
               <div class="booking-row-actions">
-                <a href="{{ url_for('transport.booking_show', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="View">
+                <a href="{{ safe_url('url_for\(['"]transport.booking_show', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="View">
                   <i class="fa-solid fa-eye"></i>
                 </a>
                 {% if b.status in ['confirmed'] %}
-                <a href="{{ url_for('transport.booking_assign', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Assign">
+                <a href="{{ safe_url('url_for\(['"]transport.booking_assign', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Assign">
                   <i class="fa-solid fa-user-plus"></i>
                 </a>
                 {% endif %}
-                <a href="{{ url_for('transport.booking_edit', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Edit">
+                <a href="{{ safe_url('url_for\(['"]transport.booking_edit', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Edit">
                   <i class="fa-solid fa-pen"></i>
                 </a>
               </div>
@@ -154,7 +154,7 @@
               <div class="empty-state">
                 <i class="fa-solid fa-calendar-xmark"></i>
                 <h3>No Bookings Found</h3>
-                <p>Try adjusting your filters or <a href="{{ url_for('transport.bookings_new') }}" style="color:var(--amber);">create a new booking</a>.</p>
+                <p>Try adjusting your filters or <a href="{{ safe_url('transport.bookings_new') }}" style="color:var(--amber);">create a new booking</a>.</p>
               </div>
             </td>
           </tr>

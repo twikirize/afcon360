@@ -178,6 +178,19 @@ def activate_wallet():
 @login_required
 def home():
     """Wallet home page - redirect to overview/dashboard"""
+    # Log access - not a specific entity, so pass None for entity_id
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+        ForensicAuditService.log_attempt(
+            entity_type="wallet",
+            entity_id=None,  # Not a specific entity, so pass None
+            action="view_home",
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string if request.user_agent else None
+        )
+    except Exception:
+        pass  # Don't block redirect if logging fails
     return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -185,6 +198,19 @@ def home():
 @login_required
 def wallet_home():
     """Alternative wallet home endpoint"""
+    # Log access - not a specific entity, so pass None for entity_id
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+        ForensicAuditService.log_attempt(
+            entity_type="wallet",
+            entity_id=None,  # Not a specific entity, so pass None
+            action="view_home",
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string if request.user_agent else None
+        )
+    except Exception:
+        pass  # Don't block redirect if logging fails
     return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -192,6 +218,25 @@ def wallet_home():
 @login_required
 def wallet_dashboard():
     """Main wallet dashboard page"""
+    # Log access - not a specific entity, so pass None for entity_id
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+        ForensicAuditService.log_attempt(
+            entity_type="wallet",
+            entity_id=None,  # Not a specific entity, so pass None
+            action="view_dashboard",
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string if request.user_agent else None
+        )
+    except Exception:
+        pass  # Don't block dashboard if logging fails
+    
+    # Clear admin/module flash messages from previous page loads
+    from flask import session
+    if '_flashes' in session:
+        session['_flashes'] = [(category, message) for category, message in session['_flashes'] if 'module' not in message.lower()]
+    
     try:
         # Get existing account (do NOT auto-create)
         account = get_account(current_user.id)
@@ -237,8 +282,14 @@ def wallet_dashboard():
             no_wallet=False
         )
     except Exception as e:
-        current_app.logger.error(f"Wallet dashboard error: {e}")
-        flash('Error loading wallet dashboard', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="WALLET_DASHBOARD_ERROR",
+            error_message=str(e),
+            context={"component": "wallet_dashboard"}
+        )
+        flash('Unable to load wallet dashboard. Please try again later.', 'warning')
         return render_template('wallet/wallet_dashboard.html', balance=Decimal('0'), recent_transactions=[], commission=Decimal('0'), no_wallet=True)
 
 
@@ -267,8 +318,14 @@ def overview():
         
         return render_template('wallet/overview.html', wallet=wallet, commission=commission)
     except Exception as e:
-        current_app.logger.error(f"Wallet overview error: {e}")
-        flash('Error loading wallet overview', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="WALLET_OVERVIEW_ERROR",
+            error_message=str(e),
+            context={"component": "wallet_overview"}
+        )
+        flash('Unable to load wallet overview. Please try again later.', 'warning')
         return render_template('wallet/overview.html')
 
 
@@ -336,8 +393,14 @@ def wallet_create():
         return redirect(url_for('wallet.wallet_activate'))
         
     except Exception as e:
-        current_app.logger.error(f"Wallet creation error: {e}")
-        flash('Error creating wallet', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="WALLET_CREATION_ERROR",
+            error_message=str(e),
+            context={"component": "wallet_creation"}
+        )
+        flash('Unable to create wallet. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_create_page'))
 
 
@@ -400,8 +463,14 @@ def deposit_form():
         flash(f'Deposit limit exceeded: {str(e)}', 'error')
         return redirect(url_for('wallet.deposit_page'))
     except Exception as e:
-        current_app.logger.error(f"Deposit error: {e}")
-        flash('Error processing deposit', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="DEPOSIT_PROCESSING_ERROR",
+            error_message=str(e),
+            context={"component": "deposit_processing"}
+        )
+        flash('Unable to process deposit. Please try again later.', 'warning')
         return redirect(url_for('wallet.deposit_page'))
 
 
@@ -498,9 +567,14 @@ def send_funds():
         flash('Insufficient balance', 'error')
         return redirect(url_for('wallet.send_page'))
     except Exception as e:
-        # Wallet PIN or other wallet errors
-        current_app.logger.error(f"Send funds error: {e}")
-        flash(str(e), 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="SEND_FUNDS_ERROR",
+            error_message=str(e),
+            context={"component": "send_funds"}
+        )
+        flash('Unable to send funds. Please try again later.', 'warning')
         return redirect(url_for('wallet.send_page'))
 
 
@@ -572,8 +646,14 @@ def withdraw_funds():
         flash(f'Withdrawal limit exceeded: {str(e)}', 'error')
         return redirect(url_for('wallet.withdraw_page'))
     except Exception as e:
-        current_app.logger.error(f"Withdraw error: {e}")
-        flash('Error processing withdrawal', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="WITHDRAW_PROCESSING_ERROR",
+            error_message=str(e),
+            context={"component": "withdraw_processing"}
+        )
+        flash('Unable to process withdrawal. Please try again later.', 'warning')
         return redirect(url_for('wallet.withdraw_page'))
 
 
@@ -621,8 +701,14 @@ def wallet_transactions():
             balance=Decimal('0')
         )
     except Exception as e:
-        current_app.logger.error(f"Transactions error: {e}")
-        flash('Error loading transactions', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="TRANSACTIONS_LOAD_ERROR",
+            error_message=str(e),
+            context={"component": "transactions_load"}
+        )
+        flash('Unable to load transactions. Please try again later.', 'warning')
         return render_template('wallet/transactions.html', transactions=[], account=None, balance=Decimal('0'))
 
 
@@ -652,8 +738,14 @@ def agent_payout_history():
 
         return render_template('wallet/agent_payout_history.html', account=account, summary=summary, payouts=payouts)
     except Exception as e:
-        current_app.logger.error(f"Agent payout history error: {e}")
-        flash('Error loading payout history', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="PAYOUT_HISTORY_ERROR",
+            error_message=str(e),
+            context={"component": "payout_history"}
+        )
+        flash('Unable to load payout history. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -679,8 +771,14 @@ def agent_payout_request_page():
 
         return render_template('agent_payout_request.html', agent_id=current_user.id, total=total, history=history)
     except Exception as e:
-        current_app.logger.error(f"Agent payout request page error: {e}")
-        flash('Error loading payout request page', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="PAYOUT_REQUEST_PAGE_ERROR",
+            error_message=str(e),
+            context={"component": "payout_request_page"}
+        )
+        flash('Unable to load payout request page. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -719,8 +817,14 @@ def payout_request_form():
         flash('Payout request submitted', 'success')
         return redirect(url_for('wallet.agent_payout_history'))
     except Exception as e:
-        current_app.logger.error(f"Payout request submission error: {e}")
-        flash('Error submitting payout request', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="PAYOUT_REQUEST_SUBMISSION_ERROR",
+            error_message=str(e),
+            context={"component": "payout_request_submission"}
+        )
+        flash('Unable to submit payout request. Please try again later.', 'warning')
         return redirect(url_for('wallet.agent_payout_request_page'))
 
 
@@ -760,8 +864,14 @@ def wallet_settings():
             supported_currencies=supported_currencies
         )
     except Exception as e:
-        current_app.logger.error(f"Wallet settings error: {e}")
-        flash('Error loading wallet settings', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="WALLET_SETTINGS_ERROR",
+            error_message=str(e),
+            context={"component": "wallet_settings"}
+        )
+        flash('Unable to load wallet settings. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -789,8 +899,14 @@ def wallet_settings_update():
         flash('Settings updated successfully!', 'success')
         return redirect(url_for('wallet.wallet_settings'))
     except Exception as e:
-        current_app.logger.error(f"Wallet settings update error: {e}")
-        flash('Error updating settings', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="WALLET_SETTINGS_UPDATE_ERROR",
+            error_message=str(e),
+            context={"component": "wallet_settings_update"}
+        )
+        flash('Unable to update settings. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_settings'))
 
 
@@ -809,8 +925,14 @@ def pin_page():
         has_pin = bool(getattr(current_user, 'transaction_pin_hash', None))
         return render_template('wallet/pin.html', account=account, has_pin=has_pin)
     except Exception as e:
-        current_app.logger.error(f"PIN page error: {e}")
-        flash('Error loading PIN page', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="PIN_PAGE_ERROR",
+            error_message=str(e),
+            context={"component": "pin_page"}
+        )
+        flash('Unable to load PIN page. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_settings'))
 
 
@@ -842,8 +964,14 @@ def set_pin():
         flash(str(e), 'error')
         return redirect(url_for('wallet.pin_page'))
     except Exception as e:
-        current_app.logger.error(f"Set PIN error: {e}")
-        flash('Error setting PIN', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="SET_PIN_ERROR",
+            error_message=str(e),
+            context={"component": "set_pin"}
+        )
+        flash('Unable to set PIN. Please try again later.', 'warning')
         return redirect(url_for('wallet.pin_page'))
 
 
@@ -860,8 +988,14 @@ def fx_rates():
         
         return render_template('wallet/fx_rates.html', rates=rates, balance=Decimal('0'))
     except Exception as e:
-        current_app.logger.error(f"FX rates error: {e}")
-        flash('Error loading FX rates', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="FX_RATES_ERROR",
+            error_message=str(e),
+            context={"component": "fx_rates"}
+        )
+        flash('Unable to load FX rates. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -877,8 +1011,14 @@ def compliance_status():
         
         return render_template('wallet/compliance.html', account=account, balance=Decimal('0'))
     except Exception as e:
-        current_app.logger.error(f"Compliance status error: {e}")
-        flash('Error loading compliance status', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="COMPLIANCE_STATUS_ERROR",
+            error_message=str(e),
+            context={"component": "compliance_status"}
+        )
+        flash('Unable to load compliance status. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 
@@ -910,8 +1050,14 @@ def transaction_history():
             account=account
         )
     except Exception as e:
-        current_app.logger.error(f"Transaction history error: {e}")
-        flash('Error loading transaction history', 'error')
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="TRANSACTION_HISTORY_ERROR",
+            error_message=str(e),
+            context={"component": "transaction_history"}
+        )
+        flash('Unable to load transaction history. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
 

@@ -149,6 +149,16 @@
                 <p>Complete system administration and oversight</p>
             </div>
             <div class="header-actions">
+                <a href="{{ url_for('admin_settings.system_settings') }}" class="btn btn-outline-light me-2">
+                    <i class="bi bi-gear"></i>
+                    Settings
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+                <a href="{{ url_for('admin_settings.impersonation_control') }}" class="btn btn-outline-warning me-2">
+                    <i class="bi bi-person-secret"></i>
+                    Impersonate
+                    <i class="bi bi-arrow-right"></i>
+                </a>
                 <a href="{{ url_for('user.user_dashboard') }}" class="btn-consumer-switch">
                     <i class="bi bi-person"></i>
                     Consumer View
@@ -188,13 +198,15 @@
             </a>
         </div>
 
+        {% if super_admin_role_management_enabled %}
         <div class="action-card">
             <h3><i class="bi bi-shield"></i> Role Management</h3>
             <p>Configure system roles and permissions</p>
-            <a href="{{ url_for('admin.manage_roles') }}" class="btn-primary">
+            <a href="{{ safe_url('admin.owner.owner_role_management.role_management_dashboard') }}" class="btn-primary">
                 <i class="bi bi-sliders"></i> Manage Roles
             </a>
         </div>
+        {% endif %}
 
         <div class="action-card">
             <h3><i class="bi bi-building"></i> Organization Management</h3>

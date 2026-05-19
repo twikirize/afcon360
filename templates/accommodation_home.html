@@ -1,24 +1,172 @@
 {% extends "base.html" %}
-{% block content %}
-<section class="container py-4">
-  <h1>Accommodation</h1>
-  <p>Hotels and stays for fans.</p>
-</section>
-{% endblock %}
 
-{#
-Version 1
+{% block title %}Find Accommodation - AFCON360{% endblock %}
+
 {% block content %}
-  <h1>Accommodation</h1>
-  <ul>
-    {% for h in hotels %}
-      <li>
-        <a href="{{ url_for('accommodation.detail', id=h.id) }}">{{ h.name }}</a>
-        — {{ h.price }} {{ h.currency }} · {{ h.summary }}
-      </li>
-    {% else %}
-      <li>No hotels available yet.</li>
-    {% endfor %}
-  </ul>
+<div class="container-fluid p-0">
+    <!-- Hero Section -->
+    <div class="hero-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 80px 0; color: white;">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-8">
+                    <h1 class="display-4 fw-bold mb-3">Find Your Perfect Stay</h1>
+                    <p class="lead mb-4">Book hotels, lodges, and apartments near match venues</p>
+                    
+                    <!-- Search Bar -->
+                    <div class="search-container bg-white rounded-3 shadow-lg p-3">
+                        <form method="GET" action="{{ safe_url('accommodation.guest.search') }}" class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label text-muted small">Where</label>
+                                <input type="text" name="city" class="form-control" placeholder="City, area, or property name">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label text-muted small">Check-in</label>
+                                <input type="date" name="check_in" class="form-control">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label text-muted small">Check-out</label>
+                                <input type="date" name="check_out" class="form-control">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label text-muted small">Guests</label>
+                                <input type="number" name="guests" class="form-control" value="2" min="1" max="30">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary w-100 fw-bold">
+                                    Search
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popular Destinations -->
+    <div class="container py-5">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="fw-bold">Popular Destinations</h2>
+                <p class="text-muted">Explore top locations for AFCON 2025</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            {% for dest in popular_destinations %}
+            <div class="col-md-4 col-lg-2">
+                <a href="{{ safe_url('accommodation.guest.search') }}?city={{ dest.city }}" class="text-decoration-none">
+                    <div class="card h-100 border-0 shadow-sm destination-card">
+                        <div class="card-body text-center py-4">
+                            <div class="mb-2">📍</div>
+                            <h5 class="card-title fw-bold mb-1">{{ dest.city }}</h5>
+                            <p class="card-text text-muted small">{{ dest.country }}</p>
+                            <span class="badge bg-light text-dark">{{ dest.property_count }} properties</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Featured Properties -->
+    <div class="container py-5">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="fw-bold">Featured Properties</h2>
+                <p class="text-muted">Handpicked stays for football fans</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            {% for property in featured_properties %}
+            <div class="col-md-6 col-lg-3">
+                <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="text-decoration-none">
+                    <div class="card h-100 border-0 shadow-sm property-card">
+                        <div class="card-img-top position-relative" style="height: 200px; overflow: hidden;">
+                            {% if property.main_image %}
+                            <img src="{{ property.main_image }}" alt="{{ property.title }}" class="w-100 h-100 object-fit-cover">
+                            {% else %}
+                            <div class="w-100 h-100 bg-light d-flex align-items-center justify-content-center">
+                                <span class="text-muted">No photo</span>
+                            </div>
+                            {% endif %}
+                            {% if property.rating %}
+                            <div class="position-absolute top-0 end-0 m-2">
+                                <span class="badge bg-dark">⭐ {{ property.rating }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="card-body">
+                            <h5 class="card-title fw-bold mb-2 text-truncate">{{ property.title }}</h5>
+                            <p class="card-text text-muted small mb-2">
+                                <i class="bi bi-geo-alt"></i> {{ property.city }}, {{ property.country }}
+                            </p>
+                            <p class="card-text text-truncate small text-muted mb-3">{{ property.summary }}</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="fw-bold text-primary">${{ property.base_price_per_night }}</span>
+                                    <span class="text-muted small">/night</span>
+                                </div>
+                                <span class="badge bg-light text-dark">{{ property.max_guests }} guests</span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- CTA Section -->
+    <div class="container py-5">
+        <div class="row">
+            <div class="col-12">
+                <div class="bg-primary text-white rounded-3 p-5 text-center">
+                    <h2 class="fw-bold mb-3">Ready to Host?</h2>
+                    <p class="lead mb-4">List your property and earn money during AFCON 2025</p>
+                    <a href="{{ safe_url('accommodation.host.dashboard') }}" class="btn btn-light btn-lg fw-bold">
+                        Become a Host
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.search-container {
+    max-width: 900px;
+}
+
+.destination-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.destination-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15) !important;
+}
+
+.property-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.property-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15) !important;
+}
+
+.property-card img {
+    transition: transform 0.3s;
+}
+
+.property-card:hover img {
+    transform: scale(1.05);
+}
+</style>
 {% endblock %}
-#}

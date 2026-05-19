@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Moderate Accommodation - AFCON360{% endblock %}
 
 {% block head %}
@@ -118,7 +118,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           <td><span class="badge badge-pending">{{ property.status.value }}</span></td>
           <td class="mono">{{ property.created_at.strftime('%Y-%m-%d') if property.created_at else '-' }}</td>
           <td>
-            <a href="{{ url_for('accommodation.admin.moderate_property', id=property.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]accommodation.admin.moderate_property', id=property.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>
@@ -160,7 +160,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           <td>{{ booking.check_in }}</td>
           <td><span class="badge badge-pending">{{ booking.status }}</span></td>
           <td>
-            <a href="{{ url_for('accommodation.admin.moderate_booking', id=booking.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]accommodation.admin.moderate_booking', id=booking.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>
@@ -202,7 +202,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           <td>{{ review.property.title if review.property else 'Unknown' }}</td>
           <td><span class="badge badge-pending">{{ review.status.value }}</span></td>
           <td>
-            <a href="{{ url_for('accommodation.admin.moderate_review', id=review.id) }}" class="btn-action">
+            <a href="{{ safe_url('url_for\(['"]accommodation.admin.moderate_review', id=review.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>

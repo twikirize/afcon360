@@ -1,15 +1,18 @@
 {% extends "base.html" %}
+
+{% block title %}Transport - AFCON360{% endblock %}
+
 {% block content %}
-  <h1>{{ title }}</h1>
-  <p>Book match-day shuttles, airport transfers and regional routes.</p>
-  <ul>
-    {% for s in services %}
-      <li>
-        <a href="{{ url_for('transport.service_detail', service_id=s.id) }}">{{ s.name }}</a>
-        — {{ s.eta }} · {{ s.summary }}
-      </li>
-    {% else %}
-      <li>No transport services available yet.</li>
-    {% endfor %}
-  </ul>
+<h1>{{ title }}</h1>
+<p>Book match-day shuttles, airport transfers and regional routes.</p>
+<ul>
+  {% for s in services %}
+    <li>
+      <a href="{{ safe_url('transport.service_detail', service_id=s.id) }}">{{ s.name }}</a>
+      — {{ s.eta }} · {{ s.summary }}
+    </li>
+  {% else %}
+    <li>No transport services available yet.</li>
+  {% endfor %}
+</ul>
 {% endblock %}

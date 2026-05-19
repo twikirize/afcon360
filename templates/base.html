@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
 
+  
   <!-- Theme System - Proper Cascade Order -->
   <!-- 1. Global Theme (Foundation) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="global-theme-css">
@@ -40,10 +41,18 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/wallet.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/send.css') }}">
 
   {% block module_styles %}{% endblock %} {# For specific module pages #}
   {% block styles %}{% endblock %} {# For page-specific styles #}
   {% block head %}{% endblock %}
+  <!-- PWA -->
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <meta name="theme-color" content="#667eea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AFCON360">
 </head>
 <body class="afcon-root">
   {% if session.get('profile_incomplete') %}
@@ -160,9 +169,42 @@
       50% { box-shadow: 0 4px 20px rgba(220, 53, 69, 0.6); }
       100% { box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4); }
     }
+    
+    .disabled {
+      opacity: 0.5;
+      pointer-events: none;
+      filter: grayscale(100%);
+    }
+    
+    .disabled-badge {
+      background: #6c757d;
+      color: white;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+    }
   </style>
 
   <script>
+    // Flash message function for disabled modules
+    function flash(message, type = 'info') {
+        // Create flash message element
+        const flashDiv = document.createElement('div');
+        flashDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        flashDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        flashDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(flashDiv);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            flashDiv.remove();
+        }, 3000);
+    }
+    
     // Impersonation timer and auto-expire
     let impersonationStartTime = {{ session.get('impersonation_started_at', 'Date.now()') }};
     let maxImpersonationTime = 15 * 60 * 1000; // 15 minutes
@@ -226,6 +268,7 @@
   {% endif %}
 
   {% block body %}
+  {% if request.args.get('_pane') == '1' %}{{ self.content() }}{% else %}
   <header class="site-header">
     <div class="brand">
       <a href="{{ url_for('index') }}" class="brand-link">{{ app_name or "AFCON 360" }}</a>
@@ -241,28 +284,46 @@
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
-          <a href="{{ url_for('events.list') }}">Events</a>
+          <a href="{{ safe_url('events.list') }}">
+            Events
+          </a>
           <ul class="drop-menu" role="menu">
-            <li><a class="drop-item" href="{{ url_for('events.list') }}">📅 All Events</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.list') }}">📅 All Events</a></li>
             <li><hr class="drop-divider"></li>
             <li><span class="drop-header">✨ Upcoming Events</span></li>
-            <li><a class="drop-item" href="{{ url_for('events.landing', identifier='afcon-2027') }}">🏆 AFCON 2027</a></li>
-            <li><a class="drop-item" href="{{ url_for('events.landing', identifier='crusade-2026') }}">✝️ Great Crusade 2026</a></li>
-            <li><a class="drop-item" href="{{ url_for('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.landing', identifier='afcon-2027') }}">🏆 AFCON 2027</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.landing', identifier='crusade-2026') }}">✝️ Great Crusade 2026</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a></li>
             {% if current_user.is_authenticated %}
             <li><hr class="drop-divider"></li>
-            <li><a class="drop-item" href="{{ url_for('events.create_event') }}">➕ Create Event</a></li>
-            <li><a class="drop-item" href="{{ url_for('events.my_events') }}">📋 My Events</a></li>
-            <li><a class="drop-item" href="{{ url_for('events.my_registrations') }}">🎟️ My Registrations</a></li>
-            <li><a class="drop-item" href="{{ url_for('events.events_hub') }}">🚀 Events Hub</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.create_event') }}">➕ Create Event</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.my_events') }}">📋 My Events</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.my_registrations') }}">🎟️ My Registrations</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.events_hub') }}">🚀 Events Hub</a></li>
             {% endif %}
           </ul>
         </li>
 
-        <!-- FIXED: Use direct url_for instead of links variable -->
-        <li class="menu-item"><a href="{{ url_for('tourism.home') }}">Tourism</a></li>
-        <li class="menu-item"><a href="{{ url_for('transport.home') }}">Transport</a></li>
-        <li class="menu-item"><a href="{{ url_for('accommodation.index') }}">Accommodation</a></li>
+        <li class="menu-item">
+          <a href="{{ links.tourism_home }}"
+             {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled.', 'warning');" style="opacity:0.5;cursor:not-allowed;"
+             {% elif links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism is enabled — server restart needed to activate.', 'info');"
+             {% endif %}>
+            Tourism
+          </a>
+        </li>
+        <li class="menu-item">
+          <a href="{% if modules.get('transport') %}{{ safe_url('transport.home') }}{% else %}#{% endif %}"
+             {% if not modules.get('transport') %}onclick="event.preventDefault(); flash('Transport module is currently disabled.', 'warning');" style="opacity:0.5;cursor:not-allowed;"{% endif %}>
+            Transport
+          </a>
+        </li>
+        <li class="menu-item">
+          <a href="{% if modules.get('accommodation') %}{{ safe_url('accommodation.guest.search') }}{% else %}#{% endif %}"
+             {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled.', 'warning');" style="opacity:0.5;cursor:not-allowed;"{% endif %}>
+            Accommodation
+          </a>
+        </li>
 
         {% if current_user.is_authenticated %}
 
@@ -270,7 +331,7 @@
           {% if not nav_profile_completed %}
 
             <li class="menu-item">
-              <a href="{{ url_for('wallet_api.wallet_home') }}"
+              <a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}#{% endif %}"
                  class="nav-wallet-locked"
                  data-bs-toggle="tooltip"
                  data-bs-placement="bottom"
@@ -310,7 +371,7 @@
           {% elif nav_in_org_context %}
 
             <li class="menu-item">
-              <a href="{{ url_for('wallet.wallet_dashboard') }}" class="nav-wallet-link">
+              <a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}#{% endif %}" class="nav-wallet-link">
                 <i class="bi bi-wallet2 me-1"></i>Org Wallet
               </a>
             </li>
@@ -353,7 +414,7 @@
           {% else %}
 
             <li class="menu-item">
-              <a href="{{ url_for('wallet.wallet_dashboard') }}" class="nav-wallet-link">
+              <a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}#{% endif %}" class="nav-wallet-link">
                 <i class="bi bi-wallet2 me-1"></i>Wallet
               </a>
             </li>
@@ -366,13 +427,12 @@
                        {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance.dashboard') }}
                        {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
                        {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
-                       {% elif current_user.has_global_role('event_manager') %}{{ url_for('events.admin_dashboard') }}
-                       {% elif current_user.has_global_role('transport_admin') %}{{ url_for('transport_admin.dashboard') }}
-                       {% elif current_user.has_global_role('wallet_admin') %}{{ url_for('wallet.wallet_dashboard') }}
-                       {% elif current_user.has_global_role('accommodation_admin') %}{{ url_for('accommodation.admin.dashboard') }}
-
-                      {% elif current_user.has_global_role('tourism_admin') %}{{ url_for('tourism.home') }}
-                       {% else %}{{ url_for('events.attendee_dashboard') }}{% endif %}"
+                       {% elif current_user.has_global_role('event_manager') %}{{ safe_url('events.admin_dashboard') }}
+                       {% elif current_user.has_global_role('transport_admin') %}{{ safe_url('transport_admin.dashboard') }}
+                       {% elif current_user.has_global_role('wallet_admin') %}{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
+                       {% elif current_user.has_global_role('accommodation_admin') %}{% if module_enabled('accommodation') %}{{ safe_url('accommodation.admin.dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
+                      {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
+                       {% else %}{{ safe_url('events.attendee_dashboard') }}{% endif %}"
                  class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
@@ -456,28 +516,35 @@
 
       <div class="drawer-accordion">
         <div class="drawer-accordion-head">
-          <a class="drawer-link" href="{{ url_for('events.list') }}">📅 Events</a>
+          <a class="drawer-link" href="{{ safe_url('events.list') }}">📅 Events</a>
           <button class="drawer-accordion-toggle" aria-label="Expand events">▾</button>
         </div>
         <div class="drawer-accordion-body">
-          <a class="drawer-sub-link" href="{{ url_for('events.list') }}">All Events</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.list') }}">All Events</a>
           <span class="drawer-sub-label">✨ Upcoming</span>
-          <a class="drawer-sub-link" href="{{ url_for('events.landing', identifier='afcon-2027') }}">🏆 AFCON 2027</a>
-          <a class="drawer-sub-link" href="{{ url_for('events.landing', identifier='crusade-2026') }}">✝️ Great Crusade 2026</a>
-          <a class="drawer-sub-link" href="{{ url_for('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='afcon-2027') }}">🏆 AFCON 2027</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='crusade-2026') }}">✝️ Great Crusade 2026</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a>
           {% if current_user.is_authenticated %}
-          <a class="drawer-sub-link" href="{{ url_for('events.create_event') }}">➕ Create Event</a>
-          <a class="drawer-sub-link" href="{{ url_for('events.my_events') }}">📋 My Events</a>
-          <a class="drawer-sub-link" href="{{ url_for('events.my_registrations') }}">🎟️ My Registrations</a>
-          <a class="drawer-sub-link" href="{{ url_for('events.events_hub') }}">🚀 Events Hub</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.create_event') }}">➕ Create Event</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.my_events') }}">📋 My Events</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.my_registrations') }}">🎟️ My Registrations</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.events_hub') }}">🚀 Events Hub</a>
           {% endif %}
         </div>
       </div>
 
-      <!-- FIXED: Use direct url_for instead of links variable -->
-      <a class="drawer-link" href="{{ url_for('tourism.home') }}">🌍 Tourism</a>
-      <a class="drawer-link" href="{{ url_for('transport.home') }}">🚌 Transport</a>
-      <a class="drawer-link" href="{{ url_for('accommodation.index') }}">🏨 Accommodation</a>
+      <a class="drawer-link{% if not modules.get('tourism') %} disabled{% endif %}"
+         href="{{ links.tourism_home }}"
+         {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled.', 'warning');"
+         {% elif links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism is enabled — server restart needed to activate.', 'info');"
+         {% endif %}>🌍 Tourism</a>
+      <a class="drawer-link{% if not modules.get('transport') %} disabled{% endif %}"
+         href="{% if modules.get('transport') %}{{ safe_url('transport.home') }}{% else %}#{% endif %}"
+         {% if not modules.get('transport') %}onclick="event.preventDefault(); flash('Transport module is currently disabled.', 'warning');"{% endif %}>🚌 Transport</a>
+      <a class="drawer-link{% if not modules.get('accommodation') %} disabled{% endif %}"
+         href="{% if modules.get('accommodation') %}{{ safe_url('accommodation.guest.search') }}{% else %}#{% endif %}"
+         {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled.', 'warning');"{% endif %}>🏨 Accommodation</a>
 
       <div class="drawer-divider"></div>
 
@@ -485,7 +552,7 @@
 
         {# Wallet — always first for authenticated users #}
         {% if nav_profile_completed %}
-          <a class="drawer-link" href="{{ url_for('wallet.wallet_dashboard') }}">
+          <a class="drawer-link" href="{{ safe_url('wallet.wallet_dashboard') }}">
             <i class="bi bi-wallet2 me-2"></i>Wallet
           </a>
         {% else %}
@@ -571,6 +638,7 @@
       </div>
     </div>
   </footer>
+  {% endif %}
   {% endblock %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

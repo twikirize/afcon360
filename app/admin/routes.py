@@ -168,9 +168,12 @@ def super_dashboard():
         # Owner authorization for super_admin module toggles
         from app.admin.owner.models import SystemSetting
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+        
+        # Get role management permissions
+        super_admin_role_management_enabled = SystemSetting.get('super_admin_role_management_enabled', False)
 
         return render_template(
-            "super_admin_dashboard.html",
+            "admin/super_dashboard.html",
             total_users=total_users,
             verified_users=verified_users,
             unverified_users=unverified_users,
@@ -190,6 +193,7 @@ def super_dashboard():
             total_registrations=total_registrations,
             pending_events_list=pending_events_list,
             super_admin_can_toggle_modules=super_admin_can_toggle_modules,
+            super_admin_role_management_enabled=super_admin_role_management_enabled,
         )
     except Exception as e:
         db.session.rollback()
@@ -1314,7 +1318,18 @@ def manage_submissions():
 @login_required
 @admin_required
 def dashboard():
-    return render_template('admin/dashboard.html')
+    try:
+        # Get role management permissions
+        from app.models.system_config import SystemConfig
+        admin_role_management_enabled = SystemConfig.get('admin_role_management_enabled', False)
+        super_admin_role_management_enabled = SystemConfig.get('super_admin_role_management_enabled', False)
+        
+        return render_template('admin/dashboard.html',
+                             admin_role_management_enabled=admin_role_management_enabled,
+                             super_admin_role_management_enabled=super_admin_role_management_enabled)
+    except Exception as e:
+        logger.error(f"Error loading admin dashboard: {e}")
+        return render_template('admin/dashboard.html')
 
 
 @admin_bp.route('/wallets')
@@ -2095,3 +2110,79 @@ def forbidden(e):
 def not_found(e):
     flash("Page not found.", "danger")
     return redirect(url_for("admin.super_dashboard"))
+
+
+# -----------------------------
+# Additional Role Dashboard Endpoints
+# -----------------------------
+@admin_bp.route("/dashboard/role/<string:role_name>", endpoint="role_dashboard")
+@login_required
+def role_dashboard(role_name):
+    """Dynamic role dashboard endpoint."""
+    try:
+        # Map role names to dashboard templates
+        dashboard_templates = {
+            'event_manager': 'admin/event_manager_dashboard.html',
+            'transport_admin': 'admin/transport_admin_dashboard.html',
+            'wallet_admin': 'admin/wallet_admin_dashboard.html',
+            'accommodation_admin': 'admin/accommodation_admin_dashboard.html',
+            'tourism_admin': 'admin/tourism_admin_dashboard.html',
+            'org_admin': 'admin/org_admin_dashboard.html',
+            'org_member': 'admin/org_member_dashboard.html',
+            'auditor': 'admin/auditor/dashboard.html',
+            'compliance_officer': 'admin/compliance/dashboard.html',
+            'support': 'admin/support_dashboard.html'
+        }
+        
+        # Check if user has the required role
+        from app.auth.decorators import require_role
+        if not require_role(role_name):
+            flash(f"You don't have permission to access {role_name} dashboard.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+        
+        template = dashboard_templates.get(role_name)
+        if template:
+            return render_template(template)
+        else:
+            flash("Dashboard not found for this role.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+            
+    except Exception as e:
+        logger.error(f"Error loading role dashboard: {e}")
+        flash("Error loading dashboard.", "danger")
+        return redirect(url_for('dashboard.dashboard'))
+
+
+@admin_bp.route("/settings/role/<string:role_name>", endpoint="role_settings")
+@login_required
+def role_settings(role_name):
+    """Dynamic role settings endpoint."""
+    try:
+        # Map role names to settings templates
+        settings_templates = {
+            'event_manager': 'admin/event_manager/settings.html',
+            'transport_admin': 'admin/transport_admin/settings.html',
+            'wallet_admin': 'admin/wallet_admin/settings.html',
+            'accommodation_admin': 'admin/accommodation_admin/settings.html',
+            'tourism_admin': 'admin/tourism_admin/settings.html',
+            'org_admin': 'admin/org_admin/settings.html',
+            'org_member': 'admin/org_member/settings.html'
+        }
+        
+        # Check if user has the required role
+        from app.auth.decorators import require_role
+        if not require_role(role_name):
+            flash(f"You don't have permission to access {role_name} settings.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+        
+        template = settings_templates.get(role_name)
+        if template:
+            return render_template(template)
+        else:
+            flash("Settings not found for this role.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+            
+    except Exception as e:
+        logger.error(f"Error loading role settings: {e}")
+        flash("Error loading settings.", "danger")
+        return redirect(url_for('dashboard.dashboard'))

@@ -83,7 +83,7 @@
                     </a>
                     <ul class="submenu">
                         <li><a href="{{ url_for('transport_admin.list_bookings') }}">All Bookings</a></li>
-                        <li><a href="{{ url_for('transport.book_transport') }}">New Booking</a></li>
+                        <li><a href="{{ safe_url('transport.book_transport') }}">New Booking</a></li>
                         <li><a href="{{ url_for('transport_admin.bookings_report') }}">Reports</a></li>
                     </ul>
                 </div>
@@ -97,7 +97,7 @@
                     </a>
                     <ul class="submenu">
                         <li><a href="{{ url_for('transport_admin.list_drivers') }}">All Drivers</a></li>
-                        <li><a href="{{ url_for('transport.become_driver') }}">Add Driver</a></li>
+                        <li><a href="{{ safe_url('transport.become_driver') }}">Add Driver</a></li>
                         <li><a href="{{ url_for('transport_admin.list_drivers') }}?status=pending">Pending Approval</a></li>
                     </ul>
                 </div>
@@ -111,7 +111,7 @@
                     </a>
                     <ul class="submenu">
                         <li><a href="{{ url_for('transport_admin.list_vehicles') }}">All Vehicles</a></li>
-                        <li><a href="{{ url_for('transport.register_vehicle') }}">Add Vehicle</a></li>
+                        <li><a href="{{ safe_url('transport.register_vehicle') }}">Add Vehicle</a></li>
                     </ul>
                 </div>
 
@@ -148,7 +148,7 @@
             {% elif current_user.role == 'org_admin' %}
 
                 <div class="nav-section-label">MY ORGANISATION</div>
-                <a href="{{ url_for('transport.organisations_index') }}"
+                <a href="{{ safe_url('transport.organisations_index') }}"
                    class="nav-item {% if request.endpoint == 'transport.organisations_index' %}active{% endif %}">
                     <i class="fa-solid fa-gauge-high"></i>
                     <span>Overview</span>
@@ -161,7 +161,7 @@
                     <i class="fa-solid fa-id-card"></i>
                     <span>My Drivers</span>
                 </a>
-                <a href="{{ url_for('transport.bookings_index') }}"
+                <a href="{{ safe_url('transport.bookings_index') }}"
                    class="nav-item {% if 'booking' in request.endpoint %}active{% endif %}">
                     <i class="fa-solid fa-calendar-check"></i>
                     <span>Bookings</span>
@@ -175,7 +175,7 @@
             {% elif current_user.role == 'driver' %}
 
                 <div class="nav-section-label">MY DAY</div>
-                <a href="{{ url_for('transport.drivers_index') }}"
+                <a href="{{ safe_url('transport.drivers_index') }}"
                    class="nav-item {% if request.endpoint == 'transport.drivers_index' %}active{% endif %}">
                     <i class="fa-solid fa-gauge-high"></i>
                     <span>Overview</span>
@@ -190,7 +190,7 @@
                 </a>
 
                 <div class="nav-section-label">MY DETAILS</div>
-                <a href="{{ url_for('transport.vehicles_index') }}" class="nav-item">
+                <a href="{{ safe_url('transport.vehicles_index') }}" class="nav-item">
                     <i class="fa-solid fa-van-shuttle"></i>
                     <span>My Vehicle</span>
                 </a>

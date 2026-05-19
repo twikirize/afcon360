@@ -1,5 +1,12 @@
 """Add OTA-grade search and performance indexes"""
 from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers
+revision = 'add_ota_search_indexes'
+down_revision = None
+branch_labels = None
+depends_on = None
 
 def upgrade():
     # Full-text search — check 'accommodation_properties' is the actual table name
