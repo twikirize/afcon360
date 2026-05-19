@@ -36,11 +36,16 @@ if not os.getenv('ENCRYPTION_KEY'):
 
 # Now we can safely import other modules that may depend on environment variables
 
-# Import Redis conditionally
+# Import Redis conditionally. Allow forcing disable via DISABLE_REDIS env var for local runs.
 try:
     import redis
-
-    REDIS_AVAILABLE = True
+    # Allow developer to force-disable Redis checks when running locally
+    if os.getenv('DISABLE_REDIS', 'false').lower() in ('1', 'true', 'yes'):
+        redis = None
+        REDIS_AVAILABLE = False
+        logging.warning("Redis checks disabled via DISABLE_REDIS environment variable")
+    else:
+        REDIS_AVAILABLE = True
 except ImportError:
     redis = None
     REDIS_AVAILABLE = False

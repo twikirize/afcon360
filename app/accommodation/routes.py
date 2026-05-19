@@ -124,7 +124,7 @@ def host_register():
     return render_template("accommodation/host_register.html")
 
 
-@accommodation_bp.route("/admin/dashboard", endpoint="admin.dashboard")
+@accommodation_bp.route("/admin/dashboard", endpoint="admin_dashboard")
 @login_required
 @require_role('admin', 'owner', 'accommodation_admin')
 def admin_dashboard():
@@ -161,7 +161,7 @@ def moderate():
 # GUEST ROUTES (URL prefix: /guest)
 # ============================================================================
 
-@accommodation_bp.route("/guest/", endpoint="guest.search")
+@accommodation_bp.route("/guest/", endpoint="guest_search")
 def guest_search():
     """Accommodation search page"""
     city = request.args.get('city')
@@ -187,7 +187,7 @@ def guest_search():
     )
 
 
-@accommodation_bp.route("/guest/api/search", endpoint="guest.api_search")
+@accommodation_bp.route("/guest/api/search", endpoint="guest_api_search")
 def guest_api_search():
     """JSON API for accommodation search"""
     city = request.args.get('city')
@@ -209,7 +209,7 @@ def guest_api_search():
     })
 
 
-@accommodation_bp.route("/guest/api/autocomplete", endpoint="guest.autocomplete")
+@accommodation_bp.route("/guest/api/autocomplete", endpoint="guest_autocomplete")
 def guest_autocomplete():
     """Booking.com-style destination autocomplete"""
     from sqlalchemy import func
@@ -253,7 +253,7 @@ def guest_autocomplete():
     return jsonify({'suggestions': suggestions[:8]})
 
 
-@accommodation_bp.route("/guest/api/analytics/event", methods=['POST'], endpoint="guest.analytics_event")
+@accommodation_bp.route("/guest/api/analytics/event", methods=['POST'], endpoint="guest_analytics_event")
 def guest_track_event():
     """Fire-and-forget analytics ingest"""
     try:
@@ -269,7 +269,7 @@ def guest_track_event():
         return jsonify({'ok': False}), 200
 
 
-@accommodation_bp.route("/guest/<identifier>", endpoint="guest.detail")
+@accommodation_bp.route("/guest/<identifier>", endpoint="guest_detail")
 def guest_detail(identifier):
     """Property detail page"""
     property_data = search_service.get_property_by_identifier(identifier)
@@ -331,7 +331,7 @@ def guest_detail(identifier):
     )
 
 
-@accommodation_bp.route("/guest/checkout", methods=['GET', 'POST'], endpoint="guest.checkout")
+@accommodation_bp.route("/guest/checkout", methods=['GET', 'POST'], endpoint="guest_checkout")
 @login_required
 def guest_checkout():
     """Booking checkout page"""
@@ -432,7 +432,7 @@ def guest_checkout():
         return redirect(url_for('accommodation.guest.search'))
 
 
-@accommodation_bp.route("/guest/confirmation/<reference>", endpoint="guest.confirmation")
+@accommodation_bp.route("/guest/confirmation/<reference>", endpoint="guest_confirmation")
 @login_required
 def guest_confirmation(reference):
     """Booking confirmation page"""
@@ -454,7 +454,7 @@ def guest_confirmation(reference):
     )
 
 
-@accommodation_bp.route("/guest/my-bookings", endpoint="guest.my_bookings")
+@accommodation_bp.route("/guest/my-bookings", endpoint="guest_my_bookings")
 @login_required
 def guest_my_bookings():
     """User's booking history"""
@@ -474,7 +474,7 @@ def guest_my_bookings():
     )
 
 
-@accommodation_bp.route("/guest/booking/<reference>/cancel", methods=['POST'], endpoint="guest.cancel_booking")
+@accommodation_bp.route("/guest/booking/<reference>/cancel", methods=['POST'], endpoint="guest_cancel_booking")
 @login_required
 def guest_cancel_booking(reference):
     """Cancel a booking"""
@@ -563,7 +563,7 @@ def _resolve_month(month_str: Optional[str]) -> dict:
         return {"year": today.year, "month": today.month}
 
 
-@accommodation_bp.route("/host/dashboard", endpoint="host.dashboard")
+@accommodation_bp.route("/host/dashboard", endpoint="host_dashboard")
 @login_required
 def host_dashboard():
     host_info = _ensure_host_identity()
@@ -585,7 +585,7 @@ def host_dashboard():
     )
 
 
-@accommodation_bp.route("/host/listings/create", methods=["GET", "POST"], endpoint="host.create_listing")
+@accommodation_bp.route("/host/listings/create", methods=["GET", "POST"], endpoint="host_create_listing")
 @login_required
 def host_create_listing():
     host_info = _ensure_host_identity()
@@ -628,7 +628,7 @@ def host_create_listing():
     )
 
 
-@accommodation_bp.route("/host/listings/<int:property_id>/edit", methods=["GET", "POST"], endpoint="host.edit_listing")
+@accommodation_bp.route("/host/listings/<int:property_id>/edit", methods=["GET", "POST"], endpoint="host_edit_listing")
 @login_required
 def host_edit_listing(property_id: int):
     host_info = _ensure_host_identity()
@@ -711,7 +711,7 @@ def host_edit_listing(property_id: int):
     )
 
 
-@accommodation_bp.route("/host/calendar", endpoint="host.calendar")
+@accommodation_bp.route("/host/calendar", endpoint="host_calendar")
 @login_required
 def host_calendar():
     host_info = _ensure_host_identity()
@@ -767,7 +767,7 @@ def host_calendar():
     )
 
 
-@accommodation_bp.route("/host/calendar/data", methods=["GET"], endpoint="host.calendar_data")
+@accommodation_bp.route("/host/calendar/data", methods=["GET"], endpoint="host_calendar_data")
 @login_required
 def host_calendar_data():
     host_info = _ensure_host_identity()
@@ -804,7 +804,7 @@ def host_calendar_data():
     return jsonify(payload)
 
 
-@accommodation_bp.route("/host/calendar/block", methods=["POST"], endpoint="host.calendar_block")
+@accommodation_bp.route("/host/calendar/block", methods=["POST"], endpoint="host_calendar_block")
 @login_required
 def host_calendar_block():
     host_info = _ensure_host_identity()
@@ -880,7 +880,7 @@ def host_calendar_block():
     })
 
 
-@accommodation_bp.route("/host/calendar/unblock", methods=["POST"], endpoint="host.calendar_unblock")
+@accommodation_bp.route("/host/calendar/unblock", methods=["POST"], endpoint="host_calendar_unblock")
 @login_required
 def host_calendar_unblock():
     host_info = _ensure_host_identity()
@@ -931,7 +931,7 @@ def host_calendar_unblock():
     })
 
 
-@accommodation_bp.route("/host/bookings", endpoint="host.bookings")
+@accommodation_bp.route("/host/bookings", endpoint="host_bookings")
 @login_required
 def host_bookings():
     host_info = _ensure_host_identity()
@@ -940,7 +940,7 @@ def host_bookings():
     return render_template("accommodation/host/bookings.html", host_info=host_info)
 
 
-@accommodation_bp.route("/host/earnings", endpoint="host.earnings")
+@accommodation_bp.route("/host/earnings", endpoint="host_earnings")
 @login_required
 def host_earnings():
     host_info = _ensure_host_identity()
@@ -953,7 +953,7 @@ def host_earnings():
 # ADMIN ROUTES (URL prefix: /admin)
 # ============================================================================
 
-@accommodation_bp.route("/admin/dashboard", endpoint="admin.dashboard")
+@accommodation_bp.route("/admin/dashboard", endpoint="admin_dashboard")
 @login_required
 def admin_admin_dashboard():
     """Admin dashboard for accommodation module"""
@@ -963,7 +963,7 @@ def admin_admin_dashboard():
     return render_template("accommodation/admin/dashboard.html")
 
 
-@accommodation_bp.route("/admin/listings", endpoint="admin.listings")
+@accommodation_bp.route("/admin/listings", endpoint="admin_listings")
 @login_required
 def admin_listings():
     """Manage all property listings"""
@@ -973,7 +973,7 @@ def admin_listings():
     return render_template("accommodation/admin/listings.html")
 
 
-@accommodation_bp.route("/admin/hosts", endpoint="admin.hosts")
+@accommodation_bp.route("/admin/hosts", endpoint="admin_hosts")
 @login_required
 def admin_hosts():
     """Manage hosts (verify, suspend)"""
@@ -983,7 +983,7 @@ def admin_hosts():
     return render_template("accommodation/admin/hosts.html")
 
 
-@accommodation_bp.route("/admin/moderate", endpoint="admin.moderate")
+@accommodation_bp.route("/admin/moderate", endpoint="admin_moderate")
 @login_required
 @require_moderator
 def admin_moderate():
@@ -995,7 +995,7 @@ def admin_moderate():
     return render_template('accommodation/moderate.html', properties=pending_properties, bookings=pending_bookings, reviews=pending_reviews)
 
 
-@accommodation_bp.route("/admin/moderate/property/<int:id>", endpoint="admin.moderate_property")
+@accommodation_bp.route("/admin/moderate/property/<int:id>", endpoint="admin_moderate_property")
 @login_required
 @require_moderator
 def admin_moderate_property(id):
@@ -1004,7 +1004,7 @@ def admin_moderate_property(id):
     return render_template('accommodation/moderate_property.html', property=property)
 
 
-@accommodation_bp.route("/admin/moderate/booking/<int:id>", endpoint="admin.moderate_booking")
+@accommodation_bp.route("/admin/moderate/booking/<int:id>", endpoint="admin_moderate_booking")
 @login_required
 @require_moderator
 def admin_moderate_booking(id):
@@ -1013,7 +1013,7 @@ def admin_moderate_booking(id):
     return render_template('accommodation/moderate_booking.html', booking=booking)
 
 
-@accommodation_bp.route("/admin/moderate/review/<int:id>", endpoint="admin.moderate_review")
+@accommodation_bp.route("/admin/moderate/review/<int:id>", endpoint="admin_moderate_review")
 @login_required
 @require_moderator
 def admin_moderate_review(id):
@@ -1022,7 +1022,7 @@ def admin_moderate_review(id):
     return render_template('accommodation/moderate_review.html', review=review)
 
 
-@accommodation_bp.route("/admin/moderate/<entity_type>/<int:id>/<action>", methods=['POST'], endpoint="admin.moderate_action")
+@accommodation_bp.route("/admin/moderate/<entity_type>/<int:id>/<action>", methods=['POST'], endpoint="admin_moderate_action")
 @login_required
 @require_moderator
 def admin_moderate_action(entity_type, id, action):
@@ -1107,7 +1107,7 @@ def admin_moderate_action(entity_type, id, action):
     return redirect(redirect_url)
 
 
-@accommodation_bp.route("/admin/moderate/property/<int:id>/flag", methods=['POST'], endpoint="admin.flag_property")
+@accommodation_bp.route("/admin/moderate/property/<int:id>/flag", methods=['POST'], endpoint="admin_flag_property")
 @login_required
 @require_moderator
 def admin_flag_property(id):
@@ -1131,7 +1131,7 @@ def admin_flag_property(id):
     return redirect(url_for('accommodation.admin.moderate_property', id=id))
 
 
-@accommodation_bp.route("/admin/moderate/review/<int:id>/flag", methods=['POST'], endpoint="admin.flag_review")
+@accommodation_bp.route("/admin/moderate/review/<int:id>/flag", methods=['POST'], endpoint="admin_flag_review")
 @login_required
 @require_moderator
 def admin_flag_review(id):
