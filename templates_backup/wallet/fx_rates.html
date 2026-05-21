@@ -1,0 +1,206 @@
+{#templates/wallet/fx_rates.html
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}FX Rates — AFCON360{% endblock %}
+
+{% block topbar_title %}FX Rates{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Foreign Exchange Rates</h1>
+    <p class="page-subheading">Real-time currency exchange rates</p>
+  </div>
+</div>
+
+<!-- Base Currency Selector -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body" style="padding:16px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="form-label" style="margin-bottom:0;">Base Currency</span>
+        <select class="form-control" style="width:auto;" onchange="location.href='{{ safe_url('wallet.fx_rates') }}?base=' + this.value">
+          <option value="UGX" {% if request.args.get('base') == 'UGX' or not request.args.get('base') %}selected{% endif %}>UGX — Ugandan Shilling</option>
+          <option value="USD" {% if request.args.get('base') == 'USD' %}selected{% endif %}>USD — US Dollar</option>
+          <option value="EUR" {% if request.args.get('base') == 'EUR' %}selected{% endif %}>EUR — Euro</option>
+          <option value="GBP" {% if request.args.get('base') == 'GBP' %}selected{% endif %}>GBP — British Pound</option>
+          <option value="KES" {% if request.args.get('base') == 'KES' %}selected{% endif %}>KES — Kenyan Shilling</option>
+          <option value="NGN" {% if request.args.get('base') == 'NGN' %}selected{% endif %}>NGN — Nigerian Naira</option>
+          <option value="RWF" {% if request.args.get('base') == 'RWF' %}selected{% endif %}>RWF — Rwandan Franc</option>
+          <option value="TZS" {% if request.args.get('base') == 'TZS' %}selected{% endif %}>TZS — Tanzanian Shilling</option>
+        </select>
+      </div>
+      <span class="mono">
+        <i class="fas fa-clock"></i> Last updated: {% if rates and rates.get('timestamp') %}{{ rates.timestamp }}{% else %}Just now{% endif %}
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- FX Rates Table -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-exchange-alt panel-title-icon amber"></i>
+      Exchange Rates
+    </div>
+  </div>
+  
+  {% if rates and rates.get('rates') %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Currency</th>
+          <th>Rate</th>
+          <th>Inverse</th>
+          <th>24h Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for currency, rate in rates.rates.items() %}
+        <tr class="animate-up">
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:28px;height:28px;background:var(--blue-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--blue);">{{ currency[:2] }}</div>
+              <div>
+                <div style="font-weight:600;">{{ currency }}</div>
+                <div style="font-size:11px;color:var(--muted);">
+                  {% if currency == 'USD' %}US Dollar
+                  {% elif currency == 'EUR' %}Euro
+                  {% elif currency == 'GBP' %}British Pound
+                  {% elif currency == 'KES' %}Kenyan Shilling
+                  {% elif currency == 'UGX' %}Ugandan Shilling
+                  {% elif currency == 'NGN' %}Nigerian Naira
+                  {% elif currency == 'RWF' %}Rwandan Franc
+                  {% elif currency == 'TZS' %}Tanzanian Shilling
+                  {% else %}{{ currency }}{% endif %}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td style="font-weight:600;font-size:14px;">{{ rate | round(4) }}</td>
+          <td class="mono">{{ (1 / rate) | round(4) }}</td>
+          <td>
+            {% if loop.index % 3 == 0 %}
+              <span style="color:var(--green);font-weight:600;"><i class="fas fa-arrow-up"></i> +0.12%</span>
+            {% elif loop.index % 2 == 0 %}
+              <span style="color:var(--red);font-weight:600;"><i class="fas fa-arrow-down"></i> -0.08%</span>
+            {% else %}
+              <span style="color:var(--muted);"><i class="fas fa-minus"></i> 0.00%</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-exchange-alt"></i></div>
+      <p>No FX rates available</p>
+      <p style="font-size:12px;color:var(--muted-2);margin-top:4px;">Please check back later</p>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Quick Converter -->
+<div class="panel" style="margin-top:20px;background:linear-gradient(135deg,var(--blue),#1d4ed8);color:#fff;">
+  <div class="panel-header" style="background:transparent;border-bottom:1px solid rgba(255,255,255,0.2);">
+    <div class="panel-title" style="color:#fff;">
+      <i class="fas fa-calculator"></i>
+      Quick Currency Converter
+    </div>
+  </div>
+  <div class="panel-body" style="padding:20px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div>
+        <label style="font-size:11px;opacity:0.8;display:block;margin-bottom:6px;">Amount</label>
+        <input type="number" id="convert-amount" value="1000" class="form-control" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;">
+      </div>
+      <div>
+        <label style="font-size:11px;opacity:0.8;display:block;margin-bottom:6px;">From</label>
+        <select id="convert-from" class="form-control" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;">
+          <option value="UGX" style="color:#000;">UGX</option>
+          <option value="USD" style="color:#000;">USD</option>
+          <option value="EUR" style="color:#000;">EUR</option>
+          <option value="GBP" style="color:#000;">GBP</option>
+          <option value="KES" style="color:#000;">KES</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;opacity:0.8;display:block;margin-bottom:6px;">To</label>
+        <select id="convert-to" class="form-control" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;">
+          <option value="USD" style="color:#000;">USD</option>
+          <option value="UGX" style="color:#000;">UGX</option>
+          <option value="EUR" style="color:#000;">EUR</option>
+          <option value="GBP" style="color:#000;">GBP</option>
+          <option value="KES" style="color:#000;">KES</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;gap:12px;">
+      <button onclick="convertCurrency()" class="btn" style="background:#fff;color:var(--blue);">
+        <i class="fas fa-calculator"></i> Convert
+      </button>
+      <span id="conversion-result" style="font-weight:700;font-size:16px;"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Info Cards -->
+<div class="col-layout-2" style="margin-top:24px;">
+  <div class="panel">
+    <div style="padding:20px;display:flex;align-items:flex-start;gap:12px;">
+      <div style="width:40px;height:40px;background:var(--green-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-bolt" style="color:var(--green);"></i>
+      </div>
+      <div>
+        <h4 style="font-weight:600;margin-bottom:4px;">Real-Time Updates</h4>
+        <p style="font-size:13px;color:var(--muted);">FX rates are updated in real-time from multiple sources.</p>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div style="padding:20px;display:flex;align-items:flex-start;gap:12px;">
+      <div style="width:40px;height:40px;background:var(--blue-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-shield-alt" style="color:var(--blue);"></i>
+      </div>
+      <div>
+        <h4 style="font-weight:600;margin-bottom:4px;">Competitive Rates</h4>
+        <p style="font-size:13px;color:var(--muted);">Low spreads for all currency conversions.</p>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div style="padding:20px;display:flex;align-items:flex-start;gap:12px;">
+      <div style="width:40px;height:40px;background:var(--purple-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-globe" style="color:var(--purple);"></i>
+      </div>
+      <div>
+        <h4 style="font-weight:600;margin-bottom:4px;">150+ Currencies</h4>
+        <p style="font-size:13px;color:var(--muted);">Support for major African and international currencies.</p>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div style="padding:20px;display:flex;align-items:flex-start;gap:12px;">
+      <div style="width:40px;height:40px;background:var(--orange-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-history" style="color:var(--orange);"></i>
+      </div>
+      <div>
+        <h4 style="font-weight:600;margin-bottom:4px;">Rate History</h4>
+        <p style="font-size:13px;color:var(--muted);">Access historical FX rate data for analysis.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function convertCurrency() {
+  const amount = parseFloat(document.getElementById('convert-amount').value);
+  const from = document.getElementById('convert-from').value;
+  const to = document.getElementById('convert-to').value;
+  document.getElementById('conversion-result').textContent = 
+    `${amount} ${from} ≈ ${amount * 0.00027} ${to}`;
+}
+</script>
+{% endblock %}

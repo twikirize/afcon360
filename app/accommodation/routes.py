@@ -58,28 +58,16 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 @accommodation_bp.route("/", endpoint="home")
-@login_required
-@require_role('fan', 'admin', 'owner')
-@require_profile_completion
 def home():
-    """Accommodation home page - OTA-style homepage"""
-    ForensicAuditService.log_attempt(
-        entity_type="accommodation",
-        entity_id=None,
-        action="view_home",
-        user_id=current_user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.user_agent.string if request.user_agent else None
-    )
-    
-    # Fetch featured properties (active, verified, with images)
+    """Accommodation home page - Public access, no login required"""
+    # Fetch featured properties
     featured_properties = Property.query.filter(
         Property.status == AccommodationPropertyStatus.ACTIVE,
         Property.is_verified == True,
         Property.is_active == True
     ).order_by(Property.views_last_24h.desc()).limit(8).all()
-    
-    # Fetch popular destinations (cities with most properties)
+
+    # Fetch popular destinations
     from sqlalchemy import func
     popular_destinations = db.session.query(
         Property.city,
@@ -89,30 +77,31 @@ def home():
         Property.status == AccommodationPropertyStatus.ACTIVE,
         Property.is_verified == True,
         Property.is_active == True
-    ).group_by(Property.city, Property.country)\
-     .order_by(func.count(Property.id).desc())\
-     .limit(6).all()
-    
-    return render_template("accommodation_home.html",
-                          featured_properties=featured_properties,
-                          popular_destinations=popular_destinations)
+    ).group_by(Property.city, Property.country) \
+        .order_by(func.count(Property.id).desc()) \
+        .limit(6).all()
+
+    return render_template("accommodation/home.html",
+                           featured_properties=featured_properties,
+                           popular_destinations=popular_destinations)
 
 
 @accommodation_bp.route("/detail/<string:public_id>", endpoint="detail")
-@login_required
-@require_role('fan', 'admin', 'owner')
 def detail(public_id):
-    """Property detail page by public_id"""
+    """Property detail page with lightweight analytics"""
     IDGuard.check_public_id(public_id, "accommodation detail route")
-    ForensicAuditService.log_attempt(
-        entity_type="accommodation",
-        entity_id=public_id,
-        action="view_detail",
-        user_id=current_user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.user_agent.string if request.user_agent else None
-    )
-    return render_template('accommodation/detail.html', public_id=public_id)
+
+    property_obj = Property.query.filter_by(public_id=public_id, is_deleted=False).first_or_404()
+
+    # LIGHTWEIGHT analytics - NOT audit logging
+    # Simple counter, no personal data, no compliance requirements
+    property_obj.views_last_24h = (property_obj.views_last_24h or 0) + 1
+    property_obj.total_views = (property_obj.total_views or 0) + 1
+    db.session.commit()
+
+    return render_template('accommodation/detail.html',
+                           property=property_obj,
+                           public_id=public_id)
 
 
 @accommodation_bp.route("/host/register", endpoint="host_register")
@@ -1153,3 +1142,171 @@ def admin_flag_review(id):
         flash(f'Failed to flag: {flag}', 'danger')
 
     return redirect(url_for('accommodation.admin.moderate_review', id=id))
+
+
+# ============================================================================
+# EXPLORE ROUTES
+# ============================================================================
+
+@accommodation_bp.route("/explore", endpoint="explore")
+@login_required
+@require_role('fan', 'admin', 'owner')
+def explore():
+    """Explore accommodations with interactive map"""
+    return render_template("accommodation/explore.html")
+
+
+@accommodation_bp.route("/api/explore/search", endpoint="explore_search_api")
+def explore_search_api():
+    """API for explore page - search properties within map bounds"""
+    from flask_login import current_user
+    
+    # Get query parameters
+    min_lat = request.args.get('min_lat', type=float)
+    max_lat = request.args.get('max_lat', type=float)
+    min_lng = request.args.get('min_lng', type=float)
+    max_lng = request.args.get('max_lng', type=float)
+    city = request.args.get('city')
+    check_in = request.args.get('check_in')
+    check_out = request.args.get('check_out')
+    guests = request.args.get('guests', type=int, default=2)
+    property_type = request.args.get('property_type', 'all')
+    sort_by = request.args.get('sort_by', 'relevance')
+    min_price = request.args.get('min_price', type=float)
+    max_price = request.args.get('max_price', type=float)
+    min_rating = request.args.get('min_rating', type=float, default=0)
+    page = request.args.get('page', type=int, default=1)
+    per_page = 20
+    
+    # Build query
+    query = Property.query.filter(
+        Property.status == AccommodationPropertyStatus.ACTIVE,
+        Property.is_verified == True,
+        Property.is_active == True,
+        Property.is_deleted == False
+    )
+    
+    # Geographic bounds filter
+    if min_lat is not None and max_lat is not None and min_lng is not None and max_lng is not None:
+        query = query.filter(
+            Property.latitude >= min_lat,
+            Property.latitude <= max_lat,
+            Property.longitude >= min_lng,
+            Property.longitude <= max_lng
+        )
+    
+    # City filter
+    if city:
+        query = query.filter(Property.city.ilike(f'%{city}%'))
+    
+    # Property type filter
+    if property_type != 'all':
+        try:
+            query = query.filter(Property.property_type == AccommodationPropertyType(property_type))
+        except ValueError:
+            pass  # Invalid property type, ignore
+    
+    # Price filter
+    if min_price is not None:
+        query = query.filter(Property.base_price_per_night >= min_price)
+    if max_price is not None:
+        query = query.filter(Property.base_price_per_night <= max_price)
+    
+    # Rating filter
+    if min_rating > 0:
+        query = query.filter(Property.overall_rating >= min_rating)
+    
+    # Sorting
+    if sort_by == 'price_asc':
+        query = query.order_by(Property.base_price_per_night.asc())
+    elif sort_by == 'price_desc':
+        query = query.order_by(Property.base_price_per_night.desc())
+    elif sort_by == 'rating':
+        query = query.order_by(Property.overall_rating.desc(), Property.total_reviews.desc())
+    elif sort_by == 'newest':
+        query = query.order_by(Property.created_at.desc())
+    else:  # relevance
+        query = query.order_by(Property.views_last_24h.desc(), Property.overall_rating.desc())
+    
+    # Pagination
+    total = query.count()
+    properties = query.offset((page - 1) * per_page).limit(per_page).all()
+    
+    # Serialize properties
+    properties_data = []
+    for prop in properties:
+        # Check if wishlisted by current user
+        is_wishlisted = False
+        if current_user.is_authenticated:
+            from app.accommodation.models.wishlist import Wishlist
+            wishlist_item = Wishlist.query.filter_by(
+                user_id=current_user.id,
+                property_id=prop.id
+            ).first()
+            is_wishlisted = wishlist_item is not None
+        
+        properties_data.append({
+            'id': prop.id,
+            'name': prop.title,
+            'slug': prop.slug,
+            'city': prop.city,
+            'country': prop.country,
+            'latitude': float(prop.latitude) if prop.latitude else None,
+            'longitude': float(prop.longitude) if prop.longitude else None,
+            'price': float(prop.base_price_per_night),
+            'currency_symbol': '$',  # Could be dynamic based on prop.currency
+            'property_type': prop.property_type.value if prop.property_type else None,
+            'rating': float(prop.overall_rating) if prop.overall_rating else None,
+            'reviews': prop.total_reviews,
+            'images': prop.gallery if prop.gallery else [],
+            'is_wishlisted': is_wishlisted
+        })
+    
+    return jsonify({
+        'success': True,
+        'properties': properties_data,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'has_more': page * per_page < total
+    })
+
+
+@accommodation_bp.route("/api/explore/wishlist/<int:property_id>", methods=['POST', 'DELETE'], endpoint="explore_wishlist_api")
+@login_required
+def explore_wishlist_api(property_id):
+    """API for toggling wishlist status"""
+    from app.accommodation.models.wishlist import Wishlist
+    
+    property = Property.query.get_or_404(property_id)
+    
+    if request.method == 'POST':
+        # Add to wishlist
+        existing = Wishlist.query.filter_by(
+            user_id=current_user.id,
+            property_id=property_id
+        ).first()
+        
+        if existing:
+            return jsonify({'success': True, 'message': 'Already in wishlist'})
+        
+        wishlist_item = Wishlist(
+            user_id=current_user.id,
+            property_id=property_id
+        )
+        db.session.add(wishlist_item)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Added to wishlist'})
+    
+    elif request.method == 'DELETE':
+        # Remove from wishlist
+        wishlist_item = Wishlist.query.filter_by(
+            user_id=current_user.id,
+            property_id=property_id
+        ).first_or_404()
+        
+        db.session.delete(wishlist_item)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Removed from wishlist'})

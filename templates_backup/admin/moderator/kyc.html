@@ -1,0 +1,119 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}KYC Verification — AFCON360{% endblock %}
+
+{% block topbar_title %}KYC Verification{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">KYC Verification</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">KYC Verification</h1>
+    <p class="page-subheading">Review and verify Know Your Customer submissions</p>
+  </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.kyc_verification', status='pending') }}" class="tab-link {% if status == 'pending' or status is none %}active{% endif %}">
+    Pending
+  </a>
+  <a href="{{ url_for('admin.moderator.kyc_verification', status='approved') }}" class="tab-link {% if status == 'approved' %}active{% endif %}">
+    Approved
+  </a>
+  <a href="{{ url_for('admin.moderator.kyc_verification', status='rejected') }}" class="tab-link {% if status == 'rejected' %}active{% endif %}">
+    Rejected
+  </a>
+  <a href="{{ url_for('admin.moderator.kyc_verification', status='all') }}" class="tab-link {% if status == 'all' %}active{% endif %}">
+    All
+  </a>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search KYC submissions..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  <button type="submit" class="btn btn-primary">Search</button>
+  {% if request.args.get('search') %}
+  <a href="{{ url_for('admin.moderator.kyc_verification') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if kyc_submissions and kyc_submissions.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>User</th>
+        <th>Document Type</th>
+        <th>Submitted At</th>
+        <th>Status</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for kyc in kyc_submissions.items %}
+      <tr>
+        <td class="mono">{{ kyc.id }}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:12px;color:var(--accent-dk);text-transform:uppercase;">{{ kyc.user.username[0] }}</div>
+            <div style="font-weight:600;">{{ kyc.user.username }}</div>
+          </div>
+        </td>
+        <td>{{ kyc.document_type or '-' }}</td>
+        <td class="mono">{{ kyc.created_at.strftime('%Y-%m-%d') if kyc.created_at else '-' }}</td>
+        <td><span class="badge badge-{{ kyc.status }}">{{ kyc.status }}</span></td>
+        <td>
+          <a href="{{ url_for('admin.moderator.view_kyc', kyc_id=kyc.id) }}" class="btn btn-outline btn-xs">Review</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if kyc_submissions.has_prev %}
+    <a href="{{ url_for('admin.moderator.kyc_verification', status=status, page=kyc_submissions.prev_num, search=request.args.get('search')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in kyc_submissions.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != kyc_submissions.page %}
+        <a href="{{ url_for('admin.moderator.kyc_verification', status=status, page=page_num, search=request.args.get('search')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if kyc_submissions.has_next %}
+    <a href="{{ url_for('admin.moderator.kyc_verification', status=status, page=kyc_submissions.next_num, search=request.args.get('search')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ kyc_submissions.page }} of {{ kyc_submissions.pages }} pages ({{ kyc_submissions.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-id-card empty-icon"></i>
+    <p>No KYC submissions found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -97,7 +97,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
     </div>
 
     <div class="action-bar">
-      <form method="POST" action="{{ safe_url('url_for\(['"]transport.moderate_action', entity_type='driver', id=driver.id, action='approve') }}" style="display: inline;">
+      <form method="POST" action="{{ safe_url('transport.moderate_action', entity_type='driver', id=driver.id, action='approve') }}" style="display: inline;">
         <button type="submit" class="btn btn-approve">
           <i class="fas fa-check"></i> Approve Driver
         </button>
@@ -116,7 +116,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
       <div class="panel-title">Reject Driver</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('url_for\(['"]transport.moderate_action', entity_type='driver', id=driver.id, action='reject') }}">
+      <form method="POST" action="{{ safe_url('transport.moderate_action', entity_type='driver', id=driver.id, action='reject') }}">
         <div class="form-group">
           <label class="form-label">Rejection Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this driver is being rejected..."></textarea>
@@ -134,7 +134,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
       <div class="panel-title">Flag for Review</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('url_for\(['"]transport.moderate_action', entity_type='driver', id=driver.id, action='flag') }}">
+      <form method="POST" action="{{ safe_url('transport.moderate_action', entity_type='driver', id=driver.id, action='flag') }}">
         <div class="form-group">
           <label class="form-label">Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this driver needs further review..."></textarea>

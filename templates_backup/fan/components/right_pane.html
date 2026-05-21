@@ -1,0 +1,79 @@
+<div class="right-pane-content">
+
+    <!-- Default Welcome View -->
+    <div id="defaultView" class="detail-view active">
+        <div class="welcome-banner">
+            <div class="welcome-icon">👋</div>
+            <h2>Welcome back, {{ user.username }}!</h2>
+            <p>Select an item from the middle pane to view details.</p>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">🎟️</div>
+                <div class="stat-value">{{ stats.bookings_count|default(0) }}</div>
+                <div class="stat-label">Bookings</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🚌</div>
+                <div class="stat-value">{{ stats.trips_count|default(0) }}</div>
+                <div class="stat-label">Trips</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🏨</div>
+                <div class="stat-value">{{ stats.stays_count|default(0) }}</div>
+                <div class="stat-label">Stays</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⭐</div>
+                <div class="stat-value">{{ stats.reviews_count|default(0) }}</div>
+                <div class="stat-label">Reviews</div>
+            </div>
+        </div>
+
+        <!-- Tips to Unlock More -->
+        <div class="tips-section">
+            <h3>🔓 Unlock More Features</h3>
+            <ul class="tips-list">
+                {% if completion < 100 %}
+                <li class="tip-item incomplete">
+                    <i class="bi bi-person"></i>
+                    <span>Complete your profile ({{ completion }}%)</span>
+                    <a href="{{ url_for('auth.complete_profile') }}">Complete →</a>
+                </li>
+                {% endif %}
+                {% if not profile or not profile.phone_verified %}
+                <li class="tip-item">
+                    <i class="bi bi-phone"></i>
+                    <span>Verify phone number for SMS alerts</span>
+                    <a href="{{ url_for('profile.edit_profile') }}">Verify →</a>
+                </li>
+                {% endif %}
+                {% if kyc_info.tier < 3 %}
+                <li class="tip-item">
+                    <i class="bi bi-shield-check"></i>
+                    <span>Add National ID to activate wallet</span>
+                    <a href="{{ url_for('kyc.upgrade') }}">Upgrade →</a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Event Detail View (Hidden by default) -->
+    <div id="eventDetailView" class="detail-view">
+        <!-- Dynamically populated by JavaScript -->
+    </div>
+
+    <!-- Stay Detail View (Hidden by default) -->
+    <div id="stayDetailView" class="detail-view">
+        <!-- Dynamically populated by JavaScript -->
+    </div>
+
+    <!-- Trip Detail View (Hidden by default) -->
+    <div id="tripDetailView" class="detail-view">
+        <!-- Dynamically populated by JavaScript -->
+    </div>
+
+</div>

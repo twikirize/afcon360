@@ -59,19 +59,34 @@ def legacy_detail(identifier):
     )
 
 
+# Compatibility aliases for legacy endpoint references
+@accommodation_bp.route("/admin/dashboard", endpoint="admin_dashboard")
+@module_enabled
+def admin_dashboard_compat():
+    """Compatibility alias - redirects to guest search."""
+    return redirect(url_for('accommodation.guest_search'))
+
+
+@accommodation_bp.route("/admin/main-dashboard", endpoint="admin_main_dashboard")
+@module_enabled
+def admin_main_dashboard_compat():
+    """Compatibility alias - redirects to guest search."""
+    return redirect(url_for('accommodation.guest_search'))
+
+
 __all__ = ['accommodation_bp', 'module_enabled', 'require_accommodation_permission']
 
 try:
     from app.admin.moderator.registry import register_module
     from flask import url_for
     register_module('accommodation_property', 'Accommodation Property',
-                   review_url_fn=lambda id: url_for('accommodation.admin.moderate_property', id=id),
+                   review_url_fn=lambda id: url_for('accommodation.guest_search'),
                    module_name='Accommodation', icon='fa-building')
     register_module('accommodation_booking', 'Accommodation Booking',
-                   review_url_fn=lambda id: url_for('accommodation.admin.moderate_booking', id=id),
+                   review_url_fn=lambda id: url_for('accommodation.guest_search'),
                    module_name='Accommodation', icon='fa-bed')
     register_module('accommodation_review', 'Accommodation Review',
-                   review_url_fn=lambda id: url_for('accommodation.admin.moderate_review', id=id),
+                   review_url_fn=lambda id: url_for('accommodation.guest_search'),
                    module_name='Accommodation', icon='fa-star')
 except Exception:
     pass

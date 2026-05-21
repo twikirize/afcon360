@@ -91,8 +91,10 @@
 .home-left {
   background: #2a2a2a;
   min-height: calc(100vh - 120px);
-  display: flex; flex-direction: column;
-  position: sticky; top: 60px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 60px;
   height: calc(100vh - 60px);
   overflow-y: auto;
   margin: 0 auto;
@@ -204,7 +206,8 @@
 .home-main {
   background: #f2f4f2;
   padding: 1.25rem;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
   gap: 1.5rem;
 }
 

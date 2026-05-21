@@ -1,0 +1,183 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Organisation Moderation — AFCON360{% endblock %}
+
+{% block topbar_title %}Organisation Moderation{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Organisations</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Organisation Moderation</h1>
+    <p class="page-subheading">Review and manage organisation accounts</p>
+  </div>
+  {% if org_stats %}
+  <div style="display:flex;gap:12px;align-items:center;">
+    {% if org_stats.high_priority > 0 %}
+    <div style="background:var(--red-lt);color:var(--red);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      <i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>
+      {{ org_stats.high_priority }} High Priority
+    </div>
+    {% endif %}
+    <div style="background:var(--orange-lt);color:var(--orange);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      <i class="fas fa-flag" style="margin-right:4px;"></i>
+      {{ org_stats.flagged_count }} Flagged
+    </div>
+    <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      <i class="fas fa-clock" style="margin-right:4px;"></i>
+      {{ org_stats.verification_pending }} Pending
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Moderation Stats -->
+{% if org_stats %}
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--blue-lt);color:var(--blue);">
+      <i class="fas fa-building"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ org_stats.total_pending }}</div>
+      <div class="stat-label">Total Pending</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--orange-lt);color:var(--orange);">
+      <i class="fas fa-flag"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ org_stats.flagged_count }}</div>
+      <div class="stat-label">Flagged Orgs</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--purple-lt);color:var(--purple);">
+      <i class="fas fa-user-check"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ org_stats.verification_pending }}</div>
+      <div class="stat-label">Verification Pending</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--red-lt);color:var(--red);">
+      <i class="fas fa-exclamation-triangle"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ org_stats.high_priority }}</div>
+      <div class="stat-label">High Priority</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.orgs') }}" class="tab-link {% if current_filter == 'all' or current_filter is none %}active{% endif %}">
+    All Orgs
+  </a>
+  <a href="{{ url_for('admin.moderator.orgs', filter='pending') }}" class="tab-link {% if current_filter == 'pending' %}active{% endif %}">
+    Pending Verification
+  </a>
+  <a href="{{ url_for('admin.moderator.orgs', filter='flagged') }}" class="tab-link {% if current_filter == 'flagged' %}active{% endif %}">
+    Flagged
+  </a>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search organisations..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  <select class="form-control" style="width: auto;" name="status">
+    <option value="">All Status</option>
+    <option value="pending" {% if request.args.get('status') == 'pending' %}selected{% endif %}>Pending</option>
+    <option value="flagged" {% if request.args.get('status') == 'flagged' %}selected{% endif %}>Flagged</option>
+    <option value="under_review" {% if request.args.get('status') == 'under_review' %}selected{% endif %}>Under Review</option>
+  </select>
+  <button type="submit" class="btn btn-primary">Search</button>
+  {% if request.args.get('search') or request.args.get('status') %}
+  <a href="{{ url_for('admin.moderator.orgs') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if orgs %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>Name</th>
+        <th>Contact Email</th>
+        <th>Created At</th>
+        <th>Status</th>
+        <th>Members</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for org in orgs.items %}
+      <tr>
+        <td class="mono">{{ org.id }}</td>
+        <td style="font-weight:600;">{{ org.name }}</td>
+        <td style="color:var(--muted);">{{ org.contact_email or '-' }}</td>
+        <td class="mono">{{ org.created_at.strftime('%Y-%m-%d') if org.created_at else '-' }}</td>
+        <td>
+          <span class="badge {% if org.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">
+            {% if org.is_verified %}Verified{% else %}Unverified{% endif %}
+          </span>
+        </td>
+        <td class="mono">{{ org.users|length if org.users else 0 }}</td>
+        <td>
+          <a href="{{ url_for('admin.moderator.view_org', org_id=org.id) }}" class="btn btn-outline btn-xs">View</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if orgs.has_prev %}
+    <a href="{{ url_for('admin.moderator.orgs_queue', filter=current_filter, page=orgs.prev_num, search=request.args.get('search')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in orgs.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != orgs.page %}
+        <a href="{{ url_for('admin.moderator.orgs_queue', filter=current_filter, page=page_num, search=request.args.get('search')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if orgs.has_next %}
+    <a href="{{ url_for('admin.moderator.orgs_queue', filter=current_filter, page=orgs.next_num, search=request.args.get('search')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ orgs.page }} of {{ orgs.pages }} pages ({{ orgs.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-building empty-icon"></i>
+    <p>No organisations found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

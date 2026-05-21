@@ -62,11 +62,11 @@
   </div>
   <div class="page-actions">
     {% if booking.status == 'confirmed' %}
-    <a href="{{ safe_url('url_for\(['"]transport.booking_assign', id=booking.id) }}" class="btn btn-primary btn-sm">
+    <a href="{{ safe_url('transport.booking_assign', id=booking.id) }}" class="btn btn-primary btn-sm">
       <i class="fa-solid fa-user-plus"></i> Assign Driver
     </a>
     {% endif %}
-    <a href="{{ safe_url('url_for\(['"]transport.booking_edit', id=booking.id) }}" class="btn btn-secondary btn-sm">
+    <a href="{{ safe_url('transport.booking_edit', id=booking.id) }}" class="btn btn-secondary btn-sm">
       <i class="fa-solid fa-pen"></i> Edit
     </a>
     <button class="btn btn-danger btn-sm" onclick="confirmDelete()">
@@ -146,14 +146,14 @@
         </div>
         <div style="margin-left:auto;text-align:right;">
           <div style="color:var(--amber);font-weight:700;">★ {{ booking.driver.average_rating|default('—') }}</div>
-          <a href="{{ safe_url('url_for\(['"]transport.driver_show', id=booking.driver.id) }}" class="btn btn-secondary btn-sm" style="margin-top:4px;">View</a>
+          <a href="{{ safe_url('transport.driver_show', id=booking.driver.id) }}" class="btn btn-secondary btn-sm" style="margin-top:4px;">View</a>
         </div>
       </div>
       {% else %}
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
         <span style="color:var(--text-muted);font-size:0.82rem;">No driver assigned</span>
         {% if booking.status == 'confirmed' %}
-        <a href="{{ safe_url('url_for\(['"]transport.booking_assign', id=booking.id) }}" class="btn btn-primary btn-sm" style="margin-left:10px;">Assign Now</a>
+        <a href="{{ safe_url('transport.booking_assign', id=booking.id) }}" class="btn btn-primary btn-sm" style="margin-left:10px;">Assign Now</a>
         {% endif %}
       </div>
       {% endif %}
@@ -164,7 +164,7 @@
           <div style="font-weight:600;">{{ booking.vehicle.make }} {{ booking.vehicle.model }}</div>
           <div style="font-size:0.75rem;color:var(--text-muted);">{{ booking.vehicle.license_plate }} · {{ booking.vehicle.vehicle_class|title }}</div>
         </div>
-        <a href="{{ safe_url('url_for\(['"]transport.vehicle_show', id=booking.vehicle.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View</a>
+        <a href="{{ safe_url('transport.vehicle_show', id=booking.vehicle.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View</a>
       </div>
       {% else %}
       <div style="padding:16px 20px;color:var(--text-muted);font-size:0.82rem;">No vehicle assigned</div>

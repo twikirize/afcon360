@@ -1,0 +1,159 @@
+{#templates/wallet/compliance.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Compliance Status — AFCON360{% endblock %}
+
+{% block topbar_title %}Compliance Status{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Compliance Status</h1>
+    <p class="page-subheading">Your account's regulatory compliance information</p>
+  </div>
+</div>
+
+<!-- Overall Status -->
+<div style="background:linear-gradient(135deg,var(--green),var(--accent-dk));border-radius:var(--radius-lg);padding:20px 24px;color:#fff;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <p style="opacity:0.85;font-size:13px;">Overall Compliance Status</p>
+    <h2 style="font-family:var(--font-display);font-weight:800;font-size:24px;">Compliant</h2>
+    <p style="opacity:0.85;font-size:13px;margin-top:4px;"><i class="fas fa-check-circle"></i> All checks passed</p>
+  </div>
+  <div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">
+    <i class="fas fa-shield-alt"></i>
+  </div>
+</div>
+
+<!-- KYC Verification -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-id-card panel-title-icon green"></i>
+      KYC Verification
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--green-lt);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-user"></i></div>
+        <div>
+          <div style="font-weight:600;">Identity Verification</div>
+          <div style="font-size:12px;color:var(--muted);">Verified on Jan 15, 2026</div>
+        </div>
+      </div>
+      <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--green-lt);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-id-card"></i></div>
+        <div>
+          <div style="font-weight:600;">Document Verification</div>
+          <div style="font-size:12px;color:var(--muted);">National ID verified</div>
+        </div>
+      </div>
+      <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--green-lt);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="fas fa-phone"></i></div>
+        <div>
+          <div style="font-weight:600;">Phone Verification</div>
+          <div style="font-size:12px;color:var(--muted);">+256 700 XXX XXX</div>
+        </div>
+      </div>
+      <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+    </div>
+  </div>
+</div>
+
+<!-- AML/CFT Monitoring -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-shield-halved panel-title-icon blue"></i>
+      AML/CFT Monitoring
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <div class="col-layout-3" style="margin-bottom:16px;">
+      <div style="padding:16px;background:var(--blue-lt);border-radius:var(--radius);text-align:center;">
+        <div style="font-size:12px;color:var(--blue);margin-bottom:4px;">Risk Level</div>
+        <div style="font-family:var(--font-display);font-weight:800;font-size:24px;color:var(--blue);">Low</div>
+      </div>
+      <div style="padding:16px;background:var(--green-lt);border-radius:var(--radius);text-align:center;">
+        <div style="font-size:12px;color:var(--green);margin-bottom:4px;">Sanctions Check</div>
+        <div style="font-family:var(--font-display);font-weight:800;font-size:24px;color:var(--green);">Clear</div>
+      </div>
+      <div style="padding:16px;background:var(--purple-lt);border-radius:var(--radius);text-align:center;">
+        <div style="font-size:12px;color:var(--purple);margin-bottom:4px;">Last Scan</div>
+        <div style="font-family:var(--font-display);font-weight:800;font-size:24px;color:var(--purple);">Today</div>
+      </div>
+    </div>
+    <div style="display:grid;gap:8px;">
+      {% for check in ['Sanctions Screening (OFAC)', 'Sanctions Screening (UN)', 'Sanctions Screening (EU)', 'PEP Screening'] %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg);border-radius:var(--radius);">
+        <span style="font-size:13px;">{{ check }}</span>
+        <span style="color:var(--green);font-weight:600;font-size:12px;"><i class="fas fa-check-circle"></i> {{ 'Passed' if 'PEP' not in check else 'No Match' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Transaction Limits -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-gauge-high panel-title-icon amber"></i>
+      Transaction Limits
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:16px;">
+    {% set limits = [
+      {'name': 'Daily Limit', 'max': 5000000, 'used': 1750000, 'color': 'blue'},
+      {'name': 'Monthly Limit', 'max': 50000000, 'used': 10000000, 'color': 'green'},
+      {'name': 'Single Transaction', 'max': 2000000, 'used': 1000000, 'color': 'orange'}
+    ] %}
+    {% for limit in limits %}
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:13px;color:var(--ink-2);">{{ limit.name }}</span>
+        <span style="font-weight:600;font-size:13px;">UGX {{ limit.max | format_number }}</span>
+      </div>
+      <div style="width:100%;height:6px;background:var(--bg-2);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:{{ (limit.used / limit.max * 100) | round }}%;background:var(--{{ limit.color }});border-radius:3px;"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">UGX {{ limit.used | format_number }} used</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Compliance Activity -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-scroll panel-title-icon purple"></i>
+      Compliance Activity
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:16px;">
+    {% set activities = [
+      {'text': 'Identity verification completed', 'time': 'Jan 15, 2026 at 10:30 AM', 'color': 'green'},
+      {'text': 'Sanctions screening passed', 'time': 'Jan 15, 2026 at 10:31 AM', 'color': 'green'},
+      {'text': 'Account activated', 'time': 'Jan 15, 2026 at 10:32 AM', 'color': 'green'},
+      {'text': 'Daily limit review completed', 'time': 'Jan 14, 2026 at 11:45 PM', 'color': 'blue'}
+    ] %}
+    {% for activity in activities %}
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+      <div style="width:8px;height:8px;background:var(--{{ activity.color }});border-radius:50%;margin-top:5px;flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:13px;font-weight:500;">{{ activity.text }}</div>
+        <div style="font-size:11px;color:var(--muted);">{{ activity.time }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

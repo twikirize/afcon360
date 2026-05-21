@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Role Users - {{ role.name|replace('_', ' ')|title }} - AFCON360 Admin{% endblock %}
+
+{% block styles %}
+<style>
+    .roles-header {
+        background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .users-table {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .table {
+        margin-bottom: 0;
+    }
+
+    .table thead th {
+        background: #f8f9fa;
+        border-bottom: 2px solid #6f42c1;
+        color: #6f42c1;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+    }
+
+    .table tbody tr {
+        border-bottom: 1px solid #e9ecef;
+        transition: background 0.2s;
+    }
+
+    .table tbody tr:hover {
+        background: #f8f9fa;
+    }
+
+    .user-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #6f42c1;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .user-name {
+        font-weight: 600;
+        color: #333;
+    }
+
+    .user-email {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .badge {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .btn-action {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+
+    .btn-revoke {
+        background: #dc3545;
+        color: white;
+        border: none;
+    }
+
+    .btn-revoke:hover {
+        background: #c82333;
+    }
+
+    .btn-view {
+        background: #17a2b8;
+        color: white;
+        border: none;
+    }
+
+    .btn-view:hover {
+        background: #138496;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        color: #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="roles-header">
+        <h1><i class="bi bi-people"></i> {{ role.name|replace('_', ' ')|title }} Role</h1>
+        <p>Users with the {{ role.name|replace('_', ' ')|title }} role</p>
+    </div>
+
+    <!-- Back Button -->
+    <div class="mb-3">
+        <a href="{{ url_for('admin.owner.manage_roles') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Roles
+        </a>
+    </div>
+
+    <!-- Users Table -->
+    {% if users %}
+    <div class="users-table">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        <div class="user-info">
+                            <div class="user-avatar">
+                                {{ user.username[0]|upper if user.username else 'U' }}
+                            </div>
+                            <div>
+                                <div class="user-name">{{ user.username or 'Unknown' }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>{{ user.email or '-' }}</td>
+                    <td>
+                        <span class="badge badge-{{ 'active' if user.is_active else 'inactive' }}">
+                            {{ 'Active' if user.is_active else 'Inactive' }}
+                        </span>
+                    </td>
+                    <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="{{ url_for('admin.view_user', user_id=user.public_id) }}" class="btn btn-action btn-view">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                            {% if role.name not in ['owner', 'user'] %}
+                            <form method="POST" action="{{ url_for('admin.owner.revoke_role') }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="user_id" value="{{ user.public_id }}">
+                                <input type="hidden" name="role_id" value="{{ role.id }}">
+                                <button type="submit" class="btn btn-action btn-revoke" onclick="return confirm('Are you sure you want to revoke the {{ role.name }} role from {{ user.username }}?');">
+                                    <i class="bi bi-person-x"></i> Revoke
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-people"></i>
+        <h3>No Users Found</h3>
+        <p>There are no users with the {{ role.name|replace('_', ' ')|title }} role.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,879 @@
+{% extends "base.html" %}
+
+{% block title %}My Dashboard - AFCON360{% endblock %}
+
+{% block content %}
+<style>
+:root {
+    --primary: #667eea;
+    --primary-dark: #5a67d8;
+    --secondary: #764ba2;
+    --success: #48bb78;
+    --warning: #f6ad55;
+    --danger: #fc8181;
+    --info: #4299e1;
+    --dark: #2d3748;
+    --light: #f7fafc;
+    --border: #e2e8f0;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-container {
+    display: flex;
+    height: calc(100vh - 70px);
+    background: var(--light);
+}
+
+/* Left Panel */
+.left-panel {
+    width: 280px;
+    background: white;
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.user-profile-section {
+    padding: 2rem 1.5rem;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+    text-align: center;
+}
+
+.user-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin: 0 auto 1rem;
+}
+
+.user-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.user-email {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.nav-menu {
+    flex: 1;
+    padding: 1rem 0;
+}
+
+.nav-item {
+    display: block;
+    padding: 1rem 1.5rem;
+    color: var(--dark);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border-left: 3px solid transparent;
+    position: relative;
+}
+
+.nav-item:hover {
+    background: var(--light);
+    color: var(--primary);
+    border-left-color: var(--primary);
+}
+
+.nav-item.active {
+    background: linear-gradient(90deg, rgba(102, 126, 234, 0.1), transparent);
+    color: var(--primary);
+    border-left-color: var(--primary);
+    font-weight: 600;
+}
+
+.nav-item i {
+    width: 20px;
+    margin-right: 0.75rem;
+}
+
+.nav-badge {
+    float: right;
+    background: var(--danger);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-top: 2px;
+}
+
+/* Right Panel */
+.right-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+}
+
+.content-header {
+    margin-bottom: 2rem;
+}
+
+.content-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin-bottom: 0.5rem;
+}
+
+.content-subtitle {
+    color: #718096;
+    font-size: 1rem;
+}
+
+/* Content Sections */
+.content-section {
+    display: none;
+}
+
+.content-section.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Stats Cards */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.stat-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #718096;
+    font-size: 0.9rem;
+}
+
+.stat-change {
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+}
+
+.stat-change.positive {
+    color: var(--success);
+}
+
+.stat-change.negative {
+    color: var(--danger);
+}
+
+/* Event Cards */
+.event-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.event-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+}
+
+.event-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.event-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: between;
+    align-items: center;
+}
+
+.event-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.event-status.confirmed {
+    background: #bee3f8;
+    color: #2b6cb0;
+}
+
+.event-status.checked_in {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.event-status.cancelled {
+    background: #fed7d7;
+    color: #742a2a;
+}
+
+.event-body {
+    padding: 1.5rem;
+}
+
+.event-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--dark);
+    margin-bottom: 0.5rem;
+}
+
+.event-details {
+    color: #718096;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.event-detail {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.event-detail i {
+    width: 16px;
+    margin-right: 0.5rem;
+    color: var(--primary);
+}
+
+.event-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-action {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+.btn-outline {
+    background: white;
+    color: var(--primary);
+    border: 1px solid var(--primary);
+}
+
+.btn-outline:hover {
+    background: var(--primary);
+    color: white;
+}
+
+/* Quick Actions */
+.quick-actions {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+}
+
+.quick-actions h3 {
+    color: var(--dark);
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.quick-action-btn {
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--dark);
+    text-decoration: none;
+    text-align: center;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.quick-action-btn:hover {
+    background: var(--light);
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-2px);
+}
+
+.quick-action-btn i {
+    font-size: 1.5rem;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #718096;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state h3 {
+    margin-bottom: 0.5rem;
+    color: var(--dark);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dashboard-container {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .left-panel {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .right-panel {
+        padding: 1rem;
+    }
+    
+    .event-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<div class="dashboard-container">
+    <!-- Left Panel -->
+    <div class="left-panel">
+        <div class="user-profile-section">
+            <div class="user-avatar">
+                {{ current_user.username[0]|upper if current_user.username else '?' }}
+            </div>
+            <div class="user-name">{{ current_user.username }}</div>
+            <div class="user-email">{{ current_user.email }}</div>
+        </div>
+        
+        <nav class="nav-menu">
+            <a href="#events" class="nav-item active" data-section="events">
+                <i class="fas fa-ticket-alt"></i>
+                <span>My Events</span>
+                {% if registrations|length > 0 %}
+                <span class="nav-badge">{{ registrations|length }}</span>
+                {% endif %}
+            </a>
+            <a href="#wallet" class="nav-item" data-section="wallet">
+                <i class="fas fa-wallet"></i>
+                <span>Wallet</span>
+            </a>
+            <a href="#transport" class="nav-item" data-section="transport">
+                <i class="fas fa-bus"></i>
+                <span>Transport</span>
+            </a>
+            <a href="#accommodation" class="nav-item" data-section="accommodation">
+                <i class="fas fa-bed"></i>
+                <span>Accommodation</span>
+            </a>
+            <a href="#profile" class="nav-item" data-section="profile">
+                <i class="fas fa-user"></i>
+                <span>Profile</span>
+            </a>
+            <a href="#account" class="nav-item" data-section="account">
+                <i class="fas fa-cog"></i>
+                <span>Account Settings</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+        <!-- Events Section -->
+        <div id="events" class="content-section active">
+            <div class="content-header">
+                <h1 class="content-title">My Events</h1>
+                <p class="content-subtitle">Your registered events and tickets</p>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #bee3f8; color: #2b6cb0;">
+                        <i class="fas fa-ticket-alt"></i>
+                    </div>
+                    <div class="stat-value">{{ registrations|length }}</div>
+                    <div class="stat-label">Total Registrations</div>
+                    <div class="stat-change positive">
+                        <i class="fas fa-arrow-up"></i> Active events
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #c6f6d5; color: #22543d;">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div class="stat-value">{{ registrations|selectattr('event.start_date')|selectattr('event.start_date', '>=', current_date)|list|length }}</div>
+                    <div class="stat-label">Upcoming Events</div>
+                    <div class="stat-change positive">
+                        <i class="fas fa-clock"></i> To attend
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #faf5ff; color: #6b46c1;">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <div class="stat-value">{{ registrations|selectattr('event.start_date')|selectattr('event.start_date', '<', current_date)|list|length }}</div>
+                    <div class="stat-label">Past Events</div>
+                    <div class="stat-change">
+                        <i class="fas fa-check"></i> Attended
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <h3>Quick Actions</h3>
+                <div class="quick-actions-grid">
+                    <a href="{{ safe_url('events.list') }}" class="quick-action-btn">
+                        <i class="fas fa-search"></i>
+                        <span>Browse Events</span>
+                    </a>
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="quick-action-btn">
+                        <i class="fas fa-plus-circle"></i>
+                        <span>Top Up Wallet</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Upcoming Events -->
+            <h3 style="color: var(--dark); margin-bottom: 1rem;">Upcoming Events</h3>
+            <div class="event-grid">
+                {% set upcoming_count = 0 %}
+                {% for reg in registrations %}
+                    {% if reg.event and reg.event.start_date and reg.event.start_date >= current_date %}
+                        {% set upcoming_count = upcoming_count + 1 %}
+                        <div class="event-card">
+                            <div class="event-header">
+                                <span class="event-status {{ reg.status }}">
+                                    {{ reg.status|upper }}
+                                </span>
+                                <span class="event-status" style="background: #e2e8f0; color: #4a5568;">
+                                    {{ reg.ticket_type|upper }}
+                                </span>
+                            </div>
+                            <div class="event-body">
+                                <h4 class="event-title">{{ reg.event.name }}</h4>
+                                <div class="event-details">
+                                    <div class="event-detail">
+                                        <i class="fas fa-map-marker-alt"></i>
+                                        {{ reg.event.city }}{% if reg.event.venue %} - {{ reg.event.venue }}{% endif %}
+                                    </div>
+                                    <div class="event-detail">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        {{ reg.event.start_date[:10] if reg.event.start_date else 'TBD' }}
+                                    </div>
+                                    <div class="event-detail">
+                                        <i class="fas fa-hashtag"></i>
+                                        Registration #{{ reg.registration_ref }}
+                                    </div>
+                                </div>
+                                <div class="event-actions">
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
+                                       class="btn-action btn-primary">
+                                        <i class="fas fa-qrcode"></i>
+                                        QR Code
+                                    </a>
+                                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=reg.event.slug) }}" 
+                                       class="btn-action btn-outline">
+                                        <i class="fas fa-info-circle"></i>
+                                        Details
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if upcoming_count == 0 %}
+                    <div class="empty-state" style="grid-column: 1 / -1;">
+                        <i class="fas fa-calendar-alt"></i>
+                        <h3>No Upcoming Events</h3>
+                        <p>You haven't registered for any upcoming events yet.</p>
+                        <a href="{{ safe_url('events.list') }}" class="btn-action btn-primary">
+                            <i class="fas fa-search"></i>
+                            Browse Events
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Past Events -->
+            {% set past_registrations = [] %}
+            {% for reg in registrations %}
+                {% if reg.event.start_date %}
+                    {% set event_date_str = reg.event.start_date[:10] if reg.event.start_date|length > 10 else reg.event.start_date %}
+                    {% if event_date_str < current_date %}
+                        {% set _ = past_registrations.append(reg) %}
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+            
+            {% if past_registrations %}
+                <h3 style="color: var(--dark); margin: 2rem 0 1rem;">Past Events</h3>
+                <div class="event-grid">
+                    {% for reg in past_registrations %}
+                        <div class="event-card">
+                            <div class="event-header">
+                                <span class="event-status {{ reg.status }}">
+                                    {{ reg.status|upper }}
+                                </span>
+                                <span class="event-status" style="background: #e2e8f0; color: #4a5568;">
+                                    {{ reg.ticket_type|upper }}
+                                </span>
+                            </div>
+                            <div class="event-body">
+                                <h4 class="event-title">{{ reg.event.name }}</h4>
+                                <div class="event-details">
+                                    <div class="event-detail">
+                                        <i class="fas fa-map-marker-alt"></i>
+                                        {{ reg.event.city }}{% if reg.event.venue %} - {{ reg.event.venue }}{% endif %}
+                                    </div>
+                                    <div class="event-detail">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        {{ reg.event.start_date[:10] if reg.event.start_date else 'TBD' }}
+                                    </div>
+                                    <div class="event-detail">
+                                        <i class="fas fa-hashtag"></i>
+                                        Registration #{{ reg.registration_ref }}
+                                    </div>
+                                </div>
+                                <div class="event-actions">
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
+                                       class="btn-action btn-outline">
+                                        <i class="fas fa-qrcode"></i>
+                                        View QR
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Wallet Section -->
+        <div id="wallet" class="content-section">
+            <div class="content-header">
+                <h1 class="content-title">Wallet</h1>
+                <p class="content-subtitle">Manage your funds and transactions</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #c6f6d5; color: #22543d;">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stat-value">${{ "%.2f"|format(wallet_balance) }}</div>
+                    <div class="stat-label">Current Balance</div>
+                    <div class="stat-change positive">
+                        <i class="fas fa-arrow-up"></i> Available
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <h3>Quick Actions</h3>
+                <div class="quick-actions-grid">
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="quick-action-btn">
+                        <i class="fas fa-home"></i>
+                        <span>Wallet Home</span>
+                    </a>
+                    <a href="{{ safe_url('wallet.deposit_page') }}" class="quick-action-btn">
+                        <i class="fas fa-plus-circle"></i>
+                        <span>Add Funds</span>
+                    </a>
+                    <a href="{{ safe_url('wallet.send_page') }}" class="quick-action-btn">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Send Money</span>
+                    </a>
+                    <a href="{{ safe_url('wallet.history') }}" class="quick-action-btn">
+                        <i class="fas fa-history"></i>
+                        <span>Transaction History</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="empty-state">
+                <i class="fas fa-wallet"></i>
+                <h3>Wallet Management</h3>
+                <p>Click "Wallet Home" to manage your funds, view transactions, and more.</p>
+                <a href="{{ safe_url('wallet.wallet_home') }}" class="btn-action btn-primary">
+                    <i class="fas fa-arrow-right"></i>
+                    Go to Wallet Home
+                </a>
+            </div>
+        </div>
+
+        <!-- Transport Section -->
+        <div id="transport" class="content-section">
+            <div class="content-header">
+                <h1 class="content-title">Transport</h1>
+                <p class="content-subtitle">Your travel bookings and transportation</p>
+            </div>
+
+            <div class="quick-actions">
+                <h3>Transport Services</h3>
+                <div class="quick-actions-grid">
+                    <a href="{{ safe_url('transport.home') }}" class="quick-action-btn">
+                        <i class="fas fa-bus"></i>
+                        <span>Transport Home</span>
+                    </a>
+                    <a href="{{ safe_url('transport.book_transport') }}" class="quick-action-btn">
+                        <i class="fas fa-plus"></i>
+                        <span>Book Transport</span>
+                    </a>
+                    <a href="{{ safe_url('transport.bookings_index') }}" class="quick-action-btn">
+                        <i class="fas fa-list"></i>
+                        <span>My Bookings</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="empty-state">
+                <i class="fas fa-bus"></i>
+                <h3>Transport Services</h3>
+                <p>Book and manage your transportation for events and travel.</p>
+                <a href="{{ safe_url('transport.home') }}" class="btn-action btn-primary">
+                    <i class="fas fa-arrow-right"></i>
+                    Go to Transport Home
+                </a>
+            </div>
+        </div>
+
+        <!-- Accommodation Section -->
+        <div id="accommodation" class="content-section">
+            <div class="content-header">
+                <h1 class="content-title">Accommodation</h1>
+                <p class="content-subtitle">Your accommodation bookings and stays</p>
+            </div>
+
+            <div class="quick-actions">
+                <h3>Accommodation Services</h3>
+                <div class="quick-actions-grid">
+                    <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-action-btn">
+                        <i class="fas fa-hotel"></i>
+                        <span>Accommodation Home</span>
+                    </a>
+                    <a href="{{ safe_url('accommodation.search') }}" class="quick-action-btn">
+                        <i class="fas fa-search"></i>
+                        <span>Find Stays</span>
+                    </a>
+                    <a href="{{ safe_url('accommodation.my_bookings') }}" class="quick-action-btn">
+                        <i class="fas fa-bed"></i>
+                        <span>My Bookings</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="empty-state">
+                <i class="fas fa-bed"></i>
+                <h3>Accommodation Services</h3>
+                <p>Find and manage your accommodation for events and travel.</p>
+                <a href="{{ safe_url('accommodation.guest.search') }}" class="btn-action btn-primary">
+                    <i class="fas fa-arrow-right"></i>
+                    Go to Accommodation Home
+                </a>
+            </div>
+        </div>
+
+        <!-- Profile Section -->
+        <div id="profile" class="content-section">
+            <div class="content-header">
+                <h1 class="content-title">Profile</h1>
+                <p class="content-subtitle">Manage your public profile and information</p>
+            </div>
+
+            <div class="quick-actions">
+                <h3>Profile Management</h3>
+                <div class="quick-actions-grid">
+                    <a href="{{ url_for('profile.my_public_profile') }}" class="quick-action-btn">
+                        <i class="fas fa-user-circle"></i>
+                        <span>Public Profile</span>
+                    </a>
+                    <a href="{{ url_for('profile.edit_profile') }}" class="quick-action-btn">
+                        <i class="fas fa-edit"></i>
+                        <span>Edit Profile</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="empty-state">
+                <i class="fas fa-user"></i>
+                <h3>Profile Management</h3>
+                <p>Manage your public profile and personal information.</p>
+                <a href="{{ url_for('profile.my_public_profile') }}" class="btn-action btn-primary">
+                    <i class="fas fa-arrow-right"></i>
+                    Go to Profile
+                </a>
+            </div>
+        </div>
+
+        <!-- Account Section -->
+        <div id="account" class="content-section">
+            <div class="content-header">
+                <h1 class="content-title">Account Settings</h1>
+                <p class="content-subtitle">Manage your account and security settings</p>
+            </div>
+
+            <div class="quick-actions">
+                <h3>Account Management</h3>
+                <div class="quick-actions-grid">
+                    <a href="{{ url_for('profile.account_overview') }}" class="quick-action-btn">
+                        <i class="fas fa-user-badge"></i>
+                        <span>Account Overview</span>
+                    </a>
+                    <a href="{{ url_for('profile.edit_profile') }}" class="quick-action-btn">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </a>
+                    <a href="{{ url_for('auth.logout') }}" class="quick-action-btn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="empty-state">
+                <i class="fas fa-cog"></i>
+                <h3>Account Settings</h3>
+                <p>Manage your account settings, security, and preferences.</p>
+                <a href="{{ url_for('profile.account_overview') }}" class="btn-action btn-primary">
+                    <i class="fas fa-arrow-right"></i>
+                    Go to Account Settings
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Navigation functionality
+    const navItems = document.querySelectorAll('.nav-item');
+    const contentSections = document.querySelectorAll('.content-section');
+    
+    navItems.forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Remove active class from all items and sections
+            navItems.forEach(nav => nav.classList.remove('active'));
+            contentSections.forEach(section => section.classList.remove('active'));
+            
+            // Add active class to clicked item
+            this.classList.add('active');
+            
+            // Show corresponding section
+            const targetSection = this.getAttribute('data-section');
+            const section = document.getElementById(targetSection);
+            if (section) {
+                section.classList.add('active');
+            }
+        });
+    });
+    
+    // Handle hash changes for direct navigation
+    function handleHashChange() {
+        const hash = window.location.hash.substring(1);
+        if (hash) {
+            const navItem = document.querySelector(`[data-section="${hash}"]`);
+            if (navItem) {
+                navItem.click();
+            }
+        }
+    }
+    
+    // Check hash on load
+    handleHashChange();
+    
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+});
+</script>
+{% endblock %}

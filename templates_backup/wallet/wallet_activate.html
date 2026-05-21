@@ -1,0 +1,383 @@
+{#wallet_activate.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}
+  {% if action == 'verify' %}Complete Wallet Activation{% else %}Create Your Wallet{% endif %} — AFCON360
+{% endblock %}
+
+{% block topbar_title %}
+  {% if action == 'verify' %}Activate Wallet{% else %}Create Wallet{% endif %}
+{% endblock %}
+
+{% block content %}
+<div style="max-width:600px;margin:0 auto;">
+
+  <!-- Pre-Creation Information Popup (shown before create form) -->
+  <div id="preCreationModal" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);max-width:550px;width:90%;border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+      <div style="padding:20px;background:linear-gradient(135deg,var(--accent),var(--accent-dk));color:#fff;">
+        <h3 style="font-weight:700;margin-bottom:4px;">
+          <i class="fas fa-info-circle"></i> Important Information
+        </h3>
+        <p style="opacity:0.9;font-size:13px;margin:0;">Please read carefully before creating your wallet</p>
+      </div>
+      <div style="padding:24px;">
+        <div style="margin-bottom:20px;">
+          <h4 style="font-weight:600;margin-bottom:12px;color:var(--accent-dk);">
+            <i class="fas fa-check-circle"></i> Requirements
+          </h4>
+          <ul style="margin:0;padding-left:20px;font-size:14px;">
+            <li>✓ Email address must be verified</li>
+            <li>✓ Phone number must be verified</li>
+            <li>✓ You must be 18 years or older</li>
+            <li>✓ You must accept Terms & Conditions</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <h4 style="font-weight:600;margin-bottom:12px;color:var(--blue);">
+            <i class="fas fa-chart-line"></i> Initial Limits (Tier 0)
+          </h4>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:13px;">Daily Deposit Limit:</span>
+              <span style="font-weight:600;">UGX 1,000,000</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:13px;">Daily Withdrawal Limit:</span>
+              <span style="font-weight:600;">UGX 500,000</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:13px;">Monthly Transfer Limit:</span>
+              <span style="font-weight:600;">UGX 2,000,000</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="font-size:13px;">Single Transaction Max:</span>
+              <span style="font-weight:600;">UGX 500,000</span>
+            </div>
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin-top:8px;">
+            <i class="fas fa-arrow-up"></i> Complete KYC verification to increase limits
+          </p>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <h4 style="font-weight:600;margin-bottom:12px;color:var(--orange);">
+            <i class="fas fa-shield-alt"></i> Security Requirements
+          </h4>
+          <ul style="margin:0;padding-left:20px;font-size:14px;">
+            <li>✓ Transaction PIN required for all transfers</li>
+            <li>✓ Two-factor authentication recommended</li>
+            <li>✓ You are responsible for all wallet activities</li>
+            <li>✓ Report unauthorized access immediately</li>
+          </ul>
+        </div>
+
+        <div style="background:var(--green-lt);padding:12px;border-radius:var(--radius);margin:16px 0;">
+          <p style="font-size:12px;margin:0;color:var(--green);">
+            <i class="fas fa-clock"></i> <strong>Estimated time:</strong> 5-10 minutes
+          </p>
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:20px;">
+          <button id="modal-proceed" class="btn btn-primary" style="flex:1;">
+            <i class="fas fa-check"></i> I Understand, Proceed
+          </button>
+          <button id="modal-cancel" class="btn btn-ghost" style="flex:0;">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIVATION MODE (Wallet already created, needs activation) -->
+  {% if action == 'verify' %}
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-wallet panel-title-icon green"></i>
+        Complete Wallet Activation
+      </div>
+    </div>
+    <div class="panel-body" style="padding:28px;">
+      <div class="alert alert-info">
+        <i class="fas fa-circle-info"></i>
+        Your wallet has been created but needs activation to start using it.
+      </div>
+
+      <div style="background:var(--bg);border-radius:var(--radius);padding:16px;margin-bottom:20px;">
+        <h5 style="font-weight:600;margin-bottom:12px;">Wallet Details:</h5>
+        <div style="display:grid;gap:8px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Account ID:</span>
+            <span class="mono">{{ wallet.id[:12] if wallet else 'N/A' }}...</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Currency:</span>
+            <span style="font-weight:500;">{{ wallet.currency if wallet else 'UGX' }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Created:</span>
+            <span style="font-weight:500;">{{ wallet.created_at.strftime('%Y-%m-%d') if wallet and wallet.created_at else 'Just now' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activation Steps -->
+      <div style="margin-bottom:20px;">
+        <h5 style="font-weight:600;margin-bottom:12px;">Next Steps:</h5>
+        <div style="display:grid;gap:10px;">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--green-lt);border-radius:var(--radius);">
+            <div style="width:28px;height:28px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;">1</div>
+            <div><strong>Accept Terms & Conditions</strong><br><span style="font-size:12px;color:var(--muted);">Review and accept our wallet terms</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg);border-radius:var(--radius);">
+            <div style="width:28px;height:28px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;">2</div>
+            <div><strong>Set Transaction PIN</strong><br><span style="font-size:12px;color:var(--muted);">Create a 4-6 digit PIN for security</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg);border-radius:var(--radius);">
+            <div style="width:28px;height:28px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;">3</div>
+            <div><strong>Complete KYC Verification</strong><br><span style="font-size:12px;color:var(--muted);">Verify your identity to increase limits</span></div>
+          </div>
+        </div>
+      </div>
+
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action_type" value="activate">
+        <div class="alert alert-warning" style="margin-bottom:20px;">
+          <i class="fas fa-triangle-exclamation"></i>
+          By activating your wallet, you agree to our
+          <a href="{{ safe_url('wallet.terms') }}" style="color:var(--accent-dk);font-weight:600;text-decoration:underline;">Wallet Terms and Conditions</a>.
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:16px;">
+          <input type="checkbox" name="accept_terms" value="1" required>
+          I have read and accept the Terms and Conditions
+        </label>
+        <button type="submit" class="btn btn-success" style="width:100%;">
+          <i class="fas fa-check-circle"></i> Activate Wallet
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- CREATE MODE (No wallet yet, show creation form) -->
+  {% else %}
+
+  <!-- Requirements Status Check -->
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-clipboard-list panel-title-icon blue"></i>
+        Verification Status
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <div style="display:grid;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span><i class="fas fa-envelope"></i> Email Verification</span>
+          {% if current_user.email_verified %}
+            <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+          {% else %}
+            <span class="badge badge-rejected"><i class="fas fa-times"></i> Pending</span>
+            <a href="{{ url_for('auth.verify_email') }}" class="btn btn-ghost btn-xs">Verify Now</a>
+          {% endif %}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span><i class="fas fa-phone"></i> Phone Verification</span>
+          {% if current_user.phone_verified %}
+            <span class="badge badge-verified"><i class="fas fa-check"></i> Verified</span>
+          {% else %}
+            <span class="badge badge-rejected"><i class="fas fa-times"></i> Pending</span>
+            <a href="{{ url_for('auth.verify_phone') }}" class="btn btn-ghost btn-xs">Verify Now</a>
+          {% endif %}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span><i class="fas fa-id-card"></i> KYC Status</span>
+          <span class="badge badge-pending"><i class="fas fa-clock"></i> Required after creation</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-wallet panel-title-icon green"></i>
+        Create Your Wallet
+      </div>
+    </div>
+    <div class="panel-body" style="padding:28px;">
+      <p style="color:var(--muted);margin-bottom:24px;">
+        Create your wallet to start making deposits, sending payments, and receiving payouts.
+      </p>
+
+      <!-- Limits Preview -->
+      <div style="background:var(--blue-lt);border-radius:var(--radius);padding:15px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <i class="fas fa-chart-line" style="color:var(--blue);"></i>
+          <span style="font-weight:600;font-size:13px;">Your Initial Limits (Tier 0)</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+          <div>Daily Deposit: <strong>UGX 1,000,000</strong></div>
+          <div>Daily Withdrawal: <strong>UGX 500,000</strong></div>
+          <div>Monthly Transfer: <strong>UGX 2,000,000</strong></div>
+          <div>Per Transaction: <strong>UGX 500,000</strong></div>
+        </div>
+        <p style="font-size:11px;color:var(--blue);margin-top:8px;">
+          <i class="fas fa-arrow-up"></i> Complete KYC to increase limits
+        </p>
+      </div>
+
+      <form method="POST" id="wallet-create-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action_type" value="create">
+        <input type="hidden" name="accept_terms" id="accept-terms-field" value="0">
+
+        <div class="form-group">
+          <label class="form-label">Home Currency</label>
+          <select name="home_currency" class="form-control" required>
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+          </select>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px;">Your primary currency for transactions.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Local Currency</label>
+          <select name="local_currency" class="form-control" required>
+            <option value="UGX">UGX — Ugandan Shilling</option>
+            <option value="KES">KES — Kenyan Shilling</option>
+            <option value="TZS">TZS — Tanzanian Shilling</option>
+            <option value="NGN">NGN — Nigerian Naira</option>
+          </select>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px;">Your local currency for everyday use.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Nationality</label>
+          <select name="nationality" class="form-control" required>
+            <option value="UG">Uganda</option>
+            <option value="KE">Kenya</option>
+            <option value="TZ">Tanzania</option>
+            <option value="NG">Nigeria</option>
+            <option value="US">United States</option>
+            <option value="GB">United Kingdom</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Location</label>
+          <select name="location" class="form-control" required>
+            <option value="UG">Uganda</option>
+            <option value="KE">Kenya</option>
+            <option value="TZ">Tanzania</option>
+            <option value="NG">Nigeria</option>
+            <option value="US">United States</option>
+            <option value="GB">United Kingdom</option>
+          </select>
+        </div>
+
+        <!-- Terms Acceptance -->
+        <div style="margin-bottom:20px;">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" id="accept-terms-checkbox" style="margin-top:3px;">
+            <span style="font-size:13px;">
+              I have read and agree to the
+              <a href="{{ safe_url('wallet.terms') }}" target="_blank" style="color:var(--accent-dk);">Wallet Terms and Conditions</a>
+            </span>
+          </label>
+        </div>
+
+        <div class="alert alert-warning" style="margin-bottom:20px;">
+          <i class="fas fa-triangle-exclamation"></i>
+          By creating a wallet, you confirm that the information provided is accurate and you agree to our Terms.
+        </div>
+
+        <button type="button" id="create-wallet-btn" class="btn btn-primary" style="width:100%;" disabled>
+          <i class="fas fa-plus-circle"></i> Create Wallet
+        </button>
+      </form>
+
+      <hr style="margin:24px 0;border-color:var(--border);">
+
+      <div style="text-align:center;">
+        <p style="font-size:12px;color:var(--muted);">
+          <i class="fas fa-shield-alt"></i> Your wallet is secure and encrypted.<br>
+          <i class="fas fa-exchange-alt"></i> Multi-currency support available.
+        </p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+// Pre-creation modal logic (only for create mode)
+{% if action != 'verify' %}
+const modal = document.getElementById('preCreationModal');
+const createBtn = document.getElementById('create-wallet-btn');
+const termsCheckbox = document.getElementById('accept-terms-checkbox');
+const acceptTermsField = document.getElementById('accept-terms-field');
+
+// Enable create button only when terms accepted
+if (termsCheckbox) {
+  termsCheckbox.addEventListener('change', function(e) {
+    createBtn.disabled = !e.target.checked;
+  });
+}
+
+// Show modal on create click
+if (createBtn) {
+  createBtn.addEventListener('click', function() {
+    if (termsCheckbox && termsCheckbox.checked) {
+      modal.style.display = 'flex';
+    }
+  });
+}
+
+// Handle modal buttons
+const modalProceed = document.getElementById('modal-proceed');
+const modalCancel = document.getElementById('modal-cancel');
+
+if (modalProceed) {
+  modalProceed.addEventListener('click', function() {
+    modal.style.display = 'none';
+    // Set the accept_terms field and submit
+    acceptTermsField.value = '1';
+    document.getElementById('wallet-create-form').submit();
+  });
+}
+
+if (modalCancel) {
+  modalCancel.addEventListener('click', function() {
+    modal.style.display = 'none';
+  });
+}
+
+// Close modal when clicking outside
+window.addEventListener('click', function(e) {
+  if (e.target === modal) {
+    modal.style.display = 'none';
+  }
+});
+{% endif %}
+
+// For activation mode, ensure terms checkbox if present
+{% if action == 'verify' %}
+// Any activation-specific JS can go here
+{% endif %}
+</script>
+
+<style>
+.modal {
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+</style>
+{% endblock %}

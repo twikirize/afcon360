@@ -1,0 +1,223 @@
+{# templates/events/community_host/register.html #}
+{% extends "base.html" %}
+
+{% block title %}Offer Community Hosting - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-hand-holding-heart text-primary me-2"></i>
+                        Offer Community Hosting
+                    </h4>
+                    <p class="text-muted mb-0 small">For: {{ event.name }} · {{ event.city }}, {{ event.country }}</p>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>What is Community Hosting?</strong><br>
+                        Community hosts are local residents who offer accommodation to event attendees out of goodwill.
+                        You can offer free stays or set a symbolic price. All hosts are reviewed and approved by event organizers.
+                    </div>
+                    
+                    <form method="POST" id="hostForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Basic Info -->
+                        <h5 class="mb-3">Property Information</h5>
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label fw-bold">Listing Title *</label>
+                                <input type="text" name="title" class="form-control" required 
+                                       placeholder="e.g., Cozy Room in Kampala, Near Stadium">
+                                <div class="form-text">Give your space a descriptive name</div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label">Short Summary</label>
+                                <input type="text" name="summary" class="form-control" maxlength="500"
+                                       placeholder="Brief description of your space (max 500 chars)">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label">Full Description *</label>
+                                <textarea name="description" class="form-control" rows="4" required
+                                          placeholder="Describe your space, amenities, neighborhood, etc."></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Location -->
+                        <h5 class="mb-3 mt-4">Location</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label fw-bold">Address Line 1 *</label>
+                                <input type="text" name="address_line1" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Address Line 2</label>
+                                <input type="text" name="address_line2" class="form-control">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">City *</label>
+                                <input type="text" name="city" class="form-control" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">State/Region</label>
+                                <input type="text" name="state" class="form-control">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Country *</label>
+                                <select name="country" class="form-select" required>
+                                    <option value="UG">Uganda</option>
+                                    <option value="KE">Kenya</option>
+                                    <option value="TZ">Tanzania</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Postal Code</label>
+                                <input type="text" name="postal_code" class="form-control">
+                            </div>
+                        </div>
+                        
+                        <!-- Capacity -->
+                        <h5 class="mb-3 mt-4">Guest Capacity</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Max Guests *</label>
+                                <input type="number" name="max_guests" class="form-control" min="1" max="20" value="2" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Bedrooms</label>
+                                <input type="number" name="bedrooms" class="form-control" min="0" max="10" value="1">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Beds</label>
+                                <input type="number" name="beds" class="form-control" min="0" max="20" value="1">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Bathrooms</label>
+                                <input type="number" name="bathrooms" class="form-control" step="0.5" min="0" max="10" value="1">
+                            </div>
+                        </div>
+                        
+                        <!-- Pricing -->
+                        <h5 class="mb-3 mt-4">Pricing</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input type="checkbox" name="is_free" class="form-check-input" id="isFreeCheck" onchange="togglePrice()">
+                                    <label class="form-check-label fw-bold" for="isFreeCheck">
+                                        ❤️ This is a FREE offering (no charge)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6" id="priceField">
+                                <label class="form-label fw-bold">Price per night</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" name="price_per_night" class="form-control" step="1" min="0" value="0">
+                                    <span class="input-group-text">USD</span>
+                                </div>
+                                <div class="form-text">You can set a symbolic price (e.g., $20) to cover utilities</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Stay Requirements -->
+                        <h5 class="mb-3 mt-4">Stay Requirements</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Minimum nights</label>
+                                <input type="number" name="min_stay_nights" class="form-control" min="1" max="30" value="1">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Maximum nights</label>
+                                <input type="number" name="max_stay_nights" class="form-control" min="1" max="90" placeholder="Optional">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Check-in time</label>
+                                <input type="text" name="check_in_time" class="form-control" placeholder="e.g., 14:00">
+                            </div>
+                        </div>
+                        
+                        <!-- House Rules -->
+                        <h5 class="mb-3 mt-4">House Rules</h5>
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <textarea name="house_rules" class="form-control" rows="3"
+                                          placeholder="e.g., No smoking, Quiet hours after 10pm, No pets, etc."></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Photos -->
+                        <h5 class="mb-3 mt-4">Photos</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Main Photo URL</label>
+                                <input type="url" name="main_image" class="form-control" placeholder="https://...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Gallery URLs (one per line)</label>
+                                <textarea name="gallery_urls" class="form-control" rows="3" 
+                                          placeholder="https://...&#10;https://..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Terms -->
+                        <div class="alert alert-warning mt-4">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="termsCheck" required>
+                                <label class="form-check-label" for="termsCheck">
+                                    I confirm that I am offering accommodation in good faith for event attendees.
+                                    I understand that my listing will be reviewed by the event organizer before being published.
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                            <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-outline-secondary me-md-2">
+                                Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane"></i> Submit Registration
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePrice() {
+    const isFree = document.getElementById('isFreeCheck').checked;
+    const priceField = document.getElementById('priceField');
+    const priceInput = document.querySelector('input[name="price_per_night"]');
+    
+    if (isFree) {
+        priceField.style.opacity = '0.5';
+        priceInput.disabled = true;
+        priceInput.value = '0';
+    } else {
+        priceField.style.opacity = '1';
+        priceInput.disabled = false;
+    }
+}
+</script>
+
+<style>
+.form-label {
+    font-size: 14px;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Events Moderation — AFCON360{% endblock %}
+
+{% block topbar_title %}Events Moderation{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Events</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Events Moderation</h1>
+    <p class="page-subheading">Review and moderate event submissions</p>
+  </div>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search events..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  <select class="form-control" style="width: auto;" name="status">
+    <option value="">All Statuses</option>
+    <option value="pending" {% if request.args.get('status') == 'pending' %}selected{% endif %}>Pending</option>
+    <option value="approved" {% if request.args.get('status') == 'approved' %}selected{% endif %}>Approved</option>
+    <option value="rejected" {% if request.args.get('status') == 'rejected' %}selected{% endif %}>Rejected</option>
+  </select>
+  <button type="submit" class="btn btn-primary">Filter</button>
+  {% if request.args.get('search') or request.args.get('status') %}
+  <a href="{{ safe_url('events.moderate') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if events and events.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>Name</th>
+        <th>Organiser</th>
+        <th>Date</th>
+        <th>Location</th>
+        <th>Status</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in events.items %}
+      <tr>
+        <td class="mono">{{ event.id }}</td>
+        <td><a href="{{ safe_url('url_for\(['"]events.view', id=event.id) }}" style="color:var(--ink-2);font-weight:600;text-decoration:none;">{{ event.name }}</a></td>
+        <td>{{ event.organiser.username if event.organiser else '-' }}</td>
+        <td class="mono">{{ event.start_date.strftime('%Y-%m-%d') if event.start_date else '-' }}</td>
+        <td>{{ event.location or '-' }}</td>
+        <td><span class="badge badge-{{ event.status }}">{{ event.status }}</span></td>
+        <td>
+          <a href="{{ safe_url('url_for\(['"]events.moderate_event', event_id=event.id) }}" class="btn btn-outline btn-xs">Review</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if events.has_prev %}
+    <a href="{{ safe_url('url_for\(['"]events.moderate', page=events.prev_num, search=request.args.get('search'), status=request.args.get('status')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in events.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != events.page %}
+        <a href="{{ safe_url('url_for\(['"]events.moderate', page=page_num, search=request.args.get('search'), status=request.args.get('status')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if events.has_next %}
+    <a href="{{ safe_url('url_for\(['"]events.moderate', page=events.next_num, search=request.args.get('search'), status=request.args.get('status')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ events.page }} of {{ events.pages }} pages ({{ events.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-calendar-days empty-icon"></i>
+    <p>No events found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

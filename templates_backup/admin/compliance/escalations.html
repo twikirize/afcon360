@@ -1,0 +1,178 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Escalations — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Escalated Cases{% endblock %}
+
+{% block content %}
+<!-- Stats Row -->
+<div class="stat-grid" style="margin-bottom: 20px;">
+  <div class="stat-card animate-up">
+    <div class="stat-icon red"><i class="fas fa-fire"></i></div>
+    <div class="stat-value">{{ stats.critical|default(0) }}</div>
+    <div class="stat-label">Critical</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon orange"><i class="fas fa-arrow-up"></i></div>
+    <div class="stat-value">{{ stats.high|default(0) }}</div>
+    <div class="stat-label">High Priority</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon blue"><i class="fas fa-clock"></i></div>
+    <div class="stat-value">{{ stats.awaiting_response|default(0) }}</div>
+    <div class="stat-label">Awaiting Response</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+    <div class="stat-value">{{ stats.resolved_today|default(0) }}</div>
+    <div class="stat-label">Resolved Today</div>
+  </div>
+</div>
+
+<!-- Escalations Table -->
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-arrow-up-right-from-square"></i> Escalated Items</div>
+    <div>
+      <span class="badge badge-blue">{{ items|length }} active</span>
+    </div>
+  </div>
+  <div class="card-body">
+    {% if items %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Entity</th>
+            <th>Escalated From</th>
+            <th>Reason</th>
+            <th>Priority</th>
+            <th>Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
+            <td>
+              {% if item.type == 'flag' %}
+                <a href="{{ url_for('admin.moderator.view_flag', flag_id=item.id) }}">#{{ item.id }}</a>
+              {% elif item.type == 'kyc' %}
+                <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a>
+              {% elif item.type == 'case' %}
+                <a href="{{ url_for('compliance.view_case', case_id=item.id) }}">#{{ item.id }}</a>
+              {% else %}
+                #{{ item.id }}
+              {% endif %}
+            </td>
+            <td>
+              {% if item.type == 'flag' %}
+                <span class="badge badge-purple"><i class="fas fa-flag"></i> Flag</span>
+              {% elif item.type == 'kyc' %}
+                <span class="badge badge-blue"><i class="fas fa-id-card"></i> KYC</span>
+              {% elif item.type == 'payout' %}
+                <span class="badge badge-green"><i class="fas fa-money-bill"></i> Payout</span>
+              {% elif item.type == 'case' %}
+                <span class="badge badge-orange"><i class="fas fa-folder"></i> Case</span>
+              {% else %}
+                <span class="badge badge-gray">{{ item.type }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.entity_name %}
+                {{ item.entity_name }}
+              {% else %}
+                <span class="mono">ID: {{ item.entity_id }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="user-cell">
+                <div class="av">{{ item.escalated_by.username[0] if item.escalated_by else '?' }}</div>
+                <div>
+                  <div class="u-name">{{ item.escalated_by.username if item.escalated_by else 'Unknown' }}</div>
+                  <div class="u-sub">{{ item.escalated_by.role if item.escalated_by else '' }}</div>
+                </div>
+              </div>
+            </td>
+            <td style="max-width: 200px;" title="{{ item.reason }}">
+              {{ item.reason[:50] }}{% if item.reason|length > 50 %}...{% endif %}
+            </td>
+            <td>
+              {% if item.priority == 'critical' %}
+                <span class="badge badge-red">Critical</span>
+              {% elif item.priority == 'high' %}
+                <span class="badge badge-orange">High</span>
+              {% elif item.priority == 'medium' %}
+                <span class="badge badge-blue">Medium</span>
+              {% else %}
+                <span class="badge badge-gray">Low</span>
+              {% endif %}
+            </td>
+            <td class="mono">{{ item.escalated_at.strftime('%Y-%m-%d %H:%M') if item.escalated_at else '-' }}</td>
+            <td>
+              <div class="action-group">
+                {% if item.type == 'flag' %}
+                  <a href="{{ url_for('admin.moderator.view_flag', flag_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                {% elif item.type == 'kyc' %}
+                  <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                {% elif item.type == 'payout' %}
+                  <a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                {% elif item.type == 'case' %}
+                  <a href="{{ url_for('compliance.view_case', case_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('compliance.create_case_from_escalation') }}" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="escalation_id" value="{{ item.id }}">
+                  <input type="hidden" name="entity_type" value="{{ item.type }}">
+                  <input type="hidden" name="entity_id" value="{{ item.entity_id }}">
+                  <button type="submit" class="btn btn-sm btn-secondary">Create Case</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination and pagination.pages > 1 %}
+    <div class="pagination">
+      {% if pagination.has_prev %}
+        <a href="{{ url_for('compliance.escalations', page=pagination.prev_num) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+      {% else %}
+        <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+      {% endif %}
+      
+      {% for page_num in pagination.iter_pages(left_current=2, right_current=2, left_edge=1, right_edge=1) %}
+        {% if page_num %}
+          {% if page_num == pagination.page %}
+            <span class="pg-btn active">{{ page_num }}</span>
+          {% else %}
+            <a href="{{ url_for('compliance.escalations', page=page_num) }}" class="pg-btn">{{ page_num }}</a>
+          {% endif %}
+        {% else %}
+          <span class="pg-btn disabled">...</span>
+        {% endif %}
+      {% endfor %}
+      
+      {% if pagination.has_next %}
+        <a href="{{ url_for('compliance.escalations', page=pagination.next_num) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+      {% else %}
+        <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+      {% endif %}
+      <span class="pg-info">{{ pagination.total }} total</span>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+      <p>No active escalations. All caught up!</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

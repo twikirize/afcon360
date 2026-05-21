@@ -22,7 +22,7 @@
       <i class="fa-solid fa-check"></i> Resolve
     </button>
     {% endif %}
-    <a href="{{ safe_url('url_for\(['"]transport.incident_edit', id=incident.id) }}" class="btn btn-secondary btn-sm">
+    <a href="{{ safe_url('transport.incident_edit', id=incident.id) }}" class="btn btn-secondary btn-sm">
       <i class="fa-solid fa-pen"></i> Edit
     </a>
   </div>
@@ -75,21 +75,21 @@
       <div class="card-header"><span class="card-title">Related Entities</span></div>
       <div style="padding:14px;display:flex;flex-direction:column;gap:10px;">
         {% if incident.booking %}
-        <a href="{{ safe_url('url_for\(['"]transport.booking_show', id=incident.booking.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+        <a href="{{ safe_url('transport.booking_show', id=incident.booking.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
           <i class="fa-solid fa-calendar-check" style="color:var(--amber);"></i>
           <div><div style="font-size:0.82rem;font-weight:600;">{{ incident.booking.booking_reference }}</div><div style="font-size:0.7rem;color:var(--text-muted);">Booking</div></div>
           <i class="fa-solid fa-chevron-right" style="margin-left:auto;color:var(--text-muted);font-size:0.7rem;"></i>
         </a>
         {% endif %}
         {% if incident.driver %}
-        <a href="{{ safe_url('url_for\(['"]transport.driver_show', id=incident.driver.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+        <a href="{{ safe_url('transport.driver_show', id=incident.driver.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
           <i class="fa-solid fa-id-card" style="color:var(--blue);"></i>
           <div><div style="font-size:0.82rem;font-weight:600;">{{ incident.driver.display_name }}</div><div style="font-size:0.7rem;color:var(--text-muted);">Driver</div></div>
           <i class="fa-solid fa-chevron-right" style="margin-left:auto;color:var(--text-muted);font-size:0.7rem;"></i>
         </a>
         {% endif %}
         {% if incident.vehicle %}
-        <a href="{{ safe_url('url_for\(['"]transport.vehicle_show', id=incident.vehicle.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
+        <a href="{{ safe_url('transport.vehicle_show', id=incident.vehicle.id) }}" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-elevated);border-radius:8px;border:1px solid var(--border);">
           <i class="fa-solid fa-van-shuttle" style="color:var(--green);"></i>
           <div><div style="font-size:0.82rem;font-weight:600;">{{ incident.vehicle.license_plate }}</div><div style="font-size:0.7rem;color:var(--text-muted);">Vehicle</div></div>
           <i class="fa-solid fa-chevron-right" style="margin-left:auto;color:var(--text-muted);font-size:0.7rem;"></i>
@@ -123,7 +123,7 @@
         </div>
         {% endif %}
         {% if incident.status not in ['resolved','closed'] %}
-        <a href="{{ safe_url('url_for\(['"]transport.incident_investigate', id=incident.id) }}" class="btn btn-primary" style="margin-top:12px;width:100%;justify-content:center;">
+        <a href="{{ safe_url('transport.incident_investigate', id=incident.id) }}" class="btn btn-primary" style="margin-top:12px;width:100%;justify-content:center;">
           <i class="fa-solid fa-pen-to-square"></i> Update Investigation
         </a>
         {% endif %}

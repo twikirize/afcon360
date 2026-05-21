@@ -1,0 +1,22 @@
+{# Pane mode: when ?_pane=1, don't use base template #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
+
+{% block title %}KYC Verification - AFCON360{% endblock %}
+{% block content %}
+<div class="kyc-dashboard">
+    <h1>KYC Verification Status</h1>
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">Verification Progress</div>
+        </div>
+        <div class="panel-body">
+            <p>Your KYC verification status and requirements will appear here.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

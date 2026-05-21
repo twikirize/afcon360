@@ -1,0 +1,578 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Moderator Training Materials — AFCON360{% endblock %}
+
+{% block topbar_title %}Training Materials{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.training') }}">Training</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Course Materials</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Moderator Training Course</h1>
+    <p class="page-subheading">Complete training materials and certification program</p>
+  </div>
+</div>
+
+<!-- Course Overview -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-graduation-cap" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Course Overview
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:12px;">Program Structure</h3>
+        <ul style="list-style:none;padding:0;">
+          <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:24px;height:24px;background:var(--blue-lt);color:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">1</div>
+              <div>
+                <div style="font-weight:600;">Foundation Course</div>
+                <div style="font-size:12px;color:var(--muted);">Basic moderation principles and platform overview</div>
+              </div>
+            </div>
+          </li>
+          <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:24px;height:24px;background:var(--orange-lt);color:var(--orange);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">2</div>
+              <div>
+                <div style="font-weight:600;">Intermediate Skills</div>
+                <div style="font-size:12px;color:var(--muted);">Content policies, user safety, and escalation procedures</div>
+              </div>
+            </div>
+          </li>
+          <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:24px;height:24px;background:var(--purple-lt);color:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">3</div>
+              <div>
+                <div style="font-weight:600;">Advanced Techniques</div>
+                <div style="font-size:12px;color:var(--muted);">AI tools, cross-platform moderation, crisis management</div>
+              </div>
+            </div>
+          </li>
+          <li style="padding:8px 0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:24px;height:24px;background:var(--green-lt);color:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">4</div>
+              <div>
+                <div style="font-weight:600;">Certification Assessment</div>
+                <div style="font-size:12px;color:var(--muted);">Final exam and practical evaluation</div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:12px;">Learning Outcomes</h3>
+        <div style="background:var(--bg);padding:16px;border-radius:var(--radius);border-left:4px solid var(--accent);">
+          <p style="margin:0 0 12px 0;">Upon completion, moderators will be able to:</p>
+          <ul style="margin:0;padding-left:20px;">
+            <li>Apply platform content policies consistently and fairly</li>
+            <li>Identify and handle various types of harmful content</li>
+            <li>Use AI-powered moderation tools effectively</li>
+            <li>Manage escalations and coordinate with compliance teams</li>
+            <li>Maintain user safety while protecting free expression</li>
+            <li>Document decisions and maintain audit trails</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 1: Foundation Course -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-book" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Module 1: Foundation Course
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge-success">Beginner</span>
+      <span class="badge badge-blue">10 Credits</span>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:16px;">Course Content</h3>
+        
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">1.1 Introduction to Content Moderation</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Understand the importance of content moderation</li>
+              <li>Recognize the impact on user safety and platform integrity</li>
+              <li>Learn the legal and ethical responsibilities</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Why Moderation Matters:</strong> Protecting users, preventing harm, maintaining trust</li>
+              <li><strong>Platform Responsibility:</strong> Legal obligations, community standards, brand reputation</li>
+              <li><strong>Moderator Role:</strong> Decision-making authority, judgment calls, consistency</li>
+              <li><strong>Impact Assessment:</strong> Understanding consequences of moderation decisions</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">1.2 Platform Overview and Navigation</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Navigate the moderation dashboard efficiently</li>
+              <li>Understand queue management and prioritization</li>
+              <li>Use moderation tools and features</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Moderator Dashboard:</strong> Layout, widgets, real-time metrics</li>
+              <li><strong>Queue Management:</strong> Priority systems, SLA tracking, workload balancing</li>
+              <li><strong>Review Tools:</strong> Content viewer, context panel, decision interface</li>
+              <li><strong>Search and Filter:</strong> Finding content, advanced filtering options</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">1.3 Basic Content Policies</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Identify different categories of prohibited content</li>
+              <li>Apply policy guidelines consistently</li>
+              <li>Understand severity levels and appropriate responses</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Content Categories:</strong> Hate speech, violence, harassment, spam, misinformation</li>
+              <li><strong>Severity Levels:</strong> Critical, high, medium, low priority classifications</li>
+              <li><strong>Response Guidelines:</strong> Remove, hide, warn, escalate, ignore</li>
+              <li><strong>Context Considerations:</strong> Cultural sensitivity, intent analysis, nuance</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <div style="background:var(--blue-lt);color:var(--blue);padding:16px;border-radius:var(--radius);margin-bottom:16px;">
+          <h4 style="margin-bottom:8px;">Module Details</h4>
+          <div style="font-size:13px;">
+            <div style="margin-bottom:8px;"><strong>Duration:</strong> 2 hours</div>
+            <div style="margin-bottom:8px;"><strong>Format:</strong> Interactive lessons</div>
+            <div style="margin-bottom:8px;"><strong>Assessment:</strong> Quiz (80% pass required)</div>
+            <div><strong>Credits:</strong> 10 certification credits</div>
+          </div>
+        </div>
+        
+        <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:16px;">
+          <h4 style="margin-bottom:8px;">Study Materials</h4>
+          <ul style="list-style:none;padding:0;margin:0;">
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-file-pdf" style="color:var(--red);"></i>
+                <span>Moderation Handbook (PDF)</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-video" style="color:var(--blue);"></i>
+                <span>Platform Navigation Tutorial</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-list-check" style="color:var(--green);"></i>
+                <span>Policy Reference Guide</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-question-circle" style="color:var(--orange);"></i>
+                <span>Practice Scenarios</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+        
+        <div style="background:var(--orange-lt);color:var(--orange);padding:16px;border-radius:var(--radius);">
+          <h4 style="margin-bottom:8px;">Quick Quiz</h4>
+          <p style="margin:0 0 12px 0;font-size:13px;">Test your knowledge of basic concepts:</p>
+          <button class="btn btn-primary btn-sm" style="width:100%;">Start Quiz</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 2: Intermediate Skills -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-shield-alt" style="background:var(--orange-lt);color:var(--orange);"></i>
+      Module 2: Intermediate Skills
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge-warning">Intermediate</span>
+      <span class="badge badge-blue">15 Credits</span>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:16px;">Course Content</h3>
+        
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">2.1 Advanced Content Policies</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Apply nuanced policy judgments</li>
+              <li>Handle edge cases and gray areas</li>
+              <li>Consider cultural and contextual factors</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Hate Speech Nuances:</strong> Protected characteristics, context, intent analysis</li>
+              <li><strong>Violence and Threats:</strong> Implied vs direct, credible threats, self-harm content</li>
+              <li><strong>Harassment Patterns:</strong> Targeted abuse, dogpiling, coordinated attacks</li>
+              <li><strong>Misinformation:</strong> Fact-checking, harmful falsehoods, election integrity</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">2.2 User Safety and Protection</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Identify at-risk users and situations</li>
+              <li>Apply protective measures appropriately</li>
+              <li>Coordinate with safety teams</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Vulnerable Users:</strong> Minors, mental health concerns, at-risk groups</li>
+              <li><strong>Self-Harm Content:</strong> Identification, response protocols, resources</li>
+              <li><strong>Exploitation Prevention:</strong> Grooming, scams, financial abuse</li>
+              <li><strong>Privacy Protection:</strong> Personal information, doxxing prevention</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">2.3 Escalation Procedures</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Recognize situations requiring escalation</li>
+              <li>Follow proper escalation protocols</li>
+              <li>Document and communicate effectively</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Escalation Triggers:</strong> Legal issues, PR risks, complex cases</li>
+              <li><strong>Level System:</strong> L1, L2, L3 escalation criteria and procedures</li>
+              <li><strong>Handoff Protocols:</strong> Information transfer, context preservation</li>
+              <li><strong>Follow-up Requirements:</strong> Monitoring, case closure, feedback loops</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <div style="background:var(--orange-lt);color:var(--orange);padding:16px;border-radius:var(--radius);margin-bottom:16px;">
+          <h4 style="margin-bottom:8px;">Module Details</h4>
+          <div style="font-size:13px;">
+            <div style="margin-bottom:8px;"><strong>Duration:</strong> 3 hours</div>
+            <div style="margin-bottom:8px;"><strong>Format:</strong> Case studies + simulations</div>
+            <div style="margin-bottom:8px;"><strong>Assessment:</strong> Practical exercises</div>
+            <div><strong>Credits:</strong> 15 certification credits</div>
+          </div>
+        </div>
+        
+        <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:16px;">
+          <h4 style="margin-bottom:8px;">Study Materials</h4>
+          <ul style="list-style:none;padding:0;margin:0;">
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-book-open" style="color:var(--purple);"></i>
+                <span>Advanced Policy Manual</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-users" style="color:var(--blue);"></i>
+                <span>Safety Protocols Guide</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-arrow-up" style="color:var(--orange);"></i>
+                <span>Escalation Flowcharts</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-microscope" style="color:var(--green);"></i>
+                <span>Case Study Collection</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+        
+        <div style="background:var(--purple-lt);color:var(--purple);padding:16px;border-radius:var(--radius);">
+          <h4 style="margin-bottom:8px;">Practical Exercise</h4>
+          <p style="margin:0 0 12px 0;font-size:13px;">Apply your knowledge to real scenarios:</p>
+          <button class="btn btn-primary btn-sm" style="width:100%;">Start Exercise</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Module 3: Advanced Techniques -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-brain" style="background:var(--purple-lt);color:var(--purple);"></i>
+      Module 3: Advanced Techniques
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge-changes_requested">Advanced</span>
+      <span class="badge badge-blue">25 Credits</span>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:16px;">Course Content</h3>
+        
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">3.1 AI-Powered Moderation</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Understand AI moderation systems</li>
+              <li>Interpret AI confidence scores</li>
+              <li>Handle AI-human collaboration effectively</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>AI Models:</strong> Text classification, image analysis, behavior detection</li>
+              <li><strong>Confidence Scoring:</strong> Understanding probabilities, false positives/negatives</li>
+              <li><strong>Human Oversight:</strong> Review workflows, appeal processes, feedback loops</li>
+              <li><strong>Performance Metrics:</strong> Accuracy, precision, recall, F1 scores</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">3.2 Cross-Platform Moderation</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Coordinate moderation across platforms</li>
+              <li>Handle platform-specific considerations</li>
+              <li>Maintain consistency while adapting to context</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Platform Ecosystem:</strong> Web, mobile apps, API, third-party integrations</li>
+              <li><strong>Synchronization:</strong> Real-time updates, conflict resolution, data consistency</li>
+              <li><strong>Platform Differences:</strong> UI/UX considerations, technical limitations</li>
+              <li><strong>Unified Experience:</strong> Consistent policies, user expectations</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h4 style="color:var(--accent);margin-bottom:8px;">3.3 Crisis Management</h4>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:12px;">
+            <h5 style="margin-bottom:8px;">Learning Objectives:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li>Identify crisis situations</li>
+              <li>Implement emergency protocols</li>
+              <li>Coordinate with other teams during crises</li>
+            </ul>
+          </div>
+          <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+            <h5 style="margin-bottom:8px;">Key Topics:</h5>
+            <ul style="margin:0;padding-left:20px;">
+              <li><strong>Crisis Indicators:</strong> Volume spikes, coordinated attacks, PR emergencies</li>
+              <li><strong>Emergency Protocols:</strong> Rapid response, temporary measures, communication</li>
+              <li><strong>Team Coordination:</strong> Cross-functional collaboration, escalation chains</li>
+              <li><strong>Post-Crisis Analysis:</strong> Root cause analysis, prevention strategies</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <div style="background:var(--purple-lt);color:var(--purple);padding:16px;border-radius:var(--radius);margin-bottom:16px;">
+          <h4 style="margin-bottom:8px;">Module Details</h4>
+          <div style="font-size:13px;">
+            <div style="margin-bottom:8px;"><strong>Duration:</strong> 5 hours</div>
+            <div style="margin-bottom:8px;"><strong>Format:</strong> Advanced workshops</div>
+            <div style="margin-bottom:8px;"><strong>Assessment:</strong> Simulation + written analysis</div>
+            <div><strong>Credits:</strong> 25 certification credits</div>
+          </div>
+        </div>
+        
+        <div style="background:var(--bg);padding:16px;border-radius:var(--radius);margin-bottom:16px;">
+          <h4 style="margin-bottom:8px;">Study Materials</h4>
+          <ul style="list-style:none;padding:0;margin:0;">
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-robot" style="color:var(--blue);"></i>
+                <span>AI Systems Documentation</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-network-wired" style="color:var(--green);"></i>
+                <span>Cross-Platform Guide</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-exclamation-triangle" style="color:var(--red);"></i>
+                <span>Crisis Response Playbook</span>
+              </div>
+            </li>
+            <li style="padding:8px 0;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-chart-line" style="color:var(--orange);"></i>
+                <span>Analytics Dashboard Guide</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+        
+        <div style="background:var(--red-lt);color:var(--red);padding:16px;border-radius:var(--radius);">
+          <h4 style="margin-bottom:8px;">Final Assessment</h4>
+          <p style="margin:0 0 12px 0;font-size:13px;">Complete the certification evaluation:</p>
+          <button class="btn btn-primary btn-sm" style="width:100%;">Start Assessment</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Certification Requirements -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-award" style="background:var(--green-lt);color:var(--green);"></i>
+      Certification Requirements
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:16px;">Requirements Summary</h3>
+        <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+          <ul style="margin:0;padding-left:20px;">
+            <li><strong>Complete all modules:</strong> Foundation, Intermediate, Advanced</li>
+            <li><strong>Pass all assessments:</strong> 80% minimum score required</li>
+            <li><strong>Earn 50 credits:</strong> 10 + 15 + 25 credits from modules</li>
+            <li><strong>Practical evaluation:</strong> Handle 20 test cases with 90% accuracy</li>
+            <li><strong>Final exam:</strong> Comprehensive knowledge assessment</li>
+          </ul>
+        </div>
+      </div>
+      <div>
+        <h3 style="color:var(--ink);margin-bottom:16px;">Certification Levels</h3>
+        <div style="background:var(--bg);padding:16px;border-radius:var(--radius);">
+          <div style="margin-bottom:12px;">
+            <div style="font-weight:600;color:var(--blue);">Level 1: Basic Moderator</div>
+            <div style="font-size:12px;color:var(--muted);">Complete Foundation module (10 credits)</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <div style="font-weight:600;color:var(--orange);">Level 2: Certified Moderator</div>
+            <div style="font-size:12px;color:var(--muted);">Complete Foundation + Intermediate (25 credits)</div>
+          </div>
+          <div>
+            <div style="font-weight:600;color:var(--green);">Level 3: Senior Moderator</div>
+            <div style="font-size:12px;color:var(--muted);">Complete all modules + final assessment (50 credits)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .stat-content {
+    flex: 1;
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 24px;
+    color: var(--ink);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+</style>
+{% endblock %}

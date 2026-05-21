@@ -1,0 +1,399 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}User & Organization Management — AFCON360{% endblock %}
+
+{% block topbar_title %}User & Organization Management{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Users</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">User & Organization Management</h1>
+    <p class="page-subheading">Review and manage individual users and organizations</p>
+  </div>
+</div>
+
+<!-- Entity Type Toggle -->
+<div class="entity-toggle-bar">
+  <button type="button" class="entity-toggle-btn {% if view_type == 'users' or view_type is none %}active{% endif %}" onclick="switchView('users')">
+    <i class="fas fa-users"></i>
+    <span>Individual Users</span>
+  </button>
+  <button type="button" class="entity-toggle-btn {% if view_type == 'organizations' %}active{% endif %}" onclick="switchView('organizations')">
+    <i class="fas fa-building"></i>
+    <span>Organizations</span>
+  </button>
+</div>
+
+<!-- Filter Tabs -->
+<div class="tab-bar" id="filter-tabs">
+  <a href="{{ url_for('admin.moderator.user_moderation', view_type=view_type or 'users', filter='all') }}" class="tab-link {% if current_filter == 'all' or current_filter is none %}active{% endif %}">
+    All
+  </a>
+  <a href="{{ url_for('admin.moderator.user_moderation', view_type=view_type or 'users', filter='recent') }}" class="tab-link {% if current_filter == 'recent' %}active{% endif %}">
+    Recent (7d)
+  </a>
+  <a href="{{ url_for('admin.moderator.user_moderation', view_type=view_type or 'users', filter='unverified') }}" class="tab-link {% if current_filter == 'unverified' %}active{% endif %}">
+    Unverified
+  </a>
+  <a href="{{ url_for('admin.moderator.user_moderation', view_type=view_type or 'users', filter='inactive') }}" class="tab-link {% if current_filter == 'inactive' %}active{% endif %}">
+    Inactive
+  </a>
+  <a href="{{ url_for('admin.moderator.user_moderation', view_type=view_type or 'users', filter='suspended') }}" class="tab-link {% if current_filter == 'suspended' %}active{% endif %}">
+    Suspended
+  </a>
+</div>
+
+<!-- Advanced Filters -->
+<div class="filter-section">
+  <button type="button" class="filter-toggle-btn" onclick="toggleFilters()">
+    <i class="fas fa-filter"></i>
+    <span>Advanced Filters</span>
+    <i class="fas fa-chevron-down" id="filter-chevron"></i>
+  </button>
+  
+  <div class="filter-panel" id="filter-panel">
+    <form method="GET" class="filter-form">
+      <input type="hidden" name="view_type" value="{{ view_type or 'users' }}">
+      <input type="hidden" name="filter" value="{{ current_filter or 'all' }}">
+      
+      <div class="filter-grid">
+        <!-- Search -->
+        <div class="filter-group">
+          <label>Search</label>
+          <div class="search-input-wrap">
+            <i class="fas fa-search"></i>
+            <input type="text" class="search-input" placeholder="{% if view_type == 'organizations' %}Search organizations...{% else %}Search users...{% endif %}" name="search" value="{{ request.args.get('search', '') }}">
+          </div>
+        </div>
+        
+        <!-- Role Filter (for users) -->
+        {% if view_type != 'organizations' %}
+        <div class="filter-group">
+          <label>Role</label>
+          <select name="role" class="filter-select">
+            <option value="">All Roles</option>
+            <option value="owner" {% if request.args.get('role') == 'owner' %}selected{% endif %}>Owner</option>
+            <option value="super_admin" {% if request.args.get('role') == 'super_admin' %}selected{% endif %}>Super Admin</option>
+            <option value="admin" {% if request.args.get('role') == 'admin' %}selected{% endif %}>Admin</option>
+            <option value="moderator" {% if request.args.get('role') == 'moderator' %}selected{% endif %}>Moderator</option>
+            <option value="user" {% if request.args.get('role') == 'user' %}selected{% endif %}>User</option>
+          </select>
+        </div>
+        {% endif %}
+        
+        <!-- Organization Type Filter (for orgs) -->
+        {% if view_type == 'organizations' %}
+        <div class="filter-group">
+          <label>Organization Type</label>
+          <select name="org_type" class="filter-select">
+            <option value="">All Types</option>
+            <option value="merchant" {% if request.args.get('org_type') == 'merchant' %}selected{% endif %}>Merchant</option>
+            <option value="service_provider" {% if request.args.get('org_type') == 'service_provider' %}selected{% endif %}>Service Provider</option>
+            <option value="marketplace_seller" {% if request.args.get('org_type') == 'marketplace_seller' %}selected{% endif %}>Marketplace Seller</option>
+            <option value="non_profit" {% if request.args.get('org_type') == 'non_profit' %}selected{% endif %}>Non-Profit</option>
+          </select>
+        </div>
+        {% endif %}
+        
+        <!-- Verification Status -->
+        <div class="filter-group">
+          <label>Verification Status</label>
+          <select name="verification" class="filter-select">
+            <option value="">All</option>
+            <option value="verified" {% if request.args.get('verification') == 'verified' %}selected{% endif %}>Verified</option>
+            <option value="unverified" {% if request.args.get('verification') == 'unverified' %}selected{% endif %}>Unverified</option>
+            <option value="pending" {% if request.args.get('verification') == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="rejected" {% if request.args.get('verification') == 'rejected' %}selected{% endif %}>Rejected</option>
+          </select>
+        </div>
+        
+        <!-- Registration Date Range -->
+        <div class="filter-group">
+          <label>Registration Date</label>
+          <select name="date_range" class="filter-select">
+            <option value="">All Time</option>
+            <option value="today" {% if request.args.get('date_range') == 'today' %}selected{% endif %}>Today</option>
+            <option value="7days" {% if request.args.get('date_range') == '7days' %}selected{% endif %}>Last 7 Days</option>
+            <option value="30days" {% if request.args.get('date_range') == '30days' %}selected{% endif %}>Last 30 Days</option>
+            <option value="90days" {% if request.args.get('date_range') == '90days' %}selected{% endif %}>Last 90 Days</option>
+            <option value="1year" {% if request.args.get('date_range') == '1year' %}selected{% endif %}>Last Year</option>
+          </select>
+        </div>
+        
+        <!-- Status Filter -->
+        <div class="filter-group">
+          <label>Status</label>
+          <select name="status" class="filter-select">
+            <option value="">All Status</option>
+            <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if request.args.get('status') == 'inactive' %}selected{% endif %}>Inactive</option>
+            <option value="suspended" {% if request.args.get('status') == 'suspended' %}selected{% endif %}>Suspended</option>
+          </select>
+        </div>
+        
+        <!-- Country Filter (for orgs) -->
+        {% if view_type == 'organizations' %}
+        <div class="filter-group">
+          <label>Country</label>
+          <input type="text" class="filter-input" placeholder="Country code (e.g., US, NG)" name="country" value="{{ request.args.get('country', '') }}">
+        </div>
+        {% endif %}
+        
+        <!-- Sort By -->
+        <div class="filter-group">
+          <label>Sort By</label>
+          <select name="sort" class="filter-select">
+            <option value="created_desc" {% if request.args.get('sort') == 'created_desc' or request.args.get('sort') is none %}selected{% endif %}>Newest First</option>
+            <option value="created_asc" {% if request.args.get('sort') == 'created_asc' %}selected{% endif %}>Oldest First</option>
+            <option value="name_asc" {% if request.args.get('sort') == 'name_asc' %}selected{% endif %}>Name A-Z</option>
+            <option value="name_desc" {% if request.args.get('sort') == 'name_desc' %}selected{% endif %}>Name Z-A</option>
+            <option value="email_asc" {% if request.args.get('sort') == 'email_asc' %}selected{% endif %}>Email A-Z</option>
+          </select>
+        </div>
+        
+        <!-- Per Page -->
+        <div class="filter-group">
+          <label>Per Page</label>
+          <select name="per_page" class="filter-select">
+            <option value="20" {% if request.args.get('per_page') == '20' or request.args.get('per_page') is none %}selected{% endif %}>20</option>
+            <option value="50" {% if request.args.get('per_page') == '50' %}selected{% endif %}>50</option>
+            <option value="100" {% if request.args.get('per_page') == '100' %}selected{% endif %}>100</option>
+            <option value="200" {% if request.args.get('per_page') == '200' %}selected{% endif %}>200</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Apply Filters</button>
+        <a href="{{ url_for('admin.moderator.user_moderation', view_type=view_type or 'users') }}" class="btn btn-ghost">Clear All</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if view_type == 'organizations' %}
+    <!-- Organizations Table -->
+    {% if organizations and organizations.items %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 60px;">#</th>
+          <th>Organization</th>
+          <th>Org ID</th>
+          <th>Type</th>
+          <th>Country</th>
+          <th>Registered</th>
+          <th>Verification</th>
+          <th>Status</th>
+          <th style="width: 100px;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for org in organizations.items %}
+        <tr>
+          <td class="mono">{{ org.id }}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--accent-dk);">
+                <i class="fas fa-building"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;">{{ org.legal_name }}</div>
+                <div style="font-size:11px;color:var(--muted);">{{ org.contact_email or 'No email' }}</div>
+              </div>
+            </div>
+          </td>
+          <td class="mono" style="font-size:11px;">{{ org.org_id }}</td>
+          <td>
+            <span class="badge badge-role">{{ org.org_type or 'N/A' }}</span>
+          </td>
+          <td class="mono">{{ org.country or '-' }}</td>
+          <td class="mono">{{ org.created_at.strftime('%Y-%m-%d') if org.created_at else '-' }}</td>
+          <td>
+            <span class="badge {% if org.verification_status == 'verified' %}badge-verified{% elif org.verification_status == 'pending' %}badge-pending{% elif org.verification_status == 'rejected' %}badge-rejected{% else %}badge-unverified{% endif %}">
+              {{ org.verification_status|title }}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if org.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+              {{ 'Active' if org.is_active else 'Inactive' }}
+            </span>
+          </td>
+          <td>
+            <a href="{{ url_for('admin.moderator.view_organization', org_id=org.id) }}" class="btn btn-outline btn-xs">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination for Organizations -->
+    <div class="pagination">
+      {% if organizations.has_prev %}
+      <a href="{{ url_for('admin.moderator.user_moderation', view_type='organizations', filter=current_filter, page=organizations.prev_num, search=request.args.get('search'), role=request.args.get('role'), org_type=request.args.get('org_type'), verification=request.args.get('verification'), date_range=request.args.get('date_range'), status=request.args.get('status'), country=request.args.get('country'), sort=request.args.get('sort'), per_page=request.args.get('per_page')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+      {% else %}
+      <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+      {% endif %}
+
+      {% for page_num in organizations.iter_pages() %}
+        {% if page_num %}
+          {% if page_num != organizations.page %}
+          <a href="{{ url_for('admin.moderator.user_moderation', view_type='organizations', filter=current_filter, page=page_num, search=request.args.get('search'), role=request.args.get('role'), org_type=request.args.get('org_type'), verification=request.args.get('verification'), date_range=request.args.get('date_range'), status=request.args.get('status'), country=request.args.get('country'), sort=request.args.get('sort'), per_page=request.args.get('per_page')) }}" class="pg-btn">{{ page_num }}</a>
+          {% else %}
+          <span class="pg-btn active">{{ page_num }}</span>
+          {% endif %}
+        {% else %}
+          <span class="pg-btn">...</span>
+        {% endif %}
+      {% endfor %}
+
+      {% if organizations.has_next %}
+      <a href="{{ url_for('admin.moderator.user_moderation', view_type='organizations', filter=current_filter, page=organizations.next_num, search=request.args.get('search'), role=request.args.get('role'), org_type=request.args.get('org_type'), verification=request.args.get('verification'), date_range=request.args.get('date_range'), status=request.args.get('status'), country=request.args.get('country'), sort=request.args.get('sort'), per_page=request.args.get('per_page')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+      {% else %}
+      <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+      {% endif %}
+
+      <span class="pg-info">Showing {{ organizations.page }} of {{ organizations.pages }} pages ({{ organizations.total }} total)</span>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-building empty-icon"></i>
+      <p>No organizations found</p>
+    </div>
+    {% endif %}
+  {% else %}
+    <!-- Users Table -->
+    {% if users and users.items %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 60px;">#</th>
+          <th>User</th>
+          <th>Email</th>
+          <th>Registered</th>
+          <th>Verified</th>
+          <th>Status</th>
+          <th>Roles</th>
+          <th style="width: 100px;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users.items %}
+        <tr>
+          <td class="mono">{{ user.public_id }}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:12px;color:var(--accent-dk);text-transform:uppercase;">{{ user.username[0] if user.username else 'U' }}</div>
+              <div style="font-weight:600;">{{ user.username or 'No username' }}</div>
+            </div>
+          </td>
+          <td style="color:var(--muted);">{{ user.email }}</td>
+          <td class="mono">{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
+          <td>
+            <span class="badge {% if user.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">
+              {% if user.is_verified %}Verified{% else %}Unverified{% endif %}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if user.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+              {{ 'Active' if user.is_active else 'Inactive' }}
+            </span>
+          </td>
+          <td>
+            {% for role in user.roles %}
+            <span class="badge badge-role">{{ role.name }}</span>
+            {% else %}
+            <span class="mono">—</span>
+            {% endfor %}
+          </td>
+          <td>
+            <a href="{{ url_for('admin.moderator.view_user', user_id=user.id) }}" class="btn btn-outline btn-xs">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination for Users -->
+    <div class="pagination">
+      {% if users.has_prev %}
+      <a href="{{ url_for('admin.moderator.user_moderation', view_type='users', filter=current_filter, page=users.prev_num, search=request.args.get('search'), role=request.args.get('role'), verification=request.args.get('verification'), date_range=request.args.get('date_range'), status=request.args.get('status'), sort=request.args.get('sort'), per_page=request.args.get('per_page')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+      {% else %}
+      <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+      {% endif %}
+
+      {% for page_num in users.iter_pages() %}
+        {% if page_num %}
+          {% if page_num != users.page %}
+          <a href="{{ url_for('admin.moderator.user_moderation', view_type='users', filter=current_filter, page=page_num, search=request.args.get('search'), role=request.args.get('role'), verification=request.args.get('verification'), date_range=request.args.get('date_range'), status=request.args.get('status'), sort=request.args.get('sort'), per_page=request.args.get('per_page')) }}" class="pg-btn">{{ page_num }}</a>
+          {% else %}
+          <span class="pg-btn active">{{ page_num }}</span>
+          {% endif %}
+        {% else %}
+          <span class="pg-btn">...</span>
+        {% endif %}
+      {% endfor %}
+
+      {% if users.has_next %}
+      <a href="{{ url_for('admin.moderator.user_moderation', view_type='users', filter=current_filter, page=users.next_num, search=request.args.get('search'), role=request.args.get('role'), verification=request.args.get('verification'), date_range=request.args.get('date_range'), status=request.args.get('status'), sort=request.args.get('sort'), per_page=request.args.get('per_page')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+      {% else %}
+      <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+      {% endif %}
+
+      <span class="pg-info">Showing {{ users.page }} of {{ users.pages }} pages ({{ users.total }} total)</span>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-users empty-icon"></i>
+      <p>No users found</p>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<script>
+function switchView(viewType) {
+  const currentUrl = new URL(window.location.href);
+  currentUrl.searchParams.set('view_type', viewType);
+  currentUrl.searchParams.delete('page'); // Reset to page 1
+  window.location.href = currentUrl.toString();
+}
+
+function toggleFilters() {
+  const panel = document.getElementById('filter-panel');
+  const chevron = document.getElementById('filter-chevron');
+  
+  if (panel.style.display === 'none' || panel.style.display === '') {
+    panel.style.display = 'block';
+    chevron.classList.remove('fa-chevron-down');
+    chevron.classList.add('fa-chevron-up');
+  } else {
+    panel.style.display = 'none';
+    chevron.classList.remove('fa-chevron-up');
+    chevron.classList.add('fa-chevron-down');
+  }
+}
+
+// Initialize filter panel state based on URL parameters
+document.addEventListener('DOMContentLoaded', function() {
+  const params = new URLSearchParams(window.location.search);
+  const hasFilters = params.has('search') || params.has('role') || params.has('org_type') || 
+                     params.has('verification') || params.has('date_range') || params.has('status') || 
+                     params.has('country') || params.has('sort') || params.has('per_page');
+  
+  if (hasFilters) {
+    document.getElementById('filter-panel').style.display = 'block';
+    document.getElementById('filter-chevron').classList.remove('fa-chevron-down');
+    document.getElementById('filter-chevron').classList.add('fa-chevron-up');
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,912 @@
+{% extends "owner/base.html" %}
+
+{% block title %}Aggregator Settings - AFCON360{% endblock %}
+
+{% block extra_css %}
+<style>
+.aggregator-settings {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.navigation-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.settings-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.nav-item:hover {
+    background: #F3F4F6;
+}
+
+.nav-item.active {
+    background: #EEF2FF;
+    border-color: #4F46E5;
+    color: #4F46E5;
+}
+
+.nav-icon {
+    margin-right: 1rem;
+    font-size: 1.25rem;
+}
+
+.nav-text {
+    font-weight: 500;
+}
+
+.setting-section {
+    display: none;
+}
+
+.setting-section.active {
+    display: block;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #E5E7EB;
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.save-section-btn {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.save-section-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.aggregator-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.aggregator-card {
+    background: #F9FAFB;
+    border: 2px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.aggregator-card:hover {
+    border-color: #4F46E5;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+
+.aggregator-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.aggregator-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.aggregator-status {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #10B981;
+    color: white;
+}
+
+.status-inactive {
+    background: #EF4444;
+    color: white;
+}
+
+.status-pending {
+    background: #F59E0B;
+    color: white;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    background: #E5E7EB;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.toggle-switch.active {
+    background: #10B981;
+}
+
+.toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+}
+
+.toggle-switch.active::after {
+    transform: translateX(30px);
+}
+
+.alert-box {
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.alert-title {
+    font-weight: 600;
+    color: #92400E;
+    margin-bottom: 0.5rem;
+}
+
+.alert-text {
+    color: #92400E;
+    font-size: 0.875rem;
+}
+
+.region-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.region-card {
+    background: white;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+}
+
+.region-card:hover {
+    border-color: #4F46E5;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+
+.region-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.region-name {
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.region-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.country-list {
+    margin-top: 0.5rem;
+}
+
+.country-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.country-name {
+    font-size: 0.875rem;
+    color: #374151;
+}
+
+.country-status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.625rem;
+    font-weight: 500;
+}
+
+.status-enabled {
+    background: #10B981;
+    color: white;
+}
+
+.status-disabled {
+    background: #EF4444;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Aggregator Settings</h1>
+        <p class="text-gray-600 text-lg">Configure payment aggregators and regional support</p>
+    </div>
+
+    <div class="aggregator-settings">
+        <!-- Navigation Panel -->
+        <div class="navigation-panel">
+            <div class="nav-item active" onclick="showSection('aggregator-list')">
+                <span class="nav-icon">🔗</span>
+                <span class="nav-text">Aggregator List</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('regional-support')">
+                <span class="nav-icon">🌍</span>
+                <span class="nav-text">Regional Support</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('webhook-config')">
+                <span class="nav-icon">🪝</span>
+                <span class="nav-text">Webhook Config</span>
+            </div>
+            
+            <div class="nav-item" onclick="showSection('api-access')">
+                <span class="nav-icon">🔑</span>
+                <span class="nav-text">API Access</span>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <!-- Aggregator List Section -->
+            <div id="aggregator-list" class="setting-section active">
+                <div class="section-header">
+                    <h2 class="section-title">Payment Aggregators</h2>
+                    <button onclick="saveAggregators()" class="save-section-btn">
+                        💾 Save Aggregators
+                    </button>
+                </div>
+
+                <!-- Aggregator Cards -->
+                <div class="aggregator-grid">
+                    <!-- Flutterwave -->
+                    <div class="aggregator-card">
+                        <div class="aggregator-header">
+                            <div class="aggregator-name">Flutterwave</div>
+                            <div class="aggregator-status status-active">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Aggregator ID</label>
+                            <input type="text" id="flutterwave_aggregator_id" value="{{ config.aggregators.flutterwave.aggregator_id or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Secret Key</label>
+                            <input type="password" id="flutterwave_secret_key" value="{{ config.aggregators.flutterwave.secret_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Webhook URL</label>
+                            <input type="url" id="flutterwave_webhook_url" value="{{ config.aggregators.flutterwave.webhook_url or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleAggregator('flutterwave')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Paystack -->
+                    <div class="aggregator-card">
+                        <div class="aggregator-header">
+                            <div class="aggregator-name">Paystack</div>
+                            <div class="aggregator-status status-active">Active</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Aggregator ID</label>
+                            <input type="text" id="paystack_aggregator_id" value="{{ config.aggregators.paystack.aggregator_id or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Secret Key</label>
+                            <input type="password" id="paystack_secret_key" value="{{ config.aggregators.paystack.secret_key or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Webhook URL</label>
+                            <input type="url" id="paystack_webhook_url" value="{{ config.aggregators.paystack.webhook_url or '' }}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch active" onclick="toggleAggregator('paystack')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stripe -->
+                    <div class="aggregator-card">
+                        <div class="aggregator-header">
+                            <div class="aggregator-name">Stripe</div>
+                            <div class="aggregator-status status-pending">Coming Soon</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Aggregator ID</label>
+                            <input type="text" id="stripe_aggregator_id" value="{{ config.aggregators.stripe.aggregator_id or '' }}" disabled>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Secret Key</label>
+                            <input type="password" id="stripe_secret_key" value="{{ config.aggregators.stripe.secret_key or '' }}" disabled>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Webhook URL</label>
+                            <input type="url" id="stripe_webhook_url" value="{{ config.aggregators.stripe.webhook_url or '' }}" disabled>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch" onclick="toggleAggregator('stripe')"></div>
+                        </div>
+                    </div>
+
+                    <!-- Adyen -->
+                    <div class="aggregator-card">
+                        <div class="aggregator-header">
+                            <div class="aggregator-name">Adyen</div>
+                            <div class="aggregator-status status-pending">Coming Soon</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Aggregator ID</label>
+                            <input type="text" id="adyen_aggregator_id" value="{{ config.aggregators.adyen.aggregator_id or '' }}" disabled>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Secret Key</label>
+                            <input type="password" id="adyen_secret_key" value="{{ config.aggregators.adyen.secret_key or '' }}" disabled>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Webhook URL</label>
+                            <input type="url" id="adyen_webhook_url" value="{{ config.aggregators.adyen.webhook_url or '' }}" disabled>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Enable/Disable</label>
+                            <div class="toggle-switch" onclick="toggleAggregator('adyen')"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Regional Support Section -->
+            <div id="regional-support" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Regional Support Configuration</h2>
+                    <button onclick="saveRegionalSupport()" class="save-section-btn">
+                        💾 Save Regional Settings
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">🌍 Regional Configuration</div>
+                    <div class="alert-text">
+                        Configure regional aggregator support for different African markets.
+                        Each country can have specific aggregators based on local regulations.
+                    </div>
+                </div>
+
+                <!-- North Africa -->
+                <div class="region-grid">
+                    <div class="region-card">
+                        <div class="region-header">
+                            <div class="region-name">🌍 North Africa</div>
+                            <div class="region-status status-active">Enabled</div>
+                        </div>
+                        
+                        <div class="country-list">
+                            <div class="country-item">
+                                <div class="country-name">🇳🇬 Nigeria</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇬🇭 Ghana</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇨🇮 Côte d'Ivoire</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇧🇫 Burkina Faso</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇳🇪 Senegal</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- East Africa -->
+                    <div class="region-card">
+                        <div class="region-header">
+                            <div class="region-name">🌍 East Africa</div>
+                            <div class="region-status status-active">Enabled</div>
+                        </div>
+                        
+                        <div class="country-list">
+                            <div class="country-item">
+                                <div class="country-name">🇰🇪 Kenya</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇺🇬 Uganda</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇹🇿 Tanzania</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇷🇼 Rwanda</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- West Africa -->
+                    <div class="region-card">
+                        <div class="region-header">
+                            <div class="region-name">🌍 West Africa</div>
+                            <div class="region-status status-active">Enabled</div>
+                        </div>
+                        
+                        <div class="country-list">
+                            <div class="country-item">
+                                <div class="country-name">🇳🇬 Nigeria</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇬🇭 Ghana</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇨🇮 Côte d'Ivoire</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇧🇫 Burkina Faso</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Southern Africa -->
+                    <div class="region-card">
+                        <div class="region-header">
+                            <div class="region-name">🌍 Southern Africa</div>
+                            <div class="region-status status-active">Enabled</div>
+                        </div>
+                        
+                        <div class="country-list">
+                            <div class="country-item">
+                                <div class="country-name">🇿🇦 South Africa</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇲🇸 Botswana</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇿🇼 Zimbabwe</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                            <div class="country-item">
+                                <div class="country-name">🇲🇸 Lesotho</div>
+                                <div class="country-status status-enabled">Active</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Webhook Config Section -->
+            <div id="webhook-config" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Webhook Configuration</h2>
+                    <button onclick="saveWebhookConfig()" class="save-section-btn">
+                        💾 Save Webhook Config
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">🪝 Webhook Security</div>
+                    <div class="alert-text">
+                        Configure secure webhook endpoints for real-time transaction notifications.
+                        All webhooks use HMAC-SHA256 signature verification.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Default Webhook URL</label>
+                    <input type="url" id="default_webhook_url" value="{{ config.webhooks.default_url or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label>Webhook Secret</label>
+                    <input type="password" id="webhook_secret" value="{{ config.webhooks.secret or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label>Retry Attempts</label>
+                    <input type="number" id="webhook_retry_attempts" value="{{ config.webhooks.retry_attempts or 3 }}" min="1" max="10">
+                </div>
+
+                <div class="form-group">
+                    <label>Retry Delay (Seconds)</label>
+                    <input type="number" id="webhook_retry_delay" value="{{ config.webhooks.retry_delay or 30 }}" min="5" max="300">
+                </div>
+
+                <div class="form-group">
+                    <label>Enable Webhook Logging</label>
+                    <div class="toggle-switch active" onclick="toggleSetting('webhook_logging')"></div>
+                </div>
+            </div>
+
+            <!-- API Access Section -->
+            <div id="api-access" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">API Access Management</h2>
+                    <button onclick="saveApiAccess()" class="save-section-btn">
+                        💾 Save API Access
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">🔑 API Security</div>
+                    <div class="alert-text">
+                        Manage API access for aggregators and external systems.
+                        All API keys are encrypted and logged.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>API Rate Limit (requests/minute)</label>
+                    <input type="number" id="api_rate_limit" value="{{ config.api.rate_limit or 1000 }}" min="100" max="10000">
+                </div>
+
+                <div class="form-group">
+                    <label>API Timeout (Seconds)</label>
+                    <input type="number" id="api_timeout" value="{{ config.api.timeout or 30 }}" min="5" max="300">
+                </div>
+
+                <div class="form-group">
+                    <label>Enable API Access Logging</label>
+                    <div class="toggle-switch active" onclick="toggleSetting('api_logging')"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Require IP Whitelist</label>
+                    <div class="toggle-switch" onclick="toggleSetting('ip_whitelist')"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Allowed IP Addresses</label>
+                    <textarea id="allowed_ips" rows="4" placeholder="Enter IP addresses, one per line">{{ config.api.allowed_ips or '' }}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Show section
+function showSection(sectionId) {
+    // Hide all sections
+    document.querySelectorAll('.setting-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    
+    // Remove active class from all nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Show selected section
+    document.getElementById(sectionId).classList.add('active');
+    
+    // Activate corresponding nav item
+    event.currentTarget.classList.add('active');
+}
+
+// Toggle aggregator
+function toggleAggregator(aggregator) {
+    const toggle = event.target;
+    toggle.classList.toggle('active');
+    
+    const isActive = toggle.classList.contains('active');
+    updateAggregatorStatus(aggregator, isActive);
+}
+
+// Toggle setting
+function toggleSetting(setting) {
+    const toggle = event.target;
+    toggle.classList.toggle('active');
+}
+
+// Update aggregator status
+function updateAggregatorStatus(aggregator, isActive) {
+    fetch('/owner/aggregator/update-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            aggregator: aggregator,
+            active: isActive
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error || 'Failed to update aggregator status');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+// Save aggregators
+function saveAggregators() {
+    const settings = {
+        flutterwave: {
+            aggregator_id: document.getElementById('flutterwave_aggregator_id').value,
+            secret_key: document.getElementById('flutterwave_secret_key').value,
+            webhook_url: document.getElementById('flutterwave_webhook_url').value
+        },
+        paystack: {
+            aggregator_id: document.getElementById('paystack_aggregator_id').value,
+            secret_key: document.getElementById('paystack_secret_key').value,
+            webhook_url: document.getElementById('paystack_webhook_url').value
+        },
+        stripe: {
+            aggregator_id: document.getElementById('stripe_aggregator_id').value,
+            secret_key: document.getElementById('stripe_secret_key').value,
+            webhook_url: document.getElementById('stripe_webhook_url').value
+        },
+        adyen: {
+            aggregator_id: document.getElementById('adyen_aggregator_id').value,
+            secret_key: document.getElementById('adyen_secret_key').value,
+            webhook_url: document.getElementById('adyen_webhook_url').value
+        }
+    };
+    
+    fetch('/owner/aggregator/save-aggregators', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Aggregator settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save aggregator settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save aggregator settings');
+    });
+}
+
+// Save regional support
+function saveRegionalSupport() {
+    const settings = {
+        north_africa: {
+            enabled: true,
+            countries: ['nigeria', 'ghana', 'cote_divoire', 'burkina_faso', 'senegal']
+        },
+        east_africa: {
+            enabled: true,
+            countries: ['kenya', 'uganda', 'tanzania', 'rwanda']
+        },
+        west_africa: {
+            enabled: true,
+            countries: ['nigeria', 'ghana', 'cote_divoire', 'burkina_faso']
+        },
+        southern_africa: {
+            enabled: true,
+            countries: ['south_africa', 'botswana', 'zimbabwe', 'lesotho']
+        }
+    };
+    
+    fetch('/owner/aggregator/save-regional', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Regional support settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save regional settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save regional settings');
+    });
+}
+
+// Save webhook config
+function saveWebhookConfig() {
+    const settings = {
+        default_url: document.getElementById('default_webhook_url').value,
+        secret: document.getElementById('webhook_secret').value,
+        retry_attempts: parseInt(document.getElementById('webhook_retry_attempts').value),
+        retry_delay: parseInt(document.getElementById('webhook_retry_delay').value),
+        logging_enabled: document.querySelector('#webhook-config .toggle-switch').classList.contains('active')
+    };
+    
+    fetch('/owner/aggregator/save-webhook', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Webhook configuration saved successfully');
+        } else {
+            alert(data.error || 'Failed to save webhook configuration');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save webhook configuration');
+    });
+}
+
+// Save API access
+function saveApiAccess() {
+    const settings = {
+        rate_limit: parseInt(document.getElementById('api_rate_limit').value),
+        timeout: parseInt(document.getElementById('api_timeout').value),
+        logging_enabled: document.querySelector('#api-access .toggle-switch:nth-child(1)').classList.contains('active'),
+        ip_whitelist_enabled: document.querySelector('#api-access .toggle-switch:nth-child(2)').classList.contains('active'),
+        allowed_ips: document.getElementById('allowed_ips').value
+    };
+    
+    fetch('/owner/aggregator/save-api', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('API access settings saved successfully');
+        } else {
+            alert(data.error || 'Failed to save API access settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save API access settings');
+    });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Load initial settings from server
+    // This would typically be done via API calls
+});
+</script>
+{% endblock %}

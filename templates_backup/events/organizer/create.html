@@ -1,0 +1,908 @@
+{% extends "base.html" %}
+
+{% block title %}Create Event — AFCON360{% endblock %}
+
+{% block content %}
+<style>
+/* Modern Event Creation Form Styles */
+.event-create-wrapper {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.event-create-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.05) 0%, transparent 50%);
+    opacity: 0.6;
+}
+
+.event-create-container {
+    position: relative;
+    z-index: 2;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.event-create-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    overflow: hidden;
+    animation: slideUp 0.6s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.event-create-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    padding: 3rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.event-create-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: float 8s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(180deg); }
+}
+
+.event-create-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: white;
+    margin-bottom: 0.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.event-create-subtitle {
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.9);
+    margin: 0;
+    position: relative;
+    z-index: 2;
+}
+
+.event-create-body {
+    padding: 3rem 2rem;
+}
+
+.form-section {
+    margin-bottom: 3rem;
+}
+
+.form-section-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.form-section-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: white;
+}
+
+.form-group-modern {
+    margin-bottom: 1.5rem;
+}
+
+.form-label-modern {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.form-label-modern .required {
+    color: #e53e3e;
+    margin-left: 0.25rem;
+}
+
+.form-control-modern {
+    width: 100%;
+    padding: 1rem 1.25rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 1rem;
+    background: white;
+    color: #2d3748;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-control-modern:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+    transform: translateY(-2px);
+}
+
+.form-control-modern::placeholder {
+    color: #a0aec0;
+}
+
+textarea.form-control-modern {
+    resize: vertical;
+    min-height: 120px;
+}
+
+select.form-control-modern {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+    appearance: none;
+}
+
+.form-row-modern {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Event Type Toggle */
+.event-type-toggle {
+    background: #f7fafc;
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 2px solid #e2e8f0;
+    margin-bottom: 2rem;
+}
+
+.event-type-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.event-type-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.event-type-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.event-type-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+    transition: all 0.3s ease;
+    text-align: center;
+    font-weight: 600;
+    color: #4a5568;
+    gap: 0.75rem;
+}
+
+.event-type-label:hover {
+    border-color: #667eea;
+    background: #f0f4ff;
+    transform: translateY(-2px);
+}
+
+.event-type-option input[type="radio"]:checked + .event-type-label {
+    border-color: #667eea;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    box-shadow: 0 8px 25px rgba(102,126,234,0.3);
+}
+
+.event-type-icon {
+    font-size: 1.25rem;
+}
+
+/* Ticket Fields */
+.ticketed-fields-container {
+    background: #f7fafc;
+    border-radius: 16px;
+    padding: 2rem;
+    border: 2px solid #e2e8f0;
+    margin-bottom: 2rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 1000px;
+    }
+}
+
+.ticket-row {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 2px solid #e2e8f0;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.ticket-row:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
+}
+
+.ticket-row-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr auto;
+    gap: 1rem;
+    align-items: end;
+}
+
+.btn-add-tier {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: 2px dashed #cbd5e0;
+    border-radius: 12px;
+    background: white;
+    color: #4a5568;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.btn-add-tier:hover {
+    border-color: #667eea;
+    color: #667eea;
+    background: #f0f4ff;
+    transform: translateY(-2px);
+}
+
+.btn-remove-tier {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: none;
+    background: #fed7d7;
+    color: #c53030;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-remove-tier:hover {
+    background: #fc8181;
+    transform: scale(1.1);
+}
+
+/* Payment Methods Grid */
+.payment-methods-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.payment-method-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.payment-method-option:hover {
+    border-color: #667eea;
+    background: #f8faff;
+}
+
+.payment-method-option input[type="checkbox"] {
+    margin: 0;
+}
+
+.payment-method-icon {
+    font-size: 1.2rem;
+}
+
+/* Tier Templates */
+.tier-templates {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-template {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    color: #4a5568;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-template:hover {
+    border-color: #667eea;
+    color: #667eea;
+    background: #f8faff;
+    transform: translateY(-1px);
+}
+
+/* Enhanced Ticket Row */
+.ticket-row-enhanced {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 2px solid #e2e8f0;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.ticket-row-enhanced:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
+}
+
+.ticket-row-enhanced-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+    gap: 1rem;
+    align-items: end;
+}
+
+.ticket-advanced-options {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.ticket-benefits {
+    grid-column: 1 / -1;
+    margin-top: 1rem;
+}
+
+.benefit-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+}
+
+.benefit-item input {
+    margin: 0;
+}
+
+/* Wallet Settings */
+.wallet-settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.wallet-setting-option {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.wallet-setting-option:hover {
+    border-color: #667eea;
+    background: #f8faff;
+}
+
+.wallet-setting-icon {
+    font-size: 1.5rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8faff;
+    border-radius: 8px;
+}
+
+.wallet-setting-text {
+    flex: 1;
+}
+
+.wallet-setting-title {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.25rem;
+}
+
+.wallet-setting-desc {
+    font-size: 0.875rem;
+    color: #718096;
+}
+
+/* Action Buttons */
+.form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e2e8f0;
+    margin-top: 3rem;
+}
+
+.btn-cancel-modern {
+    padding: 1rem 2rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+    color: #4a5568;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-cancel-modern:hover {
+    border-color: #cbd5e0;
+    background: #f7fafc;
+    transform: translateY(-2px);
+}
+
+.btn-submit-modern {
+    padding: 1rem 3rem;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-weight: 700;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 200px;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-submit-modern::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn-submit-modern:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(102,126,234,0.3);
+}
+
+.btn-submit-modern:hover::before {
+    left: 100%;
+}
+
+.btn-submit-modern:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Alert */
+.info-alert {
+    background: linear-gradient(135deg, #f0f4ff, #e6f0ff);
+    border: 2px solid #c3dafe;
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.info-alert-icon {
+    color: #667eea;
+    font-size: 1.25rem;
+    margin-top: 0.25rem;
+}
+
+.info-alert-content {
+    flex: 1;
+    color: #2d3748;
+    font-weight: 500;
+}
+
+/* Hide ticket fields by default */
+#ticketed-fields {
+    display: none !important;
+}
+
+#ticketed-fields.show {
+    display: block !important;
+}
+
+/* Date input styling */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    cursor: pointer;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .event-create-wrapper {
+        padding: 1rem 0;
+    }
+    
+    .event-create-header {
+        padding: 2rem 1.5rem;
+    }
+    
+    .event-create-title {
+        font-size: 2rem;
+    }
+    
+    .event-create-body {
+        padding: 2rem 1.5rem;
+    }
+    
+    .form-row-modern {
+        grid-template-columns: 1fr;
+    }
+    
+    .event-type-options {
+        grid-template-columns: 1fr;
+    }
+    
+    .ticket-row-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .btn-cancel-modern,
+    .btn-submit-modern {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+
+<div class="event-create-wrapper">
+    <div class="event-create-container">
+        <div class="event-create-card">
+            <div class="event-create-header">
+                <h1 class="event-create-title">
+                    <i class="fas fa-calendar-plus me-3"></i>Create New Event
+                </h1>
+                <p class="event-create-subtitle">Design your perfect event experience</p>
+            </div>
+            
+            <div class="event-create-body">
+                <form id="event-form" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <!-- Basic Information Section -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-info-circle"></i>
+                            </div>
+                            Basic Information
+                        </h2>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">
+                                Event Name <span class="required">*</span>
+                            </label>
+                            <input type="text" name="name" class="form-control-modern" 
+                                   placeholder="e.g. AFCON Final Viewing Party" required>
+                        </div>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">Event Description</label>
+                            <textarea name="description" class="form-control-modern" rows="4"
+                                      placeholder="Tell people what your event is about and what makes it special..."></textarea>
+                        </div>
+                        
+                        <div class="form-row-modern">
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Category</label>
+                                <select name="category" class="form-control-modern">
+                                    <option value="sports">Sports</option>
+                                    <option value="religious">Religious</option>
+                                    <option value="concert">Concert</option>
+                                    <option value="conference">Conference</option>
+                                    <option value="cultural">Cultural</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">
+                                    City <span class="required">*</span>
+                                </label>
+                                <input type="text" name="city" class="form-control-modern" 
+                                       placeholder="e.g. Kampala" required>
+                            </div>
+                            
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Venue</label>
+                                <input type="text" name="venue" class="form-control-modern" 
+                                       placeholder="e.g. Namboole Stadium">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Date & Time Section -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            Date & Time
+                        </h2>
+                        
+                        <div class="form-row-modern">
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">
+                                    Start Date <span class="required">*</span>
+                                </label>
+                                <input type="date" name="start_date" id="start_date" class="form-control-modern" required>
+                            </div>
+                            
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">End Date</label>
+                                <input type="date" name="end_date" id="end_date" class="form-control-modern">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ticketing Section -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-ticket-alt"></i>
+                            </div>
+                            Ticketing & Registration
+                        </h2>
+                        
+                        <div class="event-type-toggle">
+                            <div class="event-type-options">
+                                <div class="event-type-option">
+                                    <input type="radio" name="event_type" id="type-free" value="free" checked>
+                                    <label class="event-type-label" for="type-free">
+                                        <i class="fas fa-gift event-type-icon"></i>
+                                        <span>Free Event</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="event-type-option">
+                                    <input type="radio" name="event_type" id="type-ticketed" value="ticketed">
+                                    <label class="event-type-label" for="type-ticketed">
+                                        <i class="fas fa-ticket-alt event-type-icon"></i>
+                                        <span>Ticketed Event</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="ticketed-fields" class="ticketed-fields-container">
+                            <!-- Currency Selection -->
+                            <div class="form-group-modern mb-4">
+                                <label class="form-label-modern">
+                                    <i class="fas fa-coins me-2"></i>
+                                    Event Currency <span class="required">*</span>
+                                </label>
+                                <select name="currency" class="form-control-modern" id="currency-select" required>
+                                    <option value="UGX">UGX - Ugandan Shilling</option>
+                                    <option value="KES">KES - Kenyan Shilling</option>
+                                    <option value="NGN">NGN - Nigerian Naira</option>
+                                    <option value="USD">USD - US Dollar</option>
+                                    <option value="EUR">EUR - Euro</option>
+                                    <option value="GBP">GBP - British Pound</option>
+                                </select>
+                                <div class="form-help-text">Select the currency for ticket pricing</div>
+                            </div>
+
+                            <!-- Payment Methods -->
+                            <div class="form-group-modern mb-4">
+                                <label class="form-label-modern">
+                                    <i class="fas fa-credit-card me-2"></i>
+                                    Accepted Payment Methods
+                                </label>
+                                <div id="payment-methods-loading" class="text-center py-3">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading available payment methods...
+                                </div>
+                                <div id="payment-methods-container" class="payment-methods-grid" style="display: none;">
+                                    <!-- Payment methods will be loaded dynamically -->
+                                </div>
+                                <div class="form-help-text">Select which payment methods you want to accept for this event</div>
+                            </div>
+                            
+                            <!-- Wallet Settings -->
+                            <div class="form-group-modern mb-4">
+                                <label class="form-label-modern">
+                                    <i class="fas fa-wallet me-2"></i>
+                                    Wallet Settings
+                                </label>
+                                <div class="wallet-settings-grid">
+                                    <label class="wallet-setting-option">
+                                        <input type="checkbox" name="auto_convert_wallet" checked>
+                                        <span class="wallet-setting-icon">🔄</span>
+                                        <div class="wallet-setting-text">
+                                            <div class="wallet-setting-title">Auto-convert Wallet Payments</div>
+                                            <div class="wallet-setting-desc">Automatically convert wallet payments to your preferred currency</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <h3 style="margin-bottom: 1.5rem; color: #2d3748; font-weight: 600;">
+                                <i class="fas fa-layer-group me-2" style="color: #667eea;"></i>
+                                Define Ticket Tiers
+                            </h3>
+                            
+                            <!-- Tier Templates -->
+                            <div class="tier-templates mb-3">
+                                <button type="button" class="btn-template" data-template="early_bird">
+                                    <i class="fas fa-dove me-1"></i> Early Bird
+                                </button>
+                                <button type="button" class="btn-template" data-template="standard">
+                                    <i class="fas fa-ticket-alt me-1"></i> Standard
+                                </button>
+                                <button type="button" class="btn-template" data-template="vip">
+                                    <i class="fas fa-crown me-1"></i> VIP
+                                </button>
+                                <button type="button" class="btn-template" data-template="group">
+                                    <i class="fas fa-users me-1"></i> Group
+                                </button>
+                            </div>
+                            
+                            <div id="ticket-rows"></div>
+                            
+                            <button type="button" id="add-tier-btn" class="btn-add-tier">
+                                <i class="fas fa-plus"></i>
+                                <span>Add Custom Tier</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Contact Information Section -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-address-card"></i>
+                            </div>
+                            Contact Information
+                        </h2>
+                        
+                        <div class="form-row-modern">
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Website</label>
+                                <input type="url" name="website" class="form-control-modern" 
+                                       placeholder="https://your-event-website.com">
+                            </div>
+                            
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Contact Email</label>
+                                <input type="email" name="contact_email" class="form-control-modern" 
+                                       value="{{ current_user.email }}" placeholder="contact@event.com">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Info Alert -->
+                    <div class="info-alert">
+                        <div class="info-alert-icon">
+                            <i class="fas fa-info-circle"></i>
+                        </div>
+                        <div class="info-alert-content">
+                            Your event will be submitted for review. Once approved, it will appear publicly on the platform for everyone to discover and join.
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="form-actions">
+                        <a href="{{ safe_url('events.my_events') }}" class="btn-cancel-modern">
+                            <i class="fas fa-arrow-left"></i>
+                            <span>Cancel</span>
+                        </a>
+                        
+                        <button type="submit" class="btn-submit-modern" id="submit-btn">
+                            <i class="fas fa-rocket me-2"></i>
+                            Create Event
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/event-create.js') }}"></script>
+{% endblock %}

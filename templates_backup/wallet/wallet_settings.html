@@ -1,0 +1,193 @@
+{#templates/wallet/settings.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Wallet Settings — AFCON360{% endblock %}
+
+{% block topbar_title %}Wallet Settings{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Wallet Settings</h1>
+    <p class="page-subheading">Manage your wallet preferences and security</p>
+  </div>
+</div>
+
+<!-- Account Info -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-circle-info panel-title-icon green"></i>
+      Account Information
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <div class="col-layout-2">
+      <div>
+        <div class="form-label">Account ID</div>
+        <div class="mono" style="padding:8px 12px;background:var(--bg);border-radius:var(--radius);">{{ account.id if account else 'N/A' }}</div>
+      </div>
+      <div>
+        <div class="form-label">Current Balance</div>
+        <div style="padding:8px 12px;background:var(--green-lt);border-radius:var(--radius);font-weight:700;color:var(--green);">{{ balance | round(2) }} {{ account.currency if account else 'UGX' }}</div>
+      </div>
+      <div>
+        <div class="form-label">Account Currency</div>
+        <div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius);">{{ account.currency if account else 'UGX' }}</div>
+      </div>
+      <div>
+        <div class="form-label">Account Status</div>
+        <div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius);">
+          <span class="badge badge-verified"><i class="fas fa-check-circle"></i> Active</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Currency Preferences -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-coins panel-title-icon amber"></i>
+      Currency Preferences
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <form method="POST" action="{{ safe_url('wallet.wallet_settings_update') }}">
+      <div class="form-group">
+        <label class="form-label">Preferred Currency</label>
+        <select name="currency" class="form-control" style="max-width:300px;">
+          {% for currency in (supported_currencies or ['UGX', 'USD', 'EUR', 'KES', 'NGN']) %}
+            <option value="{{ currency }}" {% if account and account.currency == currency %}selected{% endif %}>{{ currency }}</option>
+          {% endfor %}
+        </select>
+        <p style="font-size:11px;color:var(--muted);margin-top:6px;">Note: Changing currency requires creating a new wallet account</p>
+      </div>
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-save"></i> Save Changes
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Security Settings -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-lock panel-title-icon red"></i>
+      Security Settings
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:12px;">
+    {% set security_items = [
+      {'title': 'Two-Factor Authentication', 'desc': 'Add an extra layer of security', 'btn': 'Enable', 'btn_class': 'btn-primary'},
+      {'title': 'Transaction PIN', 'desc': 'Require PIN for all transactions', 'btn': 'Set PIN', 'btn_class': 'btn-outline'},
+      {'title': 'Login Notifications', 'desc': 'Get notified on account login', 'toggle': True, 'checked': True}
+    ] %}
+    {% for item in security_items %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg);border-radius:var(--radius);">
+      <div>
+        <div style="font-weight:600;">{{ item.title }}</div>
+        <div style="font-size:12px;color:var(--muted);">{{ item.desc }}</div>
+      </div>
+      {% if item.toggle %}
+      <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;">
+        <input type="checkbox" {% if item.checked %}checked{% endif %} style="opacity:0;width:0;height:0;">
+        <span style="width:44px;height:24px;background:var(--accent);border-radius:12px;position:relative;transition:all 0.15s;">
+          <span style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:all 0.15s;"></span>
+        </span>
+      </label>
+      {% else %}
+      <button class="btn {{ item.btn_class }} btn-sm">{{ item.btn }}</button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Notification Preferences -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-bell panel-title-icon blue"></i>
+      Notification Preferences
+    </div>
+  </div>
+  <div style="padding:20px;display:grid;gap:12px;">
+    {% set notifications = [
+      {'title': 'Email Notifications', 'desc': 'Receive transaction updates via email', 'checked': True},
+      {'title': 'SMS Notifications', 'desc': 'Receive important alerts via SMS', 'checked': False},
+      {'title': 'Push Notifications', 'desc': 'Receive real-time push notifications', 'checked': True}
+    ] %}
+    {% for notif in notifications %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg);border-radius:var(--radius);">
+      <div>
+        <div style="font-weight:600;">{{ notif.title }}</div>
+        <div style="font-size:12px;color:var(--muted);">{{ notif.desc }}</div>
+      </div>
+      <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;">
+        <input type="checkbox" {% if notif.checked %}checked{% endif %} style="opacity:0;width:0;height:0;">
+        <span style="width:44px;height:24px;background:{% if notif.checked %}var(--accent){% else %}var(--bg-2){% endif %};border-radius:12px;position:relative;transition:all 0.15s;">
+          <span style="position:absolute;top:2px;left:{% if notif.checked %}22px{% else %}2px{% endif %};width:20px;height:20px;background:#fff;border-radius:50%;transition:all 0.15s;"></span>
+        </span>
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Payment Methods -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="panel-title">
+      <i class="fas fa-credit-card panel-title-icon purple"></i>
+      Payment Methods
+    </div>
+    <button class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add New</button>
+  </div>
+  <div style="padding:20px;display:grid;gap:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--blue-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--blue);"><i class="fas fa-credit-card"></i></div>
+        <div>
+          <div style="font-weight:600;">Card ending in 4242</div>
+          <div style="font-size:12px;color:var(--muted);">Expires 12/26</div>
+        </div>
+      </div>
+      <span class="badge badge-verified">Primary</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border);border-radius:var(--radius);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:var(--green-lt);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--green);"><i class="fas fa-mobile-alt"></i></div>
+        <div>
+          <div style="font-weight:600;">MTN Mobile Money</div>
+          <div style="font-size:12px;color:var(--muted);">+256 700 XXX XXX</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-xs"><i class="fas fa-ellipsis-v"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- Danger Zone -->
+<div style="background:var(--red-lt);border:1px solid #fca5a5;border-radius:var(--radius-lg);padding:20px;">
+  <h3 style="color:var(--red);font-family:var(--font-display);font-weight:700;margin-bottom:16px;">Danger Zone</h3>
+  <div style="display:grid;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:600;color:#991b1b;">Freeze Account</div>
+        <div style="font-size:12px;color:#b91c1c;">Temporarily freeze your account</div>
+      </div>
+      <button class="btn btn-danger btn-sm">Freeze</button>
+    </div>
+    <div style="border-top:1px solid #fca5a5;padding-top:12px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:600;color:#991b1b;">Close Account</div>
+        <div style="font-size:12px;color:#b91c1c;">Permanently close your wallet</div>
+      </div>
+      <button class="btn btn-danger btn-sm" style="background:#991b1b;">Close Account</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

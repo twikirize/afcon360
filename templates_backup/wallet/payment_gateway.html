@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Gateway - AFCON360{% endblock %}
+
+{% block extra_css %}
+<style>
+.gateway-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.gateway-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.gateway-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+    border-color: #4F46E5;
+}
+
+.gateway-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.gateway-logo {
+    width: 60px;
+    height: 40px;
+    object-fit: contain;
+    margin-right: 1rem;
+}
+
+.gateway-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.gateway-description {
+    color: #6B7280;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.gateway-features {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 1.5rem;
+}
+
+.gateway-features li {
+    padding: 0.5rem 0;
+    color: #374151;
+    font-size: 0.9rem;
+}
+
+.gateway-features li::before {
+    content: "✓";
+    color: #10B981;
+    font-weight: bold;
+    margin-right: 0.5rem;
+}
+
+.gateway-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+.fee-info {
+    font-size: 0.85rem;
+    color: #6B7280;
+}
+
+.select-gateway-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.select-gateway-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.payment-form-section {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-top: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.amount-display {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1F2937;
+    text-align: center;
+    margin: 1rem 0;
+}
+
+.currency-selector {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.currency-flag {
+    width: 24px;
+    height: 18px;
+    border-radius: 4px;
+}
+
+.processing-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.processing-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    text-align: center;
+    max-width: 400px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #4F46E5;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.gateway-status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: 0.5rem;
+}
+
+.status-active {
+    background: #10B981;
+    color: white;
+}
+
+.status-sandbox {
+    background: #F59E0B;
+    color: white;
+}
+
+.status-maintenance {
+    background: #EF4444;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">
+            Choose Payment Gateway
+        </h1>
+        <p class="text-gray-600 text-lg">
+            Select your preferred payment method to deposit funds to your wallet
+        </p>
+    </div>
+
+    <!-- Amount Selection -->
+    <div class="payment-form-section mb-8">
+        <h2 class="text-xl font-semibold mb-4">Deposit Amount</h2>
+        
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="form-group">
+                <label for="amount">Amount</label>
+                <div class="relative">
+                    <input type="number" 
+                           id="amount" 
+                           class="form-control text-lg" 
+                           placeholder="0.00" 
+                           step="0.01" 
+                           min="10.00"
+                           value="{{ request.args.get('amount', '') }}">
+                    <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                        <select id="currency" class="border-0 bg-transparent font-semibold">
+                            <option value="UGX" {% if request.args.get('currency') == 'UGX' %}selected{% endif %}>UGX</option>
+                            <option value="USD" {% if request.args.get('currency') == 'USD' %}selected{% endif %}>USD</option>
+                            <option value="EUR" {% if request.args.get('currency') == 'EUR' %}selected{% endif %}>EUR</option>
+                            <option value="CNY" {% if request.args.get('currency') == 'CNY' %}selected{% endif %}>CNY</option>
+                            <option value="GBP" {% if request.args.get('currency') == 'GBP' %}selected{% endif %}>GBP</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Estimated Total</label>
+                <div class="amount-display" id="totalAmount">
+                    {% if request.args.get('amount') %}
+                        {{ request.args.get('currency', 'UGX') }} {{ "%.2f"|format(request.args.get('amount')|float) }}
+                    {% else %}
+                        0.00
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Gateways Grid -->
+    <div class="gateway-grid">
+        <!-- PayPal -->
+        <div class="gateway-card" data-gateway="paypal">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/paypal-logo.png') }}" 
+                     alt="PayPal" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">PayPal</div>
+                    <span class="gateway-status status-active">Active</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                Secure global payments with buyer protection and 180+ countries supported.
+            </div>
+            <ul class="gateway-features">
+                <li>Buyer Protection</li>
+                <li>Instant Transfer</li>
+                <li>Multi-Currency</li>
+                <li>Mobile App</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 2.9% + $0.30</div>
+                <button class="select-gateway-btn" onclick="selectGateway('paypal')">
+                    Select PayPal
+                </button>
+            </div>
+        </div>
+
+        <!-- Alipay -->
+        <div class="gateway-card" data-gateway="alipay">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/alipay-logo.png') }}" 
+                     alt="Alipay" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">Alipay</div>
+                    <span class="gateway-status status-active">Active</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                China's leading payment platform with QR code and mobile payments.
+            </div>
+            <ul class="gateway-features">
+                <li>QR Code Payment</li>
+                <li>Mobile First</li>
+                <li>Instant Settlement</li>
+                <li>WeChat Integration</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 0.6%</div>
+                <button class="select-gateway-btn" onclick="selectGateway('alipay')">
+                    Select Alipay
+                </button>
+            </div>
+        </div>
+
+        <!-- Flutterwave -->
+        <div class="gateway-card" data-gateway="flutterwave">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/flutterwave-logo.png') }}" 
+                     alt="Flutterwave" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">Flutterwave</div>
+                    <span class="gateway-status status-active">Active</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                African payment gateway supporting card, bank transfer, and mobile money.
+            </div>
+            <ul class="gateway-features">
+                <li>African Focus</li>
+                <li>Multiple Methods</li>
+                <li>Local Currencies</li>
+                <li>Webhooks</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 1.4%</div>
+                <button class="select-gateway-btn" onclick="selectGateway('flutterwave')">
+                    Select Flutterwave
+                </button>
+            </div>
+        </div>
+
+        <!-- Paystack -->
+        <div class="gateway-card" data-gateway="paystack">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/paystack-logo.png') }}" 
+                     alt="Paystack" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">Paystack</div>
+                    <span class="gateway-status status-active">Active</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                Nigerian payment gateway with card and bank transfer options.
+            </div>
+            <ul class="gateway-features">
+                <li>Nigerian Focus</li>
+                <li>Card Payments</li>
+                <li>Bank Transfer</li>
+                <li>Recurring Payments</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 1.5%</div>
+                <button class="select-gateway-btn" onclick="selectGateway('paystack')">
+                    Select Paystack
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Money -->
+        <div class="gateway-card" data-gateway="mobile_money">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/mobile-money-logo.png') }}" 
+                     alt="Mobile Money" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">Mobile Money</div>
+                    <span class="gateway-status status-active">Active</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                Direct mobile money transfers across African operators.
+            </div>
+            <ul class="gateway-features">
+                <li>MTN Mobile Money</li>
+                <li>Airtel Money</li>
+                <li>M-PESA</li>
+                <li>Instant Transfer</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 1.0%</div>
+                <button class="select-gateway-btn" onclick="selectGateway('mobile_money')">
+                    Select Mobile Money
+                </button>
+            </div>
+        </div>
+
+        <!-- WeChat Pay -->
+        <div class="gateway-card" data-gateway="wechat">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/wechat-logo.png') }}" 
+                     alt="WeChat Pay" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">WeChat Pay</div>
+                    <span class="gateway-status status-sandbox">Sandbox</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                China's super-app payment solution with 1B+ users.
+            </div>
+            <ul class="gateway-features">
+                <li>QR Code Payment</li>
+                <li>Mini Programs</li>
+                <li>Social Integration</li>
+                <li>Red Packet</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 0.6%</div>
+                <button class="select-gateway-btn" onclick="selectGateway('wechat')">
+                    Select WeChat Pay
+                </button>
+            </div>
+        </div>
+
+        <!-- European Solutions -->
+        <div class="gateway-card" data-gateway="european">
+            <div class="gateway-header">
+                <img src="{{ url_for('static', filename='images/european-logo.png') }}" 
+                     alt="European Payments" class="gateway-logo">
+                <div>
+                    <div class="gateway-name">European Solutions</div>
+                    <span class="gateway-status status-sandbox">Coming Soon</span>
+                </div>
+            </div>
+            <div class="gateway-description">
+                SEPA, Sofort, iDEAL, and other European payment methods.
+            </div>
+            <ul class="gateway-features">
+                <li>SEPA Transfer</li>
+                <li>iDEAL</li>
+                <li>Sofort</li>
+                <li>Giropay</li>
+            </ul>
+            <div class="gateway-footer">
+                <div class="fee-info">Fee: 0.8%</div>
+                <button class="select-gateway-btn" disabled>
+                    Coming Soon
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Processing Overlay -->
+    <div id="processingOverlay" class="processing-overlay" style="display: none;">
+        <div class="processing-content">
+            <div class="spinner"></div>
+            <h3 class="text-lg font-semibold mt-4">Processing Payment...</h3>
+            <p class="text-gray-600">Please wait while we connect to your payment gateway</p>
+            <button onclick="cancelPayment()" class="mt-4 text-gray-500 hover:text-gray-700">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function selectGateway(gateway) {
+    const amount = document.getElementById('amount').value;
+    const currency = document.getElementById('currency').value;
+    
+    if (!amount || parseFloat(amount) < 10) {
+        alert('Please enter a valid amount (minimum: 10.00)');
+        return;
+    }
+    
+    // Show processing overlay
+    document.getElementById('processingOverlay').style.display = 'flex';
+    
+    // Redirect to gateway-specific processing
+    const params = new URLSearchParams({
+        'gateway': gateway,
+        'amount': amount,
+        'currency': currency
+    });
+    
+    // Simulate API call to initiate payment
+    fetch(`/wallet/payment/initiate?${params}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Redirect to payment URL or show form
+            if (data.payment_url) {
+                window.location.href = data.payment_url;
+            } else if (data.form_data) {
+                // Show form for gateways that need form POST
+                showPaymentForm(data.form_data);
+            } else {
+                // Show QR code for mobile payments
+                showQRCode(data.qr_code);
+            }
+        } else {
+            alert(data.error || 'Payment initiation failed');
+            document.getElementById('processingOverlay').style.display = 'none';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Payment initiation failed. Please try again.');
+        document.getElementById('processingOverlay').style.display = 'none';
+    });
+}
+
+function showPaymentForm(formData) {
+    // Create and submit form for gateways requiring POST
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = formData.url;
+    
+    Object.keys(formData.fields).forEach(key => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = formData.fields[key];
+        form.appendChild(input);
+    });
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function showQRCode(qrCode) {
+    // Display QR code for mobile payments
+    document.getElementById('processingOverlay').innerHTML = `
+        <div class="processing-content">
+            <h3 class="text-lg font-semibold mb-4">Scan QR Code</h3>
+            <div class="mb-4">${qrCode}</div>
+            <p class="text-gray-600">Scan with your mobile payment app</p>
+            <button onclick="cancelPayment()" class="mt-4 text-gray-500 hover:text-gray-700">
+                Cancel
+            </button>
+        </div>
+    `;
+}
+
+function cancelPayment() {
+    document.getElementById('processingOverlay').style.display = 'none';
+}
+
+// Update total amount when amount or currency changes
+document.getElementById('amount').addEventListener('input', updateTotal);
+document.getElementById('currency').addEventListener('change', updateTotal);
+
+function updateTotal() {
+    const amount = document.getElementById('amount').value;
+    const currency = document.getElementById('currency').value;
+    
+    if (amount && parseFloat(amount) >= 10) {
+        document.getElementById('totalAmount').textContent = `${currency} ${parseFloat(amount).toFixed(2)}`;
+    } else {
+        document.getElementById('totalAmount').textContent = '0.00';
+    }
+}
+
+// Initialize
+updateTotal();
+</script>
+{% endblock %}

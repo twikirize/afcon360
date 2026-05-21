@@ -1,0 +1,985 @@
+{#
+  FILE: templates/events/attendee/register.html
+  PURPOSE: Event registration form for attendees
+  ACCESS: Authenticated users only
+  RELATED: events.register route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Register for {{ event.name }} - AFCON360{% endblock %}
+
+{% block content %}
+<style>
+/* Modern Event Registration Form Styles */
+.event-registration-wrapper {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.event-registration-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.05) 0%, transparent 50%);
+    opacity: 0.6;
+}
+
+.event-registration-container {
+    position: relative;
+    z-index: 2;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.event-registration-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    overflow: hidden;
+    animation: slideUp 0.6s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.event-registration-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    padding: 3rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.event-registration-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: float 8s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(180deg); }
+}
+
+.event-registration-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: white;
+    margin-bottom: 0.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.event-registration-subtitle {
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.9);
+    margin: 0;
+    position: relative;
+    z-index: 2;
+}
+
+.event-registration-body {
+    padding: 3rem 2rem;
+}
+
+/* Event Summary */
+.event-summary-card {
+    background: linear-gradient(135deg, #f0f4ff, #e6f0ff);
+    border: 2px solid #c3dafe;
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.event-summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.event-summary-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #667eea;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.event-summary-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.event-summary-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: white;
+}
+
+/* Form Sections */
+.form-section {
+    margin-bottom: 2rem;
+}
+
+.form-section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-section-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: white;
+}
+
+.form-group-modern {
+    margin-bottom: 1.5rem;
+}
+
+.form-label-modern {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.form-label-modern .required {
+    color: #e53e3e;
+    margin-left: 0.25rem;
+}
+
+.form-control-modern {
+    width: 100%;
+    padding: 1rem 1.25rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 1rem;
+    background: white;
+    color: #2d3748;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-control-modern:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+    transform: translateY(-2px);
+}
+
+.form-control-modern::placeholder {
+    color: #a0aec0;
+}
+
+select.form-control-modern {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+    appearance: none;
+}
+
+.form-row-modern {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.form-help-text {
+    font-size: 0.85rem;
+    color: #718096;
+    margin-top: 0.5rem;
+}
+
+/* Free Event Notice Card */
+.free-event-notice-card {
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.free-event-notice-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: float 8s ease-in-out infinite;
+}
+
+.free-event-notice-content {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.free-event-notice-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    flex-shrink: 0;
+}
+
+.free-event-notice-text h3 {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem 0;
+}
+
+.free-event-notice-text p {
+    color: rgba(255,255,255,0.9);
+    font-size: 1.1rem;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Legacy Free Event Badge (kept for compatibility) */
+.free-event-badge {
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    text-align: center;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.free-event-icon {
+    font-size: 1.25rem;
+}
+
+/* Ticket Selection */
+.ticket-selection-card {
+    background: #f7fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.ticket-selection-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
+}
+
+.ticket-info-display {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 1rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ticket-price-display {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #667eea;
+    text-align: center;
+    margin: 1rem 0;
+}
+
+/* Group Registration Styles */
+.group-registration-toggle {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f8faff;
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: #667eea;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(30px);
+}
+
+.toggle-label {
+    font-weight: 500;
+    color: #4a5568;
+}
+
+.group-registration-fields {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background: #f7fafc;
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+}
+
+.attendee-field {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    border: 2px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.attendee-field:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
+}
+
+.attendee-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.attendee-title {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.attendee-number {
+    background: #667eea;
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+/* Payment Method Styles */
+.payment-method-option {
+    margin-bottom: 1rem;
+}
+
+.payment-method-label {
+    display: block;
+    cursor: pointer;
+}
+
+.payment-method-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+    transition: all 0.3s ease;
+}
+
+.payment-method-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
+}
+
+.payment-method-card.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #f7fafc;
+}
+
+.payment-method-icon {
+    font-size: 1.5rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8faff;
+    border-radius: 8px;
+}
+
+.payment-method-info {
+    flex: 1;
+}
+
+.payment-method-name {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.25rem;
+}
+
+.payment-method-description {
+    font-size: 0.875rem;
+    color: #718096;
+}
+
+input[name="payment_method"]:checked + .payment-method-card {
+    border-color: #667eea;
+    background: #f8faff;
+}
+
+input[name="payment_method"]:checked + .payment-method-card .payment-method-icon {
+    background: #667eea;
+    color: white;
+}
+
+/* Info Alert */
+.info-alert-modern {
+    background: linear-gradient(135deg, #fef5e7, #fef3cd);
+    border: 2px solid #fbbf24;
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.info-alert-icon {
+    color: #f59e0b;
+    font-size: 1.25rem;
+    margin-top: 0.25rem;
+}
+
+.info-alert-content {
+    flex: 1;
+    color: #2d3748;
+}
+
+.info-alert-content ul {
+    margin: 0.75rem 0 0 0;
+    padding-left: 1.25rem;
+}
+
+.info-alert-content li {
+    margin-bottom: 0.5rem;
+    color: #4a5568;
+}
+
+/* Form Actions */
+.form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e2e8f0;
+    margin-top: 2rem;
+}
+
+.btn-cancel-modern {
+    padding: 1rem 2rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+    color: #4a5568;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-cancel-modern:hover {
+    border-color: #cbd5e0;
+    background: #f7fafc;
+    transform: translateY(-2px);
+}
+
+.btn-submit-modern {
+    padding: 1rem 3rem;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-weight: 700;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 200px;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-submit-modern::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn-submit-modern:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(102,126,234,0.3);
+}
+
+.btn-submit-modern:hover::before {
+    left: 100%;
+}
+
+.btn-submit-modern:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .event-registration-wrapper {
+        padding: 1rem 0;
+    }
+    
+    .event-registration-header {
+        padding: 2rem 1.5rem;
+    }
+    
+    .event-registration-title {
+        font-size: 2rem;
+    }
+    
+    .event-registration-body {
+        padding: 2rem 1.5rem;
+    }
+    
+    .event-summary-card {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .form-row-modern {
+        grid-template-columns: 1fr;
+    }
+    
+    .free-event-notice-content {
+        flex-direction: column;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .free-event-notice-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 1.25rem;
+    }
+    
+    .free-event-notice-text h3 {
+        font-size: 1.25rem;
+    }
+    
+    .free-event-notice-text p {
+        font-size: 1rem;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .btn-cancel-modern,
+    .btn-submit-modern {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+
+<div class="event-registration-wrapper">
+    <div class="event-registration-container">
+        <div class="event-registration-card">
+            <div class="event-registration-header">
+                <h1 class="event-registration-title">
+                    <i class="fas fa-user-plus me-3"></i>Register for {{ event.name }}
+                </h1>
+                <p class="event-registration-subtitle">Complete your registration to secure your spot</p>
+            </div>
+            
+            <div class="event-registration-body">
+                <!-- Event Summary -->
+                <div class="event-summary-card">
+                    <div class="event-summary-item">
+                        <div class="event-summary-label">Event Date</div>
+                        <div class="event-summary-value">
+                            <div class="event-summary-icon">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <span>
+                                {{ event.start_date[:10] if event.start_date else 'TBD' }}
+                                {% if event.end_date and event.end_date != event.start_date %}
+                                    - {{ event.end_date[:10] }}
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="event-summary-item">
+                        <div class="event-summary-label">Location</div>
+                        <div class="event-summary-value">
+                            <div class="event-summary-icon">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </div>
+                            <span>{{ event.city }}{% if event.venue %} - {{ event.venue }}{% endif %}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Registration Form -->
+                <form method="POST" id="registration-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <!-- Personal Information -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            Personal Information
+                        </h2>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">
+                                Full Name <span class="required">*</span>
+                            </label>
+                            <input type="text" name="full_name" class="form-control-modern"
+                                   value="{{ user_data.full_name }}" required>
+                        </div>
+                        
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">
+                                Email Address <span class="required">*</span>
+                            </label>
+                            <input type="email" name="email" class="form-control-modern"
+                                   value="{{ user_data.email }}" required>
+                            <div class="form-help-text">Your ticket confirmation will be sent to this email</div>
+                        </div>
+
+                        <div class="form-row-modern">
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Phone Number</label>
+                                <input type="tel" name="phone" class="form-control-modern"
+                                       value="{{ user_data.phone }}" placeholder="+256 123 456 789">
+                            </div>
+                            
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Nationality</label>
+                                <input type="text" name="nationality" class="form-control-modern"
+                                       value="{{ user_data.nationality }}"
+                                       placeholder="e.g., Ugandan, Kenyan, Tanzanian">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Event Status & Ticket Selection -->
+                    {% set has_ticket_types = event.ticket_types and event.ticket_types|length > 0 %}
+                    {% set has_paid_tickets = has_ticket_types and event.ticket_types|selectattr('price')|selectattr('price', 'greaterthan', 0)|list|length > 0 %}
+                    
+                    {% if has_paid_tickets %}
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-ticket-alt"></i>
+                            </div>
+                            Ticket Selection
+                        </h2>
+                        
+                        <div class="ticket-selection-card">
+                            <label class="form-label-modern">
+                                Select Ticket Tier <span class="required">*</span>
+                            </label>
+                            <select name="ticket_type_id" class="form-control-modern" id="ticket-type-select" required>
+                                <option value="">-- Choose Your Ticket --</option>
+                                {% for tt in event.ticket_types %}
+                                    {% if tt.is_active %}
+                                        <option value="{{ tt.id }}" data-price="{{ tt.price }}">
+                                            {{ tt.name }} - {{ event.currency }} {{ tt.price }}
+                                            {% if tt.capacity %} ({{ tt.capacity - tt.registration_count if tt.registration_count else tt.capacity }} left){% endif %}
+                                        </option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                            
+                            <div id="ticket-info" class="ticket-info-display d-none">
+                                <div class="ticket-price-display" id="total-price-display"></div>
+                                <div id="ticket-description" class="text-muted small"></div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- Free Event Notice - Integrated into Personal Info section -->
+                    <div class="free-event-notice-card">
+                        <div class="free-event-notice-content">
+                            <div class="free-event-notice-icon">
+                                <i class="fas fa-gift"></i>
+                            </div>
+                            <div class="free-event-notice-text">
+                                <h3>Free Event Registration</h3>
+                                <p>No ticket required - just complete your details below to secure your spot!</p>
+                            </div>
+                        </div>
+                        <input type="hidden" name="ticket_type_id" value="">
+                    </div>
+                    
+                    <!-- Payment Method Selection -->
+                    <div id="payment-section" class="form-section" style="display: none;">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-credit-card"></i>
+                            </div>
+                            Payment Method
+                        </h2>
+                        
+                        <div id="payment-methods-loading" class="text-center py-3">
+                            <i class="fas fa-spinner fa-spin"></i> Loading payment methods...
+                        </div>
+                        
+                        <div id="payment-methods-container" style="display: none;">
+                            <!-- Payment methods will be loaded dynamically -->
+                        </div>
+                        
+                        <!-- Mobile Money Details (hidden by default) -->
+                        <div id="mobile-money-details" style="display: none;">
+                            <div class="form-row-modern">
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">Mobile Money Operator</label>
+                                    <select name="mobile_money_operator" class="form-control-modern" id="mobile-operator-select">
+                                        <option value="">Select Operator</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-modern">
+                                    <label class="form-label-modern">Phone Number</label>
+                                    <input type="tel" name="mobile_money_phone" class="form-control-modern" 
+                                           id="mobile-phone-input" placeholder="Enter mobile money number">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Group Registration -->
+                    {% if has_paid_tickets %}
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            Group Registration
+                        </h2>
+                        
+                        <div class="group-registration-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="group-registration-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label">Register multiple attendees</span>
+                        </div>
+                        
+                        <div id="group-registration-fields" class="group-registration-fields" style="display: none;">
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Number of Additional Attendees</label>
+                                <select name="group_size" class="form-control-modern" id="group-size-select">
+                                    <option value="0">Just myself</option>
+                                    <option value="1">1 additional person</option>
+                                    <option value="2">2 additional people</option>
+                                    <option value="3">3 additional people</option>
+                                    <option value="4">4 additional people</option>
+                                    <option value="5">5 additional people</option>
+                                    <option value="6">6 additional people</option>
+                                    <option value="7">7 additional people</option>
+                                    <option value="8">8 additional people</option>
+                                    <option value="9">9 additional people</option>
+                                </select>
+                            </div>
+                            
+                            <div id="additional-attendees-container"></div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Identification -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-id-card"></i>
+                            </div>
+                            Identification (Optional)
+                        </h2>
+                        
+                        <div class="form-row-modern">
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">ID Type</label>
+                                <select name="id_type" class="form-control-modern">
+                                    <option value="">Select ID Type (Optional)</option>
+                                    <option value="passport">Passport</option>
+                                    <option value="national_id">National ID</option>
+                                    <option value="drivers_license">Driver's License</option>
+                                    <option value="voter_card">Voter's Card</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">ID Number</label>
+                                <input type="text" name="id_number" class="form-control-modern"
+                                       placeholder="Optional for verification">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- What's Next -->
+                    <div class="info-alert-modern">
+                        <div class="info-alert-icon">
+                            <i class="fas fa-qrcode"></i>
+                        </div>
+                        <div class="info-alert-content">
+                            <strong>What happens next?</strong>
+                            <ul>
+                                <li>You'll receive a confirmation email with your QR code ticket</li>
+                                <li>Present the QR code at the event entrance for quick scanning</li>
+                                <li>Save your ticket number for easy reference</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="form-actions">
+                        <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="btn-cancel-modern">
+                            <i class="fas fa-arrow-left"></i>
+                            <span>Back to Event</span>
+                        </a>
+                        
+                        <button type="submit" class="btn-submit-modern" id="submit-btn">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Complete Registration
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Pass data to external JavaScript file
+window.ticketTypes = {{ event.ticket_types|tojson|safe if event.ticket_types else '[]' }};
+window.currency = "{{ event.currency }}";
+</script>
+<script src="{{ url_for('static', filename='js/event-register.js') }}"></script>
+{% endblock %}

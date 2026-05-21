@@ -1,0 +1,471 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Enterprise Moderation Dashboard — AFCON360{% endblock %}
+
+{% block topbar_title %}Enterprise Moderation Dashboard{% endblock %}
+
+{% block content %}
+<!-- Enterprise Critical Alert System -->
+{% if moderation_stats and moderation_stats.flags_critical is defined and moderation_stats.flags_critical > 0 %}
+<div style="background:linear-gradient(135deg, var(--red), var(--red-dark));color:#fff;padding:16px 24px;border-radius:var(--radius);margin-bottom:24px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 12px rgba(220, 38, 38, 0.3);">
+    <div style="font-size:24px;animation:pulse 2s infinite;">
+        <i class="fas fa-shield-halved"></i>
+    </div>
+    <div style="flex:1;">
+        <strong style="font-size:16px;">{{ moderation_stats.flags_critical }} CRITICAL FLAG(s) - IMMEDIATE ACTION REQUIRED</strong>
+        <div style="font-size:14px;opacity:0.9;margin-top:4px;">SLA breached - Risk score: {{ moderation_stats.avg_risk_score|round(1) if moderation_stats.avg_risk_score else 'N/A' }}/100</div>
+    </div>
+    <a href="{{ url_for('admin.moderator.flagged_content', priority='critical') }}" style="background:#fff;color:var(--red);padding:8px 16px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+        <i class="fas fa-bolt"></i> Review Now →
+    </a>
+</div>
+{% endif %}
+
+<!-- SLA Breach Warning -->
+{% if moderation_stats and moderation_stats.sla_breached_count is defined and moderation_stats.sla_breached_count > 0 %}
+<div style="background:linear-gradient(135deg, var(--orange), var(--orange-dark));color:#fff;padding:12px 20px;border-radius:var(--radius);margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+    <i class="fas fa-clock"></i>
+    <strong>{{ moderation_stats.sla_breached_count }} SLA breach(es) detected</strong>
+    <div style="margin-left:auto;font-size:14px;">
+        Avg delay: {{ moderation_stats.avg_sla_breach_time|round|int if moderation_stats.avg_sla_breach_time else 'N/A' }} minutes
+    </div>
+</div>
+{% endif %}
+
+<!-- Enterprise Dashboard Overview -->
+<div class="heading-row">
+    <div>
+        <h1 class="page-heading">Enterprise Moderation Dashboard</h1>
+        <p class="page-subheading">Real-time moderation operations at Facebook/Airbnb/PayPal scale</p>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+        <div style="background:var(--green-lt);color:var(--green);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+            <i class="fas fa-circle text-green" style="font-size:8px;margin-right:4px;"></i>
+            System Operational
+        </div>
+        <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+            Level {{ current_moderator_level if current_moderator_level else '1' }} Access
+        </div>
+        <a href="{{ url_for('user.user_dashboard') }}" class="btn-consumer-switch">
+            <i class="bi bi-person"></i>
+            Consumer View
+            <i class="bi bi-arrow-right"></i>
+        </a>
+    </div>
+</div>
+
+<style>
+.btn-consumer-switch {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+    border: none;
+    font-size: 13px;
+}
+
+.btn-consumer-switch:hover {
+    background: linear-gradient(135deg, #5a67d8, #6b46c1) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+    color: white !important;
+}
+
+@media (max-width: 768px) {
+    .heading-row {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .btn-consumer-switch {
+        font-size: 12px;
+        padding: 6px 12px;
+    }
+}
+</style>
+
+<!-- Enterprise Moderation Queue Stats -->
+<div class="stat-grid">
+    <a href="{{ url_for('admin.moderator.flagged_content', priority='critical') }}" class="stat-card" style="border:2px solid var(--red);">
+        <div class="stat-icon" style="background: var(--red-lt); color: var(--red);">
+            <i class="fas fa-shield-halved"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value">{{ moderation_stats.flags_critical if moderation_stats else 0 }}</div>
+            <div class="stat-label">Critical Flags</div>
+            <div class="stat-sub">Risk ≥80%</div>
+        </div>
+        <div class="stat-arrow"><i class="fas fa-chevron-right"></i></div>
+    </a>
+
+    <a href="{{ url_for('admin.moderator.flagged_content') }}" class="stat-card">
+        <div class="stat-icon" style="background: var(--orange-lt); color: var(--orange);">
+            <i class="fas fa-flag"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value">{{ total_open_flags if total_open_flags else 0 }}</div>
+            <div class="stat-label">Total Flags</div>
+            <div class="stat-sub">{{ moderation_stats.flags_high if moderation_stats else 0 }} high priority</div>
+        </div>
+        <div class="stat-arrow"><i class="fas fa-chevron-right"></i></div>
+    </a>
+
+    <a href="{{ url_for('admin.moderator.content_moderation') }}" class="stat-card">
+        <div class="stat-icon" style="background: var(--blue-lt); color: var(--blue);">
+            <i class="fas fa-file-lines"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value">{{ pending_count if pending_count else 0 }}</div>
+            <div class="stat-label">Content Submissions</div>
+            <div class="stat-sub">{{ changes_requested_count if changes_requested_count else 0 }} changes requested</div>
+        </div>
+        <div class="stat-arrow"><i class="fas fa-chevron-right"></i></div>
+    </a>
+
+    <a href="{{ url_for('admin.moderator.my_queue') }}" class="stat-card">
+        <div class="stat-icon" style="background: var(--green-lt); color: var(--green);">
+            <i class="fas fa-user-check"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value">{{ my_stats.assigned_count if my_stats and my_stats.assigned_count else 0 }}</div>
+            <div class="stat-label">My Queue</div>
+            <div class="stat-sub">{{ my_stats.in_review_count if my_stats and my_stats.in_review_count else 0 }} in review</div>
+        </div>
+        <div class="stat-arrow"><i class="fas fa-chevron-right"></i></div>
+    </a>
+
+    <div class="stat-card" style="background:linear-gradient(135deg, var(--purple-lt), var(--purple));color:white;cursor:default;">
+        <div class="stat-icon" style="background:rgba(255,255,255,0.2);color:white;">
+            <i class="fas fa-brain"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value">{{ moderation_stats.ai_accuracy|round(1) if moderation_stats and moderation_stats.ai_accuracy else 'N/A' }}%</div>
+            <div class="stat-label">AI Accuracy</div>
+            <div class="stat-sub">{{ moderation_stats.ai_processed_today if moderation_stats and moderation_stats.ai_processed_today else 0 }} processed today</div>
+        </div>
+    </div>
+
+    <div class="stat-card" style="background:linear-gradient(135deg, var(--cyan-lt), var(--cyan));color:white;cursor:default;">
+        <div class="stat-icon" style="background:rgba(255,255,255,0.2);color:white;">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-value">{{ moderation_stats.avg_response_time|round|int if moderation_stats and moderation_stats.avg_response_time else 'N/A' }}s</div>
+            <div class="stat-label">Avg Response</div>
+            <div class="stat-sub">{{ moderation_stats.sla_compliance|round(1) if moderation_stats and moderation_stats.sla_compliance else 'N/A' }}% SLA</div>
+        </div>
+    </div>
+</div>
+
+<!-- Enterprise Performance Metrics -->
+<div style="background:var(--bg-secondary);border-radius:var(--radius);padding:20px;margin-bottom:24px;">
+    <h3 style="margin:0 0 16px 0;color:var(--text);font-size:18px;font-weight:600;">
+        <i class="fas fa-chart-line" style="margin-right:8px;color:var(--accent);"></i>
+        Enterprise Performance Metrics
+    </h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+        <div style="background:var(--bg);padding:16px;border-radius:8px;border-left:4px solid var(--green);">
+            <div style="font-size:24px;font-weight:600;color:var(--green);">
+                {{ moderation_stats.resolved_today if moderation_stats and moderation_stats.resolved_today else 0 }}
+            </div>
+            <div style="font-size:14px;color:var(--text-muted);margin-top:4px;">Resolved Today</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                {{ moderation_stats.resolution_rate|round(1) if moderation_stats and moderation_stats.resolution_rate else 0 }}% resolution rate
+            </div>
+        </div>
+        
+        <div style="background:var(--bg);padding:16px;border-radius:8px;border-left:4px solid var(--blue);">
+            <div style="font-size:24px;font-weight:600;color:var(--blue);">
+                {{ moderation_stats.active_moderators if moderation_stats and moderation_stats.active_moderators else 0 }}
+            </div>
+            <div style="font-size:14px;color:var(--text-muted);margin-top:4px;">Active Moderators</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                {{ moderation_stats.avg_workload|round(1) if moderation_stats and moderation_stats.avg_workload else 0 }} items/moderator
+            </div>
+        </div>
+        
+        <div style="background:var(--bg);padding:16px;border-radius:8px;border-left:4px solid var(--orange);">
+            <div style="font-size:24px;font-weight:600;color:var(--orange);">
+                {{ moderation_stats.escalation_rate|round(1) if moderation_stats and moderation_stats.escalation_rate else 0 }}%
+            </div>
+            <div style="font-size:14px;color:var(--text-muted);margin-top:4px;">Escalation Rate</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                {{ moderation_stats.level_3_cases if moderation_stats and moderation_stats.level_3_cases else 0 }} Level 3 cases
+            </div>
+        </div>
+        
+        <div style="background:var(--bg);padding:16px;border-radius:8px;border-left:4px solid var(--purple);">
+            <div style="font-size:24px;font-weight:600;color:var(--purple);">
+                {{ moderation_stats.user_satisfaction|round(1) if moderation_stats and moderation_stats.user_satisfaction else 'N/A' }}
+            </div>
+            <div style="font-size:14px;color:var(--text-muted);margin-top:4px;">User Satisfaction</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                Based on {{ moderation_stats.feedback_count if moderation_stats and moderation_stats.feedback_count else 0 }} reviews
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- My Activity Row -->
+{% if my_stats %}
+<div class="stat-grid" style="margin-bottom: 24px;">
+    <div class="stat-card success">
+        <div class="stat-label">Your Last 7 Days</div>
+        <div class="stat-value">{{ my_stats.get('approved', 0) }}</div>
+        <div class="stat-sub">Approved</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-label">Your Last 7 Days</div>
+        <div class="stat-value">{{ my_stats.get('rejected', 0) }}</div>
+        <div class="stat-sub">Rejected</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-label">Your Last 7 Days</div>
+        <div class="stat-value">{{ my_stats.get('total', 0) }}</div>
+        <div class="stat-sub">Total Actions</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Transport Breakdown -->
+{% if moderation_stats and moderation_stats.get('transport', 0) > 0 %}
+<div class="panel">
+    <div class="panel-header">
+        <div class="panel-title">
+            <i class="fas fa-bus" style="background:var(--orange-lt);color:var(--orange);"></i>
+            Transport Queue Breakdown
+        </div>
+    </div>
+    <div class="panel-body">
+        <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="mini-stat">
+                <div class="mini-stat-value">{{ moderation_stats.get('transport_bookings', 0) }}</div>
+                <div class="mini-stat-label">Bookings</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value">{{ moderation_stats.get('transport_vehicles', 0) }}</div>
+                <div class="mini-stat-label">Vehicles</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value">{{ moderation_stats.get('transport_drivers', 0) }}</div>
+                <div class="mini-stat-label">Drivers</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Accommodation Breakdown -->
+{% if moderation_stats and moderation_stats.get('accommodation', 0) > 0 %}
+<div class="panel">
+    <div class="panel-header">
+        <div class="panel-title">
+            <i class="fas fa-building" style="background:var(--purple-lt);color:var(--purple);"></i>
+            Accommodation Queue Breakdown
+        </div>
+    </div>
+    <div class="panel-body">
+        <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="mini-stat">
+                <div class="mini-stat-value">{{ moderation_stats.get('accommodation_properties', 0) }}</div>
+                <div class="mini-stat-label">Properties</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value">{{ moderation_stats.get('accommodation_bookings', 0) }}</div>
+                <div class="mini-stat-label">Bookings</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value">{{ moderation_stats.get('accommodation_reviews', 0) }}</div>
+                <div class="mini-stat-label">Reviews</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Activity Summary -->
+<div class="col-layout-8-4">
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">
+                <i class="fas fa-clock-rotate-left" style="background:var(--blue-lt);color:var(--blue);"></i>
+                Recent Activity (7 Days)
+            </div>
+        </div>
+        <div class="panel-body">
+            <div class="activity-summary">
+                <div class="activity-item">
+                    <div class="activity-label">Approved</div>
+                    <div class="activity-value success">{{ approved_7d or 0 }}</div>
+                </div>
+                <div class="activity-item">
+                    <div class="activity-label">Rejected</div>
+                    <div class="activity-value danger">{{ rejected_7d or 0 }}</div>
+                </div>
+                <div class="activity-item">
+                    <div class="activity-label">Flags Resolved</div>
+                    <div class="activity-value info">{{ resolved_flags_7d or 0 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <div class="panel-title">
+                <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+                Open Flags
+            </div>
+        </div>
+        <div class="panel-body">
+            <div class="flag-summary">
+                <div class="flag-total">{{ total_open_flags or 0 }}</div>
+                <div class="flag-label">Total Open</div>
+            </div>
+            {% if total_open_flags and total_open_flags > 0 %}
+            <a href="{{ url_for('admin.moderator.flagged_content') }}" class="btn btn-primary" style="width:100%;margin-top:16px;">
+                <i class="fas fa-eye"></i> View Flags
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        text-decoration: none;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+
+    .stat-card:hover {
+        border-color: var(--accent);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-2px);
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: var(--radius);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .stat-content {
+        flex: 1;
+    }
+
+    .stat-value {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 28px;
+        color: var(--ink);
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 4px;
+    }
+
+    .stat-arrow {
+        color: var(--muted-2);
+        font-size: 12px;
+    }
+
+    .mini-stat {
+        text-align: center;
+        padding: 16px;
+        background: var(--bg);
+        border-radius: var(--radius);
+    }
+
+    .mini-stat-value {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 24px;
+        color: var(--ink);
+    }
+
+    .mini-stat-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+    }
+
+    .activity-summary {
+        display: flex;
+        gap: 16px;
+    }
+
+    .activity-item {
+        flex: 1;
+        text-align: center;
+        padding: 16px;
+        background: var(--bg);
+        border-radius: var(--radius);
+    }
+
+    .activity-label {
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    .activity-value {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 24px;
+    }
+
+    .activity-value.success { color: var(--green); }
+    .activity-value.danger { color: var(--red); }
+    .activity-value.info { color: var(--blue); }
+
+    .flag-summary {
+        text-align: center;
+        padding: 24px;
+    }
+
+    .flag-total {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 48px;
+        color: var(--accent);
+        line-height: 1;
+    }
+
+    .flag-label {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 8px;
+    }
+</style>
+{% endblock %}

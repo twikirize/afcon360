@@ -1,0 +1,218 @@
+{# templates/kyc/verify_upload.html #}
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
+
+{% if not is_pane %}
+    {% block title %}KYC Document Upload — {{ app_name }}{% endblock %}
+
+    {% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <div class="d-flex align-items-center mb-4">
+        <a href="{{ url_for('kyc.index') }}" class="btn btn-outline-secondary btn-sm me-3">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <h2 class="mb-0">KYC / KYB Document Upload</h2>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="card shadow-sm">
+        <div class="card-header bg-light">
+          <ul class="nav nav-tabs card-header-tabs" id="kycTab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="individual-tab" data-bs-toggle="tab" data-bs-target="#individual"
+                      type="button" role="tab" aria-controls="individual" aria-selected="true">
+                <i class="bi bi-person me-1"></i> Individual KYC
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="organization-tab" data-bs-toggle="tab" data-bs-target="#organization"
+                      type="button" role="tab" aria-controls="organization" aria-selected="false">
+                <i class="bi bi-building me-1"></i> Organization KYB
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <div class="card-body">
+          <div class="tab-content" id="kycTabContent">
+
+            {# ── INDIVIDUAL KYC TAB ─────────────────────────────────────────── #}
+            <div class="tab-pane fade show active" id="individual" role="tabpanel" aria-labelledby="individual-tab">
+              <p class="text-muted mb-3">
+                Submit identity documents to meet Bank of Uganda KYC tiers.
+                Required tiers: Tier 2 (National ID + selfie), Tier 3 (+ address + TIN), Tier 4 (+ income + bank reference).
+              </p>
+
+              <form method="POST" action="{{ url_for('kyc.verify_upload') }}">
+                <input type="hidden" name="kyc_type" value="individual">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="id_type" class="form-label">Document Type <span class="text-danger">*</span></label>
+                    <select class="form-select" id="id_type" name="id_type" required>
+                      <option value="" selected disabled>Select document type…</option>
+                      <option value="national_id">National ID (NIRA)</option>
+                      <option value="passport">Passport</option>
+                      <option value="driver_license">Driver's License</option>
+                      <option value="proof_of_address">Proof of Address</option>
+                      <option value="tin">Tax ID (TIN)</option>
+                      <option value="income_source">Income Source Proof</option>
+                      <option value="bank_reference">Bank Reference Letter</option>
+                    </select>
+                    <div class="form-text">Select the document you are uploading.</div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="id_number" class="form-label">ID / Reference Number <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="id_number" name="id_number"
+                           placeholder="e.g. CM1234567890AB or TIN-123456" required>
+                    <div class="form-text">Document number as shown on the original.</div>
+                  </div>
+
+                  <div class="col-12">
+                    <label for="document_url" class="form-label">Document URL / Storage Key <span class="text-danger">*</span></label>
+                    <input type="url" class="form-control" id="document_url" name="document_url"
+                           placeholder="https://storage.example.com/documents/passport-scan.pdf" required>
+                    <div class="form-text">Secure link to the uploaded document (S3 bucket, CDN, or secure file server).</div>
+                  </div>
+
+                  <div class="col-12">
+                    <label for="selfie_url" class="form-label">Selfie / Biometric URL</label>
+                    <input type="url" class="form-control" id="selfie_url" name="selfie_url"
+                           placeholder="https://storage.example.com/selfies/user-123.jpg">
+                    <div class="form-text">Required for National ID and biometric verification. Leave blank for address or TIN docs.</div>
+                  </div>
+
+                  <hr class="my-2">
+                  <p class="text-muted small mb-1">Optional address details (for proof-of-address submissions):</p>
+
+                  <div class="col-md-6">
+                    <label for="address_line1" class="form-label">Address Line 1</label>
+                    <input type="text" class="form-control" id="address_line1" name="address_line1"
+                           placeholder="Plot 12, Kampala Road">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="address_line2" class="form-label">Address Line 2</label>
+                    <input type="text" class="form-control" id="address_line2" name="address_line2"
+                           placeholder="Suite 4B">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="city" class="form-label">City</label>
+                    <input type="text" class="form-control" id="city" name="city" placeholder="Kampala">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="state" class="form-label">State / Region</label>
+                    <input type="text" class="form-control" id="state" name="state" placeholder="Central Region">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="country" class="form-label">Country</label>
+                    <input type="text" class="form-control" id="country" name="country" value="UG" maxlength="2">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="postal_code" class="form-label">Postal Code</label>
+                    <input type="text" class="form-control" id="postal_code" name="postal_code" placeholder="256">
+                  </div>
+                </div>
+
+                <div class="d-grid mt-4">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-cloud-upload me-1"></i> Submit Individual KYC Document
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {# ── ORGANIZATION KYB TAB ─────────────────────────────────────────── #}
+            <div class="tab-pane fade" id="organization" role="tabpanel" aria-labelledby="organization-tab">
+              <p class="text-muted mb-3">
+                Submit business verification documents for your organization.
+                Required for Tier 5 (Corporate) KYB: registration certificate, TIN certificate, trading license,
+                directors list, and beneficial-ownership declaration.
+              </p>
+
+              {% if user_orgs %}
+              <form method="POST" action="{{ url_for('kyc.verify_upload') }}">
+                <input type="hidden" name="kyc_type" value="organization">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label for="org_id" class="form-label">Organization <span class="text-danger">*</span></label>
+                    <select class="form-select" id="org_id" name="org_id" required>
+                      <option value="" selected disabled>Select your organization…</option>
+                      {% for org in user_orgs %}
+                        <option value="{{ org.id }}">{{ org.legal_name }} ({{ org.org_id }})</option>
+                      {% endfor %}
+                    </select>
+                    <div class="form-text">Only active organizations where you are a member are shown.</div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="org_doc_type" class="form-label">KYB Document Type <span class="text-danger">*</span></label>
+                    <select class="form-select" id="org_doc_type" name="org_doc_type" required>
+                      <option value="" selected disabled>Select document type…</option>
+                      <option value="organisation_registration">Business Registration Certificate</option>
+                      <option value="tin_certificate">Tax (TIN) Certificate</option>
+                      <option value="trading_license">Trading License</option>
+                      <option value="directors_list">Directors / Officers List</option>
+                      <option value="beneficial_owners">Beneficial Ownership Declaration</option>
+                    </select>
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="org_doc_number" class="form-label">Registration / Reference Number</label>
+                    <input type="text" class="form-control" id="org_doc_number" name="org_doc_number"
+                           placeholder="e.g. URSB-123456">
+                  </div>
+
+                  <div class="col-12">
+                    <label for="org_document_url" class="form-label">Document URL / Storage Key <span class="text-danger">*</span></label>
+                    <input type="url" class="form-control" id="org_document_url" name="org_document_url"
+                           placeholder="https://storage.example.com/kyb/reg-cert.pdf" required>
+                    <div class="form-text">Secure link to the uploaded organization document.</div>
+                  </div>
+                </div>
+
+                <div class="d-grid mt-4">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-cloud-upload me-1"></i> Submit Organization KYB Document
+                  </button>
+                </div>
+              </form>
+              {% else %}
+                <div class="alert alert-info">
+                  <i class="bi bi-info-circle me-2"></i>
+                  You are not currently linked to any organizations.
+                  <a href="{{ url_for('index') }}" class="alert-link">Create or join an organization</a> first, then return here to upload KYB documents.
+                </div>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% endif %}

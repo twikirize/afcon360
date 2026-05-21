@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Review Review - AFCON360{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/moderate_base.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/moderate_detail.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="mod-header">
+  <div style="display: flex; align-items: center;">
+    <span class="mod-badge">MODERATOR</span>
+    <span class="mod-title">Review Review</span>
+  </div>
+  <a href="{{ safe_url('accommodation.admin.moderate') }}" class="btn-ghost">
+    <i class="fas fa-arrow-left"></i> Back to Queue
+  </a>
+</div>
+
+<div class="mod-wrap">
+  <div class="breadcrumb-row">
+    <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+    <span class="sep">/</span>
+    <a href="{{ safe_url('accommodation.admin.moderate') }}">Accommodation</a>
+    <span class="sep">/</span>
+    <span class="active">Review #{{ review.id }}</span>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Review Details</div>
+      <span class="badge badge-pending">{{ review.status.value }}</span>
+    </div>
+    <div class="panel-body">
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="info-label">Overall Rating</span>
+          <span class="info-value rating-stars">
+            {% for i in range(review.overall_rating) %}?{% endfor %}
+            {% for i in range(5 - review.overall_rating) %}?{% endfor %}
+            ({{ review.overall_rating }}/5)
+          </span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Reviewer</span>
+          <span class="info-value">{{ review.reviewer.username if review.reviewer else 'Unknown' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Property</span>
+          <span class="info-value">{{ review.property.title if review.property else 'Unknown' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Created</span>
+          <span class="info-value">{{ review.created_at.strftime('%Y-%m-%d %H:%M') if review.created_at else '-' }}</span>
+        </div>
+        <div class="info-item" style="grid-column: span 2;">
+          <span class="info-label">Comment</span>
+          <span class="info-value">{{ review.comment or 'No comment provided' }}</span>
+        </div>
+        {% if review.host_response %}
+        <div class="info-item" style="grid-column: span 2;">
+          <span class="info-label">Host Response</span>
+          <span class="info-value">{{ review.host_response }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <form method="POST" action="{{ safe_url('url_for\(['"]accommodation.admin.moderate_action', entity_type='review', id=review.id, action='approve') }}" style="display: inline;">
+        <button type="submit" class="btn btn-approve">
+          <i class="fas fa-check"></i> Approve Review
+        </button>
+      </form>
+      <button onclick="document.getElementById('reject-form').style.display='block'" class="btn btn-reject">
+        <i class="fas fa-times"></i> Reject
+      </button>
+      <button onclick="document.getElementById('flag-form').style.display='block'" class="btn btn-flag">
+        <i class="fas fa-flag"></i> Flag
+      </button>
+    </div>
+  </div>
+
+  <div id="reject-form" class="panel" style="display: none;">
+    <div class="panel-header">
+      <div class="panel-title">Reject Review</div>
+    </div>
+    <div class="panel-body">
+      <form method="POST" action="{{ safe_url('url_for\(['"]accommodation.admin.moderate_action', entity_type='review', id=review.id, action='reject') }}">
+        <div class="form-group">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="reason" class="form-textarea" required placeholder="Explain why this review is being rejected..."></textarea>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <button type="submit" class="btn btn-reject">Confirm Rejection</button>
+          <button type="button" onclick="document.getElementById('reject-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="flag-form" class="panel" style="display: none;">
+    <div class="panel-header">
+      <div class="panel-title">Flag for Review</div>
+    </div>
+    <div class="panel-body">
+      <form method="POST" action="{{ safe_url('url_for\(['"]accommodation.admin.moderate_action', entity_type='review', id=review.id, action='flag') }}">
+        <div class="form-group">
+          <label class="form-label">Reason *</label>
+          <textarea name="reason" class="form-textarea" required placeholder="Explain why this review needs further review..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select name="priority" class="form-select">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <button type="submit" class="btn btn-flag">Flag Review</button>
+          <button type="button" onclick="document.getElementById('flag-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

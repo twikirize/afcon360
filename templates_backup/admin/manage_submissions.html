@@ -1,0 +1,57 @@
+{% extends "admin/admin.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Content Submissions</h2>
+        <a href="{{ url_for('admin.content_dashboard') }}" class="btn btn-secondary">Back to Content Dashboard</a>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Item Name</th>
+                            <th>Submitted By</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for submission in submissions %}
+                        <tr>
+                            <td>{{ submission.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ submission.category.name }}</td>
+                            <td>{{ submission.name }}</td>
+                            <td>{{ submission.submitter.username or submission.submitter.email }}</td>
+                            <td>
+                                <span class="badge {% if submission.status == 'pending' %}bg-warning{% elif submission.status == 'approved' %}bg-success{% else %}bg-danger{% endif %}">
+                                    {{ submission.status|capitalize }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary">View</button>
+                                    {% if submission.status == 'pending' %}
+                                    <button class="btn btn-outline-success">Approve</button>
+                                    <button class="btn btn-outline-danger">Reject</button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">No submissions found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

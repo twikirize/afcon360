@@ -1,0 +1,688 @@
+{% extends "base.html" %}
+
+{% block title %}My Event Dashboard - AFCON360{% endblock %}
+
+{% block content %}
+<style>
+:root {
+    --afcon-green: #00e5a0;
+    --afcon-green-dark: #00b87d;
+    --afcon-purple: #667eea;
+    --afcon-purple-dark: #5a67d8;
+    --afcon-orange: #f6ad55;
+    --afcon-red: #fc8181;
+    --afcon-blue: #4299e1;
+    --afcon-dark: #1a202c;
+    --afcon-gray: #718096;
+    --afcon-light: #f7fafc;
+    --afcon-border: #e2e8f0;
+    --card-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    --card-shadow-hover: 0 8px 30px rgba(0,0,0,0.14);
+    --radius: 16px;
+    --radius-sm: 10px;
+}
+
+/* ── Hero Banner ─────────────────────────────────── */
+.attendee-hero {
+    background: linear-gradient(135deg, #1a202c 0%, #2d3748 50%, #00b87d 100%);
+    padding: 3rem 0 2rem;
+    position: relative;
+    overflow: hidden;
+    color: white;
+}
+.attendee-hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(0,229,160,0.2) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.attendee-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -80px; left: -40px;
+    width: 250px; height: 250px;
+    background: radial-gradient(circle, rgba(102,126,234,0.2) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.hero-content { position: relative; z-index: 2; }
+.hero-greeting { font-size: 0.95rem; opacity: 0.75; letter-spacing: 0.05em; text-transform: uppercase; }
+.hero-title { font-size: 2rem; font-weight: 800; margin: 0.25rem 0 0.5rem; }
+.hero-sub { opacity: 0.8; font-size: 1rem; }
+
+/* ── Stats Bar ───────────────────────────────────── */
+.stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-top: -1.5rem;
+    position: relative;
+    z-index: 10;
+}
+.stat-pill {
+    background: white;
+    border-radius: var(--radius-sm);
+    padding: 1.25rem 1rem;
+    box-shadow: var(--card-shadow);
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.stat-pill:hover { transform: translateY(-3px); box-shadow: var(--card-shadow-hover); }
+.stat-pill-value { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+.stat-pill-label { font-size: 0.78rem; color: var(--afcon-gray); margin-top: 0.3rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-green  { color: var(--afcon-green-dark); }
+.stat-blue   { color: var(--afcon-blue); }
+.stat-orange { color: var(--afcon-orange); }
+.stat-purple { color: var(--afcon-purple); }
+
+/* ── Tab Nav ─────────────────────────────────────── */
+.reg-tabs { display: flex; gap: 0.5rem; border-bottom: 2px solid var(--afcon-border); margin-bottom: 1.5rem; }
+.reg-tab {
+    padding: 0.6rem 1.4rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--afcon-gray);
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+}
+.reg-tab.active { color: var(--afcon-purple); border-bottom-color: var(--afcon-purple); }
+.reg-tab:hover:not(.active) { color: var(--afcon-dark); }
+.tab-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    font-size: 0.7rem; font-weight: 700;
+    margin-left: 0.4rem;
+    background: var(--afcon-light); color: var(--afcon-gray);
+}
+.reg-tab.active .tab-count { background: var(--afcon-purple); color: white; }
+
+/* ── Registration Card ───────────────────────────── */
+.reg-card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--card-shadow);
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--afcon-border);
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.reg-card:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
+
+.reg-card-accent {
+    width: 5px;
+    flex-shrink: 0;
+}
+.accent-confirmed  { background: linear-gradient(180deg, var(--afcon-green), var(--afcon-green-dark)); }
+.accent-pending    { background: linear-gradient(180deg, var(--afcon-orange), #e89020); }
+.accent-cancelled  { background: linear-gradient(180deg, var(--afcon-red), #e53e3e); }
+.accent-checked_in { background: linear-gradient(180deg, var(--afcon-blue), #2b6cb0); }
+
+.reg-card-body { display: flex; align-items: center; padding: 1.25rem; gap: 1rem; flex-wrap: wrap; }
+
+.event-icon-wrap {
+    width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; background: var(--afcon-light);
+}
+
+.reg-info { flex: 1; min-width: 180px; }
+.reg-event-name { font-size: 1rem; font-weight: 700; color: var(--afcon-dark); margin-bottom: 0.3rem; }
+.reg-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; font-size: 0.8rem; color: var(--afcon-gray); }
+.reg-meta span { display: flex; align-items: center; gap: 0.3rem; }
+
+.reg-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; min-width: 110px; }
+.badge-status {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+}
+.badge-confirmed  { background: #c6f6d5; color: #22543d; }
+.badge-pending    { background: #fefcbf; color: #744210; }
+.badge-cancelled  { background: #fed7d7; color: #742a2a; }
+.badge-checked_in { background: #bee3f8; color: #2a4365; }
+.badge-ref { font-size: 0.7rem; color: var(--afcon-gray); font-family: monospace; }
+
+.reg-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; min-width: 240px; }
+.reg-btn {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.45rem 0.9rem; border-radius: 8px;
+    font-size: 0.8rem; font-weight: 600; text-decoration: none;
+    border: none; cursor: pointer; transition: all 0.2s;
+    white-space: nowrap;
+}
+.reg-btn-primary { background: var(--afcon-purple); color: white; }
+.reg-btn-primary:hover { background: var(--afcon-purple-dark); color: white; }
+.reg-btn-green { background: var(--afcon-green); color: #134e3d; }
+.reg-btn-green:hover { background: var(--afcon-green-dark); color: white; }
+.reg-btn-outline { background: white; color: var(--afcon-dark); border: 1.5px solid var(--afcon-border); }
+.reg-btn-outline:hover { border-color: var(--afcon-purple); color: var(--afcon-purple); }
+.reg-btn-danger { background: #fff5f5; color: #c53030; border: 1.5px solid #fed7d7; }
+.reg-btn-danger:hover { background: var(--afcon-red); color: white; border-color: var(--afcon-red); }
+.reg-btn-disabled { background: var(--afcon-light); color: #a0aec0; cursor: not-allowed; }
+
+/* ── Sidebar ─────────────────────────────────────── */
+.sidebar-card {
+    background: white; border-radius: var(--radius);
+    box-shadow: var(--card-shadow); border: 1px solid var(--afcon-border);
+    overflow: hidden; margin-bottom: 1.25rem;
+}
+.sidebar-card-header {
+    padding: 1rem 1.25rem; font-weight: 700; font-size: 0.9rem;
+    display: flex; align-items: center; gap: 0.5rem;
+    border-bottom: 1px solid var(--afcon-border);
+}
+.sidebar-card-body { padding: 1.25rem; }
+
+.wallet-balance { font-size: 2rem; font-weight: 800; color: var(--afcon-green-dark); line-height: 1; }
+.wallet-currency { font-size: 0.8rem; color: var(--afcon-gray); }
+.wallet-cta {
+    display: block; text-align: center; padding: 0.6rem; margin-top: 1rem;
+    border-radius: 8px; background: var(--afcon-light); color: var(--afcon-dark);
+    font-size: 0.85rem; font-weight: 600; text-decoration: none; transition: all 0.2s;
+    border: 1.5px solid var(--afcon-border);
+}
+.wallet-cta:hover { background: var(--afcon-purple); color: white; border-color: var(--afcon-purple); }
+
+.quick-link {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 0; text-decoration: none; color: var(--afcon-dark);
+    font-size: 0.875rem; font-weight: 500; border-bottom: 1px solid var(--afcon-border);
+    transition: color 0.2s;
+}
+.quick-link:last-child { border-bottom: none; padding-bottom: 0; }
+.quick-link:hover { color: var(--afcon-purple); }
+.quick-link-icon {
+    width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+}
+.ql-purple { background: #ebf4ff; color: var(--afcon-purple); }
+.ql-green  { background: #e6fffa; color: var(--afcon-green-dark); }
+.ql-orange { background: #fffbeb; color: #c05621; }
+.ql-blue   { background: #ebf8ff; color: #2b6cb0; }
+.ql-gray   { background: var(--afcon-light); color: var(--afcon-gray); }
+
+/* ── Empty State ─────────────────────────────────── */
+.empty-state {
+    text-align: center; padding: 3.5rem 1rem;
+    color: var(--afcon-gray);
+}
+.empty-state-icon {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--afcon-light); display: inline-flex;
+    align-items: center; justify-content: center;
+    font-size: 2rem; color: #cbd5e0; margin-bottom: 1.5rem;
+}
+.empty-state h5 { color: var(--afcon-dark); font-weight: 700; margin-bottom: 0.5rem; }
+.empty-browse-btn {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.7rem 1.75rem; border-radius: 10px;
+    background: var(--afcon-purple); color: white;
+    font-weight: 600; text-decoration: none; transition: all 0.2s;
+    margin-top: 1rem;
+}
+.empty-browse-btn:hover { background: var(--afcon-purple-dark); color: white; transform: translateY(-1px); }
+
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 768px) {
+    .hero-title { font-size: 1.5rem; }
+    .reg-card-body { padding: 1rem 0.75rem; }
+    .reg-actions { justify-content: flex-start; }
+    .reg-badges { align-items: flex-start; }
+}
+</style>
+
+{# ── Hero Banner ──────────────────────────────────── #}
+<div class="attendee-hero">
+    <div class="container hero-content">
+        <p class="hero-greeting"><i class="fas fa-star me-1"></i> AFCON360 · My Events</p>
+        <h1 class="hero-title">My Event Dashboard</h1>
+        <p class="hero-sub">Your tickets, bookings and event activities — all in one place.</p>
+    </div>
+</div>
+
+<div class="container py-4">
+
+    {# ── Stats Bar ──────────────────────────────────── #}
+    <div class="stats-bar mb-4">
+        <div class="stat-pill">
+            <div class="stat-pill-value stat-green">{{ upcoming_count }}</div>
+            <div class="stat-pill-label">Upcoming Events</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-value stat-blue">{{ attended_count }}</div>
+            <div class="stat-pill-label">Events Attended</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-value stat-orange">${{ total_spent }}</div>
+            <div class="stat-pill-label">Total Spent</div>
+        </div>
+        <div class="stat-pill">
+            {% if wallet %}
+            <div class="stat-pill-value stat-purple">{{ wallet.balance }}</div>
+            <div class="stat-pill-label">Wallet · {{ wallet.currency }}</div>
+            {% else %}
+            <div class="stat-pill-value stat-purple" style="font-size:1rem;">—</div>
+            <div class="stat-pill-label">No Wallet Yet</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+
+        {# ── Main Content ───────────────────────────── #}
+        <div class="col-lg-8">
+
+            {# Tab Controls #}
+            <div class="reg-tabs" id="regTabs">
+                <button class="reg-tab active" data-tab="upcoming">
+                    Upcoming <span class="tab-count">{{ upcoming_count }}</span>
+                </button>
+                <button class="reg-tab" data-tab="past">
+                    Past <span class="tab-count">{{ past_registrations|length }}</span>
+                </button>
+                <button class="reg-tab" data-tab="all">
+                    All <span class="tab-count">{{ (upcoming_registrations|length) + (past_registrations|length) }}</span>
+                </button>
+            </div>
+
+            {# ── Upcoming Registrations ─────────────── #}
+            <div id="tab-upcoming" class="tab-panel">
+                {% if upcoming_registrations %}
+                    {% for reg in upcoming_registrations %}
+                    {% set status = reg.status|default('confirmed') %}
+                    <div class="reg-card">
+                        <div style="display:flex; height:100%;">
+                            <div class="reg-card-accent accent-{{ status }}"></div>
+                            <div class="reg-card-body w-100">
+
+                                {# Event Icon #}
+                                <div class="event-icon-wrap">
+                                    {% set cat = reg.event.category|default('')|lower %}
+                                    {% if 'sport' in cat or 'football' in cat or 'soccer' in cat %}
+                                        <i class="fas fa-futbol" style="color:var(--afcon-green-dark)"></i>
+                                    {% elif 'music' in cat or 'concert' in cat %}
+                                        <i class="fas fa-music" style="color:var(--afcon-purple)"></i>
+                                    {% elif 'conference' in cat or 'summit' in cat %}
+                                        <i class="fas fa-users" style="color:var(--afcon-blue)"></i>
+                                    {% else %}
+                                        <i class="fas fa-calendar-star" style="color:var(--afcon-orange)"></i>
+                                    {% endif %}
+                                </div>
+
+                                {# Event Info #}
+                                <div class="reg-info">
+                                    <div class="reg-event-name">{{ reg.event.name|default('Event') }}</div>
+                                    <div class="reg-meta">
+                                        {% if reg.event.start_date %}
+                                        <span><i class="fas fa-calendar-alt"></i> {{ reg.event.start_date[:10] }}</span>
+                                        {% endif %}
+                                        {% if reg.event.venue or reg.event.city %}
+                                        <span><i class="fas fa-map-marker-alt"></i> {{ reg.event.venue or reg.event.city }}</span>
+                                        {% endif %}
+                                        <span><i class="fas fa-ticket-alt"></i> {{ reg.ticket_type|default('General Admission') }}</span>
+                                        {% if reg.registration_fee and reg.registration_fee > 0 %}
+                                        <span><i class="fas fa-dollar-sign"></i> {{ "%.2f"|format(reg.registration_fee) }}</span>
+                                        {% else %}
+                                        <span><i class="fas fa-gift"></i> Free</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                {# Status Badges #}
+                                <div class="reg-badges">
+                                    <span class="badge-status badge-{{ status }}">
+                                        {% if status == 'confirmed' %}<i class="fas fa-check-circle"></i> Confirmed
+                                        {% elif status == 'checked_in' %}<i class="fas fa-door-open"></i> Checked In
+                                        {% elif status == 'pending' %}<i class="fas fa-clock"></i> Pending
+                                        {% elif status == 'cancelled' %}<i class="fas fa-times-circle"></i> Cancelled
+                                        {% else %}<i class="fas fa-circle"></i> {{ status|title }}
+                                        {% endif %}
+                                    </span>
+                                    <span class="badge-ref">REF: {{ reg.registration_ref }}</span>
+                                </div>
+
+                                {# Action Buttons #}
+                                <div class="reg-actions">
+                                    {% if status != 'cancelled' %}
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                       class="reg-btn reg-btn-primary">
+                                        <i class="fas fa-qrcode"></i> View Ticket
+                                    </a>
+                                    <a href="{{ safe_url('transport.home') }}" class="reg-btn reg-btn-outline">
+                                        <i class="fas fa-bus"></i> Transport
+                                    </a>
+                                    <a href="{{ safe_url('accommodation.guest.search') }}" class="reg-btn reg-btn-outline">
+                                        <i class="fas fa-bed"></i> Stay
+                                    </a>
+                                    {% if status not in ['cancelled', 'checked_in'] %}
+                                    <button class="reg-btn reg-btn-danger"
+                                            onclick="confirmCancel('{{ reg.registration_ref }}', '{{ reg.event.name|default('this event')|replace("'", "'") }}')">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="reg-btn reg-btn-disabled"><i class="fas fa-ban"></i> Cancelled</span>
+                                    {% endif %}
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-calendar-plus"></i></div>
+                        <h5>No Upcoming Events</h5>
+                        <p>You haven't registered for any upcoming events yet.</p>
+                        <a href="{{ safe_url('events.list') }}" class="empty-browse-btn">
+                            <i class="fas fa-search"></i> Browse Events
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+
+            {# ── Past Registrations ─────────────────── #}
+            <div id="tab-past" class="tab-panel" style="display:none;">
+                {% if past_registrations %}
+                    {% for reg in past_registrations %}
+                    {% set status = reg.status|default('confirmed') %}
+                    <div class="reg-card" style="opacity:0.85;">
+                        <div style="display:flex;">
+                            <div class="reg-card-accent accent-{{ status }}"></div>
+                            <div class="reg-card-body w-100">
+                                <div class="event-icon-wrap" style="opacity:0.6;">
+                                    <i class="fas fa-history" style="color:var(--afcon-gray)"></i>
+                                </div>
+                                <div class="reg-info">
+                                    <div class="reg-event-name">{{ reg.event.name|default('Event') }}</div>
+                                    <div class="reg-meta">
+                                        {% if reg.event.start_date %}
+                                        <span><i class="fas fa-calendar-check"></i> {{ reg.event.start_date[:10] }}</span>
+                                        {% endif %}
+                                        {% if reg.event.venue or reg.event.city %}
+                                        <span><i class="fas fa-map-marker-alt"></i> {{ reg.event.venue or reg.event.city }}</span>
+                                        {% endif %}
+                                        <span><i class="fas fa-ticket-alt"></i> {{ reg.ticket_type|default('General Admission') }}</span>
+                                        {% if reg.checked_in_at %}
+                                        <span style="color:var(--afcon-green-dark);"><i class="fas fa-check-double"></i> Attended</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="reg-badges">
+                                    <span class="badge-status badge-{{ status }}">
+                                        {% if status == 'checked_in' %}<i class="fas fa-door-open"></i> Attended
+                                        {% elif status == 'cancelled' %}<i class="fas fa-times-circle"></i> Cancelled
+                                        {% else %}<i class="fas fa-check-circle"></i> Completed
+                                        {% endif %}
+                                    </span>
+                                    <span class="badge-ref">REF: {{ reg.registration_ref }}</span>
+                                </div>
+                                <div class="reg-actions">
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                       class="reg-btn reg-btn-outline">
+                                        <i class="fas fa-receipt"></i> View Ticket
+                                    </a>
+                                    <a href="{{ safe_url('events.list') }}" class="reg-btn reg-btn-green">
+                                        <i class="fas fa-plus"></i> Register Again
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-history"></i></div>
+                        <h5>No Past Events</h5>
+                        <p>Your attended and past events will appear here.</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            {# ── All Registrations ──────────────────── #}
+            <div id="tab-all" class="tab-panel" style="display:none;">
+                {% set all_regs = upcoming_registrations + past_registrations %}
+                {% if all_regs %}
+                    {% for reg in all_regs %}
+                    {% set status = reg.status|default('confirmed') %}
+                    <div class="reg-card">
+                        <div style="display:flex;">
+                            <div class="reg-card-accent accent-{{ status }}"></div>
+                            <div class="reg-card-body w-100">
+                                <div class="event-icon-wrap">
+                                    <i class="fas fa-ticket-alt" style="color:var(--afcon-purple)"></i>
+                                </div>
+                                <div class="reg-info">
+                                    <div class="reg-event-name">{{ reg.event.name|default('Event') }}</div>
+                                    <div class="reg-meta">
+                                        {% if reg.event.start_date %}
+                                        <span><i class="fas fa-calendar-alt"></i> {{ reg.event.start_date[:10] }}</span>
+                                        {% endif %}
+                                        <span><i class="fas fa-ticket-alt"></i> {{ reg.ticket_type|default('General Admission') }}</span>
+                                        {% if reg.registration_fee and reg.registration_fee > 0 %}
+                                        <span><i class="fas fa-dollar-sign"></i> {{ "%.2f"|format(reg.registration_fee) }}</span>
+                                        {% endif %}
+                                        <span><i class="fas fa-hashtag"></i> {{ reg.ticket_number }}</span>
+                                    </div>
+                                </div>
+                                <div class="reg-badges">
+                                    <span class="badge-status badge-{{ status }}">{{ status|title }}</span>
+                                    <span class="badge-ref">{{ reg.registration_ref }}</span>
+                                </div>
+                                <div class="reg-actions">
+                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                       class="reg-btn reg-btn-primary">
+                                        <i class="fas fa-qrcode"></i> View Ticket
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-ticket-alt"></i></div>
+                        <h5>No Registrations Yet</h5>
+                        <p>Register for an event to see your tickets here.</p>
+                        <a href="{{ safe_url('events.list') }}" class="empty-browse-btn">
+                            <i class="fas fa-search"></i> Browse Events
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+
+        </div>{# end col-lg-8 #}
+
+        {# ── Sidebar ────────────────────────────────── #}
+        <div class="col-lg-4">
+
+            {# Wallet Card #}
+            <div class="sidebar-card">
+                <div class="sidebar-card-header">
+                    <i class="fas fa-wallet" style="color:var(--afcon-green-dark)"></i> My Wallet
+                </div>
+                <div class="sidebar-card-body">
+                    {% if wallet %}
+                    <div class="wallet-balance">{{ wallet.balance }}</div>
+                    <div class="wallet-currency">{{ wallet.currency }} · Available Balance</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:1rem;">
+                        <a href="{{ safe_url('wallet.deposit_page') }}" class="wallet-cta" style="font-size:0.8rem;">
+                            <i class="fas fa-plus-circle"></i> Top Up
+                        </a>
+                        <a href="{{ safe_url('wallet.transaction_history') }}" class="wallet-cta" style="font-size:0.8rem;">
+                            <i class="fas fa-history"></i> History
+                        </a>
+                    </div>
+                    <a href="{{ safe_url('wallet.wallet_home') }}" class="wallet-cta">
+                        <i class="fas fa-external-link-alt"></i> Manage Wallet
+                    </a>
+                    {% else %}
+                    <div class="text-center py-2">
+                        <div style="font-size:2.5rem; color:#cbd5e0; margin-bottom:0.75rem;">
+                            <i class="fas fa-wallet"></i>
+                        </div>
+                        <p class="text-muted small mb-0">No wallet set up yet.</p>
+                        <a href="{{ safe_url('wallet.wallet_home') }}" class="wallet-cta mt-3">
+                            <i class="fas fa-plus"></i> Set Up Wallet
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# Quick Links #}
+            <div class="sidebar-card">
+                <div class="sidebar-card-header">
+                    <i class="fas fa-bolt" style="color:var(--afcon-orange)"></i> Quick Actions
+                </div>
+                <div class="sidebar-card-body" style="padding-top:0.5rem;">
+                    <a href="{{ safe_url('events.list') }}" class="quick-link">
+                        <div class="quick-link-icon ql-purple"><i class="fas fa-search"></i></div>
+                        <div>
+                            <div style="font-weight:600;">Browse Events</div>
+                            <div style="font-size:0.75rem;color:var(--afcon-gray);">Find your next event</div>
+                        </div>
+                        <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
+                    </a>
+                    <a href="{{ safe_url('events.my_registrations') }}" class="quick-link">
+                        <div class="quick-link-icon ql-blue"><i class="fas fa-list-ul"></i></div>
+                        <div>
+                            <div style="font-weight:600;">All Registrations</div>
+                            <div style="font-size:0.75rem;color:var(--afcon-gray);">Full history & details</div>
+                        </div>
+                        <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
+                    </a>
+                    <a href="{{ safe_url('transport.home') }}" class="quick-link">
+                        <div class="quick-link-icon ql-green"><i class="fas fa-bus"></i></div>
+                        <div>
+                            <div style="font-weight:600;">Book Transport</div>
+                            <div style="font-size:0.75rem;color:var(--afcon-gray);">Buses, rides & more</div>
+                        </div>
+                        <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
+                    </a>
+                    <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-link">
+                        <div class="quick-link-icon ql-orange"><i class="fas fa-bed"></i></div>
+                        <div>
+                            <div style="font-weight:600;">Book Accommodation</div>
+                            <div style="font-size:0.75rem;color:var(--afcon-gray);">Hotels, stays & rentals</div>
+                        </div>
+                        <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
+                    </a>
+                    <a href="{{ url_for('profile.my_public_profile') }}" class="quick-link">
+                        <div class="quick-link-icon ql-gray"><i class="fas fa-user"></i></div>
+                        <div>
+                            <div style="font-weight:600;">My Profile</div>
+                            <div style="font-size:0.75rem;color:var(--afcon-gray);">Edit your details</div>
+                        </div>
+                        <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
+                    </a>
+                </div>
+            </div>
+
+            {# Help Card #}
+            <div class="sidebar-card" style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;">
+                <div class="sidebar-card-body" style="text-align:center;padding:1.5rem 1.25rem;">
+                    <div style="font-size:2rem;margin-bottom:0.75rem;"><i class="fas fa-headset"></i></div>
+                    <div style="font-weight:700;margin-bottom:0.4rem;">Need Help?</div>
+                    <div style="font-size:0.82rem;opacity:0.85;margin-bottom:1rem;">
+                        Our support team is here for your event experience.
+                    </div>
+                    <a href="mailto:support@afcon360.com"
+                       style="display:inline-block;padding:0.5rem 1.25rem;background:rgba(255,255,255,0.2);color:white;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none;border:1px solid rgba(255,255,255,0.3);">
+                        <i class="fas fa-envelope me-1"></i> Contact Support
+                    </a>
+                </div>
+            </div>
+
+        </div>{# end sidebar #}
+    </div>{# end row #}
+</div>
+
+{# ── Cancel Confirmation Modal ─────────────────────── #}
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:16px; padding:2rem; max-width:400px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3); text-align:center;">
+        <div style="font-size:2.5rem; color:var(--afcon-red); margin-bottom:1rem;"><i class="fas fa-exclamation-circle"></i></div>
+        <h5 style="font-weight:700; margin-bottom:0.5rem;">Cancel Registration?</h5>
+        <p id="cancelModalText" style="color:var(--afcon-gray); font-size:0.9rem; margin-bottom:1.5rem;"></p>
+        <div style="display:flex; gap:0.75rem; justify-content:center;">
+            <button onclick="closeCancelModal()" style="padding:0.6rem 1.5rem; border-radius:8px; border:1.5px solid var(--afcon-border); background:white; font-weight:600; cursor:pointer;">
+                Keep It
+            </button>
+            <button id="confirmCancelBtn" style="padding:0.6rem 1.5rem; border-radius:8px; border:none; background:var(--afcon-red); color:white; font-weight:600; cursor:pointer;">
+                Yes, Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// ── Tab Switching ─────────────────────────────────────
+document.querySelectorAll('.reg-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.reg-tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.style.display = 'none'; });
+        this.classList.add('active');
+        document.getElementById('tab-' + this.dataset.tab).style.display = 'block';
+    });
+});
+
+// ── Cancel Registration ───────────────────────────────
+var _cancelRef = null;
+
+function confirmCancel(regRef, eventName) {
+    _cancelRef = regRef;
+    document.getElementById('cancelModalText').textContent =
+        'Are you sure you want to cancel your registration for "' + eventName + '"? This cannot be undone.';
+    var modal = document.getElementById('cancelModal');
+    modal.style.display = 'flex';
+}
+
+function closeCancelModal() {
+    document.getElementById('cancelModal').style.display = 'none';
+    _cancelRef = null;
+}
+
+document.getElementById('confirmCancelBtn').addEventListener('click', function() {
+    if (!_cancelRef) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Cancelling…';
+
+    fetch('/events/registration/' + _cancelRef + '/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Could not cancel: ' + (data.error || 'Unknown error'));
+            btn.disabled = false;
+            btn.textContent = 'Yes, Cancel';
+        }
+    })
+    .catch(function() {
+        alert('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Yes, Cancel';
+    })
+    .finally(function() {
+        closeCancelModal();
+    });
+});
+
+// Close modal on backdrop click
+document.getElementById('cancelModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCancelModal();
+});
+</script>
+{% endblock %}

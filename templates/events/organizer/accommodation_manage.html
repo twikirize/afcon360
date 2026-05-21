@@ -1,0 +1,742 @@
+{# templates/events/organizer/accommodation_manage.html #}
+{% extends "base.html" %}
+
+{% block title %}Manage Accommodation - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1>
+                <i class="fas fa-hotel text-primary me-2"></i>
+                Manage Accommodation
+            </h1>
+            <p class="text-muted mb-0">
+                {{ event.name }} · {{ event.city }}, {{ event.country }}
+                {% if event.start_date %} · {{ event.start_date.strftime('%b %d, %Y') }} to {{ event.end_date.strftime('%b %d, %Y') if event.end_date else '' }}{% endif %}
+            </p>
+        </div>
+        <div class="col text-end">
+            <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-0" id="totalAttendees">0</h2>
+                            <p class="mb-0 opacity-75">Total Attendees</p>
+                        </div>
+                        <i class="fas fa-users fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-0" id="assignedCount">0</h2>
+                            <p class="mb-0 opacity-75">Assigned</p>
+                        </div>
+                        <i class="fas fa-check-circle fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-0" id="unassignedCount">0</h2>
+                            <p class="mb-0 opacity-75">Needs Assignment</p>
+                        </div>
+                        <i class="fas fa-clock fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-0" id="inventoryCount">0</h2>
+                            <p class="mb-0 opacity-75">Available Inventory</p>
+                        </div>
+                        <i class="fas fa-bed fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content: Two Columns -->
+    <div class="row g-4">
+        <!-- LEFT COLUMN: Attendees -->
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users me-2"></i>
+                        Attendees
+                    </h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="exportUnassignedCSV()" title="Export unassigned attendees">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button class="btn btn-sm btn-success" onclick="showBulkUploadModal()">
+                            <i class="fas fa-upload"></i> Bulk Assign
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <!-- Search -->
+                    <div class="p-3 border-bottom">
+                        <div class="input-group">
+                            <input type="text" id="attendeeSearch" class="form-control" placeholder="Search by name or email...">
+                            <button class="btn btn-outline-secondary" onclick="filterAttendees()">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Filter Tabs -->
+                    <ul class="nav nav-tabs px-3 pt-2" id="attendeeTab" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#allAttendees" onclick="renderAttendees(attendees)">
+                                All
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#unassignedAttendees" onclick="renderAttendees(unassignedAttendees)">
+                                Needs Assignment
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <!-- Attendee List -->
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="allAttendees">
+                            <div id="attendeeList" class="list-group list-group-flush" style="max-height: 500px; overflow-y: auto;">
+                                <div class="text-center p-4">
+                                    <div class="spinner-border text-primary"></div>
+                                    <p class="mt-2">Loading attendees...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="unassignedAttendees">
+                            <div id="unassignedAttendeeList" class="list-group list-group-flush" style="max-height: 500px; overflow-y: auto;">
+                                <div class="text-center p-4 text-muted">
+                                    <i class="fas fa-info-circle"></i>
+                                    <p>Switch to this tab to see unassigned attendees</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Inventory -->
+        <div class="col-md-7">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bed me-2"></i>
+                        Available Accommodation
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="nav nav-tabs px-3 pt-2" id="inventoryTab" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#hotelsTab">
+                                <i class="fas fa-building"></i> Hotels
+                                <span id="hotelCount" class="badge bg-secondary ms-1">0</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#communityTab">
+                                <i class="fas fa-hand-holding-heart"></i> Community Hosts
+                                <span id="communityCount" class="badge bg-secondary ms-1">0</span>
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active p-3" id="hotelsTab">
+                            <div id="hotelInventory" style="max-height: 450px; overflow-y: auto;">
+                                <div class="text-center p-4">
+                                    <div class="spinner-border spinner-border-sm text-primary"></div>
+                                    <p class="mt-2">Loading hotels...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade p-3" id="communityTab">
+                            <div id="communityInventory" style="max-height: 450px; overflow-y: auto;">
+                                <div class="text-center p-4">
+                                    <div class="spinner-border spinner-border-sm text-primary"></div>
+                                    <p class="mt-2">Loading community hosts...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Upload Modal -->
+<div class="modal fade" id="bulkUploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bulk Assign Accommodation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>CSV Format Required:</strong>
+                    <pre class="mt-2 mb-0 small">attendee_email,inventory_id,inventory_type
+john@example.com,123,hotel
+jane@example.com,456,community_host</pre>
+                    <a href="{{ url_for('events.api_accommodation_bulk_assign_template', slug=event.slug) }}" class="btn btn-sm btn-outline-primary mt-2">
+                        <i class="fas fa-download"></i> Download Template
+                    </a>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Select CSV File</label>
+                    <input type="file" id="csvFile" class="form-control" accept=".csv">
+                </div>
+                
+                <div id="uploadProgress" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%">
+                            Processing...
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="uploadResult" style="display: none;" class="mt-3">
+                    <div id="uploadResultContent"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="uploadCSV()">Upload & Assign</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assignment Confirmation Modal -->
+<div class="modal fade" id="assignConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Assignment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Assign <strong id="confirmAttendeeName"></strong> to:</p>
+                <div class="alert alert-info">
+                    <div id="confirmInventoryDetails"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="confirmAssignment()">Confirm Assignment</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.list-group-item {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.list-group-item:hover {
+    background-color: #f8f9fa;
+}
+.list-group-item.selected {
+    background-color: #e3f2fd;
+    border-left: 3px solid #2196f3;
+}
+.inventory-item.selected {
+    background-color: #e8f5e9;
+    border-left: 3px solid #4caf50;
+}
+.badge-free {
+    background-color: #4caf50;
+}
+.badge-paid {
+    background-color: #2196f3;
+}
+.badge-assigned {
+    background-color: #9e9e9e;
+}
+.assigned-badge {
+    background-color: #28a745;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+.unassigned-badge {
+    background-color: #ffc107;
+    color: #333;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+</style>
+
+<script>
+let currentEventSlug = '{{ event.slug }}';
+let attendees = [];
+let unassignedAttendees = [];
+let hotelInventory = [];
+let communityInventory = [];
+let selectedAttendeeId = null;
+let selectedAttendeeName = null;
+let selectedInventoryId = null;
+let selectedInventoryType = null;
+let selectedInventoryDetails = null;
+
+// Load all data
+async function loadData() {
+    await Promise.all([
+        loadAttendees(),
+        loadInventory()
+    ]);
+    updateStats();
+}
+
+// Load attendees
+async function loadAttendees() {
+    try {
+        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/attendees`);
+        const data = await response.json();
+        if (data.success) {
+            attendees = data.attendees;
+            unassignedAttendees = attendees.filter(a => !a.has_accommodation);
+            renderAttendees(attendees);
+            renderUnassignedAttendees();
+        }
+    } catch (error) {
+        console.error('Error loading attendees:', error);
+        document.getElementById('attendeeList').innerHTML = `
+            <div class="text-center p-4 text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x"></i>
+                <p>Error loading attendees</p>
+            </div>
+        `;
+    }
+}
+
+// Render attendees list
+function renderAttendees(attendeesList) {
+    const container = document.getElementById('attendeeList');
+    
+    if (attendeesList.length === 0) {
+        container.innerHTML = `<div class="text-center p-4 text-muted">No attendees found</div>`;
+        return;
+    }
+    
+    container.innerHTML = attendeesList.map(attendee => `
+        <div class="list-group-item attendee-item" data-id="${attendee.id}" onclick="selectAttendee(${attendee.id}, '${escapeHtml(attendee.name)}')">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="flex-grow-1">
+                    <div class="fw-bold">${escapeHtml(attendee.name)}</div>
+                    <div class="small text-muted">${escapeHtml(attendee.email)}</div>
+                    <div class="mt-1">
+                        <span class="badge bg-secondary">${escapeHtml(attendee.ticket_type)}</span>
+                        ${attendee.has_accommodation ? 
+                            '<span class="badge assigned-badge ms-1"><i class="fas fa-check"></i> Assigned</span>' : 
+                            '<span class="badge unassigned-badge ms-1"><i class="fas fa-clock"></i> Unassigned</span>'
+                        }
+                    </div>
+                </div>
+                <i class="fas fa-chevron-right text-muted"></i>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Render unassigned attendees (for the other tab)
+function renderUnassignedAttendees() {
+    const container = document.getElementById('unassignedAttendeeList');
+    
+    if (unassignedAttendees.length === 0) {
+        container.innerHTML = `<div class="text-center p-4 text-success">
+            <i class="fas fa-check-circle fa-2x"></i>
+            <p>All attendees have been assigned accommodation!</p>
+        </div>`;
+        return;
+    }
+    
+    container.innerHTML = unassignedAttendees.map(attendee => `
+        <div class="list-group-item attendee-item" data-id="${attendee.id}" onclick="selectAttendee(${attendee.id}, '${escapeHtml(attendee.name)}')">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="fw-bold">${escapeHtml(attendee.name)}</div>
+                    <div class="small text-muted">${escapeHtml(attendee.email)}</div>
+                    <div class="small">${escapeHtml(attendee.ticket_type)}</div>
+                </div>
+                <i class="fas fa-chevron-right text-muted"></i>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Load inventory
+async function loadInventory() {
+    try {
+        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/inventory`);
+        const data = await response.json();
+        if (data.success) {
+            // Only show unassigned items as available
+            hotelInventory = data.inventory.hotels.filter(h => !h.is_assigned);
+            communityInventory = data.inventory.community_hosts.filter(h => !h.is_assigned);
+            
+            document.getElementById('hotelCount').innerText = hotelInventory.length;
+            document.getElementById('communityCount').innerText = communityInventory.length;
+            
+            renderHotelInventory();
+            renderCommunityInventory();
+        }
+    } catch (error) {
+        console.error('Error loading inventory:', error);
+    }
+}
+
+// Render hotel inventory
+function renderHotelInventory() {
+    const container = document.getElementById('hotelInventory');
+    
+    if (hotelInventory.length === 0) {
+        container.innerHTML = `
+            <div class="text-center p-4 text-muted">
+                <i class="fas fa-info-circle fa-2x"></i>
+                <p>No hotel rooms available.</p>
+                <small>Book rooms from the accommodation module and assign them to this event.</small>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = hotelInventory.map(room => `
+        <div class="list-group-item inventory-item" data-id="${room.id}" data-type="hotel" onclick="selectInventory('hotel', ${room.id}, '${escapeHtml(room.property_name)}')">
+            <div class="d-flex justify-content-between">
+                <div class="flex-grow-1">
+                    <div class="fw-bold">🏨 ${escapeHtml(room.property_name)}</div>
+                    <div class="small text-muted">${escapeHtml(room.room_type)}</div>
+                    <div class="small text-muted">
+                        <i class="fas fa-calendar"></i> ${room.check_in || '?'} → ${room.check_out || '?'}
+                    </div>
+                    <div class="small">
+                        <i class="fas fa-user"></i> ${room.max_guests} guests
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold text-primary">$${room.nightly_rate}/night</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Render community inventory
+function renderCommunityInventory() {
+    const container = document.getElementById('communityInventory');
+    
+    if (communityInventory.length === 0) {
+        container.innerHTML = `
+            <div class="text-center p-4 text-muted">
+                <i class="fas fa-info-circle fa-2x"></i>
+                <p>No community hosts available.</p>
+                <small>Community hosts can register for this event and be approved.</small>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = communityInventory.map(host => `
+        <div class="list-group-item inventory-item" data-id="${host.id}" data-type="community_host" onclick="selectInventory('community_host', ${host.id}, '${escapeHtml(host.name)}')">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <div class="fw-bold">❤️ ${escapeHtml(host.name)}</div>
+                    <div class="small text-muted">Hosted by ${escapeHtml(host.host_name)}</div>
+                    <div class="small text-muted">📍 ${escapeHtml(host.city)}</div>
+                    ${host.description ? `<div class="small text-muted">${escapeHtml(host.description)}</div>` : ''}
+                </div>
+                <div class="text-end">
+                    ${host.is_free ? 
+                        '<span class="badge badge-free">FREE</span>' : 
+                        `<span class="badge badge-paid">$${host.price_per_night}/night</span>`
+                    }
+                    <div class="small text-muted mt-1">${host.max_guests} guests max</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Select attendee
+function selectAttendee(attendeeId, attendeeName) {
+    // Remove previous selection
+    document.querySelectorAll('.attendee-item').forEach(el => el.classList.remove('selected'));
+    document.querySelector(`.attendee-item[data-id="${attendeeId}"]`).classList.add('selected');
+    
+    selectedAttendeeId = attendeeId;
+    selectedAttendeeName = attendeeName;
+    
+    // If inventory already selected, show confirmation
+    if (selectedInventoryId && selectedInventoryType) {
+        showAssignConfirmModal();
+    }
+}
+
+// Select inventory
+function selectInventory(type, id, name) {
+    // Remove previous selection
+    document.querySelectorAll('.inventory-item').forEach(el => el.classList.remove('selected'));
+    document.querySelector(`.inventory-item[data-id="${id}"]`).classList.add('selected');
+    
+    selectedInventoryId = id;
+    selectedInventoryType = type;
+    selectedInventoryDetails = name;
+    
+    // If attendee already selected, show confirmation
+    if (selectedAttendeeId) {
+        showAssignConfirmModal();
+    }
+}
+
+// Show assignment confirmation modal
+function showAssignConfirmModal() {
+    document.getElementById('confirmAttendeeName').innerText = selectedAttendeeName;
+    document.getElementById('confirmInventoryDetails').innerHTML = `
+        <strong>${selectedInventoryType === 'hotel' ? '🏨 Hotel' : '❤️ Community Host'}</strong><br>
+        ${selectedInventoryDetails}
+    `;
+    
+    new bootstrap.Modal(document.getElementById('assignConfirmModal')).show();
+}
+
+// Confirm and execute assignment
+async function confirmAssignment() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('assignConfirmModal'));
+    modal.hide();
+    
+    try {
+        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/assign`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({
+                attendee_id: selectedAttendeeId,
+                inventory_id: selectedInventoryId,
+                inventory_type: selectedInventoryType
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Clear selections
+            selectedAttendeeId = null;
+            selectedAttendeeName = null;
+            selectedInventoryId = null;
+            selectedInventoryType = null;
+            selectedInventoryDetails = null;
+            
+            // Remove selection highlights
+            document.querySelectorAll('.attendee-item, .inventory-item').forEach(el => el.classList.remove('selected'));
+            
+            // Reload data
+            await loadData();
+            
+            alert('✓ Assignment successful!');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error assigning:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
+// Unassign attendee
+async function unassignAttendee(attendeeId) {
+    if (!confirm('Remove accommodation assignment for this attendee?')) return;
+    
+    try {
+        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/unassign`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ attendee_id: attendeeId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await loadData();
+            alert('Unassigned successfully');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error unassigning:', error);
+        alert('Network error');
+    }
+}
+
+// Filter attendees
+function filterAttendees() {
+    const searchTerm = document.getElementById('attendeeSearch').value.toLowerCase();
+    const filtered = attendees.filter(a => 
+        a.name.toLowerCase().includes(searchTerm) || 
+        a.email.toLowerCase().includes(searchTerm)
+    );
+    renderAttendees(filtered);
+}
+
+// Update stats
+function updateStats() {
+    const total = attendees.length;
+    const assigned = attendees.filter(a => a.has_accommodation).length;
+    const unassigned = total - assigned;
+    const inventoryTotal = hotelInventory.length + communityInventory.length;
+    
+    document.getElementById('totalAttendees').innerText = total;
+    document.getElementById('assignedCount').innerText = assigned;
+    document.getElementById('unassignedCount').innerText = unassigned;
+    document.getElementById('inventoryCount').innerText = inventoryTotal;
+}
+
+// Export unassigned attendees as CSV
+function exportUnassignedCSV() {
+    const unassigned = attendees.filter(a => !a.has_accommodation);
+    if (unassigned.length === 0) {
+        alert('All attendees have been assigned!');
+        return;
+    }
+    
+    const headers = ['Name', 'Email', 'Ticket Type', 'Phone'];
+    const rows = unassigned.map(a => [a.name, a.email, a.ticket_type, a.phone || '']);
+    
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `unassigned_attendees_${currentEventSlug}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Show bulk upload modal
+function showBulkUploadModal() {
+    document.getElementById('csvFile').value = '';
+    document.getElementById('uploadProgress').style.display = 'none';
+    document.getElementById('uploadResult').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('bulkUploadModal')).show();
+}
+
+// Upload CSV for bulk assign
+async function uploadCSV() {
+    const fileInput = document.getElementById('csvFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert('Please select a CSV file');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    document.getElementById('uploadProgress').style.display = 'block';
+    document.getElementById('uploadResult').style.display = 'none';
+    
+    try {
+        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/bulk-assign`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        document.getElementById('uploadProgress').style.display = 'none';
+        
+        const resultDiv = document.getElementById('uploadResultContent');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('bulkUploadModal'));
+        
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> Successfully assigned ${data.assignments_created} attendees.
+                </div>
+                ${data.errors.length ? `
+                    <div class="alert alert-warning">
+                        <strong>Errors (${data.errors.length}):</strong>
+                        <ul class="mb-0 mt-2">
+                            ${data.errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                            ${data.errors.length > 10 ? `<li>... and ${data.errors.length - 10} more</li>` : ''}
+                        </ul>
+                    </div>
+                ` : ''}
+            `;
+            document.getElementById('uploadResult').style.display = 'block';
+            
+            // Reload data after 2 seconds
+            setTimeout(() => {
+                modal.hide();
+                loadData();
+            }, 2000);
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(data.error)}</div>`;
+            document.getElementById('uploadResult').style.display = 'block';
+        }
+    } catch (error) {
+        document.getElementById('uploadProgress').style.display = 'none';
+        document.getElementById('uploadResultContent').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+        document.getElementById('uploadResult').style.display = 'block';
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadData();
+});
+</script>
+{% endblock %}

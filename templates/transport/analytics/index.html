@@ -126,7 +126,7 @@
           <tr>
             <td style="color:var(--text-muted);font-family:var(--font-mono);">{{ loop.index }}</td>
             <td>
-              <a href="{{ safe_url('url_for\(['"]transport.drivers_show', id=d.id) }}" class="td-primary">{{ d.display_name }}</a>
+              <a href="{{ safe_url('transport.drivers_show', id=d.id) }}" class="td-primary">{{ d.display_name }}</a>
             </td>
             <td>{{ d.total_trips|default(0) }}</td>
             <td style="color:var(--amber);">★ {{ d.average_rating|default('—') }}</td>

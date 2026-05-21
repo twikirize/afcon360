@@ -48,6 +48,7 @@
 {% if property.images %}
 <meta property="og:image" content="{{ property.images[0] }}">
 {% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/detail.css') }}">
 {% endblock %}
 
 {% if not is_pane %}
@@ -180,7 +181,7 @@
                     </div>
 
                     <!-- Availability Check Form -->
-                    <form method="GET" action="{{ safe_url('url_for\(['"]accommodation.guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
+                    <form method="GET" action="{{ safe_url('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="mb-3">
                         <div class="mb-3">
                             <label class="form-label">Check-in Date</label>
                             <input type="date" class="form-control" name="check_in"
@@ -328,84 +329,6 @@
     {% endif %}
 {% endif %}
 
-<style>
-.detail-gallery { display: grid; grid-template-columns: 3fr 2fr; gap: 6px;
-    border-radius: 12px; overflow: hidden; max-height: 480px; margin-bottom: 24px; }
-.gallery-main { position: relative; }
-.gallery-hero-img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
-.gallery-hero-img--empty {
-    width: 100%; height: 100%; display: flex; align-items: center;
-    justify-content: center; color: #ccc; font-size: 13px;
-    background: #f5f5f5;
-}
-.gallery-thumbs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.gallery-thumb { width: 100%; height: 100%; object-fit: cover; cursor: pointer;
-    transition: filter 0.2s; }
-.gallery-thumb:hover { filter: brightness(0.88); }
-.gallery-all-btn {
-    position: absolute; bottom: 14px; right: 14px;
-    background: white; border: 1px solid #ddd; border-radius: 8px;
-    padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-}
-.gallery-all-btn:hover { background: #f5f5f5; }
-@media(max-width:768px) {
-    .detail-gallery { grid-template-columns: 1fr; }
-    .gallery-thumbs-grid { display: none; }
-}
-
-/* Sticky bar */
-.sticky-book-bar {
-    display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
-    background: white; border-top: 1px solid #e0e0e0;
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
-    align-items: center; justify-content: space-between; gap: 12px;
-}
-@media(max-width:768px) { .sticky-book-bar { display: flex; } body { padding-bottom: 80px; } }
-.sbb-amount { font-size: 20px; font-weight: 800; color: #1a1a1a; }
-.sbb-per { font-size: 12px; color: #888; }
-.sbb-rating { font-size: 12px; color: #555; }
-.sbb-cta {
-    background: #003580; color: white; padding: 12px 22px; border-radius: 8px;
-    font-weight: 700; font-size: 14px; text-decoration: none; min-height: 46px;
-    display: flex; align-items: center; white-space: nowrap;
-}
-.sbb-cta:hover { background: #00224f; color: white; }
-
-/* Urgency */
-.urgency-bar { padding: 8px 14px; border-radius: 6px; font-size: 13px;
-    font-weight: 600; margin: 8px 0; display: flex; align-items: center; gap: 6px; }
-.urgency-demand { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
-.urgency-social { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
-</style>
-
-<script>
-// Sticky bar: show when booking form scrolls out of view
-(function() {
-    const bar = document.getElementById('stickyBar');
-    const form = document.getElementById('booking-form') ||
-                 document.querySelector('.booking-widget') ||
-                 document.querySelector('form[action*="book"]');
-    if (!bar || !form) return;
-    const obs = new IntersectionObserver(([e]) => {
-        bar.style.display = e.isIntersecting ? 'none' : 'flex';
-    }, { threshold: 0.1 });
-    obs.observe(form);
-})();
-
-function smoothToBooking(e) {
-    e.preventDefault();
-    const form = document.getElementById('booking-form') ||
-                 document.querySelector('.booking-widget');
-    form?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-function openAllPhotos() {
-    // Trigger existing modal if present, otherwise log
-    const modal = document.getElementById('photoModal') ||
-                  document.querySelector('.photo-modal');
-    if (modal) modal.style.display = 'flex';
-}
-</script>
+<script src="{{ url_for('static', filename='js/modules/accommodation/detail.js') }}"></script>
 {% endblock %}
 {% endif %}

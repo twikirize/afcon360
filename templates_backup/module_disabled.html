@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container" style="max-width: 800px; margin: 2rem auto;">
+  <div class="card" style="text-align: center; padding: 3rem 2rem;">
+    <div class="card-icon" style="font-size: 4rem; margin-bottom: 1rem;">
+      ⚙️
+    </div>
+    
+    <h1 class="card-title" style="color: #6c757d; margin-bottom: 1rem;">
+      Module Temporarily Unavailable
+    </h1>
+    
+    <p class="card-text" style="font-size: 1.1rem; color: #6c757d; margin-bottom: 2rem;">
+      The <strong>{{ module.title() }}</strong> module is currently disabled.
+      This feature is not available at the moment, but you can explore other parts of the platform.
+    </p>
+    
+    <div class="card-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-primary">
+        🏠 Return to Home
+      </a>
+      
+      {% if current_user and current_user.is_app_owner %}
+      <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary" style="margin-left: 1rem;">
+        ⚙️ Enable Module (Admin)
+      </a>
+      {% endif %}
+    </div>
+    
+    <div class="card-footer" style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #dee2e6;">
+      <small class="text-muted">
+        If you believe this is an error, please contact the system administrator.
+      </small>
+    </div>
+  </div>
+</div>
+
+<style>
+.card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  border: 1px solid #e9ecef;
+}
+
+.card-icon {
+  opacity: 0.6;
+}
+
+.card-title {
+  font-weight: 600;
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-outline-secondary {
+  background: transparent;
+  color: #6c757d;
+  border: 2px solid #6c757d;
+}
+
+.btn-outline-secondary:hover {
+  background: #6c757d;
+  color: white;
+}
+</style>
+{% endblock %}

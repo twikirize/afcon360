@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}Organization Wallet - {{ org.legal_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Modern Wallet Styles */
+.wallet-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    color: white;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.balance-card {
+    background: linear-gradient(135deg, #11998e, #38ef7d);
+    border-radius: 16px;
+    padding: 2rem;
+    color: white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.balance-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.1); opacity: 0.3; }
+}
+
+.balance-amount {
+    font-size: 3rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.currency-badge {
+    background: rgba(255,255,255,0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.transaction-item {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    border-left: 4px solid transparent;
+}
+
+.transaction-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.transaction-item.income {
+    border-left-color: #28a745;
+}
+
+.transaction-item.expense {
+    border-left-color: #dc3545;
+}
+
+.transaction-item.pending {
+    border-left-color: #ffc107;
+}
+
+.transaction-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    margin-right: 1rem;
+}
+
+.transaction-icon.income { background: rgba(40, 167, 69, 0.1); color: #28a745; }
+.transaction-icon.expense { background: rgba(220, 53, 69, 0.1); color: #dc3545; }
+.transaction-icon.pending { background: rgba(255, 193, 7, 0.1); color: #ffc107; }
+
+.action-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    text-align: center;
+    height: 100%;
+}
+
+.action-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.action-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin: 0 auto 1rem;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.quick-action-btn {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.quick-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.filter-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 1rem;
+}
+
+.filter-tab {
+    padding: 0.5rem 1rem;
+    border: none;
+    background: transparent;
+    color: #6c757d;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.filter-tab:hover {
+    color: #495057;
+}
+
+.filter-tab.active {
+    color: #667eea;
+}
+
+.filter-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1rem;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+@media (max-width: 768px) {
+    .balance-amount {
+        font-size: 2rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-tabs {
+        flex-wrap: wrap;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Wallet Header -->
+    <div class="wallet-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center">
+                    <div class="me-4">
+                        <i class="bi bi-wallet2-fill fs-1"></i>
+                    </div>
+                    <div>
+                        <h1 class="mb-2 fw-bold">Organization Wallet</h1>
+                        <p class="mb-1 opacity-90">{{ org.legal_name }} • Account: {{ wallet.account_name }}</p>
+                        <div class="d-flex gap-2 flex-wrap mt-2">
+                            <span class="currency-badge">
+                                <i class="bi bi-currency-exchange me-1"></i> {{ wallet.currency }}
+                            </span>
+                            <span class="badge bg-white text-dark px-3 py-2">
+                                <i class="bi bi-shield-check me-1"></i> Verified Account
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
+                    <button class="btn btn-light quick-action-btn" onclick="downloadStatement()">
+                        <i class="bi bi-download me-2"></i> Statement
+                    </button>
+                    <button class="btn btn-light quick-action-btn" onclick="exportData()">
+                        <i class="bi bi-file-earmark-excel me-2"></i> Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balance Overview -->
+    <div class="row mb-4">
+        <div class="col-lg-8 mb-4">
+            <div class="balance-card">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="balance-amount">UGX {{ "{:,.0f}".format(balance) }}</div>
+                        <div class="mb-3">Available Balance</div>
+                        <div class="d-flex gap-3">
+                            <div>
+                                <small class="opacity-75">Income</small>
+                                <div class="fw-bold">UGX 0</div>
+                            </div>
+                            <div>
+                                <small class="opacity-75">Expenses</small>
+                                <div class="fw-bold">UGX 0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div class="mb-3">
+                            <small class="opacity-75">Account Number</small>
+                            <div class="fw-bold">#{{ wallet.id }}</div>
+                        </div>
+                        <button class="btn btn-light btn-sm" onclick="copyAccountNumber()">
+                            <i class="bi bi-clipboard me-1"></i> Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="action-card">
+                <div class="action-icon">
+                    <i class="bi bi-plus-circle"></i>
+                </div>
+                <h6>Quick Actions</h6>
+                <div class="d-grid gap-2 mt-3">
+                    <button class="btn btn-primary btn-sm" onclick="addFunds()">
+                        <i class="bi bi-plus-circle me-1"></i> Add Funds
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="sendPayment()">
+                        <i class="bi bi-send me-1"></i> Send Payment
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="requestPayment()">
+                        <i class="bi bi-arrow-down-circle me-1"></i> Request Payment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">This Month</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Transactions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">UGX 0</div>
+            <div class="stat-label">Avg. Transaction</div>
+        </div>
+    </div>
+
+    <!-- Wallet Settings -->
+    <div class="row mb-4">
+        <div class="col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h6 class="card-title mb-0">
+                        <i class="bi bi-gear me-2"></i> Wallet Settings
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">
+                            {{ form.default_currency.label(class="form-label") }}
+                            {{ form.default_currency(class="form-select") }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Auto Settlement</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" {{ 'checked' if org.get_setting('auto_settlement', False) else '' }}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            {{ form.settlement_frequency.label(class="form-label") }}
+                            {{ form.settlement_frequency(class="form-select") }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Large Transaction Approval</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" {{ 'checked' if org.get_setting('require_approval_for_large_transactions', False) else '' }}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            {{ form.large_transaction_threshold.label(class="form-label") }}
+                            {{ form.large_transaction_threshold(class="form-control", placeholder="UGX 1,000,000") }}
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100">
+                            <i class="bi bi-check-circle me-2"></i> Save Settings
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h6 class="card-title mb-0">
+                        <i class="bi bi-graph-up me-2"></i> Transaction History
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <!-- Filter Tabs -->
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" data-filter="all">All</button>
+                        <button class="filter-tab" data-filter="income">Income</button>
+                        <button class="filter-tab" data-filter="expense">Expenses</button>
+                        <button class="filter-tab" data-filter="pending">Pending</button>
+                    </div>
+
+                    <!-- Transactions List -->
+                    <div id="transactionsList">
+                        <div class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox display-1"></i>
+                            <h5 class="mt-3">No Transactions Yet</h5>
+                            <p>Your transaction history will appear here once you start using the wallet.</p>
+                            <div class="d-flex gap-2 justify-content-center mt-3">
+                                <button class="btn btn-primary" onclick="addFunds()">
+                                    <i class="bi bi-plus-circle me-2"></i> Add Funds
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="sendPayment()">
+                                    <i class="bi bi-send me-2"></i> Send Payment
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Cards -->
+    <div class="row">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="action-card">
+                <div class="action-icon">
+                    <i class="bi bi-credit-card"></i>
+                </div>
+                <h6>Payment Methods</h6>
+                <p class="text-muted small">Manage payment methods and cards</p>
+                <button class="btn btn-outline-primary btn-sm" onclick="managePaymentMethods()">
+                    Manage Methods
+                </button>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="action-card">
+                <div class="action-icon">
+                    <i class="bi bi-people"></i>
+                </div>
+                <h6>Beneficiaries</h6>
+                <p class="text-muted small">Manage frequent payment recipients</p>
+                <button class="btn btn-outline-primary btn-sm" onclick="manageBeneficiaries()">
+                    Manage Beneficiaries
+                </button>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="action-card">
+                <div class="action-icon">
+                    <i class="bi bi-file-text"></i>
+                </div>
+                <h6>Invoices</h6>
+                <p class="text-muted small">Create and manage invoices</p>
+                <button class="btn btn-outline-primary btn-sm" onclick="manageInvoices()">
+                    Manage Invoices
+                </button>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="action-card">
+                <div class="action-icon">
+                    <i class="bi bi-shield-check"></i>
+                </div>
+                <h6>Security</h6>
+                <p class="text-muted small">Wallet security and settings</p>
+                <button class="btn btn-outline-primary btn-sm" onclick="manageSecurity()">
+                    Security Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Funds Modal -->
+<div class="modal fade" id="addFundsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle me-2"></i> Add Funds
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Amount (UGX)</label>
+                    <input type="number" class="form-control" placeholder="Enter amount" min="1000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Payment Method</label>
+                    <select class="form-select">
+                        <option>Select payment method</option>
+                        <option>Mobile Money (MTN)</option>
+                        <option>Mobile Money (Airtel)</option>
+                        <option>Bank Transfer</option>
+                        <option>Credit/Debit Card</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description (Optional)</label>
+                    <input type="text" class="form-control" placeholder="What's this for?">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary">Add Funds</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Send Payment Modal -->
+<div class="modal fade" id="sendPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-send me-2"></i> Send Payment
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Recipient</label>
+                    <input type="text" class="form-control" placeholder="Email, phone, or account number">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Amount (UGX)</label>
+                    <input type="number" class="form-control" placeholder="Enter amount" min="1000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <input type="text" class="form-control" placeholder="What's this payment for?">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary">Send Payment</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Filter transactions
+document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        
+        const filter = this.dataset.filter;
+        // Filter transaction items based on filter
+        const transactions = document.querySelectorAll('.transaction-item');
+        transactions.forEach(item => {
+            if (filter === 'all' || item.classList.contains(filter)) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+});
+
+// Action functions
+function addFunds() {
+    const modal = new bootstrap.Modal(document.getElementById('addFundsModal'));
+    modal.show();
+}
+
+function sendPayment() {
+    const modal = new bootstrap.Modal(document.getElementById('sendPaymentModal'));
+    modal.show();
+}
+
+function requestPayment() {
+    // Implement request payment functionality
+    console.log('Request payment');
+}
+
+function copyAccountNumber() {
+    const accountNumber = '#{{ wallet.id }}';
+    navigator.clipboard.writeText(accountNumber);
+    
+    // Show feedback
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check me-1"></i> Copied!';
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+    }, 2000);
+}
+
+function downloadStatement() {
+    // Generate and download statement
+    const statement = {
+        account: '{{ wallet.account_name }}',
+        accountNumber: '#{{ wallet.id }}',
+        balance: {{ balance }},
+        currency: '{{ wallet.currency }}',
+        generatedAt: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(statement, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'wallet-statement.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+function exportData() {
+    // Export transaction data
+    const data = {
+        account: '{{ wallet.account_name }}',
+        balance: {{ balance }},
+        transactions: [],
+        exportedAt: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'wallet-data.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+function managePaymentMethods() {
+    console.log('Manage payment methods');
+}
+
+function manageBeneficiaries() {
+    console.log('Manage beneficiaries');
+}
+
+function manageInvoices() {
+    console.log('Manage invoices');
+}
+
+function manageSecurity() {
+    console.log('Manage security');
+}
+
+// Add smooth animations
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+
+    document.querySelectorAll('.action-card, .stat-card').forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+});
+</script>
+{% endblock %}

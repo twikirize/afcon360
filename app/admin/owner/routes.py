@@ -230,7 +230,7 @@ def configure_fraud_detection():
             )
             
             flash('Fraud detection configuration updated successfully', 'success')
-            return redirect(url_for('owner.configure_fraud_detection'))
+            return redirect(url_for('admin.owner.configure_fraud_detection'))
         
         # GET request - show current configuration
         config = FraudDetectionService.get_config()
@@ -238,7 +238,7 @@ def configure_fraud_detection():
     except Exception as e:
         current_app.logger.error(f"Configure fraud detection error: {e}")
         flash('Error configuring fraud detection', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/configure-nonce-protection', methods=['GET', 'POST'])
 @owner_login_required
@@ -272,7 +272,7 @@ def configure_nonce_protection():
             )
             
             flash('Nonce protection configuration updated successfully', 'success')
-            return redirect(url_for('owner.configure_nonce_protection'))
+            return redirect(url_for('admin.owner.configure_nonce_protection'))
         
         # GET request - show current configuration
         config = NonceProtectionService.get_config()
@@ -280,7 +280,7 @@ def configure_nonce_protection():
     except Exception as e:
         current_app.logger.error(f"Configure nonce protection error: {e}")
         flash('Error configuring nonce protection', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/configure-travel-rule', methods=['GET', 'POST'])
 @owner_login_required
@@ -319,7 +319,7 @@ def configure_travel_rule():
             )
             
             flash('Travel Rule configuration updated successfully', 'success')
-            return redirect(url_for('owner.configure_travel_rule'))
+            return redirect(url_for('admin.owner.configure_travel_rule'))
         
         # GET request - show current configuration
         config = TravelRuleService.get_config()
@@ -327,7 +327,7 @@ def configure_travel_rule():
     except Exception as e:
         current_app.logger.error(f"Configure travel rule error: {e}")
         flash('Error configuring travel rule', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/add-payment-gateway', methods=['GET', 'POST'])
 @owner_login_required
@@ -364,13 +364,13 @@ def add_payment_gateway():
             )
             
             flash(f'Payment gateway {gateway_name} added successfully', 'success')
-            return redirect(url_for('owner.add_payment_gateway'))
+            return redirect(url_for('admin.owner.add_payment_gateway'))
         
         return render_template('owner/add_payment_gateway.html')
     except Exception as e:
         current_app.logger.error(f"Add payment gateway error: {e}")
         flash('Error adding payment gateway', 'error')
-        return redirect(url_for('owner.dashboard'))
+        return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/dashboard')
 @owner_login_required
@@ -656,7 +656,7 @@ def impersonate_role(role_name):
             'event_manager': url_for('events.admin_dashboard'),
             'transport_admin': url_for('transport_admin.dashboard'),
             'wallet_admin': url_for('wallet.wallet_dashboard'),
-            'accommodation_admin': url_for('accommodation.admin_dashboard'),
+            'accommodation_admin': url_for('accommodation.guest_search'),
             'tourism_admin': url_for('tourism.home'),
             'org_admin': url_for('events.events_hub'),
             'org_member': url_for('events.events_hub'),

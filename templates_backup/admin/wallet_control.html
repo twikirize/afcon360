@@ -1,0 +1,145 @@
+<!-- templates/admin/wallet_control.html -->
+<div class="card">
+    <div class="card-header">
+        <h3>💰 Wallet System Control</h3>
+    </div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Wallet Module</strong>
+                <p class="text-muted mb-0">Turn OFF to completely disable all wallet operations</p>
+            </div>
+            <div>
+                <!-- Toggle Switch -->
+                <label class="switch">
+                    <input type="checkbox" id="walletToggle">
+                    <span class="slider round"></span>
+                </label>
+                <span id="walletStatus" class="ms-2"></span>
+            </div>
+        </div>
+        <div id="warningMessage" class="alert alert-warning mt-3" style="display: none;">
+            ⚠️ Warning: Disabling wallet will block deposits, withdrawals, and transfers.
+            Users will see a "service unavailable" message.
+        </div>
+    </div>
+</div>
+
+<style>
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+}
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+}
+input:checked + .slider {
+    background-color: #28a745;
+}
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+.slider.round {
+    border-radius: 34px;
+}
+.slider.round:before {
+    border-radius: 50%;
+}
+</style>
+
+<script>
+// Load current status on page load
+fetch('/api/admin/wallet/status')
+    .then(res => res.json())
+    .then(data => {
+        const toggle = document.getElementById('walletToggle');
+        const statusSpan = document.getElementById('walletStatus');
+        const warning = document.getElementById('warningMessage');
+
+        toggle.checked = data.wallet_enabled;
+        statusSpan.textContent = data.wallet_enabled ? '✅ Enabled' : '❌ Disabled';
+
+        if (!data.wallet_enabled) {
+            warning.style.display = 'block';
+        }
+    });
+
+// Handle toggle change
+document.getElementById('walletToggle').addEventListener('change', function(e) {
+    const isEnabled = e.target.checked;
+    const warning = document.getElementById('warningMessage');
+    const statusSpan = document.getElementById('walletStatus');
+
+    if (!isEnabled) {
+        if (!confirm('⚠️ WARNING: Disabling wallet will block all deposits, withdrawals, and transfers. Are you sure?')) {
+            e.target.checked = true;
+            return;
+        }
+        warning.style.display = 'block';
+        statusSpan.textContent = '⏳ Disabling...';
+    } else {
+        warning.style.display = 'none';
+        statusSpan.textContent = '⏳ Enabling...';
+    }
+
+    // Call API to toggle
+    fetch('/api/admin/wallet/toggle', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+        },
+        body: JSON.stringify({ enabled: isEnabled })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusSpan.textContent = data.wallet_enabled ? '✅ Enabled' : '❌ Disabled';
+            showToast('success', data.message);
+        } else {
+            e.target.checked = !isEnabled;
+            statusSpan.textContent = !isEnabled ? '✅ Enabled' : '❌ Disabled';
+            showToast('error', data.error || 'Failed to toggle');
+        }
+    })
+    .catch(error => {
+        e.target.checked = !isEnabled;
+        statusSpan.textContent = !isEnabled ? '✅ Enabled' : '❌ Disabled';
+        showToast('error', 'Network error. Please try again.');
+    });
+});
+
+function showToast(type, message) {
+    // Simple toast implementation
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed bottom-0 end-0 m-3`;
+    toast.style.zIndex = 9999;
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+</script>

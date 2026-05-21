@@ -1713,7 +1713,7 @@
             showLoading('Saving settings...');
 
             try {
-                const response = await fetch('{{ safe_url('url_for\(['"]transport.api_update_settings") }}', {
+                const response = await fetch('{{ safe_url('transport.api_update_settings') }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1741,7 +1741,7 @@
                         showConfirmation('Restart Required',
                             'Some changes require a system restart to take effect. Restart now?',
                             function() {
-                                window.location.href = '{{ safe_url('url_for\(['"]transport.restart") }}';
+                                window.location.href = '{{ safe_url('transport.restart') }}';
                             }
                         );
                     }
@@ -1773,7 +1773,7 @@
             showLoading('Applying settings...');
 
             try {
-                const response = await fetch('{{ safe_url('url_for\(['"]transport.api_apply_settings") }}', {
+                const response = await fetch('{{ safe_url('transport.api_apply_settings') }}', {
                     method: 'POST',
                     headers: {
                         'X-CSRF-Token': '{{ csrf_token }}'
@@ -1808,7 +1808,7 @@
             showLoading('Resetting to factory defaults...');
 
             try {
-                const response = await fetch('{{ safe_url('url_for\(['"]transport.api_reset_settings") }}', {
+                const response = await fetch('{{ safe_url('transport.api_reset_settings') }}', {
                     method: 'POST',
                     headers: {
                         'X-CSRF-Token': '{{ csrf_token }}'
@@ -1842,7 +1842,7 @@
                     showLoading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing module...`);
 
                     try {
-                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_toggle_module") }}', {
+                        const response = await fetch('{{ safe_url('transport.api_toggle_module') }}', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-Token': '{{ csrf_token }}'
@@ -1879,7 +1879,7 @@
                     showLoading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing maintenance mode...`);
 
                     try {
-                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_toggle_maintenance") }}', {
+                        const response = await fetch('{{ safe_url('transport.api_toggle_maintenance') }}', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-Token': '{{ csrf_token }}'
@@ -2003,7 +2003,7 @@
                     showLoading('Initializing settings...');
 
                     try {
-                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_initialize_settings") }}', {
+                        const response = await fetch('{{ safe_url('transport.api_initialize_settings') }}', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-Token': '{{ csrf_token }}'
@@ -2079,7 +2079,7 @@
                     try {
                         const settings = JSON.parse(e.target.result);
 
-                        const response = await fetch('{{ safe_url('url_for\(['"]transport.api_import_settings") }}', {
+                        const response = await fetch('{{ safe_url('transport.api_import_settings') }}', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -2121,7 +2121,7 @@
         }
 
         function showAuditLog() {
-            window.open('{{ safe_url('url_for\(['"]transport.audit_log") }}', '_blank');
+            window.open('{{ safe_url('transport.audit_log') }}', '_blank');
         }
     </script>
 </body>

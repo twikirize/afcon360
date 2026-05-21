@@ -1,0 +1,591 @@
+{% extends "base.html" %}
+
+{% block title %}Content Management - {{ org.legal_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Modern Content Management Styles */
+.content-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    color: white;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.content-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    overflow: hidden;
+    position: relative;
+}
+
+.content-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.content-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+.category-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.category-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.category-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin: 0 auto 1rem;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.content-preview {
+    width: 60px;
+    height: 60px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-right: 1rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-badge.active { background: linear-gradient(135deg, #11998e, #38ef7d); color: white; }
+.status-badge.inactive { background: linear-gradient(135deg, #eb3349, #f45c43); color: white; }
+.status-badge.featured { background: linear-gradient(135deg, #f2994a, #f2c94c); color: white; }
+
+.content-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #495057;
+}
+
+.stat-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.search-filter {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    margin-bottom: 2rem;
+}
+
+.search-box {
+    position: relative;
+}
+
+.search-box input {
+    border-radius: 25px;
+    padding-left: 3rem;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.search-box input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.search-box i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6c757d;
+}
+
+.filter-pills {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-pill {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    border: 2px solid #e9ecef;
+    background: white;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.filter-pill:hover,
+.filter-pill.active {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-color: transparent;
+}
+
+.action-btn {
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.content-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.content-item {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    border-left: 4px solid #667eea;
+}
+
+.content-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.content-item.featured {
+    border-left-color: #f2994a;
+    background: linear-gradient(135deg, rgba(242, 153, 74, 0.05), rgba(242, 153, 74, 0.02));
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    color: #dee2e6;
+    margin-bottom: 1rem;
+}
+
+.floating-action-btn {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.floating-action-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Content Header -->
+    <div class="content-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center">
+                    <div class="me-4">
+                        <i class="bi bi-grid-3x3-gap-fill fs-1"></i>
+                    </div>
+                    <div>
+                        <h1 class="mb-2 fw-bold">Content Management</h1>
+                        <p class="mb-1 opacity-90">{{ org.legal_name }} • Manage your organization's content</p>
+                        <div class="d-flex gap-2 flex-wrap mt-2">
+                            <span class="badge bg-white text-dark px-3 py-2">
+                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                            </span>
+                            <span class="badge bg-white text-dark px-3 py-2">
+                                <i class="bi bi-collection me-1"></i> {{ items|length if items else 0 }} Items
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
+                    {% if categories %}
+                    <div class="dropdown">
+                        <button class="btn btn-light action-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-plus-circle me-2"></i> Add Content
+                        </button>
+                        <ul class="dropdown-menu">
+                            {% for category in categories %}
+                            <li>
+                                <a class="dropdown-item" href="#">
+                                    <i class="bi bi-{{ category.icon or 'plus' }} me-2"></i> New {{ category.name }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="#">
+                                    <i class="bi bi-file-plus me-2"></i> Custom Content
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                    <button class="btn btn-light action-btn" onclick="exportContent()">
+                        <i class="bi bi-download me-2"></i> Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Statistics -->
+    <div class="content-stats">
+        <div class="stat-item">
+            <div class="stat-value">{{ items|length if items else 0 }}</div>
+            <div class="stat-label">Total Items</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ items|selectattr('is_active')|list|length if items else 0 }}</div>
+            <div class="stat-label">Active</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ items|selectattr('is_featured')|list|length if items else 0 }}</div>
+            <div class="stat-label">Featured</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ categories|length if categories else 0 }}</div>
+            <div class="stat-label">Categories</div>
+        </div>
+    </div>
+
+    <!-- Search and Filters -->
+    <div class="search-filter">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="search-box">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="form-control" placeholder="Search content..." id="contentSearch">
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="filter-pills">
+                    <button class="filter-pill active" data-filter="all">All</button>
+                    <button class="filter-pill" data-filter="active">Active</button>
+                    <button class="filter-pill" data-filter="inactive">Inactive</button>
+                    <button class="filter-pill" data-filter="featured">Featured</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Grid -->
+    {% if items %}
+    <div class="content-grid" id="contentGrid">
+        {% for item in items %}
+        <div class="content-item {{ 'featured' if item.is_featured else '' }}" data-status="{{ 'active' if item.is_active else 'inactive' }}" data-featured="{{ 'featured' if item.is_featured else '' }}">
+            <div class="d-flex align-items-start mb-3">
+                <div class="content-preview">
+                    <i class="bi bi-{{ item.category.icon or 'file-earmark' }}"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h5 class="card-title mb-1">{{ item.name }}</h5>
+                    <p class="card-text text-muted small mb-2">{{ item.category.name }}</p>
+                    <div class="d-flex gap-2 mb-2">
+                        {% if item.is_featured %}
+                        <span class="status-badge featured">
+                            <i class="bi bi-star me-1"></i> Featured
+                        </span>
+                        {% endif %}
+                        <span class="status-badge {{ 'active' if item.is_active else 'inactive' }}">
+                            <i class="bi bi-{{ 'check-circle' if item.is_active else 'x-circle' }} me-1"></i> 
+                            {{ 'Active' if item.is_active else 'Inactive' }}
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary action-btn">
+                            <i class="bi bi-pencil me-1"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary action-btn">
+                            <i class="bi bi-eye me-1"></i> View
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger action-btn">
+                            <i class="bi bi-trash me-1"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="text-muted small">
+                <i class="bi bi-calendar me-1"></i> Created {{ item.created_at.strftime('%B %d, %Y') if item.created_at else 'N/A' }}
+                {% if item.updated_at and item.updated_at != item.created_at %}
+                <span class="ms-2"><i class="bi bi-pencil me-1"></i> Updated {{ item.updated_at.strftime('%B %d, %Y') }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-inbox"></i>
+        <h4>No Content Yet</h4>
+        <p class="text-muted">Start by adding your first content item to get started.</p>
+        {% if categories %}
+        <button class="btn btn-primary" onclick="document.querySelector('.dropdown-toggle').click()">
+            <i class="bi bi-plus-circle me-2"></i> Add Your First Content
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Available Categories -->
+    {% if categories %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="fw-bold">
+                    <i class="bi bi-folder me-2"></i> Available Content Types
+                </h4>
+                <span class="text-muted">{{ categories|length }} categories available</span>
+            </div>
+        </div>
+        {% for category in categories %}
+        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="category-card">
+                <div class="card-body text-center p-4">
+                    <div class="category-icon">
+                        <i class="bi bi-{{ category.icon or 'folder' }}"></i>
+                    </div>
+                    <h5 class="card-title mb-2">{{ category.name }}</h5>
+                    <p class="card-text text-muted small mb-3">{{ category.description|truncate(80) }}</p>
+                    <button class="btn btn-primary btn-sm rounded-pill" onclick="createContent('{{ category.name }}')">
+                        <i class="bi bi-plus-circle me-1"></i> Add {{ category.name }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- No Categories State -->
+    {% if not categories %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="alert alert-info border-0">
+                <h6 class="alert-heading">
+                    <i class="bi bi-info-circle me-2"></i> No Content Types Available
+                </h6>
+                <p class="mb-3">Your organization doesn't have any content categories configured yet.</p>
+                <button class="btn btn-primary" onclick="setupCategories()">
+                    <i class="bi bi-gear me-2"></i> Setup Content Categories
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Floating Action Button -->
+<button class="floating-action-btn" onclick="openQuickActions()">
+    <i class="bi bi-plus"></i>
+</button>
+
+<!-- Quick Actions Modal -->
+<div class="modal fade" id="quickActionsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Quick Actions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-grid gap-2">
+                    {% if categories %}
+                    {% for category in categories %}
+                    <button class="btn btn-outline-primary" onclick="createContent('{{ category.name }}')">
+                        <i class="bi bi-{{ category.icon or 'plus' }} me-2"></i> Create {{ category.name }}
+                    </button>
+                    {% endfor %}
+                    {% endif %}
+                    <button class="btn btn-outline-secondary" onclick="importContent()">
+                        <i class="bi bi-upload me-2"></i> Import Content
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="exportContent()">
+                        <i class="bi bi-download me-2"></i> Export All Content
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Search functionality
+document.getElementById('contentSearch').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const contentItems = document.querySelectorAll('.content-item');
+    
+    contentItems.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(searchTerm)) {
+            item.style.display = 'block';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+});
+
+// Filter functionality
+document.querySelectorAll('.filter-pill').forEach(pill => {
+    pill.addEventListener('click', function() {
+        // Update active state
+        document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        
+        // Filter content
+        const filter = this.dataset.filter;
+        const contentItems = document.querySelectorAll('.content-item');
+        
+        contentItems.forEach(item => {
+            if (filter === 'all') {
+                item.style.display = 'block';
+            } else if (filter === 'featured') {
+                if (item.dataset.featured === 'featured') {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            } else {
+                if (item.dataset.status === filter) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            }
+        });
+    });
+});
+
+// Action functions
+function openQuickActions() {
+    const modal = new bootstrap.Modal(document.getElementById('quickActionsModal'));
+    modal.show();
+}
+
+function createContent(categoryType) {
+    console.log('Creating content:', contentType);
+    // Implement content creation logic
+}
+
+function importContent() {
+    console.log('Import content');
+    // Implement import functionality
+}
+
+function exportContent() {
+    const contentData = {
+        organization: '{{ org.legal_name }}',
+        items: {{ items|length if items else 0 }},
+        categories: {{ categories|length if categories else 0 }},
+        exportedAt: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(contentData, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'organization-content.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+function setupCategories() {
+    console.log('Setup categories');
+    // Implement category setup
+}
+
+// Add smooth animations
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+
+    document.querySelectorAll('.content-item, .category-card').forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+});
+</script>
+{% endblock %}

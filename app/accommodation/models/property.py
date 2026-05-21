@@ -27,6 +27,7 @@ class AccommodationPropertyType(enum.Enum):
     PRIVATE_ROOM = "private_room"
     SHARED_ROOM = "shared_room"
     HOTEL_ROOM = "hotel_room"
+    COMMUNITY_HOST = "community_host"
 
 
 class AccommodationCancellationPolicy(enum.Enum):

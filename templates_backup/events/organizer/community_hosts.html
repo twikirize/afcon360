@@ -1,0 +1,347 @@
+{# templates/events/organizer/community_hosts.html #}
+{% extends "base.html" %}
+
+{% block title %}Community Hosts - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1>
+                <i class="fas fa-hand-holding-heart text-primary me-2"></i>
+                Community Hosts
+            </h1>
+            <p class="text-muted mb-0">
+                {{ event.name }} · Manage community host applications
+            </p>
+        </div>
+        <div class="col text-end">
+            <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h3 class="mb-0" id="totalCount">0</h3>
+                    <p class="mb-0">Total Applications</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h3 class="mb-0" id="pendingCount">0</h3>
+                    <p class="mb-0">Pending Review</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h3 class="mb-0" id="approvedCount">0</h3>
+                    <p class="mb-0">Approved</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-danger">
+                <div class="card-body">
+                    <h3 class="mb-0" id="rejectedCount">0</h3>
+                    <p class="mb-0">Rejected</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Host List -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h5 class="mb-0">Host Applications</h5>
+        </div>
+        <div class="card-body p-0">
+            <div id="hostsList" class="list-group list-group-flush">
+                <div class="text-center p-4">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2">Loading hosts...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approval Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Approve Community Host</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Approve <strong id="approveHostName"></strong> as a community host for this event?</p>
+                <p class="text-muted small">Approved hosts will appear in your accommodation inventory and can be assigned to attendees.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="confirmApprove()">Approve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Reject Community Host</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Reject <strong id="rejectHostName"></strong>'s application?</p>
+                <div class="mb-3">
+                    <label class="form-label">Reason (optional)</label>
+                    <textarea id="rejectReason" class="form-control" rows="3" placeholder="Explain why this application is being rejected..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmReject()">Reject</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.host-card {
+    transition: all 0.2s;
+}
+.host-card:hover {
+    background-color: #f8f9fa;
+}
+.status-badge {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+.status-pending {
+    background-color: #ffc107;
+    color: #333;
+}
+.status-approved {
+    background-color: #28a745;
+    color: white;
+}
+.status-rejected {
+    background-color: #dc3545;
+    color: white;
+}
+.host-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background-color: #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+</style>
+
+<script>
+let currentEventSlug = '{{ event.slug }}';
+let hosts = [];
+let selectedHostId = null;
+let selectedHostName = null;
+
+async function loadHosts() {
+    try {
+        const response = await fetch(`/events/api/${currentEventSlug}/community-hosts`);
+        const data = await response.json();
+        if (data.success) {
+            hosts = data.hosts;
+            renderHosts();
+            updateStats();
+        }
+    } catch (error) {
+        console.error('Error loading hosts:', error);
+        document.getElementById('hostsList').innerHTML = `
+            <div class="text-center p-4 text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x"></i>
+                <p>Error loading hosts</p>
+            </div>
+        `;
+    }
+}
+
+function renderHosts() {
+    const container = document.getElementById('hostsList');
+    
+    if (hosts.length === 0) {
+        container.innerHTML = `
+            <div class="text-center p-4 text-muted">
+                <i class="fas fa-info-circle fa-2x"></i>
+                <p>No community host applications yet.</p>
+                <small>Share the registration link with community members who want to offer accommodation.</small>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = hosts.map(host => `
+        <div class="list-group-item host-card p-3">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <div class="host-avatar">
+                        ${host.main_image ? 
+                            `<img src="${host.main_image}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">` :
+                            '<i class="fas fa-user-friends"></i>'
+                        }
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">${escapeHtml(host.title)}</h5>
+                            <div class="small text-muted">
+                                <i class="fas fa-user"></i> ${escapeHtml(host.host_name)} · 
+                                <i class="fas fa-map-marker-alt"></i> ${escapeHtml(host.city)}
+                            </div>
+                            <div class="mt-1">
+                                <span class="badge ${host.is_free ? 'bg-success' : 'bg-primary'}">
+                                    ${host.is_free ? 'FREE' : `$${host.price_per_night}/night`}
+                                </span>
+                                <span class="badge bg-secondary">${host.max_guests} guests</span>
+                            </div>
+                            ${host.description ? `<div class="small text-muted mt-1">${escapeHtml(host.description)}</div>` : ''}
+                        </div>
+                        <div class="text-end">
+                            <span class="status-badge status-${host.status}">
+                                ${host.status === 'pending' ? '⏳ Pending' : host.status === 'approved' ? '✓ Approved' : '✗ Rejected'}
+                            </span>
+                            ${host.status === 'pending' ? `
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-success me-1" onclick="showApproveModal(${host.id}, '${escapeHtml(host.title)}')">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="showRejectModal(${host.id}, '${escapeHtml(host.title)}')">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                </div>
+                            ` : ''}
+                            ${host.status === 'approved' ? `
+                                <div class="small text-muted mt-2">
+                                    Approved on ${host.approved_at ? new Date(host.approved_at).toLocaleDateString() : 'recently'}
+                                </div>
+                            ` : ''}
+                            ${host.status === 'rejected' && host.rejection_reason ? `
+                                <div class="small text-danger mt-2">
+                                    Reason: ${escapeHtml(host.rejection_reason)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateStats() {
+    const total = hosts.length;
+    const pending = hosts.filter(h => h.status === 'pending').length;
+    const approved = hosts.filter(h => h.status === 'approved').length;
+    const rejected = hosts.filter(h => h.status === 'rejected').length;
+    
+    document.getElementById('totalCount').innerText = total;
+    document.getElementById('pendingCount').innerText = pending;
+    document.getElementById('approvedCount').innerText = approved;
+    document.getElementById('rejectedCount').innerText = rejected;
+}
+
+function showApproveModal(hostId, hostName) {
+    selectedHostId = hostId;
+    selectedHostName = hostName;
+    document.getElementById('approveHostName').innerText = hostName;
+    new bootstrap.Modal(document.getElementById('approveModal')).show();
+}
+
+function confirmApprove() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('approveModal'));
+    modal.hide();
+    
+    fetch(`/events/api/${currentEventSlug}/community-hosts/${selectedHostId}/approve`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadHosts();
+            alert('✓ Host approved successfully');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error');
+    });
+}
+
+function showRejectModal(hostId, hostName) {
+    selectedHostId = hostId;
+    selectedHostName = hostName;
+    document.getElementById('rejectHostName').innerText = hostName;
+    document.getElementById('rejectReason').value = '';
+    new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+
+function confirmReject() {
+    const reason = document.getElementById('rejectReason').value;
+    const modal = bootstrap.Modal.getInstance(document.getElementById('rejectModal'));
+    modal.hide();
+    
+    fetch(`/events/api/${currentEventSlug}/community-hosts/${selectedHostId}/reject`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ reason: reason })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadHosts();
+            alert('Host rejected');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error');
+    });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadHosts();
+});
+</script>
+{% endblock %}

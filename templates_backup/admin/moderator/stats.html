@@ -1,0 +1,198 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Moderation Stats — AFCON360{% endblock %}
+
+{% block topbar_title %}Moderation Stats{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Stats</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Moderation Statistics</h1>
+    <p class="page-subheading">Overview of moderation activity and performance</p>
+  </div>
+</div>
+
+<!-- Time Period Tabs -->
+<div class="tab-bar">
+  <button class="tab-link active" onclick="showPeriod('7d')">Last 7 Days</button>
+  <button class="tab-link" onclick="showPeriod('30d')">Last 30 Days</button>
+</div>
+
+<!-- Submission Stats -->
+<div class="stat-grid">
+  <div class="stat-card success">
+    <div class="stat-label">Approved (7d)</div>
+    <div class="stat-value">{{ submission_stats['7d'].approved }}</div>
+    <div class="stat-sub">Content submissions approved</div>
+  </div>
+  <div class="stat-card danger">
+    <div class="stat-label">Rejected (7d)</div>
+    <div class="stat-value">{{ submission_stats['7d'].rejected }}</div>
+    <div class="stat-sub">Content submissions rejected</div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-label">Changes Requested (7d)</div>
+    <div class="stat-value">{{ submission_stats['7d'].changes }}</div>
+    <div class="stat-sub">Submissions needing changes</div>
+  </div>
+  <div class="stat-card accent">
+    <div class="stat-label">Total Reviewed (7d)</div>
+    <div class="stat-value">{{ submission_stats['7d'].approved + submission_stats['7d'].rejected + submission_stats['7d'].changes }}</div>
+    <div class="stat-sub">All submissions processed</div>
+  </div>
+</div>
+
+<div class="col-layout-2-1">
+  <!-- LEFT: FLAG STATS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Flag Statistics
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stat-grid" style="margin-bottom:20px;">
+          <div class="stat-card info">
+            <div class="stat-label">Opened (7d)</div>
+            <div class="stat-value">{{ flag_stats['7d'].opened }}</div>
+          </div>
+          <div class="stat-card success">
+            <div class="stat-label">Resolved (7d)</div>
+            <div class="stat-value">{{ flag_stats['7d'].resolved }}</div>
+          </div>
+          <div class="stat-card danger">
+            <div class="stat-label">Currently Open</div>
+            <div class="stat-value">{{ flag_stats['7d'].open }}</div>
+          </div>
+        </div>
+
+        <h4 style="font-size:14px;font-weight:600;margin-bottom:12px;">Priority Distribution (Open Flags)</h4>
+        {% if priority_dist %}
+          <div style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+              <span>High</span>
+              <span class="mono">{{ priority_dist.get('high', 0) }}</span>
+            </div>
+            <div style="height:8px;background:var(--bg);border-radius:4px;overflow:hidden;">
+              <div style="height:100%;background:var(--red);width:{{ (priority_dist.get('high', 0) / (priority_dist.values()|sum if priority_dist.values()|sum > 0 else 1) * 100)|round }}%;"></div>
+            </div>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+              <span>Medium</span>
+              <span class="mono">{{ priority_dist.get('medium', 0) }}</span>
+            </div>
+            <div style="height:8px;background:var(--bg);border-radius:4px;overflow:hidden;">
+              <div style="height:100%;background:var(--orange);width:{{ (priority_dist.get('medium', 0) / (priority_dist.values()|sum if priority_dist.values()|sum > 0 else 1) * 100)|round }}%;"></div>
+            </div>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+              <span>Normal</span>
+              <span class="mono">{{ priority_dist.get('normal', 0) }}</span>
+            </div>
+            <div style="height:8px;background:var(--bg);border-radius:4px;overflow:hidden;">
+              <div style="height:100%;background:var(--blue);width:{{ (priority_dist.get('normal', 0) / (priority_dist.values()|sum if priority_dist.values()|sum > 0 else 1) * 100)|round }}%;"></div>
+            </div>
+          </div>
+        {% else %}
+        <p style="color:var(--muted);font-size:13px;">No flag data available</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Entity Type Distribution -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-layer-group" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Entity Type Distribution (Open Flags)
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if type_dist %}
+          {% for entity_type, count in type_dist.items() %}
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+            <span style="font-weight:500;">{{ entity_type|replace('_', ' ')|title }}</span>
+            <span class="badge badge-role">{{ count }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+        <p style="color:var(--muted);font-size:13px;">No entity data available</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: TOP FLAGGERS & DAILY OPENS -->
+  <div>
+    <!-- Top Flaggers -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-user-tag" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Top Flaggers (30d)
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if top_flaggers %}
+          {% for flagger in top_flaggers %}
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-lt);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:11px;color:var(--accent-dk);text-transform:uppercase;">
+              {{ flagger.user.username[0] if flagger.user else '?' }}
+            </div>
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:13px;">{{ flagger.user.username if flagger.user else 'Unknown' }}</div>
+              <div style="font-size:11px;color:var(--muted);">{{ flagger.user.email if flagger.user else '' }}</div>
+            </div>
+            <span class="badge badge-role">{{ flagger.count }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+        <p style="color:var(--muted);font-size:13px;">No flagger data available</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Daily Opens -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-chart-line" style="background:var(--green-lt);color:var(--green);"></i>
+          Daily Flag Opens (14d)
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if daily_opens %}
+          <div style="display:flex;align-items:flex-end;gap:4px;height:120px;padding:8px 0;">
+            {% for day in daily_opens %}
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+              <div style="width:100%;background:var(--accent);border-radius:2px 2px 0 0;min-height:4px;" style="height:{{ (day.count / (daily_opens|map(attribute='count')|max if daily_opens|map(attribute='count')|max > 0 else 1) * 100) }}px;"></div>
+              <span style="font-size:9px;color:var(--muted);text-align:center;">{{ day.date }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+        <p style="color:var(--muted);font-size:13px;">No daily data available</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPeriod(period) {
+  // Simple toggle for demo - in production, you'd fetch new data
+  document.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+}
+</script>
+{% endblock %}

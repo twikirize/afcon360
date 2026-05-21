@@ -1,0 +1,745 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Booking: {{ booking.booking_reference }} — AFCON360{% endblock %}
+
+{% block topbar_title %}Booking Details{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_bookings') }}">Bookings</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">{{ booking.booking_reference }}</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">{{ booking.booking_reference }}</h1>
+    <p class="page-subtitle">{{ booking.service_type.replace('_', ' ').title() }}</p>
+  </div>
+  <div class="action-buttons">
+    {% if booking.status == 'disputed' %}
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='approve') }}" style="display:inline;">
+      <button type="submit" class="btn btn-success" onclick="return confirm('Resolve this dispute in favor of customer?')">
+        <i class="fas fa-check"></i> Resolve Dispute
+      </button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='flag') }}" style="display:inline;">
+      <input type="hidden" name="reason" value="Flagged for review">
+      <input type="hidden" name="priority" value="medium">
+      <button type="submit" class="btn btn-outline">
+        <i class="fas fa-flag"></i> Flag
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="col-layout-2-1">
+  <!-- Main Content -->
+  <div>
+    <!-- Booking Information -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-calendar-alt" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Booking Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Booking Reference</div>
+            <div class="info-value mono">{{ booking.booking_reference }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Service Type</div>
+            <div class="info-value">{{ booking.service_type.replace('_', ' ').title() }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Status</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 
+                'red' if booking.status == 'disputed' 
+                else 'green' if booking.status == 'confirmed'
+                else 'blue' if booking.status == 'in_progress'
+                else 'amber' if booking.status in ['pending_payment', 'driver_en_route']
+                else 'gray' if booking.status == 'cancelled'
+                else 'gray' }}">
+                {{ booking.status.replace('_', ' ').title() }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Created</div>
+            <div class="info-value">{{ booking.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          </div>
+          {% if booking.scheduled_at %}
+          <div class="info-item">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">{{ booking.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          </div>
+          {% endif %}
+          {% if booking.completed_at %}
+          <div class="info-item">
+            <div class="info-label">Completed</div>
+            <div class="info-value">{{ booking.completed_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          </div>
+          {% endif %}
+          {% if booking.total_amount %}
+          <div class="info-item">
+            <div class="info-label">Total Amount</div>
+            <div class="info-value">{{ booking.total_amount }} {{ booking.currency or 'USD' }}</div>
+          </div>
+          {% endif %}
+          {% if booking.payment_status %}
+          <div class="info-item">
+            <div class="info-label">Payment Status</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 
+                'green' if booking.payment_status == 'captured'
+                else 'amber' if booking.payment_status == 'pending'
+                else 'red' if booking.payment_status == 'failed'
+                else 'gray' }}">
+                {{ booking.payment_status.replace('_', ' ').title() }}
+              </span>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Route Information -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-route" style="background:var(--green-lt);color:var(--green);"></i>
+          Route Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="route-section">
+          <div class="route-point pickup">
+            <div class="route-icon">
+              <i class="fas fa-map-marker-alt"></i>
+            </div>
+            <div class="route-content">
+              <div class="route-label">Pickup Location</div>
+              <div class="route-address">{{ booking.pickup_address }}</div>
+              {% if booking.pickup_coordinates %}
+              <div class="route-coords">{{ booking.pickup_coordinates }}</div>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="route-connector">
+            <i class="fas fa-arrow-down"></i>
+          </div>
+          
+          <div class="route-point dropoff">
+            <div class="route-icon">
+              <i class="fas fa-flag-checkered"></i>
+            </div>
+            <div class="route-content">
+              <div class="route-label">Dropoff Location</div>
+              <div class="route-address">{{ booking.dropoff_address }}</div>
+              {% if booking.dropoff_coordinates %}
+              <div class="route-coords">{{ booking.dropoff_coordinates }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        {% if booking.estimated_distance_km %}
+        <div class="route-stats">
+          <div class="stat-item">
+            <div class="stat-label">Estimated Distance</div>
+            <div class="stat-value">{{ booking.estimated_distance_km }} km</div>
+          </div>
+          {% if booking.estimated_duration_minutes %}
+          <div class="stat-item">
+            <div class="stat-label">Estimated Duration</div>
+            <div class="stat-value">{{ booking.estimated_duration_minutes }} minutes</div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Customer Information -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-user" style="background:var(--amber-lt);color:var(--amber);"></i>
+          Customer Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="customer-info">
+          <div class="customer-avatar">
+            <i class="fas fa-user"></i>
+          </div>
+          <div class="customer-details">
+            <div class="customer-name">
+              {% if booking.customer_name %}
+                {{ booking.customer_name }}
+              {% else %}
+                Customer #{{ booking.customer_id }}
+              {% endif %}
+            </div>
+            {% if booking.customer_email %}
+            <div class="customer-email">{{ booking.customer_email }}</div>
+            {% endif %}
+            {% if booking.customer_phone %}
+            <div class="customer-phone">{{ booking.customer_phone }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Driver Information -->
+    {% if booking.driver_id %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-id-card" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Driver Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="driver-info">
+          <div class="driver-avatar">
+            <i class="fas fa-user-tie"></i>
+          </div>
+          <div class="driver-details">
+            <div class="driver-name">Driver #{{ booking.driver_id }}</div>
+            <div class="driver-status">Assigned to this booking</div>
+            <a href="#" class="driver-link">View Driver Profile</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Dispute Information -->
+    {% if booking.status == 'disputed' %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-exclamation-triangle" style="background:var(--red-lt);color:var(--red);"></i>
+          Dispute Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="dispute-info">
+          {% if booking.dispute_reason %}
+          <div class="dispute-reason">
+            <div class="dispute-label">Dispute Reason</div>
+            <div class="dispute-text">{{ booking.dispute_reason }}</div>
+          </div>
+          {% endif %}
+          {% if booking.dispute_description %}
+          <div class="dispute-description">
+            <div class="dispute-label">Description</div>
+            <div class="dispute-text">{{ booking.dispute_description }}</div>
+          </div>
+          {% endif %}
+          {% if booking.disputed_at %}
+          <div class="dispute-timestamp">
+            <div class="dispute-label">Dispute Filed</div>
+            <div class="dispute-text">{{ booking.disputed_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Sidebar -->
+  <div>
+    <!-- Flags -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Flags ({{ booking_flags|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if booking_flags %}
+          <div class="flag-list">
+            {% for flag in booking_flags %}
+            <div class="flag-item">
+              <div class="flag-priority {{ flag.priority }}">
+                <i class="fas fa-flag"></i>
+              </div>
+              <div class="flag-content">
+                <div class="flag-reason">{{ flag.reason[:100] }}{% if flag.reason|length > 100 %}...{% endif %}</div>
+                <div class="flag-date">{{ flag.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-shield-alt" style="font-size:32px;color:var(--muted);margin-bottom:12px;"></i>
+            <div>No flags</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-clock" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Booking Timeline
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="timeline">
+          <div class="timeline-item completed">
+            <div class="timeline-icon">
+              <i class="fas fa-check"></i>
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-title">Booking Created</div>
+              <div class="timeline-time">{{ booking.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            </div>
+          </div>
+          
+          {% if booking.scheduled_at %}
+          <div class="timeline-item {% if booking.created_at < booking.scheduled_at %}completed{% endif %}">
+            <div class="timeline-icon">
+              <i class="fas fa-calendar"></i>
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-title">Scheduled</div>
+              <div class="timeline-time">{{ booking.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if booking.driver_id %}
+          <div class="timeline-item {% if booking.status in ['assigned', 'driver_en_route', 'in_progress', 'completed'] %}completed{% endif %}">
+            <div class="timeline-icon">
+              <i class="fas fa-user-tie"></i>
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-title">Driver Assigned</div>
+              <div class="timeline-time">Driver #{{ booking.driver_id }}</div>
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if booking.status == 'disputed' %}
+          <div class="timeline-item current">
+            <div class="timeline-icon">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-title">Dispute Filed</div>
+              <div class="timeline-time">{{ booking.disputed_at.strftime('%Y-%m-%d %H:%M') if booking.disputed_at else 'Unknown' }}</div>
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if booking.completed_at %}
+          <div class="timeline-item completed">
+            <div class="timeline-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-title">Completed</div>
+              <div class="timeline-time">{{ booking.completed_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-bolt" style="background:var(--amber-lt);color:var(--amber);"></i>
+          Quick Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="action-list">
+          {% if booking.status == 'disputed' %}
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='approve') }}">
+            <button type="submit" class="btn btn-success btn-block" onclick="return confirm('Resolve this dispute in favor of customer?')">
+              <i class="fas fa-check"></i> Resolve Dispute
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='reject') }}">
+            <button type="submit" class="btn btn-danger btn-block" onclick="return confirm('Reject this dispute?')">
+              <i class="fas fa-times"></i> Reject Dispute
+            </button>
+          </form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='flag') }}">
+            <input type="hidden" name="reason" value="Flagged for review">
+            <input type="hidden" name="priority" value="medium">
+            <button type="submit" class="btn btn-outline btn-block">
+              <i class="fas fa-flag"></i> Flag Booking
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.info-value {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.info-value.mono {
+  font-family: var(--font-mono);
+}
+
+.route-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.route-point {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.route-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.route-point.pickup .route-icon {
+  background: rgba(74,222,128,0.15);
+  color: var(--green);
+}
+
+.route-point.dropoff .route-icon {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.route-content {
+  flex: 1;
+}
+
+.route-label {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.route-address {
+  color: var(--text);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.route-coords {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.route-connector {
+  text-align: center;
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.route-stats {
+  display: flex;
+  gap: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.customer-info, .driver-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.customer-avatar, .driver-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent-lt);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.customer-details, .driver-details {
+  flex: 1;
+}
+
+.customer-name, .driver-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.customer-email, .customer-phone, .driver-status {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.driver-link {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.driver-link:hover {
+  text-decoration: underline;
+}
+
+.dispute-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dispute-reason, .dispute-description, .dispute-timestamp {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dispute-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.dispute-text {
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.flag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flag-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.flag-priority {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.flag-priority.critical {
+  background: rgba(248,113,113,0.15);
+  color: var(--red);
+}
+
+.flag-priority.high {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.flag-priority.medium {
+  background: rgba(96,165,250,0.15);
+  color: var(--blue);
+}
+
+.flag-priority.low {
+  background: rgba(107,107,128,0.15);
+  color: var(--muted);
+}
+
+.flag-content {
+  flex: 1;
+}
+
+.flag-reason {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.flag-date {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timeline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.timeline-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.timeline-item.completed .timeline-icon {
+  background: rgba(74,222,128,0.15);
+  color: var(--green);
+}
+
+.timeline-item.current .timeline-icon {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.timeline-content {
+  flex: 1;
+}
+
+.timeline-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.timeline-time {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-purple { background: rgba(196,181,253,0.15); color: var(--purple); border: 1px solid rgba(196,181,253,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+{% endblock %}

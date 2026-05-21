@@ -155,7 +155,7 @@
 function bulkApprove() {
     if (!confirm('Approve all pending items? This action cannot be undone.')) return;
     
-    fetch('{{ safe_url('url_for\(['"]accommodation.admin.moderate_action", entity_type="property", action="approve", id=0) }}', {
+    fetch('{{ safe_url('accommodation.admin.moderate_action', entity_type="property", action="approve", id=0) }}', {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token() }}'
@@ -176,7 +176,7 @@ function bulkReject() {
     const reason = prompt('Enter rejection reason for bulk rejection:');
     if (!reason) return;
     
-    fetch('{{ safe_url('url_for\(['"]accommodation.admin.moderate_action", entity_type="property", action="reject", id=0) }}', {
+    fetch('{{ safe_url('accommodation.admin.moderate_action', entity_type="property", action="reject", id=0) }}', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',

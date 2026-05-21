@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Fan Dashboard - {{ app_name }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fan/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+
+{# ── ACCOUNT CREATION PROMPT (shown only before account is created) ── #}
+{% if not nav_profile_completed %}
+<div class="container-fluid mt-3 mb-1">
+  <div class="alert d-flex align-items-center gap-3 mb-0"
+       style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+              border:none;border-radius:12px;padding:20px 24px;color:#fff;">
+    <div style="font-size:2rem;">👋</div>
+    <div style="flex:1;">
+      <strong style="font-size:16px;">Welcome to AFCON 360, {{ current_user.username }}!</strong>
+      <p class="mb-0 mt-1" style="font-size:13px;opacity:0.85;">
+        You're in. Browse events, accommodation and transport.
+        When you're ready to book or provide services —
+        <strong>create your account</strong> to unlock everything.
+      </p>
+    </div>
+    <a href="{{ url_for('onboarding.choose') }}"
+       class="btn btn-sm flex-shrink-0"
+       style="background:#1D9E75;color:#fff;font-weight:600;
+              border-radius:8px;padding:8px 18px;white-space:nowrap;">
+      Create Account →
+    </a>
+  </div>
+</div>
+{% endif %}
+{# ── END ACCOUNT CREATION PROMPT ──────────────────────────────────── #}
+
+<div class="dashboard-container outlook-layout">
+    {% if driver_status == 'pending' %}
+    <div class="status-banner status-banner--pending">🚗 Driver application under review.</div>
+    {% elif driver_status == 'rejected' %}
+    <div class="status-banner status-banner--rejected">⚠️ Driver application needs attention. <a href="{{ url_for('onboarding.driver_onboarding') }}">Resubmit</a>.</div>
+    {% elif driver_status == 'verified' %}
+    <div class="status-banner status-banner--success">✅ You are a verified driver. <a href="{{ safe_url('transport.driver_dashboard') }}">Driver dashboard</a>.</div>
+    {% endif %}
+
+    {% if wallet_data.enabled %}
+    <div class="wallet-quick-link"><a href="{{ safe_url('wallet.wallet_dashboard') }}">Open Wallet</a></div>
+    {% else %}
+    <div class="wallet-prompt"><a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.activate_wallet') }}{% else %}#{% endif %}">Activate Wallet</a></div>
+    {% endif %}
+
+    {% if tournament_mode %}
+    {# ── TOURNAMENT SKIN — only shown during AFCON ──────────── #}
+    {% if profile and profile.fan_team %}
+    <div class="fan-allegiance-badge">
+      Supporting: <strong>{{ profile.fan_team }}</strong>
+    </div>
+    {% else %}
+    <div class="fan-declare-prompt">
+      <p>Which team are you supporting at AFCON?</p>
+      <a href="{{ url_for('profile.edit_profile') }}#fan-team" class="btn btn-sm btn-outline-success">
+        Declare your team
+      </a>
+    </div>
+    {% endif %}
+    {# Match feed, fan events, fan trips go here — all inside this block #}
+    {% endif %}
+    {# ── END TOURNAMENT SKIN ─────────────────────────────────── #}
+
+    <!-- LEFT PANE - Static Navigation -->
+    <aside class="left-pane" id="leftPane">
+        {% include "fan/components/left_pane.html" %}
+    </aside>
+
+    <!-- MIDDLE PANE - Content List -->
+    <section class="middle-pane" id="middlePane">
+        {% include "fan/components/middle_pane.html" %}
+    </section>
+
+    <!-- RIGHT PANE - Detail View -->
+    <section class="right-pane" id="rightPane">
+        {% include "fan/components/right_pane.html" %}
+    </section>
+
+    <!-- Mobile Navigation Bar -->
+    <nav class="mobile-nav" id="mobileNav">
+        {% include "fan/components/mobile_nav.html" %}
+    </nav>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/fan/dashboard.js') }}"></script>
+<script>
+    // Initialize the Outlook-style dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof FanDashboard !== 'undefined') {
+            window.dashboard = new FanDashboard();
+        }
+    });
+</script>
+{% endblock %}

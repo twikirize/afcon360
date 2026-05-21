@@ -1,0 +1,383 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Moderator Training — AFCON360{% endblock %}
+
+{% block topbar_title %}Moderator Training{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Training</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Moderator Training System</h1>
+    <p class="page-subheading">Professional development and certification for content moderators</p>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      <i class="fas fa-graduation-cap" style="margin-right:4px;"></i>
+      Level {{ user_certification.level if user_certification else 1 }}
+    </div>
+    <div style="background:var(--purple-lt);color:var(--purple);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      {{ user_certification.credits_earned if user_certification else 0 }} Credits
+    </div>
+    <a href="{{ url_for('admin.moderator.training_content') }}" class="btn btn-primary btn-sm">
+      <i class="fas fa-book-open"></i> Course Materials
+    </a>
+  </div>
+</div>
+
+<!-- User Certification Status -->
+{% if user_certification %}
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-award" style="background:var(--green-lt);color:var(--green);"></i>
+      Your Certification Status
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:16px;align-items:center;">
+      <div>
+        <div style="font-size:18px;font-weight:600;color:var(--ink);margin-bottom:4px;">
+          {{ user_certification.certification_name }}
+        </div>
+        <div style="font-size:14px;color:var(--muted);">
+          Issued: {{ user_certification.issued_at.strftime('%Y-%m-%d') if user_certification.issued_at else 'Not issued' }}
+        </div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:var(--accent);">{{ user_certification.level }}</div>
+        <div style="font-size:12px;color:var(--muted);">Current Level</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:var(--purple);">{{ user_certification.credits_earned }}</div>
+        <div style="font-size:12px;color:var(--muted);">Credits Earned</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:var(--orange);">{{ user_certification.modules_completed }}</div>
+        <div style="font-size:12px;color:var(--muted);">Modules Completed</div>
+      </div>
+    </div>
+    {% if user_certification.next_level_requirements %}
+    <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:6px;border-left:4px solid var(--accent);">
+      <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px;">Next Level Requirements</div>
+      <div style="font-size:12px;color:var(--muted);">
+        {{ user_certification.next_level_requirements.credits_needed }} more credits • 
+        {{ user_certification.next_level_requirements.modules_needed }} more modules • 
+        {{ user_certification.next_level_requirements.assessments_needed }} more assessments
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Training Modules -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-book" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Training Modules
+    </div>
+    <div style="display:flex;gap:8px;">
+      <select class="form-control" style="width: auto;" id="levelFilter">
+        <option value="">All Levels</option>
+        <option value="1">Level 1</option>
+        <option value="2">Level 2</option>
+        <option value="3">Level 3</option>
+        <option value="4">Level 4</option>
+        <option value="5">Level 5</option>
+      </select>
+      <select class="form-control" style="width: auto;" id="statusFilter">
+        <option value="">All Status</option>
+        <option value="not_started">Not Started</option>
+        <option value="in_progress">In Progress</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;">
+      {% for module in training_modules %}
+      <div class="training-module" data-level="{{ module.level }}" data-status="{{ module.status }}">
+        <div class="module-header">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <div style="font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;">
+                {{ module.name }}
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">{{ module.description }}</div>
+            </div>
+            <span class="badge badge-{{ module.status }}">{{ module.status.replace('_', ' ') }}</span>
+          </div>
+        </div>
+        
+        <div style="margin:12px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:12px;color:var(--muted);">Progress</span>
+            <span style="font-size:12px;font-weight:600;">{{ module.progress }}%</span>
+          </div>
+          <div style="height:6px;background:var(--bg);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:{{ module.progress }}%;background:var(--accent);border-radius:3px;transition:width 0.3s;"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div style="display:flex;gap:8px;">
+            <span class="badge badge-type">Level {{ module.level }}</span>
+            <span class="mono" style="font-size:11px;">{{ module.estimated_hours }}h</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">
+            {{ module.credits }} credits
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          {% if module.status == 'not_started' %}
+          <button class="btn btn-primary btn-sm" onclick="startModule({{ module.id }})">
+            <i class="fas fa-play"></i> Start
+          </button>
+          {% elif module.status == 'in_progress' %}
+          <button class="btn btn-outline btn-sm" onclick="continueModule({{ module.id }})">
+            <i class="fas fa-play"></i> Continue
+          </button>
+          {% elif module.status == 'completed' %}
+          <button class="btn btn-success btn-sm" disabled>
+            <i class="fas fa-check"></i> Completed
+          </button>
+          {% endif %}
+          <button class="btn btn-ghost btn-sm" onclick="viewModuleDetails({{ module.id }})">
+            <i class="fas fa-info-circle"></i> Details
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Upcoming Assessments -->
+<div class="col-layout-8-4">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-clipboard-check" style="background:var(--orange-lt);color:var(--orange);"></i>
+        Upcoming Assessments
+      </div>
+    </div>
+    <div class="panel-body">
+      {% if upcoming_assessments %}
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        {% for assessment in upcoming_assessments %}
+        <div style="padding:12px;background:var(--bg);border-radius:6px;border-left:4px solid var(--orange);">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+            <div>
+              <div style="font-size:14px;font-weight:600;color:var(--ink);">{{ assessment.name }}</div>
+              <div style="font-size:12px;color:var(--muted);">{{ assessment.module_name }}</div>
+            </div>
+            <span class="badge badge-{{ assessment.priority }}">{{ assessment.priority }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:12px;color:var(--muted);">
+              <i class="fas fa-clock"></i> {{ assessment.due_date.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+            <button class="btn btn-outline btn-xs" onclick="startAssessment({{ assessment.id }})">
+              Start Assessment
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:40px;color:var(--muted);">
+        <i class="fas fa-clipboard-check" style="font-size:32px;margin-bottom:12px;"></i>
+        <p>No upcoming assessments</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <!-- Learning Path -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-route" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Recommended Learning Path
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if recommended_path %}
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          {% for step in recommended_path %}
+          <div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg);border-radius:6px;">
+            <div style="width:24px;height:24px;border-radius:50%;background:{{ step.color }};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">
+              {{ step.order }}
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:12px;font-weight:600;color:var(--ink);">{{ step.module_name }}</div>
+              <div style="font-size:11px;color:var(--muted);">{{ step.reason }}</div>
+            </div>
+            {% if step.completed %}
+            <i class="fas fa-check-circle" style="color:var(--green);"></i>
+            {% else %}
+            <i class="fas fa-circle" style="color:var(--muted-2);"></i>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:20px;color:var(--muted);">
+          <i class="fas fa-route" style="font-size:24px;margin-bottom:8px;"></i>
+          <p style="font-size:12px;">Complete current modules to unlock new path</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Training Stats -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-chart-bar" style="background:var(--green-lt);color:var(--green);"></i>
+          Your Training Stats
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="text-align:center;padding:12px;background:var(--bg);border-radius:6px;">
+            <div style="font-size:20px;font-weight:700;color:var(--accent);">{{ training_stats.total_hours if training_stats else 0 }}</div>
+            <div style="font-size:11px;color:var(--muted);">Hours Completed</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--bg);border-radius:6px;">
+            <div style="font-size:20px;font-weight:700;color:var(--blue);">{{ training_stats.assessment_score if training_stats else 0 }}%</div>
+            <div style="font-size:11px;color:var(--muted);">Avg Assessment Score</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--bg);border-radius:6px;">
+            <div style="font-size:20px;font-weight:700;color:var(--purple);">{{ training_stats.streak_days if training_stats else 0 }}</div>
+            <div style="font-size:11px;color:var(--muted);">Day Streak</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--bg);border-radius:6px;">
+            <div style="font-size:20px;font-weight:700;color:var(--orange);">{{ training_stats.rank if training_stats else 'N/A' }}</div>
+            <div style="font-size:11px;color:var(--muted);">Class Rank</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .training-module {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    transition: all 0.2s;
+  }
+
+  .training-module:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+  }
+
+  .module-header {
+    margin-bottom: 12px;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+
+  .stat-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+  }
+
+  .stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .stat-content {
+    flex: 1;
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 28px;
+    color: var(--ink);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+</style>
+
+<script>
+function startModule(moduleId) {
+  window.location.href = `/moderator/training/module/${moduleId}/start`;
+}
+
+function continueModule(moduleId) {
+  window.location.href = `/moderator/training/module/${moduleId}/continue`;
+}
+
+function viewModuleDetails(moduleId) {
+  window.location.href = `/moderator/training/module/${moduleId}`;
+}
+
+function startAssessment(assessmentId) {
+  window.location.href = `/moderator/training/assessment/${assessmentId}`;
+}
+
+// Filter functionality
+document.getElementById('levelFilter').addEventListener('change', filterModules);
+document.getElementById('statusFilter').addEventListener('change', filterModules);
+
+function filterModules() {
+  const levelFilter = document.getElementById('levelFilter').value;
+  const statusFilter = document.getElementById('statusFilter').value;
+  const modules = document.querySelectorAll('.training-module');
+  
+  modules.forEach(module => {
+    const moduleLevel = module.dataset.level;
+    const moduleStatus = module.dataset.status;
+    
+    const levelMatch = !levelFilter || moduleLevel === levelFilter;
+    const statusMatch = !statusFilter || moduleStatus === statusFilter;
+    
+    module.style.display = levelMatch && statusMatch ? 'block' : 'none';
+  });
+}
+</script>
+{% endblock %}

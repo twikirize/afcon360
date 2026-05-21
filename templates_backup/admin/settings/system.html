@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}System Settings - AFCON360 Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="fas fa-cogs"></i> System Settings
+                <small class="text-muted">Super Admin Only</small>
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- System Configuration -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-server"></i> System Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form id="systemConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label">Platform Name</label>
+                            <input type="text" class="form-control" name="platform_name" 
+                                   value="{{ config.get('PLATFORM_NAME', 'AFCON360') }}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Maintenance Mode</label>
+                            <select class="form-control" name="maintenance_mode">
+                                <option value="false" {{ 'selected' if config.get('MAINTENANCE_MODE', 'false') == 'false' }}>Disabled</option>
+                                <option value="true" {{ 'selected' if config.get('MAINTENANCE_MODE', 'false') == 'true' }}>Enabled</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Default Currency</label>
+                            <select class="form-control" name="default_currency">
+                                <option value="UGX" {{ 'selected' if config.get('DEFAULT_CURRENCY', 'UGX') == 'UGX' }}>UGX</option>
+                                <option value="USD" {{ 'selected' if config.get('DEFAULT_CURRENCY', 'UGX') == 'USD' }}>USD</option>
+                                <option value="EUR" {{ 'selected' if config.get('DEFAULT_CURRENCY', 'UGX') == 'EUR' }}>EUR</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Timezone</label>
+                            <select class="form-control" name="timezone">
+                                <option value="Africa/Kampala" {{ 'selected' if config.get('TIMEZONE', 'Africa/Kampala') == 'Africa/Kampala' }}>Africa/Kampala</option>
+                                <option value="Africa/Nairobi" {{ 'selected' if config.get('TIMEZONE', 'Africa/Kampala') == 'Africa/Nairobi' }}>Africa/Nairobi</option>
+                                <option value="Africa/Cairo" {{ 'selected' if config.get('TIMEZONE', 'Africa/Kampala') == 'Africa/Cairo' }}>Africa/Cairo</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="saveSystemConfig()">
+                            <i class="fas fa-save"></i> Save System Config
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Statistics -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-users"></i> User Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-6 mb-4">
+                            <div class="stat-box">
+                                <div class="stat-number">{{ stats.total_users }}</div>
+                                <div class="stat-label">Total Users</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="stat-box">
+                                <div class="stat-number">{{ stats.active_users }}</div>
+                                <div class="stat-label">Active Users</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="stat-box">
+                                <div class="stat-number">{{ stats.admin_users }}</div>
+                                <div class="stat-label">Admin Users</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="stat-box">
+                                <div class="stat-number">{{ stats.moderator_users }}</div>
+                                <div class="stat-label">Moderator Users</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Management -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-user-shield"></i> User Management</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users.items %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td>{{ user.username }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>
+                                        <span class="badge badge-{{ user.role }}">
+                                            {{ user.role|title }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if user.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="updateUserRole({{ user.id }}, '{{ user.role }}')">
+                                                <i class="fas fa-edit"></i> Role
+                                            </button>
+                                            {% if user.is_active %}
+                                            <button class="btn btn-sm btn-outline-warning" 
+                                                    onclick="toggleUserStatus({{ user.id }}, false)">
+                                                <i class="fas fa-ban"></i> Disable
+                                            </button>
+                                            {% else %}
+                                            <button class="btn btn-sm btn-outline-success" 
+                                                    onclick="toggleUserStatus({{ user.id }}, true)">
+                                                <i class="fas fa-check"></i> Enable
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {% if users.pages > 1 %}
+                    <nav>
+                        <ul class="pagination">
+                            {% if users.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('admin_settings.user_management', page=users.prev_num) }}">Previous</a>
+                            </li>
+                            {% endif %}
+                            
+                            {% for page_num in users.iter_pages() %}
+                            <li class="page-item {{ 'active' if page_num == users.page else '' }}">
+                                <a class="page-link" href="{{ url_for('admin_settings.user_management', page=page_num) }}">{{ page_num }}</a>
+                            </li>
+                            {% endfor %}
+                            
+                            {% if users.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('admin_settings.user_management', page=users.next_num) }}">Next</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.stat-box {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+.stat-number {
+    font-size: 2.5rem;
+    font-weight: bold;
+    line-height: 1;
+}
+.stat-label {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin-top: 5px;
+}
+.badge-super_admin { background-color: #dc3545; }
+.badge-admin { background-color: #fd7e14; }
+.badge-moderator { background-color: #20c997; }
+.badge-owner { background-color: #6f42c1; }
+</style>
+
+<script>
+function saveSystemConfig() {
+    const form = document.getElementById('systemConfigForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    
+    fetch('{{ url_for("admin_settings.save_system_settings") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+        } else {
+            showAlert('danger', result.error);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Failed to save system configuration');
+    });
+}
+
+function updateUserRole(userId, currentRole) {
+    const newRole = prompt('Enter new role (user, moderator, admin, super_admin):', currentRole);
+    if (!newRole) return;
+    
+    fetch(`{{ url_for("admin_settings.update_user_role", user_id=0) }}`.replace('0', userId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ role: newRole })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+            location.reload();
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function toggleUserStatus(userId, isActive) {
+    const action = isActive ? 'disable' : 'enable';
+    if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+    
+    // Implementation would depend on your user management system
+    showAlert('info', 'User status toggle functionality to be implemented');
+}
+
+function showAlert(type, message) {
+    // Implementation depends on your UI framework
+    alert(`${type.toUpperCase()}: ${message}`);
+}
+</script>
+{% endblock %}

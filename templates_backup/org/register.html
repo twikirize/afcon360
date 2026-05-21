@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Register Organization - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h2><i class="bi bi-building"></i> Register Your Organization</h2>
+                    <p class="mb-0">Join AFCON360 and unlock comprehensive management tools for your organization</p>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="org-registration-form">
+                        {{ form.hidden_tag() }}
+                        
+                        <!-- Organization Type Selection -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h5><i class="bi bi-info-circle"></i> What type of organization are you registering?</h5>
+                                <div class="alert alert-info">
+                                    <small>Choose the category that best describes your organization. This will determine the features and capabilities available to you.</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    {{ form.org_type.label(class="form-label") }}
+                                    {{ form.org_type(class="form-select", id="org-type-select") }}
+                                    {% if form.org_type.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.org_type.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div id="org-type-description" class="mt-4 p-3 bg-light rounded">
+                                    <small class="text-muted">Select an organization type to see details</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Basic Information -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h5><i class="bi bi-building"></i> Basic Information</h5>
+                                <hr>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-group mb-3">
+                                    {{ form.legal_name.label(class="form-label") }}
+                                    {{ form.legal_name(class="form-control", placeholder="Enter official organization name") }}
+                                    {% if form.legal_name.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.legal_name.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    {{ form.country.label(class="form-label") }}
+                                    {{ form.country(class="form-select") }}
+                                    {% if form.country.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.country.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    {{ form.region.label(class="form-label") }}
+                                    {{ form.region(class="form-control", placeholder="State/Province") }}
+                                    {% if form.region.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.region.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    {{ form.registration_no.label(class="form-label") }}
+                                    {{ form.registration_no(class="form-control", placeholder="Business registration number") }}
+                                    {% if form.registration_no.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.registration_no.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    {{ form.tax_id.label(class="form-label") }}
+                                    {{ form.tax_id(class="form-control", placeholder="Tax identification number") }}
+                                    {% if form.tax_id.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.tax_id.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contact Information -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h5><i class="bi bi-envelope"></i> Contact Information</h5>
+                                <hr>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    {{ form.contact_email.label(class="form-label") }}
+                                    {{ form.contact_email(class="form-control", placeholder="organization@example.com") }}
+                                    {% if form.contact_email.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.contact_email.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    {{ form.contact_phone.label(class="form-label") }}
+                                    {{ form.contact_phone(class="form-control", placeholder="+256 123 456 789") }}
+                                    {% if form.contact_phone.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.contact_phone.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-group mb-3">
+                                    {{ form.headquarters_address.label(class="form-label") }}
+                                    {{ form.headquarters_address(class="form-control", rows="3", placeholder="Enter full address") }}
+                                    {% if form.headquarters_address.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.headquarters_address.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    {{ form.website.label(class="form-label") }}
+                                    {{ form.website(class="form-control", placeholder="https://www.example.com") }}
+                                    {% if form.website.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.website.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    {{ form.vat_number.label(class="form-label") }}
+                                    {{ form.vat_number(class="form-control", placeholder="VAT registration number") }}
+                                    {% if form.vat_number.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.vat_number.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Requirements and Capabilities -->
+                        <div class="row mb-4" id="requirements-section" style="display: none;">
+                            <div class="col-12">
+                                <h5><i class="bi bi-shield-check"></i> Requirements & Capabilities</h5>
+                                <hr>
+                                <div id="requirements-content">
+                                    <!-- Requirements will be loaded dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Terms and Conditions -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h5><i class="bi bi-file-text"></i> Terms & Conditions</h5>
+                                <hr>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check mb-3">
+                                    {{ form.agree_terms(class="form-check-input") }}
+                                    {{ form.agree_terms.label(class="form-check-label") }}
+                                    {% if form.agree_terms.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.agree_terms.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="form-check mb-3">
+                                    {{ form.agree_privacy(class="form-check-input") }}
+                                    {{ form.agree_privacy.label(class="form-check-label") }}
+                                    {% if form.agree_privacy.errors %}
+                                        <div class="text-danger">
+                                            {% for error in form.agree_privacy.errors %}
+                                                <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="row">
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                                    <i class="bi bi-check-circle"></i> Register Organization
+                                </button>
+                                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-lg ms-2">
+                                    <i class="bi bi-arrow-left"></i> Cancel
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Organization type descriptions and requirements
+const orgTypeInfo = {
+    hotel: {
+        description: "Hotel and accommodation provider with room management, booking system, and guest services.",
+        features: ["Room Management", "Booking System", "Guest Services", "Payment Processing"],
+        requirements: ["Hospitality License", "Health & Safety Certificate", "Fire Safety Certificate"]
+    },
+    sports_team: {
+        description: "Sports team with player management, event participation, training facilities, and competition management.",
+        features: ["Player Management", "Event Creation", "Transport Management", "Accommodation Booking", "Wallet Services"],
+        requirements: ["Sports Federation Registration", "Team Roster", "Insurance Certificate", "Player Contracts"]
+    },
+    event_management: {
+        description: "Event management company with venue booking, ticketing, and event coordination services.",
+        features: ["Event Creation", "Venue Management", "Ticketing System", "Payment Processing", "Staff Management"],
+        requirements: ["Event Management License", "Insurance Certificate", "Venue Contracts", "Event Permits"]
+    },
+    transport_company: {
+        description: "Transportation company with fleet management, scheduling, and logistics services.",
+        features: ["Fleet Management", "Scheduling System", "Payment Processing", "Driver Management"],
+        requirements: ["Transport License", "Vehicle Registration", "Insurance Certificate", "Driver Certifications"]
+    },
+    tour_operator: {
+        description: "Tour operator with package creation, booking management, and tourism services.",
+        features: ["Tour Package Creation", "Booking Management", "Transport Management", "Accommodation Booking", "Payment Processing"],
+        requirements: ["Tourism License", "Insurance Certificate", "Tour Guide Certifications"]
+    },
+    corporate: {
+        description: "Corporate business entity with staff management, event hosting, and comprehensive services.",
+        features: ["Staff Management", "Event Creation", "Transport Management", "Accommodation Booking", "Wallet Services"],
+        requirements: ["Business Registration", "Tax Certificate", "Company Documents"]
+    }
+};
+
+// Update organization type description and requirements
+document.getElementById('org-type-select').addEventListener('change', function() {
+    const selectedType = this.value;
+    const descriptionDiv = document.getElementById('org-type-description');
+    const requirementsSection = document.getElementById('requirements-section');
+    const requirementsContent = document.getElementById('requirements-content');
+    
+    if (selectedType && orgTypeInfo[selectedType]) {
+        const info = orgTypeInfo[selectedType];
+        
+        // Update description
+        descriptionDiv.innerHTML = `
+            <h6 class="text-primary">${selectedType.replace('_', ' ').toUpperCase()}</h6>
+            <p class="mb-2">${info.description}</p>
+            <div class="mt-2">
+                <strong>Key Features:</strong>
+                <ul class="small mb-2">
+                    ${info.features.map(feature => `<li>${feature}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+        
+        // Update requirements
+        if (info.requirements && info.requirements.length > 0) {
+            requirementsSection.style.display = 'block';
+            requirementsContent.innerHTML = `
+                <div class="alert alert-warning">
+                    <h6><i class="bi bi-exclamation-triangle"></i> Required Documents & Licenses</h6>
+                    <p class="mb-2">This organization type requires the following documents:</p>
+                    <ul>
+                        ${info.requirements.map(req => `<li><strong>${req}</strong></li>`).join('')}
+                    </ul>
+                    <p class="mb-0"><small>You'll be able to upload these documents after registration.</small></p>
+                </div>
+            `;
+        } else {
+            requirementsSection.style.display = 'none';
+        }
+    } else {
+        descriptionDiv.innerHTML = '<small class="text-muted">Select an organization type to see details</small>';
+        requirementsSection.style.display = 'none';
+    }
+});
+
+// Form validation feedback
+document.getElementById('org-registration-form').addEventListener('submit', function(e) {
+    const submitBtn = document.getElementById('submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processing...';
+    
+    // Re-enable after 5 seconds in case of issues
+    setTimeout(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Register Organization';
+    }, 5000);
+});
+</script>
+{% endblock %}

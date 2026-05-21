@@ -1,0 +1,255 @@
+{% extends "admin/owner/base.html" %}
+
+{% block title %}Compliance Dashboard - AFCON360{% endblock %}
+
+{% block owner_content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-shield-check"></i> Compliance Officer Dashboard</h2>
+        <div>
+            <span class="badge bg-danger fs-6">High Privilege</span>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h1 class="display-6">{{ pending_kyc|length }}</h1>
+                    <h6>Pending KYC</h6>
+                    <small>Awaiting verification</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h1 class="display-6">{{ pending_kyb|length }}</h1>
+                    <h6>Pending KYB</h6>
+                    <small>Organizations</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <h1 class="display-6">{{ suspicious_events|length }}</h1>
+                    <h6>Suspicious Events</h6>
+                    <small>Last 7 days</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h1 class="display-6">{{ large_transactions|length }}</h1>
+                    <h6>Large Transactions</h6>
+                    <small>UGX 5M+</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending KYC Queue -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-person-check"></i> Pending KYC Verification</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if pending_kyc %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Tier</th>
+                                    <th>Submitted</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for kyc in pending_kyc[:5] %}
+                                <tr>
+                                    <td>{{ kyc.user.username if kyc.user else 'Unknown' }}</td>
+                                    <td><span class="badge bg-secondary">Tier {{ kyc.tier }}</span></td>
+                                    <td>{{ kyc.created_at.strftime('%Y-%m-%d') if kyc.created_at else 'N/A' }}</td>
+                                    <td>
+                                        <a href="#" class="btn btn-sm btn-outline-primary">
+                                            Review
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                        <p class="text-muted mt-2">No pending KYC verifications</p>
+                    </div>
+                    {% endif %}
+                    <div class="card-footer">
+                        <a href="#" class="btn btn-warning">
+                            View All ({{ pending_kyc|length }})
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending KYB Queue -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-building"></i> Pending KYB Verification</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if pending_kyb %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Organization</th>
+                                    <th>Reg. Number</th>
+                                    <th>Submitted</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for kyb in pending_kyb[:5] %}
+                                <tr>
+                                    <td>{{ kyb.organisation.name if kyb.organisation else 'Unknown' }}</td>
+                                    <td>{{ kyb.registration_number|truncate(10) }}</td>
+                                    <td>{{ kyb.created_at.strftime('%Y-%m-%d') if kyb.created_at else 'N/A' }}</td>
+                                    <td>
+                                        <a href="#" class="btn btn-sm btn-outline-info">
+                                            Review
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                        <p class="text-muted mt-2">No pending KYB verifications</p>
+                    </div>
+                    {% endif %}
+                    <div class="card-footer">
+                        <a href="#" class="btn btn-info">
+                            View All ({{ pending_kyb|length }})
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suspicious Activity -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Recent Suspicious Activity</h5>
+                </div>
+                <div class="card-body">
+                    {% if suspicious_events %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Event Type</th>
+                                    <th>Severity</th>
+                                    <th>Description</th>
+                                    <th>User ID</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for event in suspicious_events[:10] %}
+                                <tr class="{% if event.severity == 'CRITICAL' %}table-danger{% elif event.severity == 'HIGH' %}table-warning{% endif %}">
+                                    <td>{{ event.created_at.strftime('%H:%M') if event.created_at else 'N/A' }}</td>
+                                    <td>{{ event.event_type|replace('_', ' ')|title }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'danger' if event.severity == 'CRITICAL' else 'warning' if event.severity == 'HIGH' else 'info' }}">
+                                            {{ event.severity|title if event.severity else 'Unknown' }}
+                                        </span>
+                                    </td>
+                                    <td>{{ event.description|truncate(50) }}</td>
+                                    <td>{{ event.user_id or 'N/A' }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger">Investigate</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                        <p class="text-muted mt-2">No suspicious activity detected</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Reviews -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Pending Compliance Reviews</h5>
+                </div>
+                <div class="card-body">
+                    {% if pending_reviews %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Entity</th>
+                                    <th>Action</th>
+                                    <th>Waiting</th>
+                                    <th>User</th>
+                                    <th>Details</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for review in pending_reviews[:10] %}
+                                <tr>
+                                    <td>{{ review.entity_type|title }} {{ review.entity_id|truncate(8) }}</td>
+                                    <td>{{ review.action|replace('_', ' ')|title }}</td>
+                                    <td>{{ "%.1f"|format(review.waiting_hours) }} hours</td>
+                                    <td>{{ review.user_id or 'System' }}</td>
+                                    <td>{{ review.details|truncate(30) if review.details else 'No details' }}</td>
+                                    <td>
+                                        <a href="#" class="btn btn-sm btn-outline-primary">Review</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                        <p class="text-muted mt-2">No pending compliance reviews</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

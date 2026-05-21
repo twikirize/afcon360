@@ -1,0 +1,65 @@
+﻿{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Webhook Event Detail — AFCON360{% endblock %}
+
+{% block topbar_title %}Webhook Event Detail{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Webhook Event Detail</h1>
+    <p class="page-subheading">Event ID: {{ event_id }}</p>
+  </div>
+  <div class="action-group">
+    <button id="retry-btn" class="btn btn-warning">
+      <i class="fas fa-redo"></i> Retry
+    </button>
+    <a href="/admin/wallet/webhooks" class="btn btn-ghost">
+      <i class="fas fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body" style="padding:24px;">
+    <pre id="event-detail" style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:16px;border-radius:var(--radius);overflow-x:auto;">Loading...</pre>
+  </div>
+</div>
+
+<script>
+const eventId = {{ event_id | tojson }};
+async function loadDetail(){
+    const res = await fetch(`/api/admin/wallet/webhooks/${eventId}`);
+    if(!res.ok){
+        document.getElementById('event-detail').innerText = 'Failed to load event';
+        return;
+    }
+    const e = await res.json();
+    document.getElementById('event-detail').innerHTML = JSON.stringify(e, null, 2);
+}
+
+async function retry(){
+    if(!confirm('Retry this event?')) return;
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(`/api/admin/wallet/webhooks/${eventId}/retry`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrf
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({csrf_token: csrf})
+    });
+    if(res.ok){
+        alert('Retry queued');
+        loadDetail();
+    } else {
+        const body = await res.json().catch(()=>({}));
+        alert('Error: '+(body.error||res.statusText));
+    }
+}
+
+document.getElementById('retry-btn').addEventListener('click', retry);
+document.addEventListener('DOMContentLoaded', loadDetail);
+</script>
+{% endblock %}

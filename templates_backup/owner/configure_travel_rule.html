@@ -1,0 +1,244 @@
+{% extends "owner/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Travel Rule Compliance</h1>
+            <p class="text-muted">Configure FATF Travel Rule for crypto/fiat transfers</p>
+        </div>
+        <div>
+            <a href="{{ url_for('owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Capabilities
+            </a>
+        </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Travel Rule Settings</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="row g-3">
+                <!-- General Settings -->
+                <div class="col-12">
+                    <h6 class="text-primary mb-3">General Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="enabled" id="enabled" 
+                               {% if config and config.enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="enabled">
+                            Enable Travel Rule Compliance
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Description</label>
+                    <input type="text" name="description" class="form-control" 
+                           value="{{ config.description if config else '' }}" 
+                           placeholder="Description of this configuration">
+                </div>
+
+                <!-- Thresholds -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Thresholds (USD)</h6>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Fiat Transfer Threshold</label>
+                    <input type="number" name="fiat_threshold_usd" class="form-control" 
+                           value="{{ config.fiat_threshold_usd if config else 1000 }}" min="0">
+                    <small class="text-muted">USD threshold for fiat transfers</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Crypto Transfer Threshold</label>
+                    <input type="number" name="crypto_threshold_usd" class="form-control" 
+                           value="{{ config.crypto_threshold_usd if config else 1000 }}" min="0">
+                    <small class="text-muted">USD threshold for crypto transfers</small>
+                </div>
+
+                <!-- Jurisdiction Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Jurisdiction Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="apply_to_all_jurisdictions" id="apply_to_all_jurisdictions" 
+                               {% if not config or config.apply_to_all_jurisdictions %}checked{% endif %}>
+                        <label class="form-check-label" for="apply_to_all_jurisdictions">
+                            Apply to All Jurisdictions
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Exempted Jurisdictions</label>
+                    <input type="text" name="exempted_jurisdictions" class="form-control" 
+                           value="{{ config.exempted_jurisdictions if config else '' }}" 
+                           placeholder="US,GB,CA (comma-separated country codes)">
+                    <small class="text-muted">Countries exempt from Travel Rule</small>
+                </div>
+
+                <!-- Data Collection Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Data Collection</h6>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="collect_originator_info" id="collect_originator_info" 
+                               {% if not config or config.collect_originator_info %}checked{% endif %}>
+                        <label class="form-check-label" for="collect_originator_info">
+                            Collect Originator Info
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="collect_beneficiary_info" id="collect_beneficiary_info" 
+                               {% if not config or config.collect_beneficiary_info %}checked{% endif %}>
+                        <label class="form-check-label" for="collect_beneficiary_info">
+                            Collect Beneficiary Info
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="collect_transaction_purpose" id="collect_transaction_purpose" 
+                               {% if not config or config.collect_transaction_purpose %}checked{% endif %}>
+                        <label class="form-check-label" for="collect_transaction_purpose">
+                            Collect Transaction Purpose
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Verification Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Verification</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="verify_originator_identity" id="verify_originator_identity" 
+                               {% if not config or config.verify_originator_identity %}checked{% endif %}>
+                        <label class="form-check-label" for="verify_originator_identity">
+                            Verify Originator Identity
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="verify_beneficiary_identity" id="verify_beneficiary_identity" 
+                               {% if not config or config.verify_beneficiary_identity %}checked{% endif %}>
+                        <label class="form-check-label" for="verify_beneficiary_identity">
+                            Verify Beneficiary Identity
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Reporting Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Reporting</h6>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="auto_report_to_vasp" id="auto_report_to_vasp" 
+                               {% if config and config.auto_report_to_vasp %}checked{% endif %}>
+                        <label class="form-check-label" for="auto_report_to_vasp">
+                            Auto-Report to VASP
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Retain Records (days)</label>
+                    <input type="number" name="retain_records_days" class="form-control" 
+                           value="{{ config.retain_records_days if config else 1825 }}" min="1">
+                    <small class="text-muted">Days to retain records (default: 5 years)</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">VASP Timeout (seconds)</label>
+                    <input type="number" name="vasp_timeout_seconds" class="form-control" 
+                           value="{{ config.vasp_timeout_seconds if config else 30 }}" min="1" max="300">
+                </div>
+
+                <!-- VASP API Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">VASP API Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">VASP API Endpoint</label>
+                    <input type="url" name="vasp_api_endpoint" class="form-control" 
+                           value="{{ config.vasp_api_endpoint if config else '' }}" 
+                           placeholder="https://api.vasp.example.com/travel-rule">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">VASP API Key</label>
+                    <input type="password" name="vasp_api_key" class="form-control" 
+                           value="{{ config.vasp_api_key if config else '' }}" 
+                           placeholder="API key for VASP communication">
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-12 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Travel Rule Statistics -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Travel Rule Statistics</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Pending Verification</h6>
+                            <h3 class="card-text" id="pending-transfers">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Verified Transfers</h6>
+                            <h3 class="card-text" id="verified-transfers">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Rejected Transfers</h6>
+                            <h3 class="card-text" id="rejected-transfers">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Reported to VASP</h6>
+                            <h3 class="card-text" id="vasp-reported">-</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load travel rule statistics (placeholder - would need actual API endpoint)
+document.addEventListener('DOMContentLoaded', function() {
+    // This would normally fetch from an API endpoint
+    document.getElementById('pending-transfers').textContent = '0';
+    document.getElementById('verified-transfers').textContent = '0';
+    document.getElementById('rejected-transfers').textContent = '0';
+    document.getElementById('vasp-reported').textContent = '0';
+});
+</script>
+{% endblock %}

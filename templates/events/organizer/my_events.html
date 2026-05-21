@@ -64,10 +64,10 @@
                     </div>
                     <div class="card-footer bg-white">
                         <div class="btn-group w-100">
-                            <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="btn btn-sm btn-outline-primary">
+                            <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn btn-sm btn-outline-primary">
                                 View
                             </a>
-                            <a href="{{ safe_url('url_for\(['"]events.edit_event', identifier=event.slug) }}" class="btn btn-sm btn-outline-secondary">
+                            <a href="{{ safe_url('events.edit_event', identifier=event.slug) }}" class="btn btn-sm btn-outline-secondary">
                                 Edit
                             </a>
                             {% if event.status == 'approved' %}
@@ -91,7 +91,7 @@
             <div class="modal fade" id="deleteModal{{ event.slug }}" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
-                        <form method="POST" action="{{ safe_url('url_for\(['"]events.delete_event', identifier=event.slug) }}">
+                        <form method="POST" action="{{ safe_url('events.delete_event', identifier=event.slug) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="modal-header">
                                 <h5 class="modal-title">Delete Event</h5>

@@ -1,0 +1,115 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}View Event #{{ event.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}View Event #{{ event.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ safe_url('events.moderate') }}">Events</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ event.id }}</span>
+</div>
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span class="mono" style="background:var(--bg);padding:6px 10px;border-radius:6px;">#{{ event.id }}</span>
+    <h1 class="page-heading" style="margin:0;">{{ event.name }}</h1>
+    <span class="badge badge-{{ event.status }}">{{ event.status }}</span>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: EVENT DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-calendar-days" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Event Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Event Name</label>
+          <div style="font-weight:600;font-size:15px;">{{ event.name }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);line-height:1.6;">{{ event.description or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Organiser</label>
+          <div>{{ event.organiser.username if event.organiser else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <div class="mono">{{ event.start_date.strftime('%Y-%m-%d %H:%M') if event.start_date else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <div class="mono">{{ event.end_date.strftime('%Y-%m-%d %H:%M') if event.end_date else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Location</label>
+          <div>{{ event.location or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Created At</label>
+          <div class="mono">{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') if event.created_at else '-' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: ACTION PANEL -->
+  <div style="position:sticky;top:76px;">
+    {% if event.status == 'pending' %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-gavel" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Decision
+        </div>
+      </div>
+      <div class="panel-body">
+        <form action="{{ safe_url('url_for\(['"]events.approve_event', event_id=event.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Approve this event?');">
+            <i class="fas fa-check"></i> Approve Event
+          </button>
+        </form>
+        <form action="{{ safe_url('url_for\(['"]events.reject_event', event_id=event.id) }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="reason" class="form-control" rows="3" placeholder="Provide a clear reason for rejection..." required></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-times"></i> Reject Event
+          </button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-check-circle" style="background:var(--green-lt);color:var(--green);"></i>
+          Review Complete
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Status</label>
+          <span class="badge badge-{{ event.status }}">{{ event.status }}</span>
+        </div>
+        <a href="{{ safe_url('events.moderate') }}" class="btn btn-outline" style="width:100%;">
+          <i class="fas fa-arrow-left"></i> Back to List
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

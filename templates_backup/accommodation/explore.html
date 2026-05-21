@@ -1,0 +1,893 @@
+{# templates/accommodation/explore.html #}
+{% extends "base.html" %}
+
+{% block title %}Find Accommodation - AFCON360{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+    --primary: #2d5a2d;
+    --primary-dark: #1a3a1a;
+    --primary-light: #e8f0e8;
+    --accent: #ffcc00;
+    --text: #1a1a1a;
+    --text-muted: #6c757d;
+    --border: #e9ecef;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-hover: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.explore-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+    margin-top: 0;
+}
+
+/* Search Bar */
+.search-bar-container {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: var(--shadow);
+}
+
+.search-form {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.search-field {
+    flex: 1;
+    min-width: 140px;
+}
+
+.search-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.search-field input,
+.search-field select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.search-field input:focus,
+.search-field select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.search-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    min-height: 44px;
+}
+
+.search-btn:hover {
+    background: var(--primary-dark);
+}
+
+/* Filter Bar */
+.filter-bar {
+    background: #f8f9fa;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.filter-chip {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.filter-chip:hover,
+.filter-chip.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.price-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.price-range input {
+    width: 100px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+/* Main Content */
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Map Panel */
+.map-panel {
+    flex: 1;
+    position: relative;
+    min-width: 40%;
+}
+
+#exploreMap {
+    width: 100%;
+    height: 100%;
+}
+
+/* List Panel */
+.list-panel {
+    width: 380px;
+    background: white;
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.results-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.results-count {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.sort-select {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    background: white;
+}
+
+.results-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+/* Property Card */
+.property-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.property-card:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+}
+
+.property-card-img {
+    height: 160px;
+    overflow: hidden;
+    position: relative;
+}
+
+.property-card-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s;
+}
+
+.property-card:hover .property-card-img img {
+    transform: scale(1.05);
+}
+
+.wishlist-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255,255,255,0.9);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.wishlist-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: #333;
+    fill: none;
+}
+
+.wishlist-btn.active svg {
+    fill: #e74c3c;
+    stroke: #e74c3c;
+}
+
+.property-card-body {
+    padding: 12px;
+}
+
+.property-card-type {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin-bottom: 4px;
+}
+
+.property-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text);
+}
+
+.property-card-location {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.property-card-rating {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.rating-badge {
+    background: var(--primary);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.rating-text {
+    font-size: 12px;
+    color: var(--text);
+}
+
+.review-count {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.property-card-price {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.price-amount {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--primary);
+}
+
+.price-night {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.view-detail-btn {
+    background: none;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.view-detail-btn:hover {
+    background: var(--primary);
+    color: white;
+}
+
+/* Loading & Empty States */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+/* Map Popup */
+.custom-popup .popup-title {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.custom-popup .popup-price {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .main-content {
+        flex-direction: column;
+    }
+    
+    .map-panel {
+        height: 50vh;
+        min-width: auto;
+    }
+    
+    .list-panel {
+        width: 100%;
+        height: 50vh;
+    }
+    
+    .search-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .search-field {
+        min-width: auto;
+    }
+    
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .filter-group {
+        flex-wrap: wrap;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="explore-container">
+    <!-- Search Bar -->
+    <div class="search-bar-container">
+        <form id="searchForm" class="search-form" onsubmit="handleSearch(event)">
+            <div class="search-field">
+                <label>📍 Where to?</label>
+                <input type="text" id="cityInput" placeholder="City, area, or property name" value="{{ request.args.get('city', '') }}">
+            </div>
+            <div class="search-field">
+                <label>📅 Check-in</label>
+                <input type="date" id="checkIn" value="{{ request.args.get('check_in', '') }}">
+            </div>
+            <div class="search-field">
+                <label>📅 Check-out</label>
+                <input type="date" id="checkOut" value="{{ request.args.get('check_out', '') }}">
+            </div>
+            <div class="search-field">
+                <label>👥 Guests</label>
+                <input type="number" id="guests" value="{{ request.args.get('guests', 2) }}" min="1" max="30">
+            </div>
+            <button type="submit" class="search-btn">Search</button>
+        </form>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-chip" data-type="all" onclick="setPropertyType('all')">All</span>
+            <span class="filter-chip" data-type="hotel_room" onclick="setPropertyType('hotel_room')">🏨 Hotels</span>
+            <span class="filter-chip" data-type="entire_place" onclick="setPropertyType('entire_place')">🏠 Entire Place</span>
+            <span class="filter-chip" data-type="private_room" onclick="setPropertyType('private_room')">🔑 Private Room</span>
+            <span class="filter-chip" data-type="shared_room" onclick="setPropertyType('shared_room')">🛌 Shared Room</span>
+        </div>
+        <div class="filter-group">
+            <span class="filter-chip" data-sort="relevance" onclick="setSort('relevance')">Relevance</span>
+            <span class="filter-chip" data-sort="price_asc" onclick="setSort('price_asc')">Price: Low to High</span>
+            <span class="filter-chip" data-sort="price_desc" onclick="setSort('price_desc')">Price: High to Low</span>
+            <span class="filter-chip" data-sort="rating" onclick="setSort('rating')">Top Rated</span>
+        </div>
+        <div class="price-range">
+            <input type="number" id="minPrice" placeholder="Min $" value="">
+            <span>-</span>
+            <input type="number" id="maxPrice" placeholder="Max $" value="">
+            <button class="filter-chip" onclick="applyPriceFilter()">Apply</button>
+        </div>
+        <div class="filter-group">
+            <span class="filter-chip" data-rating="0" onclick="setMinRating(0)">⭐ All</span>
+            <span class="filter-chip" data-rating="4" onclick="setMinRating(4)">4+ ⭐</span>
+            <span class="filter-chip" data-rating="4.5" onclick="setMinRating(4.5)">4.5+ ⭐</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Map Panel -->
+        <div class="map-panel" id="mapPanel">
+            <div id="exploreMap" style="height: 100%; width: 100%;"></div>
+        </div>
+
+        <!-- List Panel -->
+        <div class="list-panel">
+            <div class="results-header">
+                <span class="results-count" id="resultsCount">Loading properties...</span>
+                <select id="sortSelect" class="sort-select" onchange="handleSortChange()">
+                    <option value="relevance">Recommended</option>
+                    <option value="price_asc">Price: Low to High</option>
+                    <option value="price_desc">Price: High to Low</option>
+                    <option value="rating">Top Rated</option>
+                    <option value="newest">Newest First</option>
+                </select>
+            </div>
+            <div class="results-list" id="resultsList">
+                <div class="loading-overlay">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Configuration
+let map;
+let markers = [];
+let currentProperties = [];
+let currentBounds = null;
+let currentFilters = {
+    property_type: 'all',
+    sort_by: 'relevance',
+    min_price: null,
+    max_price: null,
+    min_rating: 0
+};
+let currentPage = 1;
+let isLoading = false;
+let hasMore = true;
+
+// Initialize map
+function initMap() {
+    map = L.map('exploreMap').setView([0.3136, 32.5811], 12); // Kampala center
+    
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB',
+        subdomains: 'abcd',
+        maxZoom: 19,
+        minZoom: 3
+    }).addTo(map);
+    
+    map.on('moveend', function() {
+        updateResultsFromMap();
+    });
+}
+
+// Get current map bounds
+function getMapBounds() {
+    const bounds = map.getBounds();
+    return {
+        min_lat: bounds.getSouthWest().lat,
+        max_lat: bounds.getNorthEast().lat,
+        min_lng: bounds.getSouthWest().lng,
+        max_lng: bounds.getNorthEast().lng
+    };
+}
+
+// Update results from map view
+let searchTimeout;
+function updateResultsFromMap() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        currentPage = 1;
+        hasMore = true;
+        fetchProperties();
+    }, 300);
+}
+
+// Fetch properties from API
+async function fetchProperties() {
+    if (isLoading) return;
+    isLoading = true;
+    
+    showLoading();
+    
+    const bounds = getMapBounds();
+    const city = document.getElementById('cityInput').value;
+    const checkIn = document.getElementById('checkIn').value;
+    const checkOut = document.getElementById('checkOut').value;
+    const guests = document.getElementById('guests').value;
+    
+    const params = new URLSearchParams();
+    params.append('min_lat', bounds.min_lat);
+    params.append('max_lat', bounds.max_lat);
+    params.append('min_lng', bounds.min_lng);
+    params.append('max_lng', bounds.max_lng);
+    if (city) params.append('city', city);
+    if (checkIn) params.append('check_in', checkIn);
+    if (checkOut) params.append('check_out', checkOut);
+    if (guests) params.append('guests', guests);
+    params.append('property_type', currentFilters.property_type);
+    params.append('sort_by', currentFilters.sort_by);
+    if (currentFilters.min_price) params.append('min_price', currentFilters.min_price);
+    if (currentFilters.max_price) params.append('max_price', currentFilters.max_price);
+    if (currentFilters.min_rating) params.append('min_rating', currentFilters.min_rating);
+    params.append('page', currentPage);
+    
+    try {
+        const response = await fetch(`/accommodation/api/explore/search?${params.toString()}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            if (currentPage === 1) {
+                currentProperties = data.properties;
+                updateMarkers(data.properties);
+                updateResultsList(data.properties);
+            } else {
+                currentProperties = [...currentProperties, ...data.properties];
+                addMarkers(data.properties);
+                appendResultsList(data.properties);
+            }
+            
+            document.getElementById('resultsCount').innerText = 
+                `${data.total} properties found`;
+            
+            hasMore = data.has_more;
+        }
+    } catch (error) {
+        console.error('Error fetching properties:', error);
+        document.getElementById('resultsList').innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Error loading properties. Please try again.</p>
+            </div>
+        `;
+    } finally {
+        isLoading = false;
+        hideLoading();
+    }
+}
+
+// Update map markers (replace all)
+function updateMarkers(properties) {
+    // Clear existing markers
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    
+    properties.forEach(property => {
+        if (property.latitude && property.longitude) {
+            addMarker(property);
+        }
+    });
+}
+
+// Add markers (incremental)
+function addMarkers(properties) {
+    properties.forEach(property => {
+        if (property.latitude && property.longitude && 
+            !markers.some(m => m.options.propertyId === property.id)) {
+            addMarker(property);
+        }
+    });
+}
+
+// Add single marker
+function addMarker(property) {
+    const markerColor = getMarkerColor(property.property_type);
+    const icon = L.divIcon({
+        className: 'custom-marker',
+        html: `<div style="background: ${markerColor}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">${property.price}</div>`,
+        iconSize: [28, 28],
+        popupAnchor: [0, -14]
+    });
+    
+    const marker = L.marker([property.latitude, property.longitude], { icon: icon, propertyId: property.id })
+        .bindPopup(`
+            <div class="custom-popup">
+                <div class="popup-title">${escapeHtml(property.name)}</div>
+                <div class="popup-price">${property.currency_symbol || '$'}${property.price}/night</div>
+                <div>⭐ ${property.rating || 'New'}</div>
+                <a href="/accommodation/guest/${property.slug || property.id}" target="_blank">View Details →</a>
+            </div>
+        `)
+        .addTo(map);
+    
+    marker.options.propertyId = property.id;
+    markers.push(marker);
+}
+
+// Get marker color based on property type
+function getMarkerColor(propertyType) {
+    const colors = {
+        'hotel_room': '#2d5a2d',
+        'entire_place': '#3498db',
+        'private_room': '#e67e22',
+        'shared_room': '#95a5a6'
+    };
+    return colors[propertyType] || '#2d5a2d';
+}
+
+// Update results list
+function updateResultsList(properties) {
+    const container = document.getElementById('resultsList');
+    container.innerHTML = properties.map(property => renderPropertyCard(property)).join('');
+}
+
+// Append to results list
+function appendResultsList(properties) {
+    const container = document.getElementById('resultsList');
+    container.insertAdjacentHTML('beforeend', properties.map(property => renderPropertyCard(property)).join(''));
+}
+
+// Render property card HTML
+function renderPropertyCard(property) {
+    const rating = property.rating || 0;
+    const ratingText = rating >= 4.5 ? 'Exceptional' : rating >= 4 ? 'Excellent' : rating >= 3 ? 'Good' : 'New';
+    const isWishlisted = property.is_wishlisted ? 'active' : '';
+    
+    return `
+        <div class="property-card" data-id="${property.id}" onclick="goToDetail(${property.id}, '${property.slug}')">
+            <div class="property-card-img">
+                <img src="${property.images && property.images[0] ? property.images[0] : '/static/images/no-image.png'}" 
+                     alt="${escapeHtml(property.name)}"
+                     onerror="this.src='/static/images/no-image.png'">
+                <button class="wishlist-btn ${isWishlisted}" onclick="toggleWishlist(event, ${property.id})">
+                    <svg viewBox="0 0 24 24" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="property-card-body">
+                <div class="property-card-type">${getPropertyTypeLabel(property.property_type)}</div>
+                <div class="property-card-title">${escapeHtml(property.name)}</div>
+                <div class="property-card-location">📍 ${escapeHtml(property.city)}${property.country ? `, ${property.country}` : ''}</div>
+                <div class="property-card-rating">
+                    ${rating > 0 ? `
+                        <span class="rating-badge">${rating.toFixed(1)}</span>
+                        <span class="rating-text">${ratingText}</span>
+                        <span class="review-count">(${property.reviews || 0} reviews)</span>
+                    ` : '<span class="rating-text">New property</span>'}
+                </div>
+                <div class="property-card-price">
+                    <div>
+                        <span class="price-amount">${property.currency_symbol || '$'}${property.price}</span>
+                        <span class="price-night">/ night</span>
+                    </div>
+                    <button class="view-detail-btn" onclick="goToDetail(event, ${property.id}, '${property.slug}')">View →</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Helper functions
+function getPropertyTypeLabel(type) {
+    const labels = {
+        'hotel_room': '🏨 Hotel',
+        'entire_place': '🏠 Entire home',
+        'private_room': '🔑 Private room',
+        'shared_room': '🛌 Shared room'
+    };
+    return labels[type] || '🏠 Accommodation';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function goToDetail(event, id, slug) {
+    if (event && event.stopPropagation) event.stopPropagation();
+    window.location.href = `/accommodation/guest/${slug || id}`;
+}
+
+// Filter functions
+function setPropertyType(type) {
+    currentFilters.property_type = type;
+    currentPage = 1;
+    hasMore = true;
+    
+    document.querySelectorAll('.filter-chip[data-type]').forEach(el => {
+        el.classList.remove('active');
+        if (el.dataset.type === type) el.classList.add('active');
+    });
+    
+    fetchProperties();
+}
+
+function setSort(sort) {
+    currentFilters.sort_by = sort;
+    currentPage = 1;
+    hasMore = true;
+    
+    document.getElementById('sortSelect').value = sort;
+    document.querySelectorAll('.filter-chip[data-sort]').forEach(el => {
+        el.classList.remove('active');
+        if (el.dataset.sort === sort) el.classList.add('active');
+    });
+    
+    fetchProperties();
+}
+
+function handleSortChange() {
+    setSort(document.getElementById('sortSelect').value);
+}
+
+function setMinRating(rating) {
+    currentFilters.min_rating = rating;
+    currentPage = 1;
+    hasMore = true;
+    
+    document.querySelectorAll('.filter-chip[data-rating]').forEach(el => {
+        el.classList.remove('active');
+        if (parseFloat(el.dataset.rating) === rating) el.classList.add('active');
+    });
+    
+    fetchProperties();
+}
+
+function applyPriceFilter() {
+    const minPrice = document.getElementById('minPrice').value;
+    const maxPrice = document.getElementById('maxPrice').value;
+    
+    currentFilters.min_price = minPrice ? parseFloat(minPrice) : null;
+    currentFilters.max_price = maxPrice ? parseFloat(maxPrice) : null;
+    currentPage = 1;
+    hasMore = true;
+    
+    fetchProperties();
+}
+
+async function toggleWishlist(event, propertyId) {
+    event.stopPropagation();
+    
+    const btn = event.currentTarget;
+    const isActive = btn.classList.contains('active');
+    const method = isActive ? 'DELETE' : 'POST';
+    
+    try {
+        const response = await fetch(`/accommodation/api/explore/wishlist/${propertyId}`, {
+            method: method,
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            }
+        });
+        
+        if (response.ok) {
+            if (isActive) {
+                btn.classList.remove('active');
+            } else {
+                btn.classList.add('active');
+            }
+        }
+    } catch (error) {
+        console.error('Error toggling wishlist:', error);
+    }
+}
+
+function handleSearch(event) {
+    event.preventDefault();
+    currentPage = 1;
+    hasMore = true;
+    fetchProperties();
+}
+
+// Loading states
+function showLoading() {
+    // handled by fetch
+}
+
+function hideLoading() {
+    // handled by fetch
+}
+
+// Infinite scroll
+const resultsList = document.getElementById('resultsList');
+resultsList.addEventListener('scroll', function() {
+    if (isLoading || !hasMore) return;
+    
+    const scrollTop = this.scrollTop;
+    const scrollHeight = this.scrollHeight;
+    const clientHeight = this.clientHeight;
+    
+    if (scrollTop + clientHeight >= scrollHeight - 200) {
+        currentPage++;
+        fetchProperties();
+    }
+});
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    initMap();
+});
+</script>
+{% endblock %}

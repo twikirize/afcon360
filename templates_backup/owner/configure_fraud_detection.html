@@ -1,0 +1,232 @@
+{% extends "owner/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Fraud Detection Configuration</h1>
+            <p class="text-muted">Configure ML-based fraud detection and transaction scoring</p>
+        </div>
+        <div>
+            <a href="{{ url_for('owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Capabilities
+            </a>
+        </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Fraud Detection Settings</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="row g-3">
+                <!-- General Settings -->
+                <div class="col-12">
+                    <h6 class="text-primary mb-3">General Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="enabled" id="enabled" 
+                               {% if config and config.enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="enabled">
+                            Enable Fraud Detection
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Algorithm Type</label>
+                    <select name="algorithm_type" class="form-select">
+                        <option value="rule_based" {% if config and config.algorithm_type == 'rule_based' %}selected{% endif %}>Rule-Based</option>
+                        <option value="ml_based" {% if config and config.algorithm_type == 'ml_based' %}selected{% endif %}>ML-Based</option>
+                        <option value="hybrid" {% if config and config.algorithm_type == 'hybrid' %}selected{% endif %}>Hybrid</option>
+                    </select>
+                </div>
+
+                <!-- Risk Thresholds -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Risk Thresholds</h6>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Low Risk Threshold</label>
+                    <input type="number" name="low_risk_threshold" class="form-control" 
+                           value="{{ config.low_risk_threshold if config else 0.3 }}" step="0.1" min="0" max="1">
+                    <small class="text-muted">Score below this is low risk</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Medium Risk Threshold</label>
+                    <input type="number" name="medium_risk_threshold" class="form-control" 
+                           value="{{ config.medium_risk_threshold if config else 0.7 }}" step="0.1" min="0" max="1">
+                    <small class="text-muted">Score above this is high risk</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Auto-Block Threshold</label>
+                    <input type="number" name="auto_block_threshold" class="form-control" 
+                           value="{{ config.auto_block_threshold if config else 0.9 }}" step="0.1" min="0" max="1">
+                    <small class="text-muted">Score above this auto-blocks</small>
+                </div>
+
+                <!-- Velocity Checks -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Velocity Checks</h6>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Max Transactions per Minute</label>
+                    <input type="number" name="max_transactions_per_minute" class="form-control" 
+                           value="{{ config.max_transactions_per_minute if config else 10 }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Max Transactions per Hour</label>
+                    <input type="number" name="max_transactions_per_hour" class="form-control" 
+                           value="{{ config.max_transactions_per_hour if config else 100 }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Max Amount per Transaction</label>
+                    <input type="number" name="max_amount_per_transaction" class="form-control" 
+                           value="{{ config.max_amount_per_transaction if config else 1000000 }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Max Amount per Hour</label>
+                    <input type="number" name="max_amount_per_hour" class="form-control" 
+                           value="{{ config.max_amount_per_hour if config else 10000000 }}">
+                </div>
+
+                <!-- Detection Checks -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Detection Checks</h6>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_ip_location" id="check_ip_location" 
+                               {% if not config or config.check_ip_location %}checked{% endif %}>
+                        <label class="form-check-label" for="check_ip_location">
+                            IP Location Check
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_device_fingerprint" id="check_device_fingerprint" 
+                               {% if not config or config.check_device_fingerprint %}checked{% endif %}>
+                        <label class="form-check-label" for="check_device_fingerprint">
+                            Device Fingerprint
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_velocity" id="check_velocity" 
+                               {% if not config or config.check_velocity %}checked{% endif %}>
+                        <label class="form-check-label" for="check_velocity">
+                            Velocity Check
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_unusual_patterns" id="check_unusual_patterns" 
+                               {% if not config or config.check_unusual_patterns %}checked{% endif %}>
+                        <label class="form-check-label" for="check_unusual_patterns">
+                            Unusual Patterns
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_new_account_large_transfer" id="check_new_account_large_transfer" 
+                               {% if not config or config.check_new_account_large_transfer %}checked{% endif %}>
+                        <label class="form-check-label" for="check_new_account_large_transfer">
+                            New Account Large Transfer
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_multiple_failed_attempts" id="check_multiple_failed_attempts" 
+                               {% if not config or config.check_multiple_failed_attempts %}checked{% endif %}>
+                        <label class="form-check-label" for="check_multiple_failed_attempts">
+                            Multiple Failed Attempts
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Alert Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Alert Settings</h6>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="alert_on_high_risk" id="alert_on_high_risk" 
+                               {% if not config or config.alert_on_high_risk %}checked{% endif %}>
+                        <label class="form-check-label" for="alert_on_high_risk">
+                            Alert on High Risk
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="alert_on_medium_risk" id="alert_on_medium_risk" 
+                               {% if config and config.alert_on_medium_risk %}checked{% endif %}>
+                        <label class="form-check-label" for="alert_on_medium_risk">
+                            Alert on Medium Risk
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Alert Email Recipients</label>
+                    <input type="text" name="alert_email_recipients" class="form-control" 
+                           value="{{ config.alert_email_recipients if config else '' }}" 
+                           placeholder="email1@example.com,email2@example.com">
+                </div>
+
+                <!-- Action Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Action Settings</h6>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="auto_block_high_risk" id="auto_block_high_risk" 
+                               {% if config and config.auto_block_high_risk %}checked{% endif %}>
+                        <label class="form-check-label" for="auto_block_high_risk">
+                            Auto-Block High Risk
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="require_manual_review_medium_risk" id="require_manual_review_medium_risk" 
+                               {% if not config or config.require_manual_review_medium_risk %}checked{% endif %}>
+                        <label class="form-check-label" for="require_manual_review_medium_risk">
+                            Manual Review Medium Risk
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="allow_override" id="allow_override" 
+                               {% if not config or config.allow_override %}checked{% endif %}>
+                        <label class="form-check-label" for="allow_override">
+                            Allow Override
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Description -->
+                <div class="col-12 mt-4">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" class="form-control" rows="3" 
+                              placeholder="Description of this fraud detection configuration">{{ config.description if config else '' }}</textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-12 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

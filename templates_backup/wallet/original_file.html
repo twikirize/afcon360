@@ -1,0 +1,245 @@
+{#original_file.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Wallet  AFCON360{% endblock %}
+
+{% block topbar_title %}Wallet{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Wallet</h1>
+    <p class="page-subheading">Your all-in-one wallet overview</p>
+  </div>
+</div>
+
+<!-- User Info & Balances -->
+<div class="col-layout-2" style="margin-bottom:24px;">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-user panel-title-icon green"></i>
+        User Info
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <div style="display:grid;gap:10px;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted);">User ID</span>
+          <span style="font-weight:600;">{{ wallet.user_id }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted);">Nationality</span>
+          <span style="font-weight:600;">{{ wallet.nationality }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted);">Location</span>
+          <span style="font-weight:600;">{{ wallet.location }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted);">Home Currency</span>
+          <span style="font-weight:600;">{{ wallet.home_currency }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted);">Local Currency</span>
+          <span style="font-weight:600;">{{ wallet.local_currency }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-coins panel-title-icon amber"></i>
+        Balances & Commission
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <div style="display:grid;gap:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--muted);font-size:13px;">Balance (Home)</span>
+          <span style="font-weight:700;font-size:18px;color:var(--green);">{{ wallet.balance_home | round(2) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--muted);font-size:13px;">Balance (Local)</span>
+          <span style="font-weight:700;font-size:18px;color:var(--green);">{{ wallet.balance_local | round(2) }}</span>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--muted);font-size:13px;">Agent Commission</span>
+          <span style="font-weight:700;font-size:18px;color:var(--accent);">UGX {{ commission | round(2) }}</span>
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;">
+        <a href="{{ safe_url('url_for\(['"]wallet.agent_payout_history') }}" class="btn btn-outline btn-sm" style="flex:1;">
+          <i class="fas fa-history"></i> Payout History
+        </a>
+        <a href="{{ safe_url('url_for\(['"]wallet.agent_payout_request_page') }}" class="btn btn-primary btn-sm" style="flex:1;">
+          <i class="fas fa-download"></i> Request Payout
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Actions: Deposit, Send, Withdraw -->
+<div class="col-layout-3" style="margin-bottom:24px;">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-arrow-down panel-title-icon green"></i>
+        Deposit
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <form method="POST" action="{{ safe_url('url_for\(['"]wallet.deposit_form') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <input type="number" step="0.01" name="amount" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency</label>
+          <select name="currency" class="form-control">
+            <option value="USD">USD</option>
+            <option value="UGX">UGX</option>
+            <option value="KES">KES</option>
+            <option value="TZS">TZS</option>
+            <option value="NGN">NGN</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Deposit</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-paper-plane panel-title-icon amber"></i>
+        Send Funds
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <form method="POST" action="{{ safe_url('url_for\(['"]wallet.send_funds') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-group">
+          <label class="form-label">Receiver ID</label>
+          <input type="text" name="receiver_id" class="form-control" placeholder="e.g., Henry Tiggan" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <input type="number" step="0.01" name="amount" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency</label>
+          <select name="currency" class="form-control">
+            <option value="USD">USD</option>
+            <option value="UGX">UGX</option>
+            <option value="KES">KES</option>
+            <option value="TZS">TZS</option>
+            <option value="NGN">NGN</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Agent Fee (optional)</label>
+          <input type="number" step="0.01" name="agent_fee" class="form-control" placeholder="e.g., 50">
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;">You can send from your home or local currency.</p>
+        <button type="submit" class="btn btn-warning" style="width:100%;">Send Funds</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-arrow-up panel-title-icon red"></i>
+        Withdraw
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <form method="POST" action="{{ safe_url('url_for\(['"]wallet.withdraw_funds') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <input type="number" step="0.01" name="amount" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency</label>
+          <select name="currency" class="form-control">
+            <option value="USD">USD</option>
+            <option value="UGX">UGX</option>
+            <option value="KES">KES</option>
+            <option value="TZS">TZS</option>
+            <option value="NGN">NGN</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Method</label>
+          <select name="method" class="form-control">
+            <option value="ATM">ATM</option>
+            <option value="Agent">Agent</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Agent ID (if applicable)</label>
+          <input type="text" name="agent_id" class="form-control" placeholder="e.g., agent007">
+        </div>
+        <button type="submit" class="btn btn-danger" style="width:100%;">Withdraw</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Transactions -->
+<div class="panel">
+  <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="panel-title">
+      <i class="fas fa-clock-rotate-left panel-title-icon blue"></i>
+      Recent Transactions
+    </div>
+    <a href="{{ safe_url('url_for\(['"]wallet.agent_payout_history') }}" class="btn btn-ghost btn-sm">
+      View Full History <i class="fas fa-arrow-right"></i>
+    </a>
+  </div>
+
+  {% if wallet.transactions %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Currency</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in wallet.transactions[-5:] %}
+        <tr>
+          <td>
+            <span class="badge
+              {% if tx.type == 'conversion' %}badge-pending
+              {% elif 'deposit' in tx.type %}badge-approved
+              {% elif tx.type == 'send' %}badge-rejected
+              {% elif tx.type == 'receive' %}badge-active
+              {% else %}badge-type{% endif %}">
+              {% if tx.type == 'conversion' %}<i class="fas fa-exchange-alt"></i> Conversion
+              {% elif 'deposit' in tx.type %}<i class="fas fa-arrow-down"></i> Deposit
+              {% elif tx.type == 'send' %}<i class="fas fa-paper-plane"></i> Sent
+              {% elif tx.type == 'receive' %}<i class="fas fa-arrow-down"></i> Received
+              {% else %}{{ tx.type }}{% endif %}
+            </span>
+          </td>
+          <td style="font-weight:600;">{{ tx.amount or tx.converted }}</td>
+          <td>{{ tx.currency or (tx.from ~ '?' ~ tx.to) }}</td>
+          <td class="mono">{{ tx.timestamp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div style="padding:40px;text-align:center;color:var(--muted);">No transactions yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

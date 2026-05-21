@@ -554,12 +554,12 @@
                                     </div>
                                 </div>
                                 <div class="event-actions">
-                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
+                                    <a href="{{ safe_url('events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
                                        class="btn-action btn-primary">
                                         <i class="fas fa-qrcode"></i>
                                         QR Code
                                     </a>
-                                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=reg.event.slug) }}" 
+                                    <a href="{{ safe_url('events.landing', identifier=reg.event.slug) }}" 
                                        class="btn-action btn-outline">
                                         <i class="fas fa-info-circle"></i>
                                         Details
@@ -624,7 +624,7 @@
                                     </div>
                                 </div>
                                 <div class="event-actions">
-                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
+                                    <a href="{{ safe_url('events.registration_confirmation', reg_ref=reg.registration_ref) }}" 
                                        class="btn-action btn-outline">
                                         <i class="fas fa-qrcode"></i>
                                         View QR

@@ -1,0 +1,193 @@
+{% extends "owner/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Nonce Replay Protection</h1>
+            <p class="text-muted">Configure user-specific nonce counters to prevent transaction replay attacks</p>
+        </div>
+        <div>
+            <a href="{{ url_for('owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Capabilities
+            </a>
+        </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Nonce Protection Settings</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="row g-3">
+                <!-- General Settings -->
+                <div class="col-12">
+                    <h6 class="text-primary mb-3">General Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="enabled" id="enabled" 
+                               {% if not config or config.enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="enabled">
+                            Enable Nonce Protection
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Description</label>
+                    <input type="text" name="description" class="form-control" 
+                           value="{{ config.description if config else '' }}" 
+                           placeholder="Description of this configuration">
+                </div>
+
+                <!-- Expiration Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Expiration Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Nonce TTL (minutes)</label>
+                    <input type="number" name="nonce_ttl_minutes" class="form-control" 
+                           value="{{ config.nonce_ttl_minutes if config else 15 }}" min="1" max="1440">
+                    <small class="text-muted">How long nonces are valid</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Cleanup Interval (hours)</label>
+                    <input type="number" name="cleanup_interval_hours" class="form-control" 
+                           value="{{ config.cleanup_interval_hours if config else 1 }}" min="1" max="24">
+                    <small class="text-muted">How often to clean up expired nonces</small>
+                </div>
+
+                <!-- Rate Limits -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Rate Limits</h6>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Max Nonces per User per Hour</label>
+                    <input type="number" name="max_nonces_per_user_per_hour" class="form-control" 
+                           value="{{ config.max_nonces_per_user_per_hour if config else 1000 }}" min="1">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Max Nonces per Aggregator per Hour</label>
+                    <input type="number" name="max_nonces_per_aggregator_per_hour" class="form-control" 
+                           value="{{ config.max_nonces_per_aggregator_per_hour if config else 10000 }}" min="1">
+                </div>
+
+                <!-- Security Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Security Settings</h6>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="require_nonce_for_all_transactions" id="require_nonce_for_all_transactions" 
+                               {% if not config or config.require_nonce_for_all_transactions %}checked{% endif %}>
+                        <label class="form-check-label" for="require_nonce_for_all_transactions">
+                            Require Nonce for All Transactions
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="allow_nonce_reuse_same_amount" id="allow_nonce_reuse_same_amount" 
+                               {% if config and config.allow_nonce_reuse_same_amount %}checked{% endif %}>
+                        <label class="form-check-label" for="allow_nonce_reuse_same_amount">
+                            Allow Nonce Reuse Same Amount
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="strict_ip_binding" id="strict_ip_binding" 
+                               {% if config and config.strict_ip_binding %}checked{% endif %}>
+                        <label class="form-check-label" for="strict_ip_binding">
+                            Strict IP Binding
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Monitoring Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Monitoring Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="alert_on_suspicious_nonce_usage" id="alert_on_suspicious_nonce_usage" 
+                               {% if not config or config.alert_on_suspicious_nonce_usage %}checked{% endif %}>
+                        <label class="form-check-label" for="alert_on_suspicious_nonce_usage">
+                            Alert on Suspicious Nonce Usage
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Alert Threshold per Hour</label>
+                    <input type="number" name="alert_threshold_per_hour" class="form-control" 
+                           value="{{ config.alert_threshold_per_hour if config else 100 }}" min="1">
+                    <small class="text-muted">Trigger alert if nonces exceed this per hour</small>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-12 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Nonce Statistics -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Nonce Statistics</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Active Nonces</h6>
+                            <h3 class="card-text" id="active-nonces">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Used Nonces Today</h6>
+                            <h3 class="card-text" id="used-nonces-today">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Expired Nonces</h6>
+                            <h3 class="card-text" id="expired-nonces">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Voided Nonces</h6>
+                            <h3 class="card-text" id="voided-nonces">-</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load nonce statistics (placeholder - would need actual API endpoint)
+document.addEventListener('DOMContentLoaded', function() {
+    // This would normally fetch from an API endpoint
+    document.getElementById('active-nonces').textContent = '0';
+    document.getElementById('used-nonces-today').textContent = '0';
+    document.getElementById('expired-nonces').textContent = '0';
+    document.getElementById('voided-nonces').textContent = '0';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+  <h2>Payout Requests</h2>
+  <table class="table table-bordered">
+    <thead><tr><th>ID</th><th>Agent</th><th>Amount</th><th>Method</th><th>Status</th><th>Requested At</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for r in requests %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td>{{ r.agent_id }}</td>
+        <td>{{ r.amount }} {{ r.currency }}</td>
+        <td>{{ r.method }}</td>
+        <td>{{ r.status }}</td>
+        <td>{{ r.requested_at }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('wallet_admin_api.admin_process_payout', req_id=r.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="input-group input-group-sm">
+              <button name="action" value="approve" class="btn btn-success" {% if r.status != 'pending' %}disabled{% endif %}>Approve</button>
+              <button name="action" value="reject" class="btn btn-danger" {% if r.status != 'pending' %}disabled{% endif %}>Reject</button>
+              <button name="action" value="mark_paid" class="btn btn-primary" {% if r.status != 'approved' %}disabled{% endif %}>Mark Paid</button>
+            </div>
+            <input type="text" name="notes" placeholder="notes/reason" class="form-control form-control-sm mt-1">
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-muted">No requests yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a href="{{ url_for('admin.super_dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}

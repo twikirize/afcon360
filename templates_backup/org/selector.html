@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+
+{% block title %}Select Organization - AFCON360{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Modern Organization Selector Styles */
+.selector-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 3rem;
+    color: white;
+    margin-bottom: 3rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.org-card {
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 1.5rem;
+    background: white;
+}
+
+.org-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+
+.org-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+.org-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 600;
+    margin-right: 1.5rem;
+}
+
+.org-info {
+    flex-grow: 1;
+}
+
+.org-name {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.org-id {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+.status-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-badge.verified { background: linear-gradient(135deg, #11998e, #38ef7d); color: white; }
+.status-badge.pending { background: linear-gradient(135deg, #f2994a, #f2c94c); color: white; }
+.status-badge.owner { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; }
+.status-badge.admin { background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; }
+.status-badge.member { background: linear-gradient(135deg, #43e97b, #38f9d7); color: white; }
+
+.org-arrow {
+    color: #667eea;
+    font-size: 2rem;
+    transition: all 0.3s ease;
+}
+
+.org-card:hover .org-arrow {
+    transform: translateX(10px);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 5rem;
+    color: #dee2e6;
+    margin-bottom: 2rem;
+}
+
+.empty-state h4 {
+    color: #495057;
+    margin-bottom: 1rem;
+}
+
+.create-org-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    border-radius: 12px;
+    padding: 1rem 2rem;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.create-org-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    color: white;
+}
+
+.user-info {
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 2rem;
+    display: inline-block;
+}
+
+.user-info small {
+    opacity: 0.9;
+}
+
+.stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    margin-top: 2rem;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+    .selector-header {
+        padding: 2rem 1rem;
+    }
+    
+    .org-avatar {
+        width: 60px;
+        height: 60px;
+        font-size: 1.5rem;
+        margin-right: 1rem;
+    }
+    
+    .org-name {
+        font-size: 1.25rem;
+    }
+    
+    .stats-row {
+        gap: 2rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Selector Header -->
+    <div class="selector-header">
+        <div class="mb-4">
+            <i class="bi bi-buildings fs-1"></i>
+        </div>
+        <h1 class="mb-3 fw-bold">Select Organization</h1>
+        <p class="mb-0 opacity-90">Choose which organization you want to manage</p>
+        
+        <!-- User Stats -->
+        <div class="stats-row">
+            <div class="stat-item">
+                <div class="stat-value">{{ memberships|length }}</div>
+                <div class="stat-label">Organizations</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ memberships|selectattr('role.name', 'equalto', 'org_owner')|list|length }}</div>
+                <div class="stat-label">Owned</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ memberships|selectattr('organisation.verification_status', 'equalto', 'verified')|list|length }}</div>
+                <div class="stat-label">Verified</div>
+            </div>
+        </div>
+        
+        <!-- User Info -->
+        <div class="user-info">
+            <i class="bi bi-person-circle me-2"></i>
+            <small>Logged in as {{ current_user.email }}</small>
+        </div>
+    </div>
+
+    <!-- Organization Cards -->
+    {% if memberships %}
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-md-10">
+            {% for membership in memberships %}
+            <a href="{{ url_for('org.org_dashboard', org_id=membership.organisation_id) }}" 
+               class="text-decoration-none">
+                <div class="org-card">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center">
+                            <div class="org-avatar">
+                                {{ membership.organisation.legal_name[0]|upper }}
+                            </div>
+                            <div class="org-info">
+                                <div class="org-name">{{ membership.organisation.legal_name }}</div>
+                                <div class="org-id">
+                                    <i class="bi bi-hash me-1"></i>{{ membership.organisation.org_id }}
+                                </div>
+                                <div class="status-badges">
+                                    <span class="status-badge {{ membership.organisation.verification_status }}">
+                                        <i class="bi bi-{{ 'shield-check' if membership.organisation.verification_status == 'verified' else 'clock' }} me-1"></i>
+                                        {{ membership.organisation.verification_status.title() }}
+                                    </span>
+                                    <span class="status-badge {{ membership.role.name.replace('_', '') }}">
+                                        <i class="bi bi-{{ 'crown' if membership.role.name == 'org_owner' else 'person-badge' if membership.role.name == 'org_admin' else 'person' }} me-1"></i>
+                                        {{ membership.role.name.replace('_', ' ').title() }}
+                                    </span>
+                                    {% if membership.organisation.is_operational %}
+                                    <span class="status-badge verified">
+                                        <i class="bi bi-lightning me-1"></i> Operational
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="org-arrow">
+                                <i class="bi bi-arrow-right-circle"></i>
+                            </div>
+                        </div>
+                        
+                        <!-- Organization Type -->
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <i class="bi bi-tag me-1"></i>
+                                    {{ membership.organisation.business_category.value.replace('_', ' ').title() }}
+                                </small>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar me-1"></i>
+                                    Joined {{ membership.created_at.strftime('%B %Y') if membership.created_at else 'N/A' }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="empty-state">
+        <i class="bi bi-building"></i>
+        <h4>No Organizations Found</h4>
+        <p class="mb-4">You are not a member of any organization yet.</p>
+        <div class="d-flex gap-3 justify-content-center">
+            <a href="{{ url_for('org.register') }}" class="create-org-btn">
+                <i class="bi bi-plus-circle me-2"></i> Create Organization
+            </a>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-house me-2"></i> Return to Dashboard
+            </a>
+        </div>
+        
+        <!-- Quick Options -->
+        <div class="row mt-5">
+            <div class="col-md-4">
+                <div class="text-center p-4">
+                    <div class="mb-3">
+                        <i class="bi bi-plus-circle fs-1 text-primary"></i>
+                    </div>
+                    <h6>Create Organization</h6>
+                    <p class="text-muted small">Start your own organization</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-center p-4">
+                    <div class="mb-3">
+                        <i class="bi bi-search fs-1 text-info"></i>
+                    </div>
+                    <h6>Join Organization</h6>
+                    <p class="text-muted small">Accept an invitation to join</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-center p-4">
+                    <div class="mb-3">
+                        <i class="bi bi-question-circle fs-1 text-warning"></i>
+                    </div>
+                    <h6>Learn More</h6>
+                    <p class="text-muted small">Discover organization features</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Add smooth animations
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+
+    document.querySelectorAll('.org-card').forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+
+    // Add keyboard navigation
+    document.addEventListener('keydown', function(e) {
+        const orgCards = document.querySelectorAll('.org-card');
+        let currentIndex = -1;
+        
+        // Find current focused card
+        orgCards.forEach((card, index) => {
+            if (card.querySelector(':focus-within')) {
+                currentIndex = index;
+            }
+        });
+        
+        if (e.key === 'ArrowDown' && currentIndex < orgCards.length - 1) {
+            e.preventDefault();
+            const nextCard = orgCards[currentIndex + 1];
+            nextCard.querySelector('a').focus();
+        } else if (e.key === 'ArrowUp' && currentIndex > 0) {
+            e.preventDefault();
+            const prevCard = orgCards[currentIndex - 1];
+            prevCard.querySelector('a').focus();
+        }
+    });
+
+    // Add ripple effect to cards
+    document.querySelectorAll('.org-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            const ripple = document.createElement('div');
+            ripple.style.position = 'absolute';
+            ripple.style.width = '20px';
+            ripple.style.height = '20px';
+            ripple.style.background = 'rgba(255,255,255,0.5)';
+            ripple.style.borderRadius = '50%';
+            ripple.style.transform = 'scale(0)';
+            ripple.style.animation = 'ripple 0.6s ease-out';
+            ripple.style.pointerEvents = 'none';
+            
+            const rect = card.getBoundingClientRect();
+            ripple.style.left = (e.clientX - rect.left - 10) + 'px';
+            ripple.style.top = (e.clientY - rect.top - 10) + 'px';
+            
+            card.style.position = 'relative';
+            card.style.overflow = 'hidden';
+            card.appendChild(ripple);
+            
+            setTimeout(() => ripple.remove(), 600);
+        });
+    });
+});
+
+// Add ripple animation
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes ripple {
+        to {
+            transform: scale(20);
+            opacity: 0;
+        }
+    }
+`;
+document.head.appendChild(style);
+</script>
+{% endblock %}

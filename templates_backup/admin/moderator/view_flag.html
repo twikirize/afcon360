@@ -1,0 +1,227 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Review Flag #{{ flag.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}Review Flag #{{ flag.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.flagged_content') }}">Flagged Content</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ flag.id }}</span>
+</div>
+
+<!-- SLA Indicator -->
+{% if flag.sla_due_at %}
+{% set hours_left = ((flag.sla_due_at - now()).total_seconds() / 3600) | int %}
+<div style="background:{% if hours_left < 0 %}var(--red-lt);color:var(--red);{% elif hours_left < 4 %}var(--orange-lt);color:var(--orange);{% else %}var(--blue-lt);color:var(--blue);{% endif %};padding:10px 16px;border-radius:var(--radius);margin-bottom:20px;display:flex;align-items:center;gap:10px;font-weight:600;">
+  <i class="fas fa-clock"></i>
+  {% if hours_left < 0 %}SLA OVERDUE by {{ hours_left|abs }} hours
+  {% elif hours_left < 4 %}SLA due in {{ hours_left }} hours — ACT NOW
+  {% else %}SLA due in {{ hours_left }} hours{% endif %}
+</div>
+{% endif %}
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span class="mono" style="background:var(--bg);padding:6px 10px;border-radius:6px;">#{{ flag.id }}</span>
+    <h1 class="page-heading" style="margin:0;">Flag Review</h1>
+    <span class="badge badge-{{ flag.priority }}">{{ flag.priority|capitalize }}</span>
+    <span class="badge badge-{{ flag.status }}">{{ flag.status.replace('_', ' ') }}</span>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: FLAG DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Flag Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <div><span class="badge badge-{{ flag.priority }}">{{ flag.priority|capitalize }}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <div><span class="badge badge-{{ flag.status }}">{{ flag.status.replace('_', ' ') }}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reporter</label>
+          <div>{{ flag.reporter.username if flag.reporter else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reason</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);line-height:1.6;">{{ flag.reason or '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Flagged At</label>
+          <div class="mono">{{ flag.created_at.strftime('%Y-%m-%d %H:%M:%S') if flag.created_at else '-' }}</div>
+        </div>
+        {% if flag.assigned_to %}
+        <div class="form-group">
+          <label class="form-label">Assigned To</label>
+          <div>{{ flag.assigned_to.username if flag.assigned_to else '-' }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Entity Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-link" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Flagged Entity
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Entity Type</label>
+          <div><span class="badge badge-type">{{ flag.entity_type }}</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Entity ID</label>
+          <div class="mono">#{{ flag.entity_id }}</div>
+        </div>
+        {% if entity_name %}
+        <div class="form-group">
+          <label class="form-label">Entity Name</label>
+          <div style="font-weight:600;">{{ entity_name }}</div>
+        </div>
+        {% endif %}
+        {% if entity_url %}
+        <div class="form-group">
+          <a href="{{ entity_url }}" class="btn btn-outline" target="_blank">
+            <i class="fas fa-external-link-alt"></i> View Entity
+          </a>
+        </div>
+        {% endif %}
+        {% if entity_snippet %}
+        <div class="form-group">
+          <label class="form-label">Content Snippet</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);font-size:13px;line-height:1.6;">{{ entity_snippet }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Moderation Notes -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-sticky-note" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Moderation Notes
+        </div>
+      </div>
+      <div class="panel-body">
+        <form method="POST" action="{{ url_for('admin.moderator.update_flag_notes', flag_id=flag.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="moderation_notes" class="form-control" rows="4" placeholder="Add internal moderation notes...">{{ flag.moderation_notes or '' }}</textarea>
+          <button type="submit" class="btn btn-primary btn-sm">Save Notes</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: ACTION PANEL -->
+  <div style="position:sticky;top:76px;">
+    {% if flag.status == 'open' or flag.status == 'in_review' %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-gavel" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        <!-- Claim -->
+        {% if not flag.assigned_to %}
+        <form action="{{ url_for('admin.moderator.claim_flag', flag_id=flag.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-primary" style="width:100%;">
+            <i class="fas fa-hand-paper"></i> Claim Flag
+          </button>
+        </form>
+        {% endif %}
+
+        <!-- Resolve -->
+        <form action="{{ url_for('admin.moderator.resolve_flag', flag_id=flag.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Resolution Notes *</label>
+          <textarea name="resolution_notes" class="form-control" rows="3" placeholder="Describe how this flag was resolved..." required></textarea>
+          <button type="submit" class="btn btn-success" style="width:100%;margin-top:12px;">
+            <i class="fas fa-check"></i> Resolve Flag
+          </button>
+        </form>
+
+        <!-- Reject Flag -->
+        <form action="{{ url_for('admin.moderator.reject_flag', flag_id=flag.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="rejection_reason" class="form-control" rows="3" placeholder="Explain why this flag is invalid..." required></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-times"></i> Reject Flag
+          </button>
+        </form>
+
+        <!-- Escalate (admin+ only) -->
+        {% set is_admin_plus = current_user.has_role('admin') or current_user.has_role('super_admin') or current_user.has_role('owner') %}
+        {% if is_admin_plus %}
+        <form action="{{ url_for('admin.moderator.escalate_flag', flag_id=flag.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Escalation Reason *</label>
+          <textarea name="escalation_reason" class="form-control" rows="2" placeholder="Reason for escalation..." required></textarea>
+          <button type="submit" class="btn btn-outline" style="width:100%;margin-top:12px;">
+            <i class="fas fa-arrow-up"></i> Escalate to Admin
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-check-circle" style="background:var(--green-lt);color:var(--green);"></i>
+          Flag Closed
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Final Status</label>
+          <span class="badge badge-{{ flag.status }}">{{ flag.status.replace('_', ' ') }}</span>
+        </div>
+        {% if flag.resolved_at %}
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Resolved At</label>
+          <div class="mono">{{ flag.resolved_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        {% endif %}
+        {% if flag.resolution_notes %}
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Resolution Notes</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);">{{ flag.resolution_notes }}</div>
+        </div>
+        {% endif %}
+        {% if flag.moderation_notes %}
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Moderation Notes</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);">{{ flag.moderation_notes }}</div>
+        </div>
+        {% endif %}
+        <a href="{{ url_for('admin.moderator.flagged_content') }}" class="btn btn-outline" style="width:100%;">
+          <i class="fas fa-arrow-left"></i> Back to Flags
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

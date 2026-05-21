@@ -130,57 +130,41 @@ def list():
 @events_bp.route("/<identifier>")
 def landing(identifier=None):
     """Landing page for an event"""
-    lookup = identifier
-    if not lookup:
-        return render_template('events/public/not_found.html'), 404
-
-    event_model = resolve_event(lookup)
+    # Get ORM model
+    event_model = resolve_event(identifier)
     if not event_model:
-        return render_template('events/public/not_found.html', event_slug=lookup), 404
-
-    # Convert to dict using EventService
-    event = EventService._event_to_dict(event_model)
-    if not event:
-        return render_template('events/public/not_found.html', event_slug=lookup), 404
-
-    # Check if current user is registered for this event
+        return render_template('events/public/not_found.html', event_slug=identifier), 404
+    
+    # Use ViewModel for template
+    from app.events.services import EventRegistrationViewModel
+    vm = EventRegistrationViewModel(event_model, current_user if current_user.is_authenticated else None)
+    
+    # Check if current user is registered
     user_registered = False
     if current_user.is_authenticated:
-        from app.events.models import EventRegistration
         registration = EventRegistration.query.filter_by(
             event_id=event_model.id,
             user_id=current_user.id,
             status='confirmed'
         ).first()
         user_registered = registration is not None
-
-    # Calculate remaining capacity for each ticket type
-    if event.get('ticket_types'):
-        for tt in event['ticket_types']:
-            tt['remaining'] = tt['capacity'] - tt['registration_count'] if tt.get('capacity') else None
-
-    # Get total registrations count for social proof
-    from app.events.models import EventRegistration
+    
     total_registrations = EventRegistration.query.filter_by(event_id=event_model.id).count()
-
-    # Get start time from event metadata if available
     start_time = event_model.event_metadata.get('start_time', '00:00:00') if event_model.event_metadata else '00:00:00'
-
-    properties = search_properties(city=event['city'])
-
+    properties = search_properties(city=event_model.city)
+    
     return render_template(
         'events/public/landing.html',
-        event=event,
+        vm=vm,  # Pass ViewModel instead of dict
         properties=properties,
         context_type=BookingContextType.EVENT.value,
-        context_id=event['slug'],
+        context_id=event_model.slug,
         context_metadata={
-            'event_name': event['name'],
-            'event_dates': f"{event['start_date']} to {event['end_date']}" if event.get('start_date') else '',
-            'venue': event.get('venue', '')
+            'event_name': event_model.name,
+            'event_dates': f"{event_model.start_date} to {event_model.end_date}" if event_model.start_date else '',
+            'venue': event_model.venue or ''
         },
-        is_admin=is_system_admin(current_user) if hasattr(current_user,
-                                                          'is_authenticated') and current_user.is_authenticated else False,
+        is_admin=is_system_admin(current_user) if current_user.is_authenticated else False,
         user_registered=user_registered,
         now=datetime.utcnow,
         total_registrations=total_registrations,
@@ -638,9 +622,16 @@ def api_payment_methods(identifier):
 @require_fresh_user
 def register(identifier):
     """Register for an event with async processing and payment integration"""
-    event = EventService.get_event(identifier)
-    if not event:
+    # Use ViewModel for template rendering - clean separation from ORM
+    from app.events.services import EventRegistrationViewModel
+    from app.events.models import Event as EventModel
+    
+    event_model = EventModel.query.filter_by(slug=identifier).first()
+    if not event_model:
         return render_template('events/public/not_found.html', event_slug=identifier), 404
+
+    # Build ViewModel for the template
+    view_model = EventRegistrationViewModel(event_model, current_user)
 
     if request.method == 'GET':
         user_data = {
@@ -649,7 +640,9 @@ def register(identifier):
             'phone': getattr(current_user, 'phone', ''),
             'nationality': getattr(current_user, 'nationality', ''),
         }
-        return render_template('events/attendee/register.html', event=event, user_data=user_data)
+        return render_template('events/attendee/register.html', 
+                               event=view_model, 
+                               user_data=user_data)
 
     try:
         # Handle both JSON and form data
@@ -659,9 +652,9 @@ def register(identifier):
             # Handle form data
             data = request.form.to_dict()
             # Convert numeric fields only if event has ticket types
-            if 'ticket_type_id' in data and data['ticket_type_id'] and event.ticket_types:
+            if 'ticket_type_id' in data and data['ticket_type_id'] and event_model.ticket_types:
                 data['ticket_type_id'] = int(data['ticket_type_id'])
-            elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event.ticket_types):
+            elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event_model.ticket_types):
                 # For free events, ensure no ticket_type_id
                 data['ticket_type_id'] = None
 
@@ -680,8 +673,8 @@ def register(identifier):
                 if attendee_data['name'] and attendee_data['email']:
                     group_attendees.append(attendee_data)
 
-        # Check if this is a paid event
-        is_paid_event = event.ticket_types and any(tt.price > 0 for tt in event.ticket_types)
+        # Check if this is a paid event using ViewModel
+        is_paid_event = view_model.is_paid_event
         
         if is_paid_event and data.get('ticket_type_id'):
             # Process paid event with payment service
@@ -696,7 +689,7 @@ def register(identifier):
             # Process payment
             payment_result = payment_service.process_ticket_purchase(
                 user_id=current_user.id,
-                event_id=event.id,
+                event_id=event_model.id,
                 ticket_type_id=data['ticket_type_id'],
                 quantity=len(group_attendees) + 1,  # +1 for primary registrant
                 payment_method=payment_method,
@@ -732,14 +725,14 @@ def register(identifier):
             session['last_registration'] = {
                 'registration': EventService._registration_to_dict(reg_obj),
                 'qr_code': qr_code,
-                'event': event
+                'event': view_model.to_dict()
             }
         else:
             # Fallback to using the registration dict
             session['last_registration'] = {
                 'registration': registration,
                 'qr_code': None,
-                'event': event
+                'event': view_model.to_dict()
             }
 
         # 2. Trigger Background Task (Async Processing)

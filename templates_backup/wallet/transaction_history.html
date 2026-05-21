@@ -1,0 +1,180 @@
+{#transaction_history.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Transaction History — AFCON360{% endblock %}
+
+{% block topbar_title %}Transaction History{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Transaction History</h1>
+    <p class="page-subheading">View all your wallet transactions</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body" style="padding:16px 20px;">
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+      <div>
+        <label class="form-label" style="margin-bottom:4px;">Transaction Type</label>
+        <select class="form-control" style="width:auto;min-width:160px;" onchange="location.href='{{ safe_url('wallet.wallet_transactions') }}?type=' + this.value">
+          <option value="">All Transactions</option>
+          <option value="DEPOSIT" {% if request.args.get('type') == 'DEPOSIT' %}selected{% endif %}>Deposits</option>
+          <option value="WITHDRAWAL" {% if request.args.get('type') == 'WITHDRAWAL' %}selected{% endif %}>Withdrawals</option>
+          <option value="TRANSFER" {% if request.args.get('type') == 'TRANSFER' %}selected{% endif %}>Transfers</option>
+          <option value="COMMISSION" {% if request.args.get('type') == 'COMMISSION' %}selected{% endif %}>Commissions</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" style="margin-bottom:4px;">Date Range</label>
+        <select class="form-control" style="width:auto;min-width:140px;">
+          <option>Last 7 days</option>
+          <option>Last 30 days</option>
+          <option>Last 90 days</option>
+          <option>Last year</option>
+          <option>All time</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" style="margin-bottom:4px;">&nbsp;</label>
+        <button class="btn btn-ghost btn-sm">
+          <i class="fas fa-download mr-1"></i> Export CSV
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Transactions</div>
+    <div class="stat-value">{{ transactions | length if transactions else 0 }}</div>
+  </div>
+  <div class="stat-card success">
+    <div class="stat-label">Total Deposits</div>
+    <div class="stat-value">UGX 0</div>
+  </div>
+  <div class="stat-card danger">
+    <div class="stat-label">Total Withdrawals</div>
+    <div class="stat-value">UGX 0</div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-label">Net Balance</div>
+    <div class="stat-value">{{ balance | round(2) if balance else 'UGX 0' }}</div>
+  </div>
+</div>
+
+<!-- Transactions Table -->
+<div class="panel">
+  <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="panel-title">
+      <i class="fas fa-list panel-title-icon blue"></i>
+      All Transactions
+    </div>
+    {% if pagination and pagination.get('total_pages', 1) > 1 %}
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="btn btn-ghost btn-xs"><i class="fas fa-chevron-left"></i></button>
+        <span class="mono">Page {{ pagination.get('page', 1) }} of {{ pagination.get('total_pages', 1) }}</span>
+        <button class="btn btn-ghost btn-xs"><i class="fas fa-chevron-right"></i></button>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if transactions %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Transaction</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in transactions %}
+        <tr class="animate-up">
+          <td>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+                {% if tx.transaction_type.value == 'DEPOSIT' %}background:var(--green-lt);color:var(--green);
+                {% elif tx.transaction_type.value == 'WITHDRAWAL' %}background:var(--red-lt);color:var(--red);
+                {% elif tx.transaction_type.value == 'TRANSFER' %}background:var(--accent-lt);color:var(--accent);
+                {% elif tx.transaction_type.value == 'COMMISSION' %}background:var(--purple-lt);color:var(--purple);
+                {% else %}background:var(--bg-2);color:var(--muted);{% endif %}">
+                <i class="fas
+                  {% if tx.transaction_type.value == 'DEPOSIT' %}fa-arrow-down
+                  {% elif tx.transaction_type.value == 'WITHDRAWAL' %}fa-arrow-up
+                  {% elif tx.transaction_type.value == 'TRANSFER' %}fa-exchange-alt
+                  {% elif tx.transaction_type.value == 'COMMISSION' %}fa-coins
+                  {% else %}fa-receipt{% endif %}"></i>
+              </div>
+              <div>
+                <div style="font-weight:500;">{{ tx.description or tx.transaction_type.value | capitalize }}</div>
+                <div class="mono" style="font-size:10px;">ID: {{ tx.id | string | truncate(12, true, '...') }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge
+              {% if tx.transaction_type.value == 'DEPOSIT' %}badge-approved
+              {% elif tx.transaction_type.value == 'WITHDRAWAL' %}badge-rejected
+              {% elif tx.transaction_type.value == 'TRANSFER' %}badge-pending
+              {% elif tx.transaction_type.value == 'COMMISSION' %}badge-active
+              {% else %}badge-type{% endif %}">
+              {{ tx.transaction_type.value | capitalize }}
+            </span>
+          </td>
+          <td>
+            <span style="font-weight:600;{% if tx.transaction_type.value == 'DEPOSIT' or tx.transaction_type.value == 'COMMISSION' %}color:var(--green);{% elif tx.transaction_type.value == 'WITHDRAWAL' %}color:var(--red);{% endif %}">
+              {% if tx.transaction_type.value == 'DEPOSIT' or tx.transaction_type.value == 'COMMISSION' %}+{% endif %}
+              {{ tx.amount | round(2) }} {{ tx.currency }}
+            </span>
+          </td>
+          <td>
+            <span class="badge
+              {% if tx.status.value == 'COMPLETED' %}badge-approved
+              {% elif tx.status.value == 'PENDING' %}badge-pending
+              {% elif tx.status.value == 'FAILED' %}badge-rejected
+              {% elif tx.status.value == 'CANCELLED' %}badge-inactive
+              {% else %}badge-type{% endif %}">
+              {{ tx.status.value | capitalize }}
+            </span>
+          </td>
+          <td class="mono">{{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else 'N/A' }}</td>
+          <td>
+            <button class="btn btn-ghost btn-xs">View Details</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-receipt"></i></div>
+      <p>No transactions found</p>
+      <p style="font-size:12px;color:var(--muted-2);margin-top:4px;">Start by depositing funds or making a transfer</p>
+      <a href="{{ safe_url('wallet.deposit_page') }}" class="btn btn-primary" style="margin-top:16px;">
+        <i class="fas fa-plus-circle"></i> Make a Deposit
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if pagination and pagination.get('total_pages', 1) > 1 %}
+<div style="display:flex;justify-content:center;margin-top:24px;">
+  <div class="pagination">
+    <button class="pg-btn">Previous</button>
+    <button class="pg-btn active">1</button>
+    <button class="pg-btn">2</button>
+    <button class="pg-btn">3</button>
+    <button class="pg-btn">Next</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Fan Onboarding — AFCON 360{% endblock %}
+{% block content %}
+{% set step_current=1 %}{% set step_total=1 %}{% set step_labels=['Profile'] %}
+<div class="onboarding-root ob-wizard">
+  <div class="ob-wizard-inner">
+    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
+    <h2 class="ob-wizard-title">Fan & Explorer</h2>
+    <p class="ob-wizard-sub">Book events, accommodation and transport as an individual.</p>
+    {% include 'onboarding/_progress_bar.html' %}
+    <form method="POST" action="{{ url_for('onboarding.fan_onboarding') }}" class="ob-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="ob-field">
+        <label>Full Name <span class="ob-req">*</span></label>
+        <input type="text" name="full_name" value="{{ profile.full_name if profile else '' }}" required>
+      </div>
+      <div class="ob-field">
+        <label>City</label>
+        <input type="text" name="city" value="{{ profile.city if profile else '' }}">
+      </div>
+      <div class="ob-field">
+        <label>Country <span class="ob-req">*</span></label>
+        <input type="text" name="country" value="{{ profile.country if profile else '' }}" required>
+      </div>
+      <div class="ob-form-footer">
+        <button class="ob-btn ob-btn--primary" type="submit">Continue →</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% include 'onboarding/_wizard_styles.html' %}
+{% endblock %}

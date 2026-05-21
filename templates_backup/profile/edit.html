@@ -1,0 +1,376 @@
+{# Check if this is a pane request - if yes, don't extend base #}
+{% if request.args.get('_pane') == '1' %}
+    {% set is_pane = true %}
+{% else %}
+    {% extends "base.html" %}
+    {% set is_pane = false %}
+{% endif %}
+
+{% block title %}Edit Profile - {{ app_name }}{% endblock %}
+{% block styles %}
+<style>
+    .edit-profile-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+    .profile-edit-card {
+        border: none;
+        border-radius: 16px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+    }
+    .card-header-custom {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem 2rem;
+        border: none;
+    }
+    .card-header-custom h4 {
+        margin: 0;
+        font-weight: 600;
+        font-size: 1.5rem;
+    }
+    .progress-section {
+        background: #f8fafc;
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .progress-bar-custom {
+        height: 12px;
+        background: #e2e8f0;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        border-radius: 6px;
+        transition: width 0.3s ease;
+    }
+    .section-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .section-card-header {
+        background: #f8fafc;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 600;
+        color: #475569;
+    }
+    .form-control {
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+    }
+    .form-control:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .form-control.bg-light {
+        background-color: #f1f5f9 !important;
+        cursor: not-allowed;
+    }
+    .form-label {
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 0.5rem;
+    }
+    .form-text {
+        color: #64748b;
+        font-size: 0.875rem;
+    }
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .btn-outline-secondary {
+        border: 1px solid #cbd5e1;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .btn-outline-secondary:hover {
+        background: #f1f5f9;
+    }
+    .alert-info {
+        background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+        border: 1px solid #bae6fd;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+    }
+    .completion-tips {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+    }
+    .completion-tips .card-header {
+        background: transparent;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 1rem 1.5rem;
+    }
+    .completion-tips .list-group-item {
+        border: none;
+        padding: 0.75rem 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="edit-profile-container">
+    <div class="profile-edit-card">
+        <div class="card-header-custom">
+            <h4>Edit Your Profile</h4>
+        </div>
+        
+        <!-- Progress Section -->
+        <div class="progress-section">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Profile Completion</h5>
+                <span class="badge" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-weight: 600;">
+                    {{ completion_percentage }}%
+                </span>
+            </div>
+            <div class="progress-bar-custom">
+                <div class="progress-bar-fill" style="width: {{ completion_percentage }}%;"></div>
+            </div>
+            <small class="text-muted mt-2 d-block">
+                Complete your profile to unlock all features and improve your account security.
+            </small>
+        </div>
+
+        <div class="card-body p-4">
+            <!-- Verification Warning -->
+            {% if is_verified %}
+            <div class="alert alert-info mb-4">
+                <strong>🔒 Verified Account</strong><br>
+                Your account is verified. Certain identity fields (name, date of birth, gender, nationality) cannot be changed after verification to prevent identity fraud.
+            </div>
+            {% endif %}
+
+            <!-- Edit Form -->
+            <form method="POST" action="{{ url_for('profile.edit_profile') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <!-- Immutable Fields (locked after verification) -->
+                <div class="section-card">
+                    <div class="section-card-header">
+                        Identity Information {% if is_verified %}<span class="badge bg-secondary ms-2">Locked</span>{% endif %}
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <label for="full_name" class="form-label">Full Name *</label>
+                            <input type="text" class="form-control {% if is_verified %}bg-light{% endif %}" id="full_name" name="full_name"
+                                   value="{{ profile.full_name or '' }}" required {% if is_verified %}readonly{% endif %}>
+                            <div class="form-text">
+                                Your legal full name as it appears on official documents.
+                                {% if is_verified %}<span class="text-danger fw-bold">Cannot be changed after verification.</span>{% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="date_of_birth" class="form-label">Date of Birth</label>
+                                <input type="date" class="form-control {% if is_verified %}bg-light{% endif %}" id="date_of_birth" name="date_of_birth"
+                                       value="{{ profile.date_of_birth.isoformat() if profile.date_of_birth else '' }}" {% if is_verified %}readonly{% endif %}>
+                                {% if is_verified %}<small class="text-danger fw-bold">Cannot be changed after verification.</small>{% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="gender" class="form-label">Gender</label>
+                                <select class="form-control {% if is_verified %}bg-light{% endif %}" id="gender" name="gender" {% if is_verified %}disabled{% endif %}>
+                                    <option value="">Select Gender</option>
+                                    <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>Male</option>
+                                    <option value="female" {% if profile.gender == 'female' %}selected{% endif %}>Female</option>
+                                    <option value="other" {% if profile.gender == 'other' %}selected{% endif %}>Other</option>
+                                    <option value="unspecified" {% if profile.gender == 'unspecified' %}selected{% endif %}>Unspecified</option>
+                                </select>
+                                {% if is_verified %}<small class="text-danger fw-bold">Cannot be changed after verification.</small>{% endif %}
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="nationality" class="form-label">Nationality</label>
+                            <input type="text" class="form-control {% if is_verified %}bg-light{% endif %}" id="nationality" name="nationality"
+                                   value="{{ profile.nationality or '' }}" {% if is_verified %}readonly{% endif %}>
+                            {% if is_verified %}<small class="text-danger fw-bold">Cannot be changed after verification.</small>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mutable Fields (can always be changed) -->
+                <div class="section-card">
+                    <div class="section-card-header">
+                        Contact Information
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="email" name="email"
+                                   value="{{ profile.email or '' }}">
+                            <div class="form-text">
+                                {% if profile.email_verified %}
+                                    <span class="text-success fw-bold">✓ Email verified</span>
+                                {% else %}
+                                    <span class="text-warning">Email not verified. Changing email will require re-verification.</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="phone_number" class="form-label">Phone Number</label>
+                            <input type="tel" class="form-control" id="phone_number" name="phone_number"
+                                   value="{{ profile.phone_number or '' }}">
+                            <div class="form-text">
+                                Include country code (e.g., +256 for Uganda).
+                                {% if profile.phone_verified %}
+                                    <span class="text-success fw-bold">✓ Phone verified</span>
+                                {% else %}
+                                    <span class="text-warning">Phone not verified.</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Address Fields -->
+                <div class="section-card">
+                    <div class="section-card-header">
+                        Address Information
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <label for="address" class="form-label">Address</label>
+                            <textarea class="form-control" id="address" name="address" rows="3">{{ profile.address or '' }}</textarea>
+                            <div class="form-text">Your street address, building, apartment, etc.</div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="city" class="form-label">City</label>
+                                <input type="text" class="form-control" id="city" name="city"
+                                       value="{{ profile.city or '' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="country" class="form-label">Country</label>
+                                <input type="text" class="form-control" id="country" name="country"
+                                       value="{{ profile.country or '' }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fan team declaration — shown always, relevant during tournament -->
+                <div class="mb-3">
+                  <label for="fan_team" class="form-label">
+                    AFCON team you support
+                    <span class="text-muted small">(optional)</span>
+                  </label>
+                  <select class="form-select" id="fan_team" name="fan_team">
+                    <option value="">Not declared</option>
+                    <option value="Algeria"   {% if profile.fan_team == 'Algeria' %}selected{% endif %}>Algeria</option>
+                    <option value="Angola"    {% if profile.fan_team == 'Angola' %}selected{% endif %}>Angola</option>
+                    <option value="Cameroon"  {% if profile.fan_team == 'Cameroon' %}selected{% endif %}>Cameroon</option>
+                    <option value="DR Congo"  {% if profile.fan_team == 'DR Congo' %}selected{% endif %}>DR Congo</option>
+                    <option value="Egypt"     {% if profile.fan_team == 'Egypt' %}selected{% endif %}>Egypt</option>
+                    <option value="Ghana"     {% if profile.fan_team == 'Ghana' %}selected{% endif %}>Ghana</option>
+                    <option value="Ivory Coast" {% if profile.fan_team == 'Ivory Coast' %}selected{% endif %}>Ivory Coast</option>
+                    <option value="Kenya"     {% if profile.fan_team == 'Kenya' %}selected{% endif %}>Kenya</option>
+                    <option value="Mali"      {% if profile.fan_team == 'Mali' %}selected{% endif %}>Mali</option>
+                    <option value="Morocco"   {% if profile.fan_team == 'Morocco' %}selected{% endif %}>Morocco</option>
+                    <option value="Nigeria"   {% if profile.fan_team == 'Nigeria' %}selected{% endif %}>Nigeria</option>
+                    <option value="Senegal"   {% if profile.fan_team == 'Senegal' %}selected{% endif %}>Senegal</option>
+                    <option value="South Africa" {% if profile.fan_team == 'South Africa' %}selected{% endif %}>South Africa</option>
+                    <option value="Tanzania"  {% if profile.fan_team == 'Tanzania' %}selected{% endif %}>Tanzania</option>
+                    <option value="Tunisia"   {% if profile.fan_team == 'Tunisia' %}selected{% endif %}>Tunisia</option>
+                    <option value="Uganda"    {% if profile.fan_team == 'Uganda' %}selected{% endif %}>Uganda</option>
+                    <option value="Other"     {% if profile.fan_team == 'Other' %}selected{% endif %}>Other / Neutral</option>
+                  </select>
+                  <div class="form-text">Used to personalise your tournament experience.</div>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                    <a href="{{ url_for('profile.account_overview') }}" class="btn btn-outline-secondary me-md-2">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+
+            <!-- Completion Tips -->
+            <div class="completion-tips mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Tips to Complete Your Profile</h5>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Verify your email address
+                            {% if profile.email_verified %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Verify your phone number
+                            {% if profile.phone_verified %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Provide your full name
+                            {% if profile.full_name %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Add your address
+                            {% if profile.address %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Specify your city
+                            {% if profile.city %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Specify your country
+                            {% if profile.country %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

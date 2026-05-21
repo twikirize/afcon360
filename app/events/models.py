@@ -977,6 +977,7 @@ class EventAssignment(BaseModel):
         Index("idx_assignment_managed_by", "managed_by"),
         Index("idx_assignment_created", "created_at"),
         Index("idx_assignment_registration", "registration_id"),
+        Index("idx_assignment_community_host", "community_host_id"),
     )
 
     event_id                  = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
@@ -984,6 +985,7 @@ class EventAssignment(BaseModel):
     accommodation_booking_id  = Column(BigInteger, nullable=True)
     transport_booking_id      = Column(BigInteger, nullable=True)
     meal_booking_id           = Column(BigInteger, nullable=True)
+    community_host_id         = Column(BigInteger, nullable=True, index=True)
     managed_by                = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     notes                     = Column(Text, nullable=True)
     schedule_json             = Column(JSON, default=dict)

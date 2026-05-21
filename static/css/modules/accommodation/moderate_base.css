@@ -1,0 +1,75 @@
+/* ============================================================
+   ACCOMMODATION MODERATION — SHARED BASE STYLES
+   Used by: moderate.html, moderate_property.html,
+            moderate_review.html, moderate_booking.html
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink: #0a0a0f;
+  --surface: #0f0f1a;
+  --panel: #14141f;
+  --border: rgba(255,255,255,0.07);
+  --gold: #d4a843;
+  --gold-dim: rgba(212,168,67,0.15);
+  --text: #e8e8f0;
+  --muted: #6b6b80;
+  --red: #e05252;
+  --green: #4ade80;
+  --amber: #fbbf24;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.6; }
+
+/* Header */
+.mod-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mod-badge { background: var(--gold); color: #000; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 3px; }
+.mod-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--text); margin-left: 12px; }
+
+/* Buttons */
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; transition: all 0.2s; }
+.btn-approve { background: var(--green); color: #000; }
+.btn-reject { background: var(--red); color: #fff; }
+.btn-flag { background: var(--amber); color: #000; }
+.btn-action { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(212,168,67,0.2); border-radius: 5px; font-size: 11px; font-weight: 600; text-decoration: none; transition: all 0.15s; }
+.btn-action:hover { background: var(--gold); color: #000; }
+
+/* Layout */
+.mod-wrap { padding: 28px 32px; max-width: 1500px; }
+.breadcrumb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 12px; color: var(--muted); }
+.breadcrumb-row a { color: var(--muted); text-decoration: none; }
+.breadcrumb-row a:hover { color: var(--gold); }
+.breadcrumb-row .sep { color: var(--border); }
+.breadcrumb-row .active { color: var(--text); }
+
+/* Panels */
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.panel-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-icon { width: 22px; height: 22px; border-radius: 5px; background: var(--gold-dim); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--gold); }
+.panel-body { padding: 24px; }
+.action-bar { display: flex; gap: 12px; padding: 20px 24px; background: rgba(255,255,255,0.02); border-top: 1px solid var(--border); }
+
+/* Badge */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; letter-spacing: 0.03em; text-transform: uppercase; }
+.badge-pending { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-approved { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-rejected { background: rgba(224,82,82,0.15); color: var(--red); border: 1px solid rgba(224,82,82,0.25); }
+
+/* Forms */
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.form-textarea, .form-select { width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: 'DM Sans', sans-serif; }
+.form-textarea { min-height: 100px; resize: vertical; }
+.form-select option { background: var(--panel); }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-state .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
+
+/* Mono text */
+.mono { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }

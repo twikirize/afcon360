@@ -1,0 +1,187 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Compliance Reports — AFCON360{% endblock %}
+{% block topbar_title %}Compliance Reports{% endblock %}
+
+{% block content %}
+<!-- Quick Report Cards -->
+<div class="stat-grid" style="margin-bottom: 20px;">
+  <div class="stat-card animate-up" style="cursor: pointer;" onclick="generateReport('fia')">
+    <div class="stat-icon red"><i class="fas fa-building-columns"></i></div>
+    <div class="stat-label" style="font-weight: 600; color: var(--ink);">FIA Uganda Report</div>
+    <div style="font-size: 12px; color: var(--muted);">Large transactions > UGX 20M</div>
+  </div>
+  <div class="stat-card animate-up" style="cursor: pointer;" onclick="generateReport('bou')">
+    <div class="stat-icon orange"><i class="fas fa-shield-check"></i></div>
+    <div class="stat-label" style="font-weight: 600; color: var(--ink);">Bank of Uganda</div>
+    <div style="font-size: 12px; color: var(--muted);">KYC timelines & stats</div>
+  </div>
+  <div class="stat-card animate-up" style="cursor: pointer;" onclick="generateReport('internal')">
+    <div class="stat-icon green"><i class="fas fa-chart-pie"></i></div>
+    <div class="stat-label" style="font-weight: 600; color: var(--ink);">Internal Summary</div>
+    <div style="font-size: 12px; color: var(--muted);">Daily/weekly/monthly</div>
+  </div>
+  <div class="stat-card animate-up">
+    <div class="stat-icon blue"><i class="fas fa-plus-circle"></i></div>
+    <div class="stat-label" style="font-weight: 600; color: var(--ink);"><a href="{{ url_for('compliance.generate_report') }}" style="text-decoration: none; color: inherit;">Custom Report</a></div>
+    <div style="font-size: 12px; color: var(--muted);">Build your own</div>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- Main: Report Archive -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-archive"></i> Report Archive</div>
+      </div>
+      <div class="card-body">
+        {% if reports %}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Report</th>
+                <th>Type</th>
+                <th>Generated</th>
+                <th>By</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for report in reports %}
+              <tr>
+                <td>
+                  <div style="font-weight: 600;">{{ report.title }}</div>
+                  <div style="font-size: 11px; color: var(--muted);">{{ report.report_number }}</div>
+                </td>
+                <td>
+                  {% if report.report_type.value == 'kyc_summary' %}
+                    <span class="badge badge-blue">KYC</span>
+                  {% elif report.report_type.value == 'aml_activity' %}
+                    <span class="badge badge-red">AML</span>
+                  {% elif report.report_type.value == 'regulatory_filing' %}
+                    <span class="badge badge-purple">Regulatory</span>
+                  {% else %}
+                    <span class="badge badge-gray">{{ report.report_type.value }}</span>
+                  {% endif %}
+                </td>
+                <td class="mono">{{ report.created_at.strftime('%Y-%m-%d') if report.created_at else '-' }}</td>
+                <td>{{ report.creator.username if report.creator else 'System' }}</td>
+                <td>
+                  {% if report.status == 'draft' %}
+                    <span class="badge badge-orange">Draft</span>
+                  {% elif report.status == 'review' %}
+                    <span class="badge badge-blue">In Review</span>
+                  {% elif report.status == 'approved' %}
+                    <span class="badge badge-green">Approved</span>
+                  {% elif report.status == 'published' %}
+                    <span class="badge badge-purple">Published</span>
+                  {% else %}
+                    <span class="badge badge-gray">{{ report.status }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="action-group">
+                    <a href="{{ url_for('compliance.view_report', report_id=report.id) }}" class="btn btn-sm btn-secondary">View</a>
+                    {% if report.file_path %}
+                    <a href="{{ url_for('compliance.download_report', report_id=report.id) }}" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-icon"><i class="fas fa-archive"></i></div>
+          <p>No reports generated yet. Generate your first report using the options above.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar: Recent Activity -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-clock"></i> Recent Activity</div>
+      </div>
+      <div class="card-body">
+        {% if recent_activity %}
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          {% for activity in recent_activity[:5] %}
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex-shrink: 0;"></div>
+            <div>
+              <div style="font-size: 13px;">{{ activity.description }}</div>
+              <div style="font-size: 11px; color: var(--muted);">{{ activity.created_at.strftime('%Y-%m-%d %H:%M') if activity.created_at else '-' }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--muted); font-size: 13px;">No recent activity</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-circle-info"></i> Report Types</div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge badge-red">FIA</span>
+            <span>Financial Intelligence Authority</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge badge-orange">BOU</span>
+            <span>Bank of Uganda</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge badge-blue">KYC</span>
+            <span>Know Your Customer</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge badge-purple">AML</span>
+            <span>Anti-Money Laundering</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+function generateReport(type) {
+  let reportName = '';
+  let reportDescription = '';
+
+  switch(type) {
+    case 'fia':
+      reportName = 'FIA Uganda Compliance Report';
+      reportDescription = 'This report contains transactions exceeding UGX 20,000,000 with time gap analysis.';
+      break;
+    case 'bou':
+      reportName = 'Bank of Uganda KYC Report';
+      reportDescription = 'This report contains KYC verification timelines and statistics.';
+      break;
+    case 'internal':
+      reportName = 'Internal Compliance Summary';
+      reportDescription = 'This report contains daily/weekly/monthly compliance summaries.';
+      break;
+  }
+
+  if (confirm(`Generate ${reportName}?\n\n${reportDescription}`)) {
+    // Redirect to generate report page with pre-filled type
+    window.location.href = `{{ url_for('compliance.generate_report') }}?type=${type}`;
+  }
+}
+{% endblock %}

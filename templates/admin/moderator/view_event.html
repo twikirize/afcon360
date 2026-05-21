@@ -75,13 +75,13 @@
         </div>
       </div>
       <div class="panel-body">
-        <form action="{{ safe_url('url_for\(['"]events.approve_event', event_id=event.id) }}" method="POST" style="margin-bottom:16px;">
+        <form action="{{ safe_url('events.approve_event', event_id=event.id) }}" method="POST" style="margin-bottom:16px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Approve this event?');">
             <i class="fas fa-check"></i> Approve Event
           </button>
         </form>
-        <form action="{{ safe_url('url_for\(['"]events.reject_event', event_id=event.id) }}" method="POST">
+        <form action="{{ safe_url('events.reject_event', event_id=event.id) }}" method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label class="form-label">Rejection Reason *</label>
           <textarea name="reason" class="form-control" rows="3" placeholder="Provide a clear reason for rejection..." required></textarea>

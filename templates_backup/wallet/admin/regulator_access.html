@@ -1,0 +1,721 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Regulator Access - AFCON360{% endblock %}
+
+{% block extra_css %}
+<style>
+.regulator-dashboard {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.access-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.access-form {
+    margin-bottom: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.access-btn {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.access-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.reports-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.report-card {
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.report-card:hover {
+    border-color: #4F46E5;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.report-title {
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.report-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #10B981;
+    color: white;
+}
+
+.status-expired {
+    background: #F59E0B;
+    color: white;
+}
+
+.status-pending {
+    background: #6B7280;
+    color: white;
+}
+
+.report-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #6B7280;
+}
+
+.access-log {
+    margin-top: 2rem;
+}
+
+.log-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.log-table th,
+.log-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.log-table th {
+    background: #F9FAFB;
+    font-weight: 600;
+    color: #374151;
+}
+
+.log-table tbody tr:hover {
+    background: #F9FAFB;
+}
+
+.access-type {
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.type-download {
+    background: #10B981;
+    color: white;
+}
+
+.type-view {
+    background: #3B82F6;
+    color: white;
+}
+
+.type-api {
+    background: #8B5CF6;
+    color: white;
+}
+
+.export-controls {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid #E5E7EB;
+}
+
+.export-btn {
+    background: #4F46E5;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.export-btn:hover {
+    background: #3730A3;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">
+            Regulator Access Portal
+        </h1>
+        <p class="text-gray-600 text-lg">
+            Secure access for regulatory compliance and audit data
+        </p>
+    </div>
+
+    <div class="regulator-dashboard">
+        <!-- Access Panel -->
+        <div class="access-panel">
+            <h2 class="text-xl font-semibold mb-6">Generate Access Code</h2>
+            
+            <form id="accessForm" class="access-form">
+                <div class="form-group">
+                    <label for="reportType">Report Type</label>
+                    <select id="reportType" class="form-control" required>
+                        <option value="">Select Report Type</option>
+                        <option value="daily">Daily Transaction Report</option>
+                        <option value="weekly">Weekly Transaction Report</option>
+                        <option value="monthly">Monthly Transaction Report</option>
+                        <option value="aml">AML Compliance Report</option>
+                        <option value="kyc">KYC Compliance Report</option>
+                        <option value="suspicious">Suspicious Activity Report</option>
+                        <option value="compliance">Full Compliance Report</option>
+                        <option value="audit">Regulatory Audit Report</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="dateRange">Date Range</label>
+                    <select id="dateRange" class="form-control">
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="last_7_days">Last 7 Days</option>
+                        <option value="last_30_days">Last 30 Days</option>
+                        <option value="last_90_days">Last 90 Days</option>
+                        <option value="this_month">This Month</option>
+                        <option value="last_month">Last Month</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="expiryHours">Access Expires In (Hours)</label>
+                    <input type="number" id="expiryHours" class="form-control" 
+                           value="24" min="1" max="168" required>
+                </div>
+                
+                <button type="submit" class="access-btn">
+                    Generate Access Code
+                </button>
+            </form>
+
+            <!-- Statistics -->
+            <div class="stats-grid mt-8">
+                <div class="stat-card">
+                    <div class="stat-value" id="activeReports">12</div>
+                    <div class="stat-label">Active Reports</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalAccesses">47</div>
+                    <div class="stat-label">Total Accesses</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="todayAccesses">8</div>
+                    <div class="stat-label">Today's Accesses</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avgDuration">2.3h</div>
+                    <div class="stat-label">Avg Duration</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reports Panel -->
+        <div class="reports-panel">
+            <h2 class="text-xl font-semibold mb-6">Available Reports</h2>
+            
+            <div class="reports-grid" id="reportsGrid">
+                <!-- Daily Transaction Report -->
+                <div class="report-card" onclick="downloadReport('daily-2025-05-07')">
+                    <div class="report-header">
+                        <div class="report-title">Daily Transaction Report</div>
+                        <span class="report-status status-active">Active</span>
+                    </div>
+                    <div class="report-meta">
+                        <span>Created: 2025-05-07 09:00</span>
+                        <span>Expires: 2025-05-08 09:00</span>
+                    </div>
+                </div>
+
+                <!-- Weekly Transaction Report -->
+                <div class="report-card" onclick="downloadReport('weekly-2025-w18')">
+                    <div class="report-header">
+                        <div class="report-title">Weekly Transaction Report</div>
+                        <span class="report-status status-active">Active</span>
+                    </div>
+                    <div class="report-meta">
+                        <span>Created: 2025-05-01 09:00</span>
+                        <span>Expires: 2025-05-08 09:00</span>
+                    </div>
+                </div>
+
+                <!-- AML Compliance Report -->
+                <div class="report-card" onclick="downloadReport('aml-2025-05')">
+                    <div class="report-header">
+                        <div class="report-title">AML Compliance Report</div>
+                        <span class="report-status status-pending">Processing</span>
+                    </div>
+                    <div class="report-meta">
+                        <span>Created: 2025-05-07 06:00</span>
+                        <span>Expires: 2025-05-07 18:00</span>
+                    </div>
+                </div>
+
+                <!-- KYC Compliance Report -->
+                <div class="report-card" onclick="downloadReport('kyc-2025-05')">
+                    <div class="report-header">
+                        <div class="report-title">KYC Compliance Report</div>
+                        <span class="report-status status-active">Active</span>
+                    </div>
+                    <div class="report-meta">
+                        <span>Created: 2025-05-01 09:00</span>
+                        <span>Expires: 2025-05-08 09:00</span>
+                    </div>
+                </div>
+
+                <!-- Suspicious Activity Report -->
+                <div class="report-card" onclick="downloadReport('suspicious-2025-05')">
+                    <div class="report-header">
+                        <div class="report-title">Suspicious Activity Report</div>
+                        <span class="report-status status-active">Active</span>
+                    </div>
+                    <div class="report-meta">
+                        <span>Created: 2025-05-07 12:00</span>
+                        <span>Expires: 2025-05-07 18:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export Controls -->
+            <div class="export-controls">
+                <button class="export-btn" onclick="exportAllReports()">
+                    📊 Export All Reports
+                </button>
+                <button class="export-btn" onclick="generateCustomReport()">
+                    📋 Generate Custom Report
+                </button>
+                <button class="export-btn" onclick="scheduleReports()">
+                    ⏰ Schedule Reports
+                </button>
+            </div>
+
+            <!-- Access Log -->
+            <div class="access-log">
+                <h3 class="text-lg font-semibold mb-4">Recent Access Log</h3>
+                
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Regulator</th>
+                            <th>Report Type</th>
+                            <th>Access Code</th>
+                            <th>Access Type</th>
+                            <th>IP Address</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>2025-05-07 14:23:45</td>
+                            <td>Bank of Uganda</td>
+                            <td>Daily Transaction</td>
+                            <td>REG-7X9K2M3P</td>
+                            <td><span class="access-type type-download">Download</span></td>
+                            <td>196.43.218.92</td>
+                            <td><span class="access-type type-api">API</span></td>
+                        </tr>
+                        <tr>
+                            <td>2025-05-07 13:45:12</td>
+                            <td>Financial Intelligence Unit</td>
+                            <td>AML Compliance</td>
+                            <td>REG-3K8M1N2Q</td>
+                            <td><span class="access-type type-view">View</span></td>
+                            <td>196.43.218.91</td>
+                            <td><span class="access-type type-api">API</span></td>
+                        </tr>
+                        <tr>
+                            <td>2025-05-07 11:30:22</td>
+                            <td>Central Bank</td>
+                            <td>KYC Compliance</td>
+                            <td>REG-9K4M2P3Q</td>
+                            <td><span class="access-type type-download">Download</span></td>
+                            <td>196.43.218.93</td>
+                            <td><span class="access-type type-api">API</span></td>
+                        </tr>
+                        <tr>
+                            <td>2025-05-07 09:15:33</td>
+                            <td>Financial Intelligence Unit</td>
+                            <td>Suspicious Activity</td>
+                            <td>REG-5K2M9N1Q</td>
+                            <td><span class="access-type type-view">View</span></td>
+                            <td>196.43.218.95</td>
+                            <td><span class="access-type type-api">API</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Handle access form submission
+document.getElementById('accessForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const reportType = document.getElementById('reportType').value;
+    const dateRange = document.getElementById('dateRange').value;
+    const expiryHours = document.getElementById('expiryHours').value;
+    
+    if (!reportType) {
+        alert('Please select a report type');
+        return;
+    }
+    
+    // Generate access code
+    fetch('/admin/regulator/generate-access', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            report_type: reportType,
+            date_range: dateRange,
+            expiry_hours: parseInt(expiryHours)
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Access code generated: ${data.access_code}\n\nThis code will expire in ${expiryHours} hours.\n\nShare this code securely with the regulator.`);
+            
+            // Refresh the reports grid
+            loadReports();
+            updateStats();
+        } else {
+            alert(data.error || 'Failed to generate access code');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to generate access code');
+    });
+});
+
+// Download report
+function downloadReport(reportId) {
+    fetch(`/admin/regulator/download-report/${reportId}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.blob();
+        }
+        throw new Error('Network response was not ok');
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report-${reportId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Log the download
+        logAccess(reportId, 'download');
+    })
+    .catch(error => {
+        console.error('Error downloading report:', error);
+        alert('Failed to download report');
+    });
+}
+
+// Export all reports
+function exportAllReports() {
+    if (confirm('This will export all available reports. Continue?')) {
+        fetch('/admin/regulator/export-all', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const blob = new Blob([JSON.stringify(data.data, null, 2)], {type: 'application/json'});
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `regulator-reports-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } else {
+            alert(data.error || 'Failed to export reports');
+        }
+    })
+    .catch(error => {
+        console.error('Error exporting reports:', error);
+        alert('Failed to export reports');
+    });
+}
+
+// Generate custom report
+function generateCustomReport() {
+    const startDate = prompt('Enter start date (YYYY-MM-DD):');
+    const endDate = prompt('Enter end date (YYYY-MM-DD):');
+    const reportTypes = prompt('Enter report types (comma-separated):');
+    
+    if (startDate && endDate && reportTypes) {
+        fetch('/admin/regulator/generate-custom', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                start_date: startDate,
+                end_date: endDate,
+                report_types: reportTypes.split(',').map(t => t.trim())
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Custom report generated: ${data.access_code}`);
+                loadReports();
+            } else {
+                alert(data.error || 'Failed to generate custom report');
+            }
+        })
+        .catch(error => {
+            console.error('Error generating custom report:', error);
+            alert('Failed to generate custom report');
+        });
+    }
+}
+
+// Schedule reports
+function scheduleReports() {
+    const schedule = prompt('Enter schedule (e.g., "daily 09:00", "weekly monday 09:00"):');
+    
+    if (schedule) {
+        fetch('/admin/regulator/schedule-reports', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                schedule: schedule
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Reports scheduled successfully');
+            } else {
+                alert(data.error || 'Failed to schedule reports');
+            }
+        })
+        .catch(error => {
+            console.error('Error scheduling reports:', error);
+            alert('Failed to schedule reports');
+        });
+    }
+}
+
+// Log access
+function logAccess(reportId, accessType) {
+    fetch('/admin/regulator/log-access', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            report_id: reportId,
+            access_type: accessType
+        })
+    })
+    .catch(error => {
+        console.error('Error logging access:', error);
+    });
+}
+
+// Load reports
+function loadReports() {
+    fetch('/admin/regulator/reports', {
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateReportsGrid(data.reports);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading reports:', error);
+    });
+}
+
+// Update reports grid
+function updateReportsGrid(reports) {
+    const grid = document.getElementById('reportsGrid');
+    if (!grid) return;
+    
+    grid.innerHTML = reports.map(report => `
+        <div class="report-card" onclick="downloadReport('${report.id}')">
+            <div class="report-header">
+                <div class="report-title">${report.title}</div>
+                <span class="report-status status-${report.status}">${report.status}</span>
+            </div>
+            <div class="report-meta">
+                <span>Created: ${report.created_at}</span>
+                <span>Expires: ${report.expires_at}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Update statistics
+function updateStats() {
+    fetch('/admin/regulator/stats', {
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('activeReports').textContent = data.active_reports;
+            document.getElementById('totalAccesses').textContent = data.total_accesses;
+            document.getElementById('todayAccesses').textContent = data.today_accesses;
+            document.getElementById('avgDuration').textContent = data.avg_duration;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading stats:', error);
+    });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadReports();
+    updateStats();
+    
+    // Auto-refresh every 5 minutes
+    setInterval(() => {
+        loadReports();
+        updateStats();
+    }, 300000);
+});
+</script>
+{% endblock %}

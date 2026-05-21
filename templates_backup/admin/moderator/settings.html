@@ -1,0 +1,254 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Moderator Settings - AFCON360{% endblock %}
+
+{% block content %}
+<div class="moderator-settings-container">
+    <div class="settings-header">
+        <h1><i class="fas fa-gavel"></i> Moderator Settings</h1>
+        <p>Configure moderation tools, filters, and workflow preferences</p>
+    </div>
+
+    <!-- Moderation Queue Settings -->
+    <div class="settings-section">
+        <h3 class="section-title">Moderation Queue</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin_settings.moderation_settings') }}" class="settings-card">
+                <div class="card-icon">📋</div>
+                <div class="card-title">Queue Management</div>
+                <div class="card-description">
+                    View pending items, queue statistics, and recent moderation activity
+                </div>
+                <span class="card-badge badge-queue">Queue</span>
+            </a>
+
+            <a href="{{ safe_url('accommodation.admin.moderate') }}" class="settings-card">
+                <div class="card-icon">🏨</div>
+                <div class="card-title">Accommodation Moderation</div>
+                <div class="card-description">
+                    Review property listings, bookings, and accommodation-related content
+                </div>
+                <span class="card-badge badge-accommodation">Properties</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.content') }}" class="settings-card">
+                <div class="card-icon">📝</div>
+                <div class="card-title">Content Moderation</div>
+                <div class="card-description">
+                    Review user-generated content, posts, and general platform content
+                </div>
+                <span class="card-badge badge-content">Content</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Moderation Filters -->
+    <div class="settings-section">
+        <h3 class="section-title">Moderation Filters & Automation</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin_settings.moderation_filters') }}" class="settings-card">
+                <div class="card-icon">⚙️</div>
+                <div class="card-title">Filter Configuration</div>
+                <div class="card-description">
+                    Configure auto-approval rules, content filters, and escalation settings
+                </div>
+                <span class="card-badge badge-automation">Automation</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.content_safety') }}" class="settings-card">
+                <div class="card-icon">🛡️</div>
+                <div class="card-title">Content Safety</div>
+                <div class="card-description">
+                    Configure profanity filters, spam detection, and safety thresholds
+                </div>
+                <span class="card-badge badge-safety">Safety</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.escalations') }}" class="settings-card">
+                <div class="card-icon">🚨</div>
+                <div class="card-title">Escalation Rules</div>
+                <div class="card-description">
+                    Set up automatic escalation for high-priority or sensitive content
+                </div>
+                <span class="card-badge badge-escalation">Escalation</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Training & Guidelines -->
+    <div class="settings-section">
+        <h3 class="section-title">Training & Guidelines</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin.moderator.training') }}" class="settings-card">
+                <div class="card-icon">🎓</div>
+                <div class="card-title">Moderator Training</div>
+                <div class="card-description">
+                    Access training materials, guidelines, and best practices
+                </div>
+                <span class="card-badge badge-training">Training</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.stats') }}" class="settings-card">
+                <div class="card-icon">📊</div>
+                <div class="card-title">Performance Stats</div>
+                <div class="card-description">
+                    View moderation statistics, response times, and quality metrics
+                </div>
+                <span class="card-badge badge-analytics">Analytics</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.audit_log') }}" class="settings-card">
+                <div class="card-icon">📜</div>
+                <div class="card-title">Audit Log</div>
+                <div class="card-description">
+                    Review moderation history and track decision patterns
+                </div>
+                <span class="card-badge badge-audit">Audit</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Cross-Platform Moderation -->
+    <div class="settings-section">
+        <h3 class="section-title">Cross-Platform Moderation</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin.moderator.events') }}" class="settings-card">
+                <div class="card-icon">🎫</div>
+                <div class="card-title">Event Moderation</div>
+                <div class="card-description">
+                    Review event listings, registrations, and event-related content
+                </div>
+                <span class="card-badge badge-events">Events</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.transport') }}" class="settings-card">
+                <div class="card-icon">🚗</div>
+                <div class="card-title">Transport Moderation</div>
+                <div class="card-description">
+                    Review transport bookings, driver profiles, and vehicle listings
+                </div>
+                <span class="card-badge badge-transport">Transport</span>
+            </a>
+
+            <a href="{{ url_for('admin.moderator.users') }}" class="settings-card">
+                <div class="card-icon">👥</div>
+                <div class="card-title">User Moderation</div>
+                <div class="card-description">
+                    Review user profiles, behavior patterns, and account issues
+                </div>
+                <span class="card-badge badge-users">Users</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+.moderator-settings-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.settings-header {
+    margin-bottom: 2rem;
+}
+
+.settings-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.settings-header p {
+    color: #6b7280;
+    font-size: 1.1rem;
+}
+
+.settings-section {
+    margin-bottom: 3rem;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.settings-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+}
+
+.settings-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+    border-color: #667eea;
+}
+
+.card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.card-description {
+    color: #6b7280;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.card-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-queue { background: #dbeafe; color: #1e40af; }
+.badge-accommodation { background: #d1fae5; color: #065f46; }
+.badge-content { background: #fce7f3; color: #9d174d; }
+.badge-automation { background: #f3f4f6; color: #374151; }
+.badge-safety { background: #fef3c7; color: #92400e; }
+.badge-escalation { background: #fee2e2; color: #dc2626; }
+.badge-training { background: #e0e7ff; color: #3730a3; }
+.badge-analytics { background: #d1fae5; color: #065f46; }
+.badge-audit { background: #f3f4f6; color: #374151; }
+.badge-events { background: #fef3c7; color: #92400e; }
+.badge-transport { background: #dbeafe; color: #1e40af; }
+.badge-users { background: #fce7f3; color: #9d174d; }
+
+@media (max-width: 768px) {
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .settings-header h1 {
+        font-size: 1.5rem;
+    }
+}
+</style>
+{% endblock %}

@@ -1051,7 +1051,7 @@ def create_app(config_object=None) -> Flask:
         links["tournament_home"] = _safe_url("tournament.home") if modules.get("tournament") and "tournament.home" in vf else "#"
         links["tourism_home"] = _safe_url("tourism.home") if modules.get("tourism") and "tourism.home" in vf else "#"
         links["transport_home"] = _safe_url("transport.home") if modules.get("transport") and "transport.home" in vf else "#"
-        links["accommodation_index"] = _safe_url("accommodation.guest.search") if modules.get("accommodation") and "accommodation.guest.search" in vf else "#"
+        links["accommodation_index"] = _safe_url("accommodation.guest_search") if modules.get("accommodation") and "accommodation.guest_search" in vf else "#"
         links["kyc_index"] = _safe_url("kyc.index") if "kyc.index" in vf else "#"
         links["profile_public"] = _safe_url("profile.my_public_profile") if "profile.my_public_profile" in vf else "#"
         links["profile_account"] = _safe_url("profile.account_overview") if "profile.account_overview" in vf else "#"
@@ -1366,11 +1366,11 @@ def create_app(config_object=None) -> Flask:
         # avoid regressions; a Report-Only header below shows violations for a future no-inline style policy.
         csp_enforce = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
             "img-src 'self' data: https:; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
+            "connect-src 'self' https://cdn.jsdelivr.net; "
             "object-src 'none'; "
             "frame-ancestors 'none'; "
             "form-action 'self'; "
@@ -1382,11 +1382,11 @@ def create_app(config_object=None) -> Flask:
         # Report-Only header to monitor a stricter style policy (no inline styles)
         csp_report_only = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}'; "
-            "style-src 'self' https://fonts.googleapis.com; "
+            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+            "style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
             "img-src 'self' data: https:; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
+            "connect-src 'self' https://cdn.jsdelivr.net; "
             "object-src 'none'; "
             "frame-ancestors 'none'; "
             "form-action 'self'; "
@@ -1502,6 +1502,77 @@ def create_app(config_object=None) -> Flask:
     # ── Theme CSS generation deferred to first request ──────────────────────────────
     # Global theme CSS will be generated on first access via theme routes
     # This prevents EventTheme initialization issues during app startup
+
+    # ------------------------------------------------------------------
+    # Startup Endpoint Validator
+    # ------------------------------------------------------------------
+    def _validate_endpoint_references():
+        """Check known endpoint references against actual app.url_map."""
+        import logging as _logging
+        _log = _logging.getLogger("app.endpoint_validator")
+        
+        # Known references that should exist
+        _known_refs = [
+            # admin.owner.*
+            "admin.owner.dashboard",
+            "admin.owner.settings",
+            "admin.owner.manage_aggregators",
+            "admin.owner.configure_fraud_detection",
+            "admin.owner.configure_nonce_protection",
+            "admin.owner.configure_travel_rule",
+            "admin.owner.add_payment_gateway",
+            "admin.owner.security_dashboard",
+            "admin.owner.audit_logs",
+            "admin.owner.users",
+            "admin.owner.manage_roles",
+            "admin.owner.danger_zone",
+            "admin.owner.system_health",
+            "admin.owner.error_logs",
+            "admin.owner.impersonate_page",
+            "admin.owner.kyc_tier_management",
+            "admin.owner.compliance_dashboard",
+            "admin.owner.auth_settings",
+            # accommodation.*
+            "accommodation.guest_search",
+            "accommodation.admin_dashboard",
+            "accommodation.admin_main_dashboard",
+            "accommodation.legacy_detail",
+            # wallet.*
+            "wallet.wallet_home",
+            "wallet.wallet_dashboard",
+            # events.*
+            "events.list",
+            "events.events_hub",
+            # auth.*
+            "auth.login",
+            "auth.register",
+            # fan.*
+            "fan.dashboard",
+            # profile.*
+            "profile.my_public_profile",
+            "profile.account_overview",
+            # kyc.*
+            "kyc.index",
+            # tourism.*
+            "tourism.home",
+            # transport.*
+            "transport.home",
+            # tournament.*
+            "tournament.home",
+        ]
+        
+        _rules = {rule.endpoint for rule in app.url_map.iter_rules()}
+        _missing = [ref for ref in _known_refs if ref not in _rules]
+        
+        if _missing:
+            _log.warning(
+                "⚠️  Missing endpoint references detected (will cause url_for errors):\n%s",
+                "\n".join(f"  - {m}" for m in _missing)
+            )
+        else:
+            _log.info("✅ All known endpoint references validated successfully")
+    
+    _validate_endpoint_references()
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app

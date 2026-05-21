@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Organization Members - {{ org.legal_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Organization Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1><i class="bi bi-building"></i> {{ org.legal_name }}</h1>
+                    <p class="text-muted">{{ org.org_id }} • {{ org.contact_email }}</p>
+                </div>
+                <div>
+                    <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }}">
+                        {{ org.verification_status.title() }}
+                    </span>
+                    {% if org.is_operational %}
+                    <span class="badge bg-info ms-1">Operational</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Members List -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-people"></i> Organization Members
+                        <span class="badge bg-secondary ms-2">{{ members|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if members %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Joined</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for member in members %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-sm bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2">
+                                                {{ member.user.username[0]|upper }}
+                                            </div>
+                                            <div>
+                                                <div class="fw-semibold">{{ member.user.username }}</div>
+                                                <div class="text-muted small">{{ member.user.email }}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'primary' if member.role.name == 'org_owner' else 'secondary' }}">
+                                            {{ member.role.name.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if member.is_active else 'secondary' }}">
+                                            {{ 'Active' if member.is_active else 'Inactive' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small>{{ member.created_at.strftime('%Y-%m-%d') if member.created_at else '-' }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="View Profile">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            {% if member.role.name != 'org_owner' %}
+                                            <button class="btn btn-outline-warning" title="Edit Role">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-people display-1 text-muted"></i>
+                        <h4 class="mt-3">No Members Found</h4>
+                        <p class="text-muted">This organization doesn't have any members yet.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between">
+                <a href="{{ url_for('org.dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Organizations
+                </a>
+                <a href="{{ url_for('org.settings', org_id=org.id) }}" class="btn btn-primary">
+                    <i class="bi bi-gear"></i> Organization Settings
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

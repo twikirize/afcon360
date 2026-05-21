@@ -1,0 +1,628 @@
+{% extends "admin/admin.html" %}
+
+{% block title %}Payment Methods - AFCON360 Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payment-methods-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .method-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        border: 2px solid #e2e8f0;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .method-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 15px rgba(102,126,234,0.1);
+    }
+
+    .method-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .method-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .method-icon {
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8faff;
+        border-radius: 8px;
+    }
+
+    .method-name {
+        font-weight: 600;
+        color: #2d3748;
+        font-size: 1.1rem;
+    }
+
+    .method-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-enabled {
+        background: #c6f6d5;
+        color: #22543d;
+    }
+
+    .status-disabled {
+        background: #fed7d7;
+        color: #742a2a;
+    }
+
+    .status-inactive {
+        background: #feebc8;
+        color: #7c2d12;
+    }
+
+    .method-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .detail-label {
+        font-size: 0.875rem;
+        color: #718096;
+        margin-bottom: 0.25rem;
+    }
+
+    .detail-value {
+        font-weight: 500;
+        color: #2d3748;
+    }
+
+    .method-actions {
+        display: flex;
+        gap: 0.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .btn-method {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .btn-edit {
+        background: #667eea;
+        color: white;
+    }
+
+    .btn-edit:hover {
+        background: #5a67d8;
+    }
+
+    .btn-toggle {
+        background: #48bb78;
+        color: white;
+    }
+
+    .btn-toggle:hover {
+        background: #38a169;
+    }
+
+    .btn-test {
+        background: #ed8936;
+        color: white;
+    }
+
+    .btn-test:hover {
+        background: #dd6b20;
+    }
+
+    .btn-danger {
+        background: #f56565;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #e53e3e;
+    }
+
+    .config-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+    }
+
+    .config-modal-content {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        max-width: 600px;
+        margin: 5% auto;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #2d3748;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 34px;
+    }
+
+    .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 34px;
+    }
+
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+
+    input:checked + .slider {
+        background-color: #667eea;
+    }
+
+    input:checked + .slider:before {
+        transform: translateX(26px);
+    }
+
+    .currency-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .currency-tag {
+        background: #edf2f7;
+        color: #4a5568;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="payment-methods-container">
+    <div class="header">
+        <h1>Payment Methods Configuration</h1>
+        <div class="header-actions">
+            <button class="btn-method btn-edit" onclick="initializeDefaults()">
+                <i class="fas fa-sync"></i> Initialize Defaults
+            </button>
+        </div>
+    </div>
+
+    <div class="status-grid">
+        <div class="status-card success">
+            <div class="status-card-header">
+                <h3>Active Methods</h3>
+                <span class="status-badge status-enabled">{{ active_count }}</span>
+            </div>
+            <p>Payment methods currently available for events</p>
+        </div>
+        
+        <div class="status-card warning">
+            <div class="status-card-header">
+                <h3>Disabled Methods</h3>
+                <span class="status-badge status-disabled">{{ disabled_count }}</span>
+            </div>
+            <p>Payment methods disabled by administrator</p>
+        </div>
+        
+        <div class="status-card critical">
+            <div class="status-card-header">
+                <h3>Inactive Methods</h3>
+                <span class="status-badge status-inactive">{{ inactive_count }}</span>
+            </div>
+            <p>Payment methods not configured or inactive</p>
+        </div>
+    </div>
+
+    <h2 style="margin: 2rem 0 1rem 0;">Payment Methods</h2>
+    
+    {% for method in payment_methods %}
+    <div class="method-card">
+        <div class="method-header">
+            <div class="method-title">
+                <div class="method-icon">{{ method.icon }}</div>
+                <div>
+                    <div class="method-name">{{ method.display_name }}</div>
+                    <small style="color: #718096;">{{ method.method_id }}</small>
+                </div>
+            </div>
+            <div class="method-status">
+                {% if method.is_enabled and method.is_active %}
+                    <span class="status-badge status-enabled">Active</span>
+                {% elif not method.is_enabled %}
+                    <span class="status-badge status-disabled">Disabled</span>
+                {% else %}
+                    <span class="status-badge status-inactive">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="method-details">
+            <div class="detail-item">
+                <span class="detail-label">Type</span>
+                <span class="detail-value">{{ method.method_type|title }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Provider</span>
+                <span class="detail-value">{{ method.provider_name|title }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Country</span>
+                <span class="detail-value">{{ method.country_code }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Transaction Fee</span>
+                <span class="detail-value">{{ (method.transaction_fee * 100)|round(2) }}%</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Min/Max Amount</span>
+                <span class="detail-value">{{ method.min_amount }} - {{ method.max_amount }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Supported Currencies</span>
+                <div class="currency-tags">
+                    {% for currency in method.supported_currencies %}
+                    <span class="currency-tag">{{ currency }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {% if method.last_tested_at %}
+        <div style="margin-bottom: 1rem;">
+            <small style="color: #718096;">
+                Last tested: {{ method.last_tested_at.strftime('%Y-%m-%d %H:%M') }} 
+                {% if method.last_test_result %}
+                - Result: <span style="color: {% if method.last_test_result == 'success' %}#22543d{% else %}#742a2a{% endif %}; font-weight: 600;">{{ method.last_test_result|title }}</span>
+                {% endif %}
+            </small>
+        </div>
+        {% endif %}
+
+        <div class="method-actions">
+            <button class="btn-method btn-edit" onclick="editMethod({{ method.id }})">
+                <i class="fas fa-edit"></i> Configure
+            </button>
+            {% if method.method_type == 'mobile_money' %}
+            <button class="btn-method btn-test" onclick="testMethod({{ method.id }})">
+                <i class="fas fa-plug"></i> Test Connection
+            </button>
+            {% endif %}
+            {% if method.is_enabled %}
+            <button class="btn-method btn-danger" onclick="toggleMethod({{ method.id }}, false)">
+                <i class="fas fa-ban"></i> Disable
+            </button>
+            {% else %}
+            <button class="btn-method btn-toggle" onclick="toggleMethod({{ method.id }}, true)">
+                <i class="fas fa-check"></i> Enable
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Configuration Modal -->
+<div id="configModal" class="config-modal">
+    <div class="config-modal-content">
+        <div class="method-header">
+            <h2>Configure Payment Method</h2>
+            <button type="button" onclick="closeModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        
+        <form id="configForm">
+            <input type="hidden" id="methodId">
+            
+            <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input type="text" class="form-control" id="displayName" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <label class="switch">
+                        <input type="checkbox" id="isEnabled">
+                        <span class="slider"></span>
+                    </label>
+                    Enabled
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <label class="switch">
+                        <input type="checkbox" id="isActive">
+                        <span class="slider"></span>
+                    </label>
+                    Active
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <label class="switch">
+                        <input type="checkbox" id="useSandbox">
+                        <span class="slider"></span>
+                    </label>
+                    Use Sandbox
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="password" class="form-control" id="apiKey" placeholder="Enter API key">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">API Secret</label>
+                <input type="password" class="form-control" id="apiSecret" placeholder="Enter API secret">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Transaction Fee (%)</label>
+                <input type="number" class="form-control" id="transactionFee" step="0.01" min="0" max="10">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Minimum Amount</label>
+                <input type="number" class="form-control" id="minAmount" step="0.01" min="0">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Maximum Amount</label>
+                <input type="number" class="form-control" id="maxAmount" step="0.01" min="0">
+            </div>
+
+            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <button type="button" class="btn-method" onclick="closeModal()" style="background: #e2e8f0; color: #4a5568;">Cancel</button>
+                <button type="submit" class="btn-method btn-edit">Save Configuration</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentMethodId = null;
+
+function initializeDefaults() {
+    if (confirm('This will create default payment method configurations. Continue?')) {
+        fetch('/admin/api/payment-methods/initialize', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Network error');
+        });
+    }
+}
+
+function editMethod(methodId) {
+    currentMethodId = methodId;
+    
+    fetch(`/admin/api/payment-methods/${methodId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const method = data.method;
+                document.getElementById('methodId').value = method.id;
+                document.getElementById('displayName').value = method.display_name;
+                document.getElementById('isEnabled').checked = method.is_enabled;
+                document.getElementById('isActive').checked = method.is_active;
+                document.getElementById('useSandbox').checked = method.use_sandbox;
+                document.getElementById('apiKey').value = method.api_key || '';
+                document.getElementById('apiSecret').value = method.api_secret || '';
+                document.getElementById('transactionFee').value = (method.transaction_fee * 100).toFixed(2);
+                document.getElementById('minAmount').value = method.min_amount;
+                document.getElementById('maxAmount').value = method.max_amount;
+                
+                document.getElementById('configModal').style.display = 'block';
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Network error');
+        });
+}
+
+function toggleMethod(methodId, enable) {
+    fetch(`/admin/api/payment-methods/${methodId}/toggle`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ enabled: enable })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error');
+    });
+}
+
+function testMethod(methodId) {
+    fetch(`/admin/api/payment-methods/${methodId}/test`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Test completed successfully!');
+            location.reload();
+        } else {
+            alert('Test failed: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error');
+    });
+}
+
+function closeModal() {
+    document.getElementById('configModal').style.display = 'none';
+}
+
+// Handle form submission
+document.getElementById('configForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        display_name: document.getElementById('displayName').value,
+        is_enabled: document.getElementById('isEnabled').checked,
+        is_active: document.getElementById('isActive').checked,
+        use_sandbox: document.getElementById('useSandbox').checked,
+        api_key: document.getElementById('apiKey').value,
+        api_secret: document.getElementById('apiSecret').value,
+        transaction_fee: parseFloat(document.getElementById('transactionFee').value) / 100,
+        min_amount: parseFloat(document.getElementById('minAmount').value),
+        max_amount: parseFloat(document.getElementById('maxAmount').value)
+    };
+    
+    fetch(`/admin/api/payment-methods/${currentMethodId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeModal();
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error');
+    });
+});
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('configModal');
+    if (event.target == modal) {
+        closeModal();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}Role Management - Owner Dashboard - AFCON360{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+<style>
+  .role-management-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  
+  .role-header {
+    margin-bottom: 2rem;
+  }
+  
+  .role-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .role-header p {
+    color: #6b7280;
+    margin-top: 0.5rem;
+  }
+  
+  .role-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .role-stat-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+  
+  .role-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+  }
+  
+  .role-stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  
+  .role-stat-label {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+  }
+  
+  .control-section {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .control-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  
+  .control-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  
+  .toggle-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .toggle-switch input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+  }
+  
+  .status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  .status-enabled {
+    background: #dcfce7;
+    color: #166534;
+  }
+  
+  .status-disabled {
+    background: #fef2f2;
+    color: #dc2626;
+  }
+  
+  .recent-changes {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+  }
+  
+  .change-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  
+  .change-item:last-child {
+    border-bottom: none;
+  }
+  
+  .change-details {
+    flex: 1;
+  }
+  
+  .change-user {
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  
+  .change-action {
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
+  
+  .change-time {
+    color: #9ca3af;
+    font-size: 0.75rem;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .btn-primary {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+  }
+  
+  .btn-primary:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+  }
+  
+  .btn-secondary {
+    background: #f3f4f6;
+    color: #374151;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+  }
+  
+  .btn-secondary:hover {
+    background: #e5e7eb;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="role-management-container">
+  <div class="role-header">
+    <h1><i class="bi bi-shield-fill-check"></i> Role Management</h1>
+    <p>Manage user roles and permissions across the platform</p>
+  </div>
+
+  <!-- Role Statistics -->
+  <div class="role-stats-grid">
+    {% for role, count in role_stats.items() %}
+    <div class="role-stat-card">
+      <div class="role-stat-number">{{ count }}</div>
+      <div class="role-stat-label">{{ role.replace('_', ' ').title() }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Owner Controls -->
+  <div class="control-section">
+    <div class="control-header">
+      <div class="control-title">
+        <i class="bi bi-gear-fill"></i> Owner Controls
+      </div>
+    </div>
+    
+    <div style="display: grid; gap: 1.5rem;">
+      <!-- Super Admin Role Management -->
+      <div style="border-left: 4px solid #f59e0b; padding-left: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 600; color: #1a1a1a;">Super Admin Role Management</div>
+            <div style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">
+              Allow super admins to manage user roles
+            </div>
+          </div>
+          <span class="status-badge {{ 'status-enabled' if super_admin_role_management else 'status-disabled' }}">
+            {{ 'Enabled' if super_admin_role_management else 'Disabled' }}
+          </span>
+        </div>
+        
+        <form method="POST" action="{{ url_for('owner_role_management.toggle_super_admin_role_management') }}" style="margin-top: 1rem;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="toggle-switch">
+            <input type="checkbox" name="authorize" onchange="this.form.submit()"
+                   {{ 'checked' if super_admin_role_management else '' }}
+                   style="width: 20px; height: 20px; cursor: pointer;">
+            <label style="cursor: pointer; font-weight: 500;">
+              Allow super admins to manage roles
+            </label>
+          </div>
+        </form>
+      </div>
+
+      <!-- Admin Role Management -->
+      <div style="border-left: 4px solid #3b82f6; padding-left: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div>
+            <div style="font-weight: 600; color: #1a1a1a;">Admin Role Management</div>
+            <div style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">
+              Allow admins to manage user roles
+            </div>
+          </div>
+          <span class="status-badge {{ 'status-enabled' if admin_role_management else 'status-disabled' }}">
+            {{ 'Enabled' if admin_role_management else 'Disabled' }}
+          </span>
+        </div>
+        
+        <form method="POST" action="{{ url_for('owner_role_management.toggle_admin_role_management') }}" style="margin-top: 1rem;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="toggle-switch">
+            <input type="checkbox" name="authorize" onchange="this.form.submit()"
+                   {{ 'checked' if admin_role_management else '' }}
+                   style="width: 20px; height: 20px; cursor: pointer;">
+            <label style="cursor: pointer; font-weight: 500;">
+              Allow admins to manage roles
+            </label>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="control-section">
+    <div class="control-header">
+      <div class="control-title">
+        <i class="bi bi-lightning-fill"></i> Quick Actions
+      </div>
+    </div>
+    
+    <div class="action-buttons">
+      <a href="{{ url_for('owner_role_management.manage_users') }}" class="btn-primary">
+        <i class="bi bi-people-fill"></i> Manage Users
+      </a>
+      <a href="{{ url_for('owner_role_management.role_audit_log') }}" class="btn-secondary">
+        <i class="bi bi-clock-history"></i> View Audit Log
+      </a>
+    </div>
+  </div>
+
+  <!-- Recent Role Changes -->
+  <div class="recent-changes">
+    <div class="control-header">
+      <div class="control-title">
+        <i class="bi bi-clock-history"></i> Recent Role Changes
+      </div>
+      <a href="{{ url_for('owner_role_management.role_audit_log') }}" class="btn-secondary">
+        View All
+      </a>
+    </div>
+    
+    {% if recent_changes %}
+      {% for change in recent_changes %}
+      <div class="change-item">
+        <div class="change-details">
+          <div class="change-user">{{ change.username or 'Unknown User' }}</div>
+          <div class="change-action">
+            Role changed from {{ change.old_role or 'None' }} to {{ change.new_role or 'None' }}
+            {% if change.reason %}- {{ change.reason }}{% endif %}
+          </div>
+          <div class="change-time">{{ change.timestamp.strftime('%Y-%m-%d %H:%M') }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="text-align: center; padding: 2rem; color: #6b7280;">
+        <i class="bi bi-clock-history" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+        <div>No recent role changes</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

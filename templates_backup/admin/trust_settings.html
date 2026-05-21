@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+
+{% block title %}Trust-Based Security Settings{% endblock %}
+
+{% block extra_css %}
+<style>
+.trust-settings-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 15px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.threshold-slider {
+    width: 100%;
+    margin: 1rem 0;
+}
+
+.trust-level-indicator {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: bold;
+    text-align: center;
+    margin: 0.5rem 0;
+}
+
+.trust-high { background-color: #28a745; color: white; }
+.trust-medium { background-color: #ffc107; color: black; }
+.trust-low { background-color: #dc3545; color: white; }
+
+.user-analysis-card {
+    border-left: 4px solid #007bff;
+    margin-bottom: 1rem;
+}
+
+.settings-section {
+    background: white;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #007bff;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="trust-settings-card">
+        <h1><i class="fas fa-shield-alt"></i> Trust-Based Security Settings</h1>
+        <p class="lead">Configure automatic event publishing based on user trust levels</p>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="trust-level-indicator trust-high">
+                    <i class="fas fa-check-circle"></i> HIGH TRUST ({{ settings.high_trust_threshold }}+)
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="trust-level-indicator trust-medium">
+                    <i class="fas fa-exclamation-triangle"></i> MEDIUM TRUST ({{ settings.medium_trust_threshold }}-{{ settings.high_trust_threshold - 1 }})
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="trust-level-indicator trust-low">
+                    <i class="fas fa-times-circle"></i> LOW TRUST (< {{ settings.medium_trust_threshold }})
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Form -->
+    <form method="POST" action="{{ url_for('admin.trust_settings.update_trust_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row">
+            <!-- Main Settings -->
+            <div class="col-md-8">
+                <!-- Enable/Disable Trust System -->
+                <div class="settings-section">
+                    <h4><i class="fas fa-toggle-on"></i> System Controls</h4>
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>Enable Trust-Based Publishing</strong>
+                            <small class="text-muted d-block">Allow automatic publishing based on user trust scores</small>
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="enable_trust_based_publishing" 
+                                   {% if settings.enable_trust_based_publishing %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Trust Thresholds -->
+                <div class="settings-section">
+                    <h4><i class="fas fa-sliders-h"></i> Trust Thresholds</h4>
+                    
+                    <div class="form-group">
+                        <label for="high_trust_threshold" class="form-label">
+                            <strong>High Trust Threshold</strong>
+                            <small class="text-muted d-block">Minimum score for immediate auto-publishing (0-100)</small>
+                        </label>
+                        <input type="range" id="high_trust_threshold" name="high_trust_threshold" 
+                               class="form-control threshold-slider" min="0" max="100" 
+                               value="{{ settings.high_trust_threshold }}"
+                               oninput="updateThresholdDisplay('high', this.value)">
+                        <div class="d-flex justify-content-between">
+                            <span>0</span>
+                            <span class="badge badge-primary" id="high_threshold_value">{{ settings.high_trust_threshold }}</span>
+                            <span>100</span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="medium_trust_threshold" class="form-label">
+                            <strong>Medium Trust Threshold</strong>
+                            <small class="text-muted d-block">Minimum score for auto-publish after approval (0-100)</small>
+                        </label>
+                        <input type="range" id="medium_trust_threshold" name="medium_trust_threshold" 
+                               class="form-control threshold-slider" min="0" max="100" 
+                               value="{{ settings.medium_trust_threshold }}"
+                               oninput="updateThresholdDisplay('medium', this.value)">
+                        <div class="d-flex justify-content-between">
+                            <span>0</span>
+                            <span class="badge badge-warning" id="medium_threshold_value">{{ settings.medium_trust_threshold }}</span>
+                            <span>100</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Test Thresholds Button -->
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-primary" onclick="testThresholds()">
+                            <i class="fas fa-flask"></i> Test These Thresholds
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Trust Factors -->
+                <div class="settings-section">
+                    <h4><i class="fas fa-cogs"></i> Trust Factors</h4>
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>Role-Based Bypass</strong>
+                            <small class="text-muted d-block">High-level roles can bypass trust scoring</small>
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="enable_role_bypass" 
+                                   {% if settings.enable_role_bypass %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>KYC Verification Boost</strong>
+                            <small class="text-muted d-block">KYC verification contributes to trust score</small>
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="enable_kyc_boost" 
+                                   {% if settings.enable_kyc_boost %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>Account Age Boost</strong>
+                            <small class="text-muted d-block">Account age contributes to trust score</small>
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="enable_account_age_boost" 
+                                   {% if settings.enable_account_age_boost %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <strong>Event History Boost</strong>
+                            <small class="text-muted d-block">Successful event history contributes to trust score</small>
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="enable_event_history_boost" 
+                                   {% if settings.enable_event_history_boost %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="settings-section">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                    
+                    {% if current_user.has_global_role('owner') or current_user.has_global_role('super_admin') %}
+                    <button type="button" class="btn btn-warning" onclick="resetSettings()">
+                        <i class="fas fa-undo"></i> Reset to Defaults
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- User Analysis Panel -->
+            <div class="col-md-4">
+                <div class="settings-section">
+                    <h4><i class="fas fa-users"></i> User Trust Analysis</h4>
+                    
+                    {% for analysis in user_analyses %}
+                    <div class="user-analysis-card card">
+                        <div class="card-body">
+                            <h6 class="card-title">{{ analysis.username }}</h6>
+                            <div class="trust-level-indicator trust-{{ analysis.trust_level }}">
+                                {{ analysis.trust_level.upper() }}
+                            </div>
+                            <p class="card-text small">
+                                <strong>Auto-Publish:</strong> 
+                                {% if analysis.should_auto_publish %}
+                                    <span class="text-success">Yes</span>
+                                {% else %}
+                                    <span class="text-danger">No</span>
+                                {% endif %}
+                                <br>
+                                <strong>Score Factors:</strong>
+                                <br>
+                                • Roles: {{ analysis.factors.roles|join(', ') or 'None' }}<br>
+                                • KYC: Level {{ analysis.factors.kyc_level }}<br>
+                                • Verified: {{ 'Yes' if analysis.factors.is_verified else 'No' }}<br>
+                                • Age: {{ analysis.factors.account_age_days }} days<br>
+                                • Events: {{ analysis.factors.successful_events }}
+                            </p>
+                            <button class="btn btn-sm btn-outline-info" onclick="analyzeUser({{ analysis.user_id }})">
+                                <i class="fas fa-search"></i> Detailed Analysis
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Test Results Modal -->
+<div class="modal fade" id="testResultsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Threshold Test Results</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="testResults"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Analysis Modal -->
+<div class="modal fade" id="userAnalysisModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">User Trust Analysis</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="userAnalysisResults"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateThresholdDisplay(level, value) {
+    document.getElementById(level + '_threshold_value').textContent = value;
+    
+    // Update the trust level indicators
+    const highThreshold = parseInt(document.getElementById('high_trust_threshold').value);
+    const mediumThreshold = parseInt(document.getElementById('medium_trust_threshold').value);
+    
+    // Update display text
+    const indicators = document.querySelectorAll('.trust-level-indicator');
+    indicators[0].innerHTML = `<i class="fas fa-check-circle"></i> HIGH TRUST (${highThreshold}+)`;
+    indicators[1].innerHTML = `<i class="fas fa-exclamation-triangle"></i> MEDIUM TRUST (${mediumThreshold}-${highThreshold - 1})`;
+    indicators[2].innerHTML = `<i class="fas fa-times-circle"></i> LOW TRUST (< ${mediumThreshold})`;
+}
+
+function testThresholds() {
+    const highThreshold = document.getElementById('high_trust_threshold').value;
+    const mediumThreshold = document.getElementById('medium_trust_threshold').value;
+    
+    fetch('/admin/trust-settings/test-thresholds', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `high_threshold=${highThreshold}&medium_threshold=${mediumThreshold}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+        
+        let html = '<div class="table-responsive"><table class="table"><thead><tr><th>User</th><th>Trust Level</th><th>Auto-Publish</th><th>Reason</th></tr></thead><tbody>';
+        
+        data.results.forEach(result => {
+            const trustClass = result.trust_level === 'high' ? 'success' : 
+                              result.trust_level === 'medium' ? 'warning' : 'danger';
+            const autoPublishBadge = result.should_auto_publish ? 
+                '<span class="badge badge-success">Yes</span>' : 
+                '<span class="badge badge-danger">No</span>';
+            
+            html += `<tr>
+                <td>${result.username}</td>
+                <td><span class="badge badge-${trustClass}">${result.trust_level.toUpperCase()}</span></td>
+                <td>${autoPublishBadge}</td>
+                <td><small>${result.reason}</small></td>
+            </tr>`;
+        });
+        
+        html += '</tbody></table></div>';
+        document.getElementById('testResults').innerHTML = html;
+        
+        $('#testResultsModal').modal('show');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error testing thresholds');
+    });
+}
+
+function analyzeUser(userId) {
+    fetch(`/admin/trust-settings/analyze-user/${userId}`)
+    .then(response => response.json())
+    .then(data => {
+        let html = `
+            <h6>${data.username}</h6>
+            <div class="trust-level-indicator trust-${data.trust_level}">
+                ${data.trust_level.toUpperCase()}
+            </div>
+            <p><strong>Auto-Publish:</strong> ${data.should_auto_publish ? 'Yes' : 'No'}</p>
+            <p><strong>Reason:</strong> ${data.reason}</p>
+            
+            <h6>Score Breakdown:</h6>
+            <ul>
+                <li><strong>Roles:</strong> ${data.factors.roles.join(', ') || 'None'}</li>
+                <li><strong>KYC Level:</strong> ${data.factors.kyc_level}</li>
+                <li><strong>Email Verified:</strong> ${data.factors.is_verified ? 'Yes' : 'No'}</li>
+                <li><strong>Account Age:</strong> ${data.factors.account_age_days} days</li>
+                <li><strong>Successful Events:</strong> ${data.factors.successful_events}</li>
+            </ul>
+        `;
+        
+        document.getElementById('userAnalysisResults').innerHTML = html;
+        $('#userAnalysisModal').modal('show');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error analyzing user');
+    });
+}
+
+function resetSettings() {
+    if (confirm('Are you sure you want to reset all trust settings to their default values? This cannot be undone.')) {
+        fetch('/admin/trust-settings/reset', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error resetting settings: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error resetting settings');
+        });
+    }
+}
+</script>
+{% endblock %}

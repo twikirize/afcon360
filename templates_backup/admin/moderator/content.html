@@ -1,0 +1,223 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Content Submissions — AFCON360{% endblock %}
+
+{% block topbar_title %}Content Submissions{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Content Submissions</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Content Submissions</h1>
+    <p class="page-subheading">Review and moderate user-submitted content</p>
+  </div>
+</div>
+
+<!-- Status Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.content_moderation', status='pending') }}" class="tab-link {% if status == 'pending' or status is none %}active{% endif %}">
+    Pending {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('pending', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.content_moderation', status='changes_requested') }}" class="tab-link {% if status == 'changes_requested' %}active{% endif %}">
+    Changes Requested {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('changes_requested', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.content_moderation', status='approved') }}" class="tab-link {% if status == 'approved' %}active{% endif %}">
+    Approved {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('approved', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.content_moderation', status='rejected') }}" class="tab-link {% if status == 'rejected' %}active{% endif %}">
+    Rejected {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('rejected', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.content_moderation', status='all') }}" class="tab-link {% if status == 'all' %}active{% endif %}">
+    All
+  </a>
+</div>
+
+<!-- Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search submissions..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  <select class="form-control" style="width: auto;" name="category">
+    <option value="">All Categories</option>
+    {% for cat in categories if categories %}
+    <option value="{{ cat.id }}" {% if request.args.get('category')|int == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+    {% endfor %}
+  </select>
+  <select class="form-control" style="width: auto;" name="sort">
+    <option value="newest" {% if request.args.get('sort') == 'newest' or request.args.get('sort') is none %}selected{% endif %}>Newest First</option>
+    <option value="oldest" {% if request.args.get('sort') == 'oldest' %}selected{% endif %}>Oldest First</option>
+    <option value="sla" {% if request.args.get('sort') == 'sla' %}selected{% endif %}>SLA Urgency</option>
+  </select>
+  <button type="submit" class="btn btn-primary">Filter</button>
+  {% if request.args.get('search') or request.args.get('category') or request.args.get('sort') %}
+  <a href="{{ url_for('admin.moderator.content_moderation') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  <div class="bulk-action-bar" id="bulkActionBar">
+    <span class="selected-count"><span id="selectedCount">0</span> selected</span>
+    <div class="action-group">
+      <button type="button" class="btn btn-success btn-sm" onclick="bulkApprove()">Approve All</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="bulkRequestChanges()">Request Changes</button>
+      <button type="button" class="btn btn-danger btn-sm" onclick="bulkReject()">Reject All</button>
+    </div>
+  </div>
+
+  {% if submissions and submissions.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 40px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+        <th style="width: 60px;">#</th>
+        <th>Name</th>
+        <th>Category</th>
+        <th>Submitted By</th>
+        <th>Date</th>
+        <th>SLA</th>
+        <th>Status</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for submission in submissions.items %}
+      <tr>
+        <td><input type="checkbox" class="row-checkbox" data-id="{{ submission.id }}" onchange="updateBulkBar()"></td>
+        <td class="mono">{{ submission.id }}</td>
+        <td><a href="{{ url_for('admin.moderator.view_submission', submission_id=submission.id) }}" style="color:var(--ink-2);font-weight:600;text-decoration:none;">{{ submission.name }}</a></td>
+        <td>{{ submission.category.name if submission.category else '-' }}</td>
+        <td>{{ submission.submitted_by.username if submission.submitted_by else '-' }}</td>
+        <td class="mono">{{ submission.created_at.strftime('%Y-%m-%d') if submission.created_at else '-' }}</td>
+        <td>
+          {% if submission.sla_due_at %}
+            {% set hours_left = ((submission.sla_due_at - now()).total_seconds() / 3600) | int %}
+            {% if hours_left < 0 %}
+              <span class="badge" style="background:var(--red-lt);color:var(--red);">OVERDUE</span>
+            {% elif hours_left < 4 %}
+              <span class="badge" style="background:var(--orange-lt);color:var(--orange);">{{ hours_left }}h left</span>
+            {% else %}
+              <span class="mono">{{ hours_left }}h</span>
+            {% endif %}
+          {% else %}
+            <span class="mono">-</span>
+          {% endif %}
+        </td>
+        <td><span class="badge badge-{{ submission.status }}">{{ submission.status.replace('_', ' ') }}</span></td>
+        <td>
+          <a href="{{ url_for('admin.moderator.view_submission', submission_id=submission.id) }}" class="btn btn-outline btn-xs">Review</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if submissions.has_prev %}
+    <a href="{{ url_for('admin.moderator.content_moderation', status=status, page=submissions.prev_num, search=request.args.get('search'), category=request.args.get('category'), sort=request.args.get('sort')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in submissions.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != submissions.page %}
+        <a href="{{ url_for('admin.moderator.content_moderation', status=status, page=page_num, search=request.args.get('search'), category=request.args.get('category'), sort=request.args.get('sort')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if submissions.has_next %}
+    <a href="{{ url_for('admin.moderator.content_moderation', status=status, page=submissions.next_num, search=request.args.get('search'), category=request.args.get('category'), sort=request.args.get('sort')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ submissions.page }} of {{ submissions.pages }} pages ({{ submissions.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-inbox empty-icon"></i>
+    <p>No submissions found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+.bulk-action-bar {
+  display: none;
+  padding: 12px 18px;
+  background: var(--accent-lt);
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  gap: 12px;
+}
+.bulk-action-bar.visible { display: flex; }
+.bulk-action-bar .selected-count {
+  font-weight: 600;
+  color: var(--accent-dk);
+}
+</style>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function toggleSelectAll() {
+  const selectAll = document.getElementById('selectAll');
+  const checkboxes = document.querySelectorAll('.row-checkbox');
+  checkboxes.forEach(cb => cb.checked = selectAll.checked);
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+  const bulkBar = document.getElementById('bulkActionBar');
+  const selectedCount = document.getElementById('selectedCount');
+  
+  if (checkboxes.length > 0) {
+    bulkBar.classList.add('visible');
+    selectedCount.textContent = checkboxes.length;
+  } else {
+    bulkBar.classList.remove('visible');
+  }
+}
+
+function bulkApprove() {
+  const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+  const ids = Array.from(checkboxes).map(cb => cb.dataset.id);
+  if (confirm(`Approve ${ids.length} selected submissions?`)) {
+    // Implement bulk approve
+  }
+}
+
+function bulkRequestChanges() {
+  const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+  const ids = Array.from(checkboxes).map(cb => cb.dataset.id);
+  if (confirm(`Request changes for ${ids.length} selected submissions?`)) {
+    // Implement bulk request changes
+  }
+}
+
+function bulkReject() {
+  const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+  const ids = Array.from(checkboxes).map(cb => cb.dataset.id);
+  const reason = prompt('Enter rejection reason for all selected:');
+  if (reason) {
+    // Implement bulk reject
+  }
+}
+</script>
+{% endblock %}

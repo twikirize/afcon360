@@ -1,0 +1,217 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Enterprise Flagged Content — AFCON360{% endblock %}
+
+{% block topbar_title %}Enterprise Flagged Content{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Flagged Content</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Enterprise Flagged Content</h1>
+    <p class="page-subheading">AI-powered content moderation with multi-tier escalation</p>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <!-- SLA Status Indicator -->
+    {% if sla_breached_count is defined and sla_breached_count > 0 %}
+    <div style="background:var(--red-lt);color:var(--red);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+        <i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>
+        {{ sla_breached_count }} SLA Breached
+    </div>
+    {% endif %}
+    
+    <!-- AI Processing Status -->
+    <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+        <i class="fas fa-brain" style="margin-right:4px;"></i>
+        AI Accuracy: {{ ai_accuracy|round(1) if ai_accuracy else 'N/A' }}%
+    </div>
+  </div>
+</div>
+
+<!-- Enterprise-Level Alert Bar -->
+{% if priority == 'critical' %}
+<div style="background:linear-gradient(135deg, var(--red), var(--red-dark));color:#fff;padding:12px 20px;border-radius:var(--radius);margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+    <i class="fas fa-shield-halved" style="font-size:20px;"></i>
+    <div>
+        <strong>CRITICAL FLAGS VIEW</strong>
+        <div style="font-size:14px;opacity:0.9;">High-risk content requiring immediate attention - Risk score ≥80%</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Status Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.flagged_content', status='open') }}" class="tab-link {% if status == 'open' or status is none %}active{% endif %}">
+    Open {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('open', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.flagged_content', status='in_review') }}" class="tab-link {% if status == 'in_review' %}active{% endif %}">
+    In Review {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('in_review', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.flagged_content', status='resolved') }}" class="tab-link {% if status == 'resolved' %}active{% endif %}">
+    Resolved {% if status_counts is defined %}<span class="tab-count">{{ status_counts.get('resolved', 0) }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.flagged_content', status='all') }}" class="tab-link {% if status == 'all' %}active{% endif %}">
+    All
+  </a>
+</div>
+
+<!-- Enterprise Filter Row -->
+<form method="GET" class="search-row">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-input" placeholder="Search by content, user, or reason..." name="search" value="{{ request.args.get('search', '') }}">
+  </div>
+  
+  <!-- Priority Filter -->
+  <select class="form-control" style="width: auto;" name="priority">
+    <option value="">All Priorities</option>
+    <option value="critical" {% if request.args.get('priority') == 'critical' %}selected{% endif %}>🚨 Critical (≥80% risk)</option>
+    <option value="high" {% if request.args.get('priority') == 'high' %}selected{% endif %}>⚠️ High (60-80% risk)</option>
+    <option value="medium" {% if request.args.get('priority') == 'medium' %}selected{% endif %}>📋 Medium (40-60% risk)</option>
+    <option value="normal" {% if request.args.get('priority') == 'normal' %}selected{% endif %}>📝 Normal (<40% risk)</option>
+    <option value="low" {% if request.args.get('priority') == 'low' %}selected{% endif %}>✅ Low</option>
+  </select>
+  
+  <!-- Detection Source Filter -->
+  <select class="form-control" style="width: auto;" name="detection_source">
+    <option value="">All Detection Sources</option>
+    <option value="ai" {% if request.args.get('detection_source') == 'ai' %}selected{% endif %}>🤖 AI Detection</option>
+    <option value="human" {% if request.args.get('detection_source') == 'human' %}selected{% endif %}>👤 Human Report</option>
+    <option value="hybrid" {% if request.args.get('detection_source') == 'hybrid' %}selected{% endif %}>🔄 Hybrid</option>
+    <option value="automated" {% if request.args.get('detection_source') == 'automated' %}selected{% endif %}>⚙️ Automated</option>
+  </select>
+  
+  <!-- Moderation Level Filter -->
+  <select class="form-control" style="width: auto;" name="moderation_level">
+    <option value="">All Levels</option>
+    <option value="level_1" {% if request.args.get('moderation_level') == 'level_1' %}selected{% endif %}>Level 1 (Basic)</option>
+    <option value="level_2" {% if request.args.get('moderation_level') == 'level_2' %}selected{% endif %}>Level 2 (Advanced)</option>
+    <option value="level_3" {% if request.args.get('moderation_level') == 'level_3' %}selected{% endif %}>Level 3 (Expert)</option>
+  </select>
+  
+  <!-- Entity Type Filter -->
+  <select class="form-control" style="width: auto;" name="entity_type">
+    <option value="">All Entity Types</option>
+    <option value="user_profile" {% if request.args.get('entity_type') == 'user_profile' %}selected{% endif %}>👤 User Profile</option>
+    <option value="content_submission" {% if request.args.get('entity_type') == 'content_submission' %}selected{% endif %}>📄 Content Submission</option>
+    <option value="manageable_item" {% if request.args.get('entity_type') == 'manageable_item' %}selected{% endif %}>🏠 Property/Item</option>
+    <option value="review" {% if request.args.get('entity_type') == 'review' %}selected{% endif %}>⭐ Review</option>
+    <option value="event" {% if request.args.get('entity_type') == 'event' %}selected{% endif %}>📅 Event</option>
+    <option value="transaction" {% if request.args.get('entity_type') == 'transaction' %}selected{% endif %}>💳 Transaction</option>
+  </select>
+  
+  <!-- SLA Status Filter -->
+  <select class="form-control" style="width: auto;" name="sla_status">
+    <option value="">All SLA Status</option>
+    <option value="breached" {% if request.args.get('sla_status') == 'breached' %}selected{% endif %}>🚨 SLA Breached</option>
+    <option value="urgent" {% if request.args.get('sla_status') == 'urgent' %}selected{% endif %}>⏰ Urgent (<1hr)</option>
+    <option value="normal" {% if request.args.get('sla_status') == 'normal' %}selected{% endif %}>✅ On Track</option>
+  </select>
+  
+  <button type="submit" class="btn btn-primary">
+    <i class="fas fa-filter"></i> Apply Filters
+  </button>
+  <a href="{{ url_for('admin.moderator.flagged_content') }}" class="btn btn-secondary">
+    <i class="fas fa-times"></i> Clear
+  </a>
+</form>
+
+<!-- Panel with Table -->
+<div class="panel">
+  {% if flags and flags.items %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 60px;">#</th>
+        <th>Entity Type</th>
+        <th>Entity Name</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th>Reason</th>
+        <th>Reporter</th>
+        <th>Created At</th>
+        <th>SLA</th>
+        <th style="width: 100px;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in flag_rows %}
+      {% set flag = row.flag %}
+      <tr class="{% if flag.priority == 'critical' %}row-critical{% elif flag.priority == 'high' %}row-high{% elif flag.priority == 'medium' %}row-medium{% endif %}">
+        <td class="mono">{{ flag.id }}</td>
+        <td><span class="badge badge-type">{{ flag.entity_type }}</span></td>
+        <td>
+          {% if row.entity_name %}
+          <a href="{{ row.review_url if row.review_url else '#' }}" style="color:var(--ink-2);font-weight:600;text-decoration:none;">{{ row.entity_name }}</a>
+          {% else %}
+          <span class="mono">#{{ flag.entity_id }}</span>
+          {% endif %}
+        </td>
+        <td><span class="badge badge-{{ flag.priority }}">{{ flag.priority|capitalize }}</span></td>
+        <td><span class="badge badge-{{ flag.status }}">{{ flag.status.replace('_', ' ') }}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ flag.reason or '' }}">{{ flag.reason[:80] }}{% if flag.reason|length > 80 %}…{% endif %}</td>
+        <td>{{ flag.reporter.username if flag.reporter else '-' }}</td>
+        <td class="mono">{{ flag.created_at.strftime('%Y-%m-%d') if flag.created_at else '-' }}</td>
+        <td>
+          {% if flag.sla_due_at %}
+            {% set hours_left = ((flag.sla_due_at - now()).total_seconds() / 3600) | int %}
+            {% if hours_left < 0 %}
+              <span class="badge" style="background:var(--red-lt);color:var(--red);">OVERDUE</span>
+            {% elif hours_left < 4 %}
+              <span class="badge" style="background:var(--orange-lt);color:var(--orange);">{{ hours_left }}h</span>
+            {% else %}
+              <span class="mono">{{ hours_left }}h</span>
+            {% endif %}
+          {% else %}
+            <span class="mono">-</span>
+          {% endif %}
+        </td>
+        <td>
+          <a href="{{ url_for('admin.moderator.view_flag', flag_id=flag.id) }}" class="btn btn-outline btn-xs">Review</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    {% if flags.has_prev %}
+    <a href="{{ url_for('admin.moderator.flagged_content', status=status, page=flags.prev_num, search=request.args.get('search'), priority=request.args.get('priority'), entity_type=request.args.get('entity_type')) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
+    {% endif %}
+
+    {% for page_num in flags.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != flags.page %}
+        <a href="{{ url_for('admin.moderator.flagged_content', status=status, page=page_num, search=request.args.get('search'), priority=request.args.get('priority'), entity_type=request.args.get('entity_type')) }}" class="pg-btn">{{ page_num }}</a>
+        {% else %}
+        <span class="pg-btn active">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pg-btn">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if flags.has_next %}
+    <a href="{{ url_for('admin.moderator.flagged_content', status=status, page=flags.next_num, search=request.args.get('search'), priority=request.args.get('priority'), entity_type=request.args.get('entity_type')) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+    {% else %}
+    <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
+    {% endif %}
+
+    <span class="pg-info">Showing {{ flags.page }} of {{ flags.pages }} pages ({{ flags.total }} total)</span>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fas fa-check-circle empty-icon"></i>
+    <p>No flags found</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

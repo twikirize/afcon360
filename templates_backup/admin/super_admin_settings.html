@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}Super Admin Settings - AFCON360{% endblock %}
+
+{% block styles %}
+<style>
+.super-admin-settings-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.settings-header {
+    margin-bottom: 2rem;
+}
+
+.settings-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.settings-header p {
+    color: #6b7280;
+    font-size: 1.1rem;
+}
+
+.settings-section {
+    margin-bottom: 3rem;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.settings-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+}
+
+.settings-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+    border-color: #667eea;
+}
+
+.card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.card-description {
+    color: #6b7280;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.card-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-system { background: #fee2e2; color: #dc2626; }
+.badge-platform { background: #dbeafe; color: #1e40af; }
+.badge-analytics { background: #d1fae5; color: #065f46; }
+.badge-impersonation { background: #fef3c7; color: #92400e; }
+.badge-accommodation { background: #fce7f3; color: #9d174d; }
+.badge-events { background: #e0e7ff; color: #3730a3; }
+.badge-transport { background: #f3f4f6; color: #374151; }
+.badge-wallet { background: #d1fae5; color: #065f46; }
+.badge-users { background: #dbeafe; color: #1e40af; }
+.badge-compliance { background: #fef3c7; color: #92400e; }
+
+@media (max-width: 768px) {
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .settings-header h1 {
+        font-size: 1.5rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="super-admin-settings-container">
+    <div class="settings-header">
+        <h1><i class="fas fa-shield-check"></i> Super Admin Settings</h1>
+        <p>System-wide configuration and platform management controls</p>
+    </div>
+
+    <!-- System Configuration -->
+    <div class="settings-section">
+        <h3 class="section-title">System Configuration</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin_settings.system_settings') }}" class="settings-card">
+                <div class="card-icon">⚙️</div>
+                <div class="card-title">System Settings</div>
+                <div class="card-description">
+                    Platform configuration, maintenance mode, currency, and timezone settings
+                </div>
+                <span class="card-badge badge-system">System</span>
+            </a>
+
+            <a href="{{ url_for('admin_settings.impersonation_control') }}" class="settings-card">
+                <div class="card-icon">👤</div>
+                <div class="card-title">Impersonation Control</div>
+                <div class="card-description">
+                    Manage user impersonation, role switching, and access controls
+                </div>
+                <span class="card-badge badge-impersonation">Security</span>
+            </a>
+
+            <a href="{{ url_for('admin.owner.settings') }}" class="settings-card">
+                <div class="card-icon">🔐</div>
+                <div class="card-title">Security Settings</div>
+                <div class="card-description">
+                    Authentication, session management, and platform security controls
+                </div>
+                <span class="card-badge badge-system">Security</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Platform Management -->
+    <div class="settings-section">
+        <h3 class="section-title">Platform Management</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin_settings.platform_settings') }}" class="settings-card">
+                <div class="card-icon">📱</div>
+                <div class="card-title">Platform Settings</div>
+                <div class="card-description">
+                    Booking rules, pricing, notifications, and platform-wide configurations
+                </div>
+                <span class="card-badge badge-platform">Platform</span>
+            </a>
+
+            <a href="{{ url_for('admin_settings.analytics_settings') }}" class="settings-card">
+                <div class="card-icon">📊</div>
+                <div class="card-title">Analytics Dashboard</div>
+                <div class="card-description">
+                    Platform metrics, user statistics, and performance analytics
+                </div>
+                <span class="card-badge badge-analytics">Analytics</span>
+            </a>
+
+            <a href="{{ url_for('admin.owner.manage_roles') }}" class="settings-card">
+                <div class="card-icon">👥</div>
+                <div class="card-title">Role Management</div>
+                <div class="card-description">
+                    Manage user roles, permissions, and access control hierarchy
+                </div>
+                <span class="card-badge badge-users">Roles</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Module Settings -->
+    <div class="settings-section">
+        <h3 class="section-title">Module Settings</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin_settings.platform_settings') }}" class="settings-card">
+                <div class="card-icon">🏨</div>
+                <div class="card-title">Accommodation Module</div>
+                <div class="card-description">
+                    Property management, booking rules, and OTA-grade features
+                </div>
+                <span class="card-badge badge-accommodation">Accommodation</span>
+            </a>
+
+            <a href="/events/admin/settings" class="settings-card">
+                <div class="card-icon">🎫</div>
+                <div class="card-title">Events Module</div>
+                <div class="card-description">
+                    Event management, ticketing, and registration settings
+                </div>
+                <span class="card-badge badge-events">Events</span>
+            </a>
+
+            <a href="/transport/admin/settings" class="settings-card">
+                <div class="card-icon">🚗</div>
+                <div class="card-title">Transport Module</div>
+                <div class="card-description">
+                    Driver management, vehicle settings, and transport operations
+                </div>
+                <span class="card-badge badge-transport">Transport</span>
+            </a>
+
+            <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="settings-card">
+                <div class="card-icon">💰</div>
+                <div class="card-title">Wallet Module</div>
+                <div class="card-description">
+                    Financial operations, payment gateways, and wallet configuration
+                </div>
+                <span class="card-badge badge-wallet">Finance</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- User & Compliance -->
+    <div class="settings-section">
+        <h3 class="section-title">User & Compliance</h3>
+        <div class="settings-grid">
+            <a href="{{ url_for('admin.owner.users') }}" class="settings-card">
+                <div class="card-icon">👤</div>
+                <div class="card-title">User Management</div>
+                <div class="card-description">
+                    User accounts, verification, and profile management
+                </div>
+                <span class="card-badge badge-users">Users</span>
+            </a>
+
+            <a href="{{ url_for('admin.owner.kyc_tier_management') }}" class="settings-card">
+                <div class="card-icon">🆔</div>
+                <div class="card-title">KYC & Compliance</div>
+                <div class="card-description">
+                    Verification tiers, compliance rules, and regulatory settings
+                </div>
+                <span class="card-badge badge-compliance">Compliance</span>
+            </a>
+
+            <a href="{{ url_for('admin.owner.compliance_dashboard') }}" class="settings-card">
+                <div class="card-icon">📋</div>
+                <div class="card-title">Compliance Dashboard</div>
+                <div class="card-description">
+                    Monitor compliance, suspicious activity, and audit reports
+                </div>
+                <span class="card-badge badge-compliance">Audit</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

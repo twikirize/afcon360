@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Impersonation Control - AFCON360 Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="fas fa-user-secret"></i> Impersonation Control
+                <small class="text-muted">Admin & Super Admin</small>
+            </h1>
+        </div>
+    </div>
+
+    <!-- Current Impersonation Status -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-info-circle"></i> Current Status</h5>
+                </div>
+                <div class="card-body">
+                    {% if impersonated_user %}
+                        <div class="alert alert-warning">
+                            <h6><i class="fas fa-exclamation-triangle"></i> Currently Impersonating</h6>
+                            <p class="mb-2">
+                                <strong>Target:</strong> {{ impersonated_user.username }} ({{ impersonated_user.role|title }})<br>
+                                <strong>Started:</strong> {{ session.get('impersonation_started_at', 'Unknown') }}<br>
+                                <strong>By:</strong> {{ session.get('impersonated_by_name', 'Unknown') }}
+                            </p>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-danger" onclick="stopImpersonation()">
+                                    <i class="fas fa-stop"></i> Stop Impersonation
+                                </button>
+                                <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle"></i> Not Impersonating</h6>
+                            <p class="mb-0">You are currently acting as yourself.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Users for Impersonation -->
+    {% if available_users %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-users"></i> Available Users for Impersonation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Role</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in available_users %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td>{{ user.username }}</td>
+                                    <td>
+                                        <span class="badge badge-{{ user.role }}">
+                                            {{ user.role|title }}
+                                        </span>
+                                    </td>
+                                    <td>{{ user.email }}</td>
+                                    <td>
+                                        {% if user.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-primary" 
+                                                    onclick="startImpersonation({{ user.id }}, '{{ user.username }}', '{{ user.role }}')">
+                                                <i class="fas fa-user-secret"></i> Impersonate
+                                            </button>
+                                            <a href="{{ url_for('admin.owner.manage_users') }}/{{ user.id }}" 
+                                               class="btn btn-sm btn-outline-info">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    {% if not available_users %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            No users available for impersonation with your current role level.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+.badge-owner { background-color: #dc3545; }
+.badge-super_admin { background-color: #fd7e14; }
+.badge-admin { background-color: #0d6efd; }
+.badge-moderator { background-color: #20c997; }
+.badge-support { background-color: #6f42c1; }
+.badge-user { background-color: #6c757d; }
+
+.alert-warning {
+    border-left: 4px solid #ffc107;
+    background-color: #fff3cd;
+}
+
+.alert-success {
+    border-left: 4px solid #198754;
+    background-color: #d1e7dd;
+}
+</style>
+
+<script>
+function startImpersonation(userId, username, role) {
+    if (!confirm(`Are you sure you want to impersonate ${username} (${role})?`)) return;
+    
+    fetch(`{{ url_for("admin_settings.start_impersonation", user_id=0) }}`.replace('0', userId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert('danger', result.error);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Failed to start impersonation');
+    });
+}
+
+function stopImpersonation() {
+    if (!confirm('Are you sure you want to stop impersonation?')) return;
+    
+    fetch('{{ url_for("admin_settings.stop_impersonation") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', result.message);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert('danger', result.error);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Failed to stop impersonation');
+    });
+}
+
+function showAlert(type, message) {
+    // Implementation depends on your UI framework
+    alert(`${type.toUpperCase()}: ${message}`);
+}
+</script>
+{% endblock %}

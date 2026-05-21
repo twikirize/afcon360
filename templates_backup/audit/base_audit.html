@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">{% block audit_title %}Audit Logs{% endblock %}</h1>
+            <p class="text-muted">{% block audit_subtitle %}View and monitor system audit trails{% endblock %}</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary" onclick="refreshData()">
+                <i class="bi bi-arrow-repeat"></i> Refresh
+            </button>
+            <button class="btn btn-outline-success" onclick="exportData()">
+                <i class="bi bi-download"></i> Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                {% block filters %}{% endblock %}
+                <div class="col-auto">
+                    <button class="btn btn-primary" onclick="applyFilters()">
+                        <i class="bi bi-search"></i> Apply Filters
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetFilters()">
+                        <i class="bi bi-x-circle"></i> Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4" id="summaryCards">
+        {% block summary %}{% endblock %}
+    </div>
+
+    <!-- Data Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm" id="dataTable">
+                    {% block table_header %}{% endblock %}
+                    <tbody id="tableBody">
+                        <tr><td colspan="10" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- Pagination -->
+            <nav id="paginationNav" class="mt-3">
+                <ul class="pagination justify-content-center" id="paginationList"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let currentFilters = {};
+
+async function loadData() {
+    const params = new URLSearchParams({
+        page: currentPage,
+        per_page: 50,
+        ...currentFilters
+    });
+
+    try {
+        const response = await fetch(`/api/admin/audit/{% block api_endpoint %}{% endblock %}?${params}`);
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            renderTable(result.data);
+            renderPagination(result.data);
+            if (typeof renderSummary === 'function') {
+                renderSummary(result.data);
+            }
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        console.error('Error loading data:', error);
+        showError('Failed to load data');
+    }
+}
+
+function renderPagination(data) {
+    const paginationList = document.getElementById('paginationList');
+    if (!paginationList) return;
+
+    if (data.pages <= 1) {
+        paginationList.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    if (data.page > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${data.page - 1})">Previous</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
+    }
+
+    for (let i = 1; i <= data.pages; i++) {
+        if (i === data.page) {
+            html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else if (Math.abs(i - data.page) <= 2 || i === 1 || i === data.pages) {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${i})">${i}</a></li>`;
+        }
+    }
+
+    if (data.page < data.pages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${data.page + 1})">Next</a></li>`;
+    } else {
+        html += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
+    }
+
+    paginationList.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = page;
+    loadData();
+}
+
+function applyFilters() {
+    currentPage = 1;
+    loadData();
+}
+
+function resetFilters() {
+    currentFilters = {};
+    currentPage = 1;
+    document.querySelectorAll('.filter-input').forEach(input => input.value = '');
+    loadData();
+}
+
+async function exportData() {
+    const params = new URLSearchParams({ format: 'json', ...currentFilters });
+    window.open(`/api/admin/audit/export?type={% block export_type %}{% endblock %}&${params}`, '_blank');
+}
+
+function refreshData() {
+    loadData();
+}
+
+function showError(message) {
+    const toast = document.createElement('div');
+    toast.className = 'alert alert-danger position-fixed bottom-0 end-0 m-3';
+    toast.style.zIndex = 9999;
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
+
+// Load on page load
+loadData();
+</script>
+{% endblock %}

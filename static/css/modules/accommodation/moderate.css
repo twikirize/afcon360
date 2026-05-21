@@ -1,0 +1,20 @@
+/* ============================================================
+   ACCOMMODATION MODERATION QUEUE
+   Extends: moderate_base.css
+   Used by: moderate.html (properties/bookings/reviews queue)
+   ============================================================ */
+
+/* Tab navigation */
+.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 5px; width: fit-content; }
+.tab-link { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; color: var(--muted); transition: all 0.2s; white-space: nowrap; }
+.tab-link:hover { color: var(--text); }
+.tab-link.active { background: var(--gold); color: #000; font-weight: 700; }
+.tab-count { background: rgba(255,255,255,0.1); color: inherit; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-family: 'DM Mono', monospace; }
+
+/* Data table */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead th { padding: 10px 20px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: 'DM Mono', monospace; border-bottom: 1px solid var(--border); font-weight: 500; background: rgba(255,255,255,0.01); }
+.data-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.15s; }
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+.data-table tbody td { padding: 14px 20px; font-size: 13px; vertical-align: middle; }

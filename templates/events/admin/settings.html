@@ -746,7 +746,7 @@ async function saveSettings() {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
 
   try {
-    const resp = await fetch('{{ safe_url('url_for\(['"]events.admin_settings_save") }}', {
+    const resp = await fetch('{{ safe_url('events.admin_settings_save') }}', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

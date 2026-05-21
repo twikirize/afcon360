@@ -1,0 +1,77 @@
+{#wallet_terms.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Terms & Conditions — AFCON360{% endblock %}
+
+{% block topbar_title %}Terms & Conditions{% endblock %}
+
+{% block content %}
+<div style="max-width:800px;margin:0 auto;">
+  <div class="heading-row">
+    <div>
+      <h1 class="page-heading">Wallet Terms and Conditions</h1>
+      <p class="page-subheading">Please read and accept the terms to use your wallet</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-file-contract panel-title-icon blue"></i>
+        Terms of Service
+      </div>
+    </div>
+    <div class="panel-body" style="padding:28px;line-height:1.8;">
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">1. Acceptance of Terms</h5>
+        <p style="color:var(--ink-2);">By activating your wallet, you agree to be bound by these Terms and Conditions. If you do not agree, do not use the wallet service.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">2. Eligibility</h5>
+        <p style="color:var(--ink-2);">You must be at least 18 years old and have a verified account to use the wallet service. Additional verification may be required for higher limits.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">3. Wallet Usage</h5>
+        <p style="color:var(--ink-2);">The wallet may be used for deposits, withdrawals, and peer-to-peer transfers. All transactions are subject to applicable fees and limits.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">4. Fees</h5>
+        <p style="color:var(--ink-2);">Transaction fees may apply. Current fee structure is available on the dashboard. Fees are subject to change with prior notice.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">5. Security</h5>
+        <p style="color:var(--ink-2);">You are responsible for maintaining the security of your account credentials. Enable two-factor authentication and transaction PINs for added protection.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">6. Limitations</h5>
+        <p style="color:var(--ink-2);">Daily and monthly transaction limits apply as configured by administrators. Limits may be adjusted based on your verification level.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">7. Termination</h5>
+        <p style="color:var(--ink-2);">We reserve the right to suspend or terminate wallets that violate these terms or engage in prohibited activities.</p>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h5 style="font-weight:700;margin-bottom:8px;">8. Amendments</h5>
+        <p style="color:var(--ink-2);">These terms may be updated from time to time. Continued use of the wallet constitutes acceptance of the updated terms.</p>
+      </div>
+
+      <div style="margin-top:28px;padding:20px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <p style="font-size:13px;color:var(--ink-2);margin:0;">
+          <i class="fas fa-check-circle" style="color:var(--accent);"></i>
+          I understand and agree to the Wallet Terms and Conditions
+        </p>
+        <a href="{{ safe_url('wallet.activate_wallet') }}" class="btn btn-primary">
+          <i class="fas fa-arrow-left"></i> Back to Activation
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

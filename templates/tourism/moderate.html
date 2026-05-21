@@ -95,7 +95,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
           <td><span class="badge badge-pending">{{ listing.status }}</span></td>
           <td class="mono">{{ listing.created_at.strftime('%Y-%m-%d') if listing.created_at else '-' }}</td>
           <td>
-            <a href="{{ safe_url('url_for\(['"]tourism.moderate_listing', id=listing.id) }}" class="btn-action">
+            <a href="{{ safe_url('tourism.moderate_listing', id=listing.id) }}" class="btn-action">
               <i class="fas fa-eye"></i> Review
             </a>
           </td>

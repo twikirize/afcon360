@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Moderation Settings - AFCON360 Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="fas fa-gavel"></i> Moderation Settings
+                <small class="text-muted">Moderator, Admin & Super Admin</small>
+            </h1>
+        </div>
+    </div>
+
+    <!-- Moderation Queue Overview -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-tasks"></i> Moderation Queue</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-6 mb-4">
+                            <div class="queue-box queue-box-warning">
+                                <div class="queue-number">{{ queue_stats.pending_properties }}</div>
+                                <div class="queue-label">Pending Properties</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="queue-box queue-box-danger">
+                                <div class="queue-number">{{ queue_stats.pending_bookings }}</div>
+                                <div class="queue-label">Pending Bookings</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="queue-box queue-box-info">
+                                <div class="queue-number">{{ queue_stats.pending_reviews }}</div>
+                                <div class="queue-label">Pending Reviews</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="queue-box queue-box-primary">
+                                <div class="queue-number">{{ queue_stats.total_pending }}</div>
+                                <div class="queue-label">Total Pending</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-clock"></i> Recent Activity (24h)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="activity-stat">
+                                <div class="activity-number">{{ queue_stats.recent_activity.properties_approved }}</div>
+                                <div class="activity-label">Properties Approved</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="activity-stat">
+                                <div class="activity-number">{{ queue_stats.recent_activity.reviews_approved }}</div>
+                                <div class="activity-label">Reviews Approved</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ safe_url('accommodation.admin.moderate') }}" class="btn btn-primary">
+                            <i class="fas fa-list"></i> View Full Queue
+                        </a>
+                        <a href="{{ url_for('admin_settings.moderation_filters') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-filter"></i> Configure Filters
+                        </a>
+                        <button class="btn btn-outline-info" onclick="bulkApprove()">
+                            <i class="fas fa-check-double"></i> Bulk Approve
+                        </button>
+                        <button class="btn btn-outline-warning" onclick="bulkReject()">
+                            <i class="fas fa-times-double"></i> Bulk Reject
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.queue-box {
+    background: white;
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+.queue-box:hover {
+    transform: translateY(-2px);
+}
+.queue-number {
+    font-size: 2.5rem;
+    font-weight: bold;
+    line-height: 1;
+}
+.queue-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 5px;
+}
+.queue-box-warning { border-top: 4px solid #ffc107; }
+.queue-box-danger { border-top: 4px solid #dc3545; }
+.queue-box-info { border-top: 4px solid #17a2b8; }
+.queue-box-primary { border-top: 4px solid #007bff; }
+
+.activity-stat {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+.activity-number {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #28a745;
+}
+.activity-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 5px;
+}
+</style>
+
+<script>
+function bulkApprove() {
+    if (!confirm('Approve all pending items? This action cannot be undone.')) return;
+    
+    fetch('{{ safe_url('url_for\(['"]accommodation.admin.moderate_action", entity_type="property", action="approve", id=0) }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('success', 'Bulk approval initiated');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function bulkReject() {
+    const reason = prompt('Enter rejection reason for bulk rejection:');
+    if (!reason) return;
+    
+    fetch('{{ safe_url('url_for\(['"]accommodation.admin.moderate_action", entity_type="property", action="reject", id=0) }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: `reason=${encodeURIComponent(reason)}`
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showAlert('warning', 'Bulk rejection initiated');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showAlert('danger', result.error);
+        }
+    });
+}
+
+function showAlert(type, message) {
+    // Implementation depends on your UI framework
+    alert(`${type.toUpperCase()}: ${message}`);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,333 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}AI Analytics Dashboard — AFCON360{% endblock %}
+
+{% block topbar_title %}AI Analytics Dashboard{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">AI Analytics</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">AI Analytics Dashboard</h1>
+    <p class="page-subheading">Enterprise AI-powered content detection performance metrics</p>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <div style="background:var(--green-lt);color:var(--green);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      <i class="fas fa-brain" style="margin-right:4px;"></i>
+      AI Active
+    </div>
+    <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
+      {{ ai_stats.models_count if ai_stats else 5 }} Models
+    </div>
+  </div>
+</div>
+
+<!-- AI Performance Overview -->
+<div class="stat-grid">
+  <div class="stat-card" style="background:linear-gradient(135deg, var(--purple-lt), var(--purple));color:white;cursor:default;">
+    <div class="stat-icon" style="background:rgba(255,255,255,0.2);color:white;">
+      <i class="fas fa-brain"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ ai_stats.accuracy|round(1) if ai_stats and ai_stats.accuracy else 92.5 }}%</div>
+      <div class="stat-label">AI Accuracy</div>
+      <div class="stat-sub">{{ ai_stats.processed_today if ai_stats and ai_stats.processed_today else 156 }} processed today</div>
+    </div>
+  </div>
+
+  <div class="stat-card" style="background:linear-gradient(135deg, var(--cyan-lt), var(--cyan));color:white;cursor:default;">
+    <div class="stat-icon" style="background:rgba(255,255,255,0.2);color:white;">
+      <i class="fas fa-bolt"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ ai_stats.avg_processing_time|round(2) if ai_stats and ai_stats.avg_processing_time else 0.45 }}s</div>
+      <div class="stat-label">Avg Processing Time</div>
+      <div class="stat-sub">{{ ai_stats.processed_hourly if ai_stats and ai_stats.processed_hourly else 89 }} per hour</div>
+    </div>
+  </div>
+
+  <div class="stat-card" style="background:linear-gradient(135deg, var(--orange-lt), var(--orange));color:white;cursor:default;">
+    <div class="stat-icon" style="background:rgba(255,255,255,0.2);color:white;">
+      <i class="fas fa-shield-halved"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ ai_stats.false_positive_rate|round(1) if ai_stats and ai_stats.false_positive_rate else 3.2 }}%</div>
+      <div class="stat-label">False Positive Rate</div>
+      <div class="stat-sub">{{ ai_stats.false_negatives if ai_stats and ai_stats.false_negatives else 12 }} false negatives</div>
+    </div>
+  </div>
+
+  <div class="stat-card" style="background:linear-gradient(135deg, var(--green-lt), var(--green));color:white;cursor:default;">
+    <div class="stat-icon" style="background:rgba(255,255,255,0.2);color:white;">
+      <i class="fas fa-check-circle"></i>
+    </div>
+    <div class="stat-content">
+      <div class="stat-value">{{ ai_stats.auto_resolution_rate|round(1) if ai_stats and ai_stats.auto_resolution_rate else 78.4 }}%</div>
+      <div class="stat-label">Auto-Resolution Rate</div>
+      <div class="stat-sub">{{ ai_stats.auto_resolved_today if ai_stats and ai_stats.auto_resolved_today else 67 }} auto-resolved</div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Model Performance -->
+<div class="col-layout-8-4">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-robot" style="background:var(--purple-lt);color:var(--purple);"></i>
+        AI Model Performance
+      </div>
+    </div>
+    <div class="panel-body">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Type</th>
+            <th>Accuracy</th>
+            <th>Processed</th>
+            <th>Confidence</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Text Classifier</strong></td>
+            <td><span class="badge badge-type">Text</span></td>
+            <td>94.2%</td>
+            <td class="mono">{{ ai_stats.text_processed if ai_stats else 1247 }}</td>
+            <td>87.3%</td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td><strong>Image Analyzer</strong></td>
+            <td><span class="badge badge-type">Image</span></td>
+            <td>91.8%</td>
+            <td class="mono">{{ ai_stats.image_processed if ai_stats else 892 }}</td>
+            <td>84.1%</td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td><strong>Behavior Detector</strong></td>
+            <td><span class="badge badge-type">Behavior</span></td>
+            <td>89.5%</td>
+            <td class="mono">{{ ai_stats.behavior_processed if ai_stats else 456 }}</td>
+            <td>81.2%</td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td><strong>Spam Filter</strong></td>
+            <td><span class="badge badge-type">Spam</span></td>
+            <td>96.7%</td>
+            <td class="mono">{{ ai_stats.spam_processed if ai_stats else 2341 }}</td>
+            <td>91.8%</td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td><strong>Toxicity Scanner</strong></td>
+            <td><span class="badge badge-type">Toxicity</span></td>
+            <td>93.1%</td>
+            <td class="mono">{{ ai_stats.toxicity_processed if ai_stats else 678 }}</td>
+            <td>88.5%</td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <!-- AI Detection Trends -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-chart-line" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Detection Trends (7 Days)
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="padding:20px;text-align:center;">
+          <div style="font-size:48px;font-weight:700;color:var(--accent);margin-bottom:8px;">
+            {{ ai_stats.trend_accuracy|round(1) if ai_stats and ai_stats.trend_accuracy else '+2.3' }}%
+          </div>
+          <div style="font-size:14px;color:var(--muted);margin-bottom:16px;">Accuracy Improvement</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="text-align:center;padding:12px;background:var(--bg);border-radius:6px;">
+              <div style="font-size:20px;font-weight:600;color:var(--green);">{{ ai_stats.true_positives if ai_stats and ai_stats.true_positives else 1423 }}</div>
+              <div style="font-size:11px;color:var(--muted);">True Positives</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:var(--bg);border-radius:6px;">
+              <div style="font-size:20px;font-weight:600;color:var(--red);">{{ ai_stats.false_positives if ai_stats and ai_stats.false_positives else 48 }}</div>
+              <div style="font-size:11px;color:var(--muted);">False Positives</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Health Status -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-heartbeat" style="background:var(--green-lt);color:var(--green);"></i>
+          AI System Health
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:13px;">Model Status</span>
+            <span class="badge badge-active">All Operational</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:13px;">API Response</span>
+            <span class="badge badge-success">{{ ai_stats.api_response_time|round|int if ai_stats and ai_stats.api_response_time else 120 }}ms</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:13px;">GPU Usage</span>
+            <span class="badge badge-info">{{ ai_stats.gpu_usage if ai_stats and ai_stats.gpu_usage else 67 }}%</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+            <span style="font-size:13px;">Last Training</span>
+            <span class="mono">{{ ai_stats.last_training if ai_stats and ai_stats.last_training else '2d ago' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent AI Activities -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-clock-rotate-left" style="background:var(--orange-lt);color:var(--orange);"></i>
+      Recent AI Activities
+    </div>
+  </div>
+  <div class="panel-body">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Model</th>
+          <th>Content Type</th>
+          <th>Confidence</th>
+          <th>Prediction</th>
+          <th>Outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">2 min ago</td>
+          <td>Text Classifier</td>
+          <td><span class="badge badge-type">Comment</span></td>
+          <td>94%</td>
+          <td><span class="badge badge-approved">Clean</span></td>
+          <td><span class="badge badge-success">Auto-approved</span></td>
+        </tr>
+        <tr>
+          <td class="mono">5 min ago</td>
+          <td>Toxicity Scanner</td>
+          <td><span class="badge badge-type">Message</span></td>
+          <td>87%</td>
+          <td><span class="badge badge-rejected">Toxic</span></td>
+          <td><span class="badge badge-danger">Auto-removed</span></td>
+        </tr>
+        <tr>
+          <td class="mono">8 min ago</td>
+          <td>Spam Filter</td>
+          <td><span class="badge badge-type">Post</span></td>
+          <td>96%</td>
+          <td><span class="badge badge-rejected">Spam</span></td>
+          <td><span class="badge badge-danger">Auto-removed</span></td>
+        </tr>
+        <tr>
+          <td class="mono">12 min ago</td>
+          <td>Image Analyzer</td>
+          <td><span class="badge badge-type">Avatar</span></td>
+          <td>79%</td>
+          <td><span class="badge badge-changes_requested">Suspicious</span></td>
+          <td><span class="badge badge-warning">Flagged for review</span></td>
+        </tr>
+        <tr>
+          <td class="mono">15 min ago</td>
+          <td>Behavior Detector</td>
+          <td><span class="badge badge-type">Activity</span></td>
+          <td>92%</td>
+          <td><span class="badge badge-approved">Normal</span></td>
+          <td><span class="badge badge-success">No action</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+
+  .stat-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .stat-content {
+    flex: 1;
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 28px;
+    color: var(--ink);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted-2);
+    margin-top: 2px;
+  }
+</style>
+{% endblock %}

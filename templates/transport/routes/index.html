@@ -45,7 +45,7 @@
           <tr>
             <td><span class="td-mono" style="color:var(--amber);">{{ r.route_code }}</span></td>
             <td>
-              <a href="{{ safe_url('url_for\(['"]transport.route_show', id=r.id) }}" class="td-primary">{{ r.name }}</a>
+              <a href="{{ safe_url('transport.route_show', id=r.id) }}" class="td-primary">{{ r.name }}</a>
               <div style="font-size:0.7rem;color:var(--text-muted);">{{ r.primary_zone|default('') }}</div>
             </td>
             <td>{{ r.route_type|replace('_',' ')|title }}</td>
@@ -80,8 +80,8 @@
             </td>
             <td>
               <div style="display:flex;gap:4px;">
-                <a href="{{ safe_url('url_for\(['"]transport.route_show', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
-                <a href="{{ safe_url('url_for\(['"]transport.route_edit', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
+                <a href="{{ safe_url('transport.route_show', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
+                <a href="{{ safe_url('transport.route_edit', id=r.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
               </div>
             </td>
           </tr>

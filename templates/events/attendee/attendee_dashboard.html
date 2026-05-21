@@ -348,7 +348,7 @@
                                 {# Action Buttons #}
                                 <div class="reg-actions">
                                     {% if status != 'cancelled' %}
-                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="reg-btn reg-btn-primary">
                                         <i class="fas fa-qrcode"></i> View Ticket
                                     </a>
@@ -360,7 +360,7 @@
                                     </a>
                                     {% if status not in ['cancelled', 'checked_in'] %}
                                     <button class="reg-btn reg-btn-danger"
-                                            onclick="confirmCancel('{{ reg.registration_ref }}', '{{ reg.event.name|default('this event')|replace("'", "\'") }}')">
+                                            onclick="confirmCancel('{{ reg.registration_ref }}', '{{ reg.event.name|default('this event')|replace("'", "'") }}')">
                                         <i class="fas fa-times"></i> Cancel
                                     </button>
                                     {% endif %}
@@ -422,7 +422,7 @@
                                     <span class="badge-ref">REF: {{ reg.registration_ref }}</span>
                                 </div>
                                 <div class="reg-actions">
-                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="reg-btn reg-btn-outline">
                                         <i class="fas fa-receipt"></i> View Ticket
                                     </a>
@@ -474,7 +474,7 @@
                                     <span class="badge-ref">{{ reg.registration_ref }}</span>
                                 </div>
                                 <div class="reg-actions">
-                                    <a href="{{ safe_url('url_for\(['"]events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                                    <a href="{{ safe_url('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
                                        class="reg-btn reg-btn-primary">
                                         <i class="fas fa-qrcode"></i> View Ticket
                                     </a>

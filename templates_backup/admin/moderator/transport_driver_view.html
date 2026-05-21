@@ -1,0 +1,534 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Driver: {{ driver.first_name }} {{ driver.last_name }} — AFCON360{% endblock %}
+
+{% block topbar_title %}Driver Details{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_drivers') }}">Drivers</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">{{ driver.first_name }} {{ driver.last_name }}</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">{{ driver.first_name }} {{ driver.last_name }}</h1>
+    <p class="page-subheading">Driver Code: {{ driver.driver_code }}</p>
+  </div>
+  <div class="action-buttons">
+    {% if driver.verification_tier == 'pending' %}
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='approve') }}" style="display:inline;">
+      <button type="submit" class="btn btn-success" onclick="return confirm('Approve this driver?')">
+        <i class="fas fa-check"></i> Approve Driver
+      </button>
+    </form>
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='reject') }}" style="display:inline;">
+      <button type="submit" class="btn btn-danger" onclick="return confirm('Reject this driver?')">
+        <i class="fas fa-times"></i> Reject Driver
+      </button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='flag') }}" style="display:inline;">
+      <input type="hidden" name="reason" value="Flagged for review">
+      <input type="hidden" name="priority" value="medium">
+      <button type="submit" class="btn btn-outline">
+        <i class="fas fa-flag"></i> Flag
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="col-layout-2-1">
+  <!-- Main Content -->
+  <div>
+    <!-- Driver Information -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-user" style="background:var(--blue-lt);color:var(--blue);"></i>
+          Driver Information
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Full Name</div>
+            <div class="info-value">{{ driver.first_name }} {{ driver.last_name }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Driver Code</div>
+            <div class="info-value mono">{{ driver.driver_code }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Email</div>
+            <div class="info-value">{{ driver.email }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Phone</div>
+            <div class="info-value">{{ driver.phone }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Verification Tier</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 
+                'amber' if driver.verification_tier == 'pending' 
+                else 'blue' if driver.verification_tier == 'basic_verified'
+                else 'green' if driver.verification_tier == 'platform_verified'
+                else 'purple' if driver.verification_tier == 'event_certified'
+                else 'gray' }}">
+                {{ driver.verification_tier.replace('_', ' ').title() }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Compliance Status</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 
+                'green' if driver.compliance_status == 'approved'
+                else 'amber' if driver.compliance_status == 'pending_review'
+                else 'red' if driver.compliance_status == 'suspended'
+                else 'gray' }}">
+                {{ driver.compliance_status.replace('_', ' ').title() }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Status</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 'green' if driver.is_active else 'gray' }}">
+                {{ 'Active' if driver.is_active else 'Inactive' }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Online Status</div>
+            <div class="info-value">
+              <span class="badge badge-{{ 'green' if driver.is_online else 'gray' }}">
+                {{ 'Online' if driver.is_online else 'Offline' }}
+              </span>
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Joined</div>
+            <div class="info-value">{{ driver.created_at.strftime('%Y-%m-%d') }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Last Seen</div>
+            <div class="info-value">{{ driver.last_seen_at.strftime('%Y-%m-%d %H:%M') if driver.last_seen_at else 'Never' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verification Documents -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-file-alt" style="background:var(--green-lt);color:var(--green);"></i>
+          Verification Documents
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="verification-grid">
+          <div class="verification-item">
+            <div class="verification-icon {{ 'verified' if driver.license_verified else 'pending' }}">
+              <i class="fas fa-id-card"></i>
+            </div>
+            <div class="verification-content">
+              <div class="verification-title">Driver License</div>
+              <div class="verification-status">
+                {{ 'Verified' if driver.license_verified else 'Not Verified' }}
+              </div>
+            </div>
+          </div>
+          <div class="verification-item">
+            <div class="verification-icon {{ 'verified' if driver.police_clearance_verified else 'pending' }}">
+              <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="verification-content">
+              <div class="verification-title">Police Clearance</div>
+              <div class="verification-status">
+                {{ 'Verified' if driver.police_clearance_verified else 'Not Verified' }}
+              </div>
+            </div>
+          </div>
+          <div class="verification-item">
+            <div class="verification-icon {{ 'verified' if driver.background_check_passed else 'pending' }}">
+              <i class="fas fa-search"></i>
+            </div>
+            <div class="verification-content">
+              <div class="verification-title">Background Check</div>
+              <div class="verification-status">
+                {{ 'Passed' if driver.background_check_passed else 'Not Passed' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vehicles -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-car" style="background:var(--amber-lt);color:var(--amber);"></i>
+          Vehicles ({{ driver_vehicles|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if driver_vehicles %}
+          <div class="vehicle-list">
+            {% for vehicle in driver_vehicles %}
+            <div class="vehicle-item">
+              <div class="vehicle-icon">
+                <i class="fas fa-car"></i>
+              </div>
+              <div class="vehicle-content">
+                <div class="vehicle-name">{{ vehicle.make }} {{ vehicle.model }}</div>
+                <div class="vehicle-details">{{ vehicle.license_plate }} • {{ vehicle.year }}</div>
+                <div class="vehicle-status">
+                  <span class="badge badge-{{ 
+                    'green' if vehicle.status == 'active'
+                    else 'amber' if vehicle.status == 'pending'
+                    else 'gray' }}">
+                    {{ vehicle.status.title() }}
+                  </span>
+                </div>
+              </div>
+              <div class="vehicle-actions">
+                <a href="{{ url_for('admin.moderator.view_transport_vehicle', vehicle_id=vehicle.id) }}" 
+                   class="btn btn-xs btn-outline">
+                  <i class="fas fa-eye"></i> View
+                </a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-car" style="font-size:32px;color:var(--muted);margin-bottom:12px;"></i>
+            <div>No vehicles registered</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent Bookings -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-calendar-alt" style="background:var(--purple-lt);color:var(--purple);"></i>
+          Recent Bookings ({{ driver_bookings|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if driver_bookings %}
+          <div class="booking-list">
+            {% for booking in driver_bookings %}
+            <div class="booking-item">
+              <div class="booking-icon">
+                <i class="fas fa-calendar-alt"></i>
+              </div>
+              <div class="booking-content">
+                <div class="booking-ref">{{ booking.booking_reference }}</div>
+                <div class="booking-route">{{ booking.pickup_address[:30] }}... → {{ booking.dropoff_address[:30] }}...</div>
+                <div class="booking-date">{{ booking.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+              </div>
+              <div class="booking-status">
+                <span class="badge badge-{{ 
+                  'green' if booking.status == 'confirmed'
+                  else 'blue' if booking.status == 'in_progress'
+                  else 'red' if booking.status == 'disputed'
+                  else 'gray' }}">
+                  {{ booking.status.replace('_', ' ').title() }}
+                </span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-calendar-alt" style="font-size:32px;color:var(--muted);margin-bottom:12px;"></i>
+            <div>No recent bookings</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div>
+    <!-- Flags -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Flags ({{ driver_flags|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if driver_flags %}
+          <div class="flag-list">
+            {% for flag in driver_flags %}
+            <div class="flag-item">
+              <div class="flag-priority {{ flag.priority }}">
+                <i class="fas fa-flag"></i>
+              </div>
+              <div class="flag-content">
+                <div class="flag-reason">{{ flag.reason[:100] }}{% if flag.reason|length > 100 %}...{% endif %}</div>
+                <div class="flag-date">{{ flag.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-shield-alt" style="font-size:32px;color:var(--muted);margin-bottom:12px;"></i>
+            <div>No flags</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-bolt" style="background:var(--amber-lt);color:var(--amber);"></i>
+          Quick Actions
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="action-list">
+          {% if driver.verification_tier == 'pending' %}
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='approve') }}">
+            <button type="submit" class="btn btn-success btn-block" onclick="return confirm('Approve this driver?')">
+              <i class="fas fa-check"></i> Approve Driver
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='reject') }}">
+            <button type="submit" class="btn btn-danger btn-block" onclick="return confirm('Reject this driver?')">
+              <i class="fas fa-times"></i> Reject Driver
+            </button>
+          </form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='driver', entity_id=driver.id, action='flag') }}">
+            <input type="hidden" name="reason" value="Flagged for review">
+            <input type="hidden" name="priority" value="medium">
+            <button type="submit" class="btn btn-outline btn-block">
+              <i class="fas fa-flag"></i> Flag Driver
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.info-value {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.info-value.mono {
+  font-family: var(--font-mono);
+}
+
+.verification-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.verification-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.verification-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.verification-icon.verified {
+  background: rgba(74,222,128,0.15);
+  color: var(--green);
+}
+
+.verification-icon.pending {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.verification-content {
+  flex: 1;
+}
+
+.verification-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.verification-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vehicle-list, .booking-list, .flag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vehicle-item, .booking-item, .flag-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.vehicle-icon, .booking-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.vehicle-content, .booking-content, .flag-content {
+  flex: 1;
+}
+
+.vehicle-name, .booking-ref {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.vehicle-details, .booking-route, .flag-reason {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.booking-date, .flag-date {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.flag-priority {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.flag-priority.critical {
+  background: rgba(248,113,113,0.15);
+  color: var(--red);
+}
+
+.flag-priority.high {
+  background: rgba(251,191,36,0.15);
+  color: var(--amber);
+}
+
+.flag-priority.medium {
+  background: rgba(96,165,250,0.15);
+  color: var(--blue);
+}
+
+.flag-priority.low {
+  background: rgba(107,107,128,0.15);
+  color: var(--muted);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-purple { background: rgba(196,181,253,0.15); color: var(--purple); border: 1px solid rgba(196,181,253,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+{% endblock %}

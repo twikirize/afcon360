@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Role Audit Log - Role Management - AFCON360{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+<style>
+  .audit-log-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  
+  .audit-header {
+    margin-bottom: 2rem;
+  }
+  
+  .audit-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .audit-header p {
+    color: #6b7280;
+    margin-top: 0.5rem;
+  }
+  
+  .audit-table {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+  }
+  
+  .table-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .table-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  
+  .log-count {
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
+  
+  .table-wrapper {
+    overflow-x: auto;
+  }
+  
+  .audit-table table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .audit-table th {
+    background: #f9fafb;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.875rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .audit-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.875rem;
+  }
+  
+  .audit-table tr:hover {
+    background: #f9fafb;
+  }
+  
+  .action-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  
+  .action-assign {
+    background: #dcfce7;
+    color: #166534;
+  }
+  
+  .action-revoke {
+    background: #fef2f2;
+    color: #dc2626;
+  }
+  
+  .action-toggle {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+  
+  .user-details {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .user-name {
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  
+  .user-email {
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+  
+  .role-change {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .role-from {
+    color: #6b7280;
+    text-decoration: line-through;
+  }
+  
+  .role-to {
+    color: #059669;
+    font-weight: 600;
+  }
+  
+  .timestamp {
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+  
+  .reason {
+    color: #374151;
+    font-style: italic;
+  }
+  
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+  }
+  
+  .pagination a {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #374151;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+  }
+  
+  .pagination a:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+  
+  .pagination .current {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6b7280;
+  }
+  
+  .empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #d1d5db;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="audit-log-container">
+  <div class="audit-header">
+    <h1><i class="bi bi-clock-history"></i> Role Audit Log</h1>
+    <p>View all role management actions and changes</p>
+  </div>
+
+  <!-- Audit Log Table -->
+  <div class="audit-table">
+    <div class="table-header">
+      <div class="table-title">Audit Log</div>
+      <div class="log-count">{{ audit_logs.total }} entries found</div>
+    </div>
+    
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Action</th>
+            <th>User</th>
+            <th>Role Change</th>
+            <th>Performed By</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in audit_items %}
+          <tr>
+            <td>
+              <div class="timestamp">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+            </td>
+            <td>
+              {% if log.action == 'assign_role' %}
+                <span class="action-type action-assign">
+                  <i class="bi bi-person-plus"></i> Assign
+                </span>
+              {% elif log.action == 'revoke_role' %}
+                <span class="action-type action-revoke">
+                  <i class="bi bi-person-dash"></i> Revoke
+                </span>
+              {% elif log.action == 'toggle_admin_role_management' %}
+                <span class="action-type action-toggle">
+                  <i class="bi bi-gear"></i> Toggle Admin
+                </span>
+              {% elif log.action == 'toggle_super_admin_role_management' %}
+                <span class="action-type action-toggle">
+                  <i class="bi bi-gear"></i> Toggle Super Admin
+                </span>
+              {% else %}
+                <span class="action-type" style="background: #f3f4f6; color: #374151;">
+                  <i class="bi bi-activity"></i> {{ log.action }}
+                </span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.target_user %}
+              <div class="user-info">
+                <div class="user-avatar">
+                  {{ log.target_user.username[0].upper() if log.target_user.username else 'U' }}
+                </div>
+                <div class="user-details">
+                  <div class="user-name">{{ log.target_user.username }}</div>
+                  <div class="user-email">{{ log.target_user.email }}</div>
+                </div>
+              </div>
+              {% else %}
+                <span style="color: #6b7280;">System</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.old_role or log.new_role %}
+              <div class="role-change">
+                {% if log.old_role %}
+                <span class="role-from">{{ log.old_role.replace('_', ' ').title() }}</span>
+                {% endif %}
+                {% if log.old_role and log.new_role %}
+                <i class="bi bi-arrow-right"></i>
+                {% endif %}
+                {% if log.new_role %}
+                <span class="role-to">{{ log.new_role.replace('_', ' ').title() }}</span>
+                {% endif %}
+              </div>
+              {% else %}
+                <span style="color: #6b7280;">-</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.performed_by_user %}
+              <div class="user-info">
+                <div class="user-avatar">
+                  {{ log.performed_by_user.username[0].upper() if log.performed_by_user.username else 'U' }}
+                </div>
+                <div class="user-details">
+                  <div class="user-name">{{ log.performed_by_user.username }}</div>
+                  <div class="user-email">{{ log.performed_by_user.email }}</div>
+                </div>
+              </div>
+              {% else %}
+              <span style="color: #6b7280;">System</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.reason %}
+              <div class="reason">{{ log.reason }}</div>
+              {% else %}
+              <span style="color: #6b7280;">-</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6">
+              <div class="empty-state">
+                <i class="bi bi-clock-history"></i>
+                <div>No audit log entries found</div>
+                <div style="font-size: 0.875rem; margin-top: 0.5rem;">
+                  Role management actions will appear here
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Pagination -->
+    {% if audit_logs.pages > 1 %}
+    <div class="pagination">
+      {% if audit_logs.has_prev %}
+        <a href="{{ url_for('owner_role_management.role_audit_log', page=audit_logs.prev_num) }}">
+          <i class="bi bi-chevron-left"></i> Previous
+        </a>
+      {% endif %}
+      
+      {% for page_num in audit_logs.iter_pages() %}
+        {% if page_num %}
+          {% if page_num != audit_logs.page %}
+            <a href="{{ url_for('owner_role_management.role_audit_log', page=page_num) }}">
+              {{ page_num }}
+            </a>
+          {% else %}
+            <span class="current">{{ page_num }}</span>
+          {% endif %}
+        {% else %}
+          <span>...</span>
+        {% endif %}
+      {% endfor %}
+      
+      {% if audit_logs.has_next %}
+        <a href="{{ url_for('owner_role_management.role_audit_log', page=audit_logs.next_num) }}">
+          Next <i class="bi bi-chevron-right"></i>
+        </a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

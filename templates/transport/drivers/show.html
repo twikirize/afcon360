@@ -30,11 +30,11 @@
   </div>
   <div class="page-actions">
     {% if driver.compliance_status == 'pending' %}
-    <a href="{{ safe_url('url_for\(['"]transport.driver_verification', id=driver.id) }}" class="btn btn-primary btn-sm">
+    <a href="{{ safe_url('transport.driver_verification', id=driver.id) }}" class="btn btn-primary btn-sm">
       <i class="fa-solid fa-shield-check"></i> Verify Driver
     </a>
     {% endif %}
-    <a href="{{ safe_url('url_for\(['"]transport.driver_edit', id=driver.id) }}" class="btn btn-secondary btn-sm">
+    <a href="{{ safe_url('transport.driver_edit', id=driver.id) }}" class="btn btn-secondary btn-sm">
       <i class="fa-solid fa-pen"></i> Edit
     </a>
     <button class="btn btn-danger btn-sm" onclick="toggleSuspend()">
@@ -130,7 +130,7 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title">Recent Trips</span>
-        <a href="{{ safe_url('url_for\(['"]transport.driver_history', id=driver.id) }}" class="btn btn-secondary btn-sm">Full History</a>
+        <a href="{{ safe_url('transport.driver_history', id=driver.id) }}" class="btn btn-secondary btn-sm">Full History</a>
       </div>
       <div class="t-table-wrap">
         <table class="t-table">
@@ -139,7 +139,7 @@
             {% if trips %}
               {% for t in trips %}
               <tr>
-                <td><a href="{{ safe_url('url_for\(['"]transport.booking_show', id=t.id) }}" class="td-mono" style="color:var(--amber);">{{ t.booking_reference }}</a></td>
+                <td><a href="{{ safe_url('transport.booking_show', id=t.id) }}" class="td-mono" style="color:var(--amber);">{{ t.booking_reference }}</a></td>
                 <td>{{ t.scheduled_pickup_time|dateformat|default('—') }}</td>
                 <td>{{ t.service_type|title|default('—') }}</td>
                 <td><span class="badge badge-{{ 'green' if t.status=='completed' else 'red' if t.status=='cancelled' else 'amber' }}">{{ t.status|title }}</span></td>

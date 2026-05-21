@@ -1,0 +1,480 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Transport Vehicles — AFCON360{% endblock %}
+
+{% block topbar_title %}Transport Vehicles{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.transport_moderation') }}">Transport</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">Vehicles</span>
+</div>
+
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Transport Vehicles</h1>
+    <p class="page-subheading">Review and moderate vehicle registrations</p>
+  </div>
+</div>
+
+<!-- Status Filter Tabs -->
+<div class="tab-bar">
+  <a href="{{ url_for('admin.moderator.transport_vehicles', status='all') }}" 
+     class="tab-link {% if current_status == 'all' %}active{% endif %}">
+    <i class="fas fa-list"></i> All Vehicles
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_vehicles', status='pending') }}" 
+     class="tab-link {% if current_status == 'pending' %}active{% endif %}">
+    <i class="fas fa-clock"></i> Pending
+    {% if moderation_stats is defined and moderation_stats.pending_vehicles %}
+    <span class="tab-count">{{ moderation_stats.pending_vehicles }}</span>
+    {% endif %}
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_vehicles', status='active') }}" 
+     class="tab-link {% if current_status == 'active' %}active{% endif %}">
+    <i class="fas fa-check-circle"></i> Active
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_vehicles', status='maintenance') }}" 
+     class="tab-link {% if current_status == 'maintenance' %}active{% endif %}">
+    <i class="fas fa-wrench"></i> Maintenance
+  </a>
+  <a href="{{ url_for('admin.moderator.transport_vehicles', status='rejected') }}" 
+     class="tab-link {% if current_status == 'rejected' %}active{% endif %}">
+    <i class="fas fa-times-circle"></i> Rejected
+  </a>
+</div>
+
+<!-- Search and Actions -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-search" style="background:var(--blue-lt);color:var(--blue);"></i>
+      Search & Filter
+    </div>
+  </div>
+  <div class="panel-body">
+    <form method="GET" class="search-form">
+      <div class="search-row">
+        <input type="text" name="search" placeholder="Search by make, model, license plate..." 
+               value="{{ current_search }}" class="search-input">
+        <select name="status" class="filter-select">
+          <option value="all" {% if current_status == 'all' %}selected{% endif %}>All Status</option>
+          <option value="pending" {% if current_status == 'pending' %}selected{% endif %}>Pending</option>
+          <option value="active" {% if current_status == 'active' %}selected{% endif %}>Active</option>
+          <option value="maintenance" {% if current_status == 'maintenance' %}selected{% endif %}>Maintenance</option>
+          <option value="rejected" {% if current_status == 'rejected' %}selected{% endif %}>Rejected</option>
+        </select>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-search"></i> Search
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Vehicles List -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-car" style="background:var(--green-lt);color:var(--green);"></i>
+      Vehicles ({{ vehicles.total }} total)
+    </div>
+    {% if vehicles.pages > 1 %}
+    <div class="pagination-info">
+      Page {{ vehicles.page }} of {{ vehicles.pages }}
+    </div>
+    {% endif %}
+  </div>
+  <div class="panel-body">
+    {% if vehicles.items %}
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Vehicle</th>
+              <th>Owner</th>
+              <th>Specifications</th>
+              <th>Status</th>
+              <th>Compliance</th>
+              <th>Capacity</th>
+              <th>Registered</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for vehicle in vehicles.items %}
+            <tr>
+              <td>
+                <div class="vehicle-info">
+                  <div class="vehicle-icon">
+                    <i class="fas fa-car"></i>
+                  </div>
+                  <div>
+                    <div class="vehicle-name">{{ vehicle.make }} {{ vehicle.model }}</div>
+                    <div class="vehicle-details">{{ vehicle.license_plate }} • {{ vehicle.year }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="owner-info">
+                  {% if vehicle.owner_type == 'driver' %}
+                    <div class="owner-type">Driver</div>
+                    <div class="owner-name">ID: {{ vehicle.owner_id }}</div>
+                  {% elif vehicle.owner_type == 'organisation' %}
+                    <div class="owner-type">Organisation</div>
+                    <div class="owner-name">ID: {{ vehicle.owner_id }}</div>
+                  {% else %}
+                    <div class="owner-type">{{ vehicle.owner_type.title() }}</div>
+                    <div class="owner-name">ID: {{ vehicle.owner_id }}</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="vehicle-specs">
+                  <div class="spec-item">
+                    <i class="fas fa-tag"></i>
+                    {{ vehicle.vehicle_type.replace('_', ' ').title() }}
+                  </div>
+                  <div class="spec-item">
+                    <i class="fas fa-cog"></i>
+                    {{ vehicle.vehicle_class.replace('_', ' ').title() }}
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="badge badge-{{ 
+                  'amber' if vehicle.status == 'pending' 
+                  else 'green' if vehicle.status == 'active'
+                  else 'blue' if vehicle.status == 'maintenance'
+                  else 'red' if vehicle.status == 'rejected'
+                  else 'gray' }}">
+                  {{ vehicle.status.replace('_', ' ').title() }}
+                </span>
+                {% if not vehicle.is_available %}
+                <span class="badge badge-gray">Unavailable</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="compliance-status">
+                  {% if vehicle.insurance_verified %}
+                    <span class="compliance-item verified">
+                      <i class="fas fa-shield-alt"></i> Insurance
+                    </span>
+                  {% else %}
+                    <span class="compliance-item pending">
+                      <i class="fas fa-exclamation-triangle"></i> Insurance
+                    </span>
+                  {% endif %}
+                  {% if vehicle.roadworthiness_certificate %}
+                    <span class="compliance-item verified">
+                      <i class="fas fa-check-circle"></i> Roadworthy
+                    </span>
+                  {% else %}
+                    <span class="compliance-item pending">
+                      <i class="fas fa-times-circle"></i> Roadworthy
+                    </span>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="capacity-info">
+                  <div class="capacity-item">
+                    <i class="fas fa-users"></i>
+                    {{ vehicle.passenger_capacity }} seats
+                  </div>
+                  {% if vehicle.luggage_capacity %}
+                    <div class="capacity-item">
+                      <i class="fas fa-suitcase"></i>
+                      {{ vehicle.luggage_capacity }} bags
+                    </div>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="date-info">
+                  {{ vehicle.created_at.strftime('%Y-%m-%d') }}
+                </div>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <a href="{{ url_for('admin.moderator.view_transport_vehicle', vehicle_id=vehicle.id) }}" 
+                     class="btn btn-xs btn-outline">
+                    <i class="fas fa-eye"></i> View
+                  </a>
+                  {% if vehicle.status == 'pending' %}
+                  <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='approve') }}" 
+                        style="display:inline;">
+                    <button type="submit" class="btn btn-xs btn-success" 
+                            onclick="return confirm('Approve this vehicle?')">
+                      <i class="fas fa-check"></i> Approve
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <i class="fas fa-car" style="font-size:48px;color:var(--muted);margin-bottom:16px;"></i>
+        <h3>No vehicles found</h3>
+        <p>No vehicles match your current search criteria.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if vehicles.pages > 1 %}
+<div class="pagination-wrapper">
+  <div class="pagination">
+    {% if vehicles.has_prev %}
+      <a href="{{ url_for('admin.moderator.transport_vehicles', page=vehicles.prev_num, status=current_status, search=current_search) }}" 
+         class="pagination-link">
+        <i class="fas fa-chevron-left"></i> Previous
+      </a>
+    {% endif %}
+    
+    {% for page_num in vehicles.iter_pages() %}
+      {% if page_num %}
+        {% if page_num != vehicles.page %}
+          <a href="{{ url_for('admin.moderator.transport_vehicles', page=page_num, status=current_status, search=current_search) }}" 
+             class="pagination-link">{{ page_num }}</a>
+        {% else %}
+          <span class="pagination-current">{{ page_num }}</span>
+        {% endif %}
+      {% else %}
+        <span class="pagination-ellipsis">...</span>
+      {% endif %}
+    {% endfor %}
+    
+    {% if vehicles.has_next %}
+      <a href="{{ url_for('admin.moderator.transport_vehicles', page=vehicles.next_num, status=current_status, search=current_search) }}" 
+         class="pagination-link">
+        Next <i class="fas fa-chevron-right"></i>
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<style>
+.search-form {
+  margin: 0;
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 150px;
+}
+
+.vehicle-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vehicle-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--accent-lt);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.vehicle-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.vehicle-details {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.owner-info {
+  font-size: 13px;
+}
+
+.owner-type {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.owner-name {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.vehicle-specs {
+  font-size: 12px;
+}
+
+.spec-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+
+.compliance-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compliance-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.compliance-item.verified {
+  color: var(--green);
+}
+
+.compliance-item.pending {
+  color: var(--amber);
+}
+
+.capacity-info {
+  font-size: 12px;
+}
+
+.capacity-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+
+.date-info {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.data-table-wrapper {
+  overflow-x: auto;
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.pagination {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pagination-link {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.pagination-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pagination-current {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: white;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pagination-ellipsis {
+  padding: 6px 8px;
+  color: var(--muted);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.empty-state h3 {
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-amber { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+.badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+.badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+</style>
+{% endblock %}

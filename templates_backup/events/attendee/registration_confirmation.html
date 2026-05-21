@@ -1,0 +1,1089 @@
+{#
+  FILE: templates/events/attendee/registration_confirmation.html
+  PURPOSE: Display QR code and registration confirmation after successful registration
+  ACCESS: Authenticated users only
+  RELATED: events.registration_confirmation route
+#}
+{% extends "base.html" %}
+
+{% block title %}Registration Confirmed - {{ event.name }}{% endblock %}
+
+{% block content %}
+<style>
+/* Modern Registration Confirmation Styles */
+.confirmation-wrapper {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #00e5a0 0%, #00b87d 100%);
+    padding: 2rem 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.confirmation-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.05) 0%, transparent 50%);
+    opacity: 0.6;
+}
+
+.confirmation-container {
+    position: relative;
+    z-index: 2;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.confirmation-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    overflow: hidden;
+    animation: slideUp 0.6s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.confirmation-header {
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+    padding: 3rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.confirmation-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: float 8s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(180deg); }
+}
+
+.success-icon-large {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    color: white;
+    margin: 0 auto 1.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.confirmation-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: white;
+    margin-bottom: 0.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.confirmation-subtitle {
+    font-size: 1.2rem;
+    color: rgba(255,255,255,0.9);
+    margin: 0;
+    position: relative;
+    z-index: 2;
+}
+
+.confirmation-body {
+    padding: 3rem 2rem;
+}
+
+/* Success Message */
+.success-message {
+    background: linear-gradient(135deg, #d4edda, #c3e6cb);
+    border: 2px solid #b8daff;
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.success-message-text {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #155724;
+    margin: 0;
+}
+
+/* Email Warning */
+.email-warning {
+    background: linear-gradient(135deg, #fff3cd, #fef3cd);
+    border: 2px solid #fbbf24;
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.email-warning-icon {
+    color: #f59e0b;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.email-warning-text {
+    color: #856404;
+    font-weight: 600;
+}
+
+/* Reference Cards */
+.reference-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.reference-card {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.reference-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.reference-value {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #2d3748;
+    word-break: break-all;
+}
+
+/* QR Code Section */
+.qr-section {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    margin-bottom: 2rem;
+    position: relative;
+}
+
+.qr-section::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg, #00e5a0, #00b87d, #667eea, #764ba2);
+    border-radius: 16px;
+    z-index: -1;
+    opacity: 0.1;
+}
+
+.qr-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.qr-title-icon {
+    color: #00e5a0;
+}
+
+.qr-code-container {
+    background: white;
+    border: 3px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem;
+    display: inline-block;
+    margin-bottom: 1.5rem;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.qr-code-container:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.qr-code-image {
+    max-width: 250px;
+    height: auto;
+    display: block;
+    transition: all 0.3s ease;
+}
+
+.qr-instructions {
+    color: #6c757d;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.qr-instruction-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Mobile QR Code Enhancements */
+.mobile-qr-actions {
+    display: none;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.mobile-qr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    margin: 0.25rem;
+}
+
+.mobile-qr-download {
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+    color: white;
+}
+
+.mobile-qr-download:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,229,160,0.3);
+}
+
+.mobile-qr-share {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.mobile-qr-share:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+}
+
+.mobile-qr-screenshot {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+}
+
+.mobile-qr-screenshot:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(245,158,11,0.3);
+}
+
+/* Touch-friendly QR code */
+.qr-code-touch-hint {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(0,229,160,0.9);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.qr-code-container:hover .qr-code-touch-hint {
+    opacity: 1;
+}
+
+/* Mobile detection styles */
+@media (hover: none) and (pointer: coarse) {
+    .qr-code-touch-hint {
+        opacity: 1;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 1; }
+    }
+}
+
+/* Attendee Details */
+.attendee-section {
+    margin-bottom: 2rem;
+}
+
+.section-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.section-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #00e5a0, #00b87d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: white;
+}
+
+.attendee-details {
+    background: #f8f9fa;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 2rem;
+}
+
+.attendee-row {
+    display: flex;
+    padding: 1rem 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.attendee-row:last-child {
+    border-bottom: none;
+}
+
+.attendee-label {
+    font-weight: 600;
+    color: #4a5568;
+    min-width: 150px;
+    flex-shrink: 0;
+}
+
+.attendee-value {
+    color: #2d3748;
+    flex: 1;
+}
+
+.ticket-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+/* Event Info */
+.event-info-section {
+    background: linear-gradient(135deg, #f0f4ff, #e6f0ff);
+    border: 2px solid #c3dafe;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.event-info-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.event-info-icon {
+    color: #667eea;
+}
+
+.event-info-row {
+    display: flex;
+    margin-bottom: 0.75rem;
+}
+
+.event-info-row:last-child {
+    margin-bottom: 0;
+}
+
+.event-info-label {
+    font-weight: 600;
+    color: #4a5568;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.event-info-value {
+    color: #2d3748;
+    flex: 1;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.btn-action {
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    border: none;
+    font-size: 1rem;
+}
+
+.btn-primary-action {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.btn-primary-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(102,126,234,0.3);
+}
+
+.btn-secondary-action {
+    background: white;
+    color: #4a5568;
+    border: 2px solid #e2e8f0;
+}
+
+.btn-secondary-action:hover {
+    border-color: #cbd5e0;
+    background: #f7fafc;
+    transform: translateY(-2px);
+}
+
+.btn-outline-action {
+    background: transparent;
+    color: #667eea;
+    border: 2px solid #667eea;
+}
+
+.btn-outline-action:hover {
+    background: #667eea;
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-danger-action {
+    background: transparent;
+    color: #e53e3e;
+    border: 2px solid #e53e3e;
+}
+
+.btn-danger-action:hover {
+    background: #e53e3e;
+    color: white;
+    transform: translateY(-2px);
+}
+
+/* QR Code Access Information */
+.qr-access-info {
+    background: linear-gradient(135deg, #f0f4ff, #e6f0ff);
+    border: 2px solid #c3dafe;
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+}
+
+.qr-access-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: white;
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+}
+
+.qr-access-content {
+    flex: 1;
+}
+
+.qr-access-content h4 {
+    color: #2d3748;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 0 0 0.75rem 0;
+}
+
+.qr-access-content p {
+    color: #4a5568;
+    font-size: 1rem;
+    line-height: 1.6;
+    margin: 0 0 1.5rem 0;
+}
+
+.qr-access-content strong {
+    color: #2d3748;
+    font-weight: 700;
+}
+
+.qr-access-actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
+/* Email Confirmation */
+.email-confirmation {
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.95rem;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .confirmation-wrapper {
+        padding: 1rem 0;
+    }
+    
+    .confirmation-header {
+        padding: 2rem 1.5rem;
+    }
+    
+    .confirmation-title {
+        font-size: 2rem;
+    }
+    
+    .confirmation-body {
+        padding: 2rem 1.5rem;
+    }
+    
+    .reference-cards {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .btn-action {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .attendee-row {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .attendee-label {
+        min-width: auto;
+    }
+    
+    /* Mobile QR Code Enhancements */
+    .mobile-qr-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .qr-code-container {
+        max-width: 280px;
+        margin: 0 auto 1.5rem;
+    }
+    
+    .qr-code-image {
+        max-width: 100%;
+        width: 100%;
+        height: auto;
+    }
+    
+    .qr-section {
+        padding: 1.5rem 1rem;
+    }
+    
+    .qr-title {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .qr-instructions {
+        font-size: 0.9rem;
+    }
+    
+    .qr-instruction-item {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.25rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .mobile-qr-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 1rem;
+        font-size: 1rem;
+    }
+    
+    .qr-access-info {
+        flex-direction: column;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .qr-access-icon {
+        margin: 0 auto;
+    }
+    
+    .qr-access-actions {
+        justify-content: center;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .navbar, .site-footer, .btn-action, .email-warning, .action-buttons, .email-confirmation {
+        display: none !important;
+    }
+    .confirmation-card { 
+        border: none !important; 
+        box-shadow: none !important; 
+        background: white !important;
+    }
+    .confirmation-header {
+        background: white !important;
+        color: black !important;
+    }
+    .confirmation-title, .confirmation-subtitle {
+        color: black !important;
+    }
+    .success-icon-large {
+        background: #00e5a0 !important;
+        color: white !important;
+    }
+    body { 
+        background: white !important; 
+    }
+    .qr-section {
+        border: 2px solid black !important;
+        page-break-inside: avoid;
+    }
+}
+</style>
+
+<div class="confirmation-wrapper">
+    <div class="confirmation-container">
+        <div class="confirmation-card">
+            <div class="confirmation-header">
+                <div class="success-icon-large">
+                    <i class="fas fa-check"></i>
+                </div>
+                <h1 class="confirmation-title">Registration Successful!</h1>
+                <p class="confirmation-subtitle">Welcome to {{ event.name }}</p>
+            </div>
+            
+            <div class="confirmation-body">
+                <!-- Success Message -->
+                <div class="success-message">
+                    <p class="success-message-text">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Your registration has been confirmed successfully
+                    </p>
+                </div>
+
+                <!-- Email Warning -->
+                {% if not mail_configured %}
+                <div class="email-warning">
+                    <div class="email-warning-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="email-warning-text">
+                        <strong>Email Not Configured:</strong> Please save this page or screenshot your QR code. No confirmation email was sent.
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Reference Cards -->
+                <div class="reference-cards">
+                    <div class="reference-card">
+                        <div class="reference-label">Registration Reference</div>
+                        <div class="reference-value">{{ registration.registration_ref|default('N/A') }}</div>
+                    </div>
+                    <div class="reference-card">
+                        <div class="reference-label">Ticket Number</div>
+                        <div class="reference-value">{{ registration.ticket_number|default('N/A') }}</div>
+                    </div>
+                </div>
+
+                <!-- QR Code Section -->
+                <div class="qr-section">
+                    <h2 class="qr-title">
+                        <i class="fas fa-qrcode qr-title-icon"></i>
+                        Your Entry QR Code
+                    </h2>
+                    <div class="qr-code-container">
+                        <div class="qr-code-touch-hint">Tap to expand</div>
+                        <img src="{{ qr_code }}" alt="QR Code" class="qr-code-image" id="qr-code-img">
+                    </div>
+                    <div class="qr-instructions">
+                        <div class="qr-instruction-item">
+                            <i class="fas fa-save"></i>
+                            <span>Save this QR code to your phone</span>
+                        </div>
+                        <div class="qr-instruction-item">
+                            <i class="fas fa-print"></i>
+                            <span>Or print it for entry</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Mobile QR Actions -->
+                    <div class="mobile-qr-actions">
+                        <a href="{{ qr_code }}" download="event-qr-code.png" class="mobile-qr-btn mobile-qr-download">
+                            <i class="fas fa-download"></i>
+                            <span>Download QR Code</span>
+                        </a>
+                        <button onclick="shareQRCode()" class="mobile-qr-btn mobile-qr-share">
+                            <i class="fas fa-share-alt"></i>
+                            <span>Share QR Code</span>
+                        </button>
+                        <button onclick="takeScreenshot()" class="mobile-qr-btn mobile-qr-screenshot">
+                            <i class="fas fa-camera"></i>
+                            <span>Screenshot</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Attendee Details -->
+                <div class="attendee-section">
+                    <h2 class="section-title">
+                        <div class="section-icon">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        Attendee Information
+                    </h2>
+                    <div class="attendee-details">
+                        <div class="attendee-row">
+                            <div class="attendee-label">Full Name:</div>
+                            <div class="attendee-value">{{ registration.full_name|default('N/A') }}</div>
+                        </div>
+                        <div class="attendee-row">
+                            <div class="attendee-label">Email:</div>
+                            <div class="attendee-value">{{ registration.email|default('N/A') }}</div>
+                        </div>
+                        <div class="attendee-row">
+                            <div class="attendee-label">Ticket Type:</div>
+                            <div class="attendee-value">
+                                <span class="ticket-badge">{{ registration.ticket_type|default('General')|upper }}</span>
+                            </div>
+                        </div>
+                        <div class="attendee-row">
+                            <div class="attendee-label">Registration Date:</div>
+                            <div class="attendee-value">
+                                {% if registration.created_at %}{{ registration.created_at[:16]|replace('T', ' ') }}{% else %}Today{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Event Info -->
+                <div class="event-info-section">
+                    <h2 class="event-info-title">
+                        <i class="fas fa-info-circle event-info-icon"></i>
+                        Event Details
+                    </h2>
+                    <div class="event-info-row">
+                        <div class="event-info-label">Event:</div>
+                        <div class="event-info-value">{{ event.name }}</div>
+                    </div>
+                    <div class="event-info-row">
+                        <div class="event-info-label">Date:</div>
+                        <div class="event-info-value">
+                            {% if event.start_date %}{{ event.start_date }}{% else %}TBD{% endif %}
+                            {% if event.end_date %} - {{ event.end_date }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="event-info-row">
+                        <div class="event-info-label">Venue:</div>
+                        <div class="event-info-value">{{ event.venue|default(event.city)|default('TBD') }}</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button onclick="window.print()" class="btn-action btn-secondary-action">
+                        <i class="fas fa-print"></i>
+                        <span>Print Ticket</span>
+                    </button>
+                    <a href="{{ safe_url('events.my_registrations') }}" class="btn-action btn-primary-action">
+                        <i class="fas fa-list"></i>
+                        <span>My Registrations</span>
+                    </a>
+                    <a href="{{ safe_url('url_for\(['"]events.landing', identifier=event.slug) }}" class="btn-action btn-outline-action">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span>Event Page</span>
+                    </a>
+                    {% if registration.status not in ['cancelled', 'checked_in'] %}
+                    <button onclick="cancelRegistration()" class="btn-action btn-danger-action">
+                        <i class="fas fa-times"></i>
+                        <span>Cancel Registration</span>
+                    </button>
+                    {% endif %}
+                </div>
+
+                <!-- QR Code Access Information -->
+                <div class="qr-access-info">
+                    <div class="qr-access-icon">
+                        <i class="fas fa-info-circle"></i>
+                    </div>
+                    <div class="qr-access-content">
+                        <h4>QR Code Always Available</h4>
+                        <p>You can always access your QR code from your dashboard. Go to <strong>"My Event Dashboard"</strong> to view all your event tickets anytime.</p>
+                        <div class="qr-access-actions">
+                            <a href="{{ safe_url('events.attendee_dashboard') }}" class="btn-action btn-outline-action">
+                                <i class="fas fa-tachometer-alt"></i>
+                                <span>Go to My Dashboard</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Confirmation -->
+                {% if mail_configured %}
+                <div class="email-confirmation">
+                    <i class="fas fa-envelope me-2"></i>
+                    A confirmation email has been sent to {{ registration.email }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+function cancelRegistration() {
+    var eventName = "{{ event.name|e }}";
+    if (confirm('Cancel your registration for ' + eventName + '? This cannot be undone.')) {
+        fetch('/events/registration/{{ registration.registration_ref }}/cancel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.success) {
+                window.location.href = '/events/my-registrations';
+            } else {
+                alert('Error: ' + (data.error || 'Could not cancel registration'));
+            }
+        })
+        .catch(function(error) {
+            alert('Error: ' + error);
+        });
+    }
+}
+
+// Mobile QR Code Enhancements
+document.addEventListener('DOMContentLoaded', function() {
+    // QR Code tap to expand functionality
+    const qrCodeImg = document.getElementById('qr-code-img');
+    const qrContainer = document.querySelector('.qr-code-container');
+    
+    if (qrCodeImg && qrContainer) {
+        let isExpanded = false;
+        
+        qrContainer.addEventListener('click', function() {
+            if (!isExpanded) {
+                // Expand QR code
+                qrCodeImg.style.maxWidth = '100%';
+                qrCodeImg.style.width = '100%';
+                qrCodeImg.style.height = 'auto';
+                qrContainer.style.maxWidth = '100%';
+                qrContainer.style.transform = 'scale(1.1)';
+                isExpanded = true;
+                
+                // Reset after 3 seconds
+                setTimeout(function() {
+                    qrContainer.style.transform = 'scale(1)';
+                    isExpanded = false;
+                }, 3000);
+            } else {
+                // Reset to normal size
+                qrContainer.style.transform = 'scale(1)';
+                isExpanded = false;
+            }
+        });
+        
+        // Add touch feedback for mobile
+        if ('ontouchstart' in window) {
+            qrContainer.style.cursor = 'pointer';
+        }
+    }
+    
+    // Detect if mobile and show appropriate features
+    function isMobile() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+               (window.innerWidth <= 768);
+    }
+    
+    if (isMobile()) {
+        // Add mobile-specific enhancements
+        document.body.classList.add('mobile-device');
+        
+        // Prevent zoom on double tap for QR code
+        qrContainer.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+            }
+        });
+    }
+});
+
+// Share QR Code functionality
+function shareQRCode() {
+    const qrCodeUrl = '{{ qr_code }}';
+    const eventTitle = '{{ event.name }}';
+    const registrationRef = '{{ registration.registration_ref }}';
+    
+    if (navigator.share) {
+        // Use native sharing on mobile devices
+        navigator.share({
+            title: 'QR Code for ' + eventTitle,
+            text: 'My registration QR code for ' + eventTitle + ' (Ref: ' + registrationRef + ')',
+            url: window.location.href
+        }).then(function() {
+            console.log('Share successful');
+        }).catch(function(error) {
+            console.log('Share failed:', error);
+            // Fallback to copying link
+            copyToClipboard(window.location.href);
+        });
+    } else {
+        // Fallback for desktop - copy link
+        copyToClipboard(window.location.href);
+    }
+}
+
+// Copy to clipboard helper
+function copyToClipboard(text) {
+    const tempInput = document.createElement('input');
+    tempInput.value = text;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    
+    try {
+        document.execCommand('copy');
+        alert('Link copied to clipboard! You can share this page with your QR code.');
+    } catch (err) {
+        console.error('Failed to copy:', err);
+        alert('Unable to copy link automatically. Please copy the URL manually.');
+    }
+    
+    document.body.removeChild(tempInput);
+}
+
+// Screenshot functionality (basic implementation)
+function takeScreenshot() {
+    if ('html2canvas' in window) {
+        // If html2canvas library is available, use it
+        html2canvas(document.querySelector('.qr-section')).then(function(canvas) {
+            const link = document.createElement('a');
+            link.download = 'event-qr-code-screenshot.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+    } else {
+        // Fallback - instruct user to take manual screenshot
+        alert('Please take a screenshot manually:\n\n1. Press Power + Volume Down buttons (Android)\n2. Press Power + Home buttons (iPhone)\n3. Or use your device's screenshot method');
+    }
+}
+
+// Add print optimization for mobile
+function optimizedPrint() {
+    // Check if mobile and suggest alternative
+    if (window.innerWidth <= 768) {
+        const confirmPrint = confirm('For best results on mobile, consider:\n\n1. Downloading the QR code\n2. Taking a screenshot\n3. Sharing to a computer for printing\n\nContinue with print anyway?');
+        if (!confirmPrint) {
+            return;
+        }
+    }
+    
+    window.print();
+}
+
+// Enhanced print button for mobile
+document.addEventListener('DOMContentLoaded', function() {
+    const printBtn = document.querySelector('button[onclick="window.print()"]');
+    if (printBtn) {
+        printBtn.addEventListener('click', optimizedPrint);
+    }
+});
+</script>
+{% endblock %}

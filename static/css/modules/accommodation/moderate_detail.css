@@ -1,0 +1,15 @@
+/* ============================================================
+   ACCOMMODATION MODERATION DETAIL VIEW
+   Extends: moderate_base.css
+   Used by: moderate_property.html, moderate_review.html,
+            moderate_booking.html
+   ============================================================ */
+
+/* Info grid for property/review details */
+.info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.info-item { display: flex; flex-direction: column; gap: 4px; }
+.info-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-family: 'DM Mono', monospace; }
+.info-value { font-size: 14px; color: var(--text); }
+
+/* Star rating (for review pages) */
+.rating-stars { color: var(--gold); font-size: 16px; }

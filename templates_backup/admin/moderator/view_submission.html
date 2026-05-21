@@ -1,0 +1,213 @@
+{% extends "admin/moderator/base_moderator.html" %}
+
+{% block title %}Review Submission #{{ submission.id }} — AFCON360{% endblock %}
+
+{% block topbar_title %}Review Submission #{{ submission.id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('admin.moderator.content_moderation') }}">Content Submissions</a>
+  <span class="sep">/</span>
+  <span class="crumb-active">#{{ submission.id }}</span>
+</div>
+
+<!-- SLA Indicator -->
+{% if submission.sla_due_at %}
+{% set hours_left = ((submission.sla_due_at - now()).total_seconds() / 3600) | int %}
+<div style="background:{% if hours_left < 0 %}var(--red-lt);color:var(--red);{% elif hours_left < 4 %}var(--orange-lt);color:var(--orange);{% else %}var(--blue-lt);color:var(--blue);{% endif %};padding:10px 16px;border-radius:var(--radius);margin-bottom:20px;display:flex;align-items:center;gap:10px;font-weight:600;">
+  <i class="fas fa-clock"></i>
+  {% if hours_left < 0 %}SLA OVERDUE by {{ hours_left|abs }} hours
+  {% elif hours_left < 4 %}SLA due in {{ hours_left }} hours — ACT NOW
+  {% else %}SLA due in {{ hours_left }} hours{% endif %}
+</div>
+{% endif %}
+
+<div class="heading-row">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span class="mono" style="background:var(--bg);padding:6px 10px;border-radius:6px;">#{{ submission.id }}</span>
+    <h1 class="page-heading" style="margin:0;">{{ submission.name }}</h1>
+    <span class="badge badge-{{ submission.status }}">{{ submission.status.replace('_', ' ') }}</span>
+  </div>
+</div>
+
+<div class="col-layout-8-4">
+  <!-- LEFT: SUBMISSION DETAILS -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-info-circle" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Submission Details
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <div>{{ submission.category.name if submission.category else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Name / Title</label>
+          <div style="font-weight:600;font-size:15px;">{{ submission.name }}</div>
+        </div>
+        {% if submission.description %}
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);line-height:1.6;">{{ submission.description }}</div>
+        </div>
+        {% endif %}
+        {% if submission.data %}
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;overflow-x:auto;">{{ submission.data | tojson(indent=2) }}</div>
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label class="form-label">Submitted By</label>
+          <div>{{ submission.submitted_by.username if submission.submitted_by else '-' }}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Submitted At</label>
+          <div class="mono">{{ submission.created_at.strftime('%Y-%m-%d %H:%M:%S') if submission.created_at else '-' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Related Flags Panel -->
+    {% if related_flags is defined and related_flags %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-flag" style="background:var(--red-lt);color:var(--red);"></i>
+          Related Flags ({{ related_flags|length }})
+        </div>
+      </div>
+      <div class="panel-body">
+        {% for flag in related_flags %}
+        <div style="padding:10px;background:var(--bg);border-radius:var(--radius);margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span class="badge badge-{{ flag.priority }}">{{ flag.priority }}</span>
+            <span class="mono" style="font-size:11px;">{{ flag.created_at.strftime('%Y-%m-%d') }}</span>
+          </div>
+          <div style="font-size:13px;">{{ flag.reason }}</div>
+          <a href="{{ url_for('admin.moderator.view_flag', flag_id=flag.id) }}" class="btn btn-outline btn-xs" style="margin-top:8px;">View Flag</a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: DECISION PANEL -->
+  <div style="position:sticky;top:76px;">
+    {% if submission.status == 'pending' %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-gavel" style="background:var(--accent-lt);color:var(--accent);"></i>
+          Decision
+        </div>
+      </div>
+      <div class="panel-body">
+        <!-- Assign to Moderator -->
+        <div class="form-group">
+          <label class="form-label">Assign to Moderator</label>
+          <form method="POST" action="{{ url_for('admin.moderator.claim_submission', submission_id=submission.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select class="form-control" name="moderator_id" onchange="this.form.submit()">
+              <option value="">Unassigned</option>
+              {% for mod in moderators if moderators %}
+              <option value="{{ mod.id }}" {% if submission.assigned_to_id == mod.id %}selected{% endif %}>{{ mod.username }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+
+        <!-- Approve -->
+        <form action="{{ url_for('admin.moderator.approve_submission', submission_id=submission.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Notes for Submitter</label>
+          <textarea name="notes" class="form-control" rows="3" placeholder="Optional notes to send to the submitter..."></textarea>
+          <label class="form-label" style="margin-top:12px;">Internal Moderation Notes</label>
+          <textarea name="moderation_notes" class="form-control" rows="2" placeholder="Internal notes only visible to moderators..."></textarea>
+          <button type="submit" class="btn btn-success" style="width:100%;margin-top:12px;" onclick="return confirm('Approve this submission?');">
+            <i class="fas fa-check"></i> Approve
+          </button>
+        </form>
+
+        <!-- Request Changes -->
+        <form action="{{ url_for('admin.moderator.request_changes', submission_id=submission.id) }}" method="POST" style="margin-bottom:16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Changes Requested *</label>
+          <textarea name="notes" class="form-control" rows="3" placeholder="Describe the changes required..." required></textarea>
+          <label class="form-label" style="margin-top:12px;">Internal Moderation Notes</label>
+          <textarea name="moderation_notes" class="form-control" rows="2" placeholder="Internal notes only visible to moderators..."></textarea>
+          <button type="submit" class="btn btn-outline" style="width:100%;margin-top:12px;">
+            <i class="fas fa-pen"></i> Request Changes
+          </button>
+        </form>
+
+        <!-- Reject -->
+        <form action="{{ url_for('admin.moderator.reject_submission', submission_id=submission.id) }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label">Rejection Reason *</label>
+          <textarea name="notes" class="form-control" rows="3" placeholder="Provide a clear reason for rejection..." required></textarea>
+          <label class="form-label" style="margin-top:12px;">Internal Moderation Notes</label>
+          <textarea name="moderation_notes" class="form-control" rows="2" placeholder="Internal notes only visible to moderators..."></textarea>
+          <button type="submit" class="btn btn-danger" style="width:100%;margin-top:12px;">
+            <i class="fas fa-times"></i> Reject
+          </button>
+        </form>
+
+        <!-- Flag -->
+        <form action="{{ url_for('admin.moderator.flag_content', submission_id=submission.id) }}" method="POST" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-ghost" style="width:100%;">
+            <i class="fas fa-flag"></i> Flag for Violation
+          </button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-check-circle" style="background:var(--green-lt);color:var(--green);"></i>
+          Review Complete
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Decision</label>
+          <span class="badge badge-{{ submission.status }}">{{ submission.status.replace('_', ' ') }}</span>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Reviewed By</label>
+          <div>{{ submission.reviewer.username if submission.reviewer else '-' }}</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Reviewed At</label>
+          <div class="mono">{{ submission.reviewed_at.strftime('%Y-%m-%d %H:%M:%S') if submission.reviewed_at else '-' }}</div>
+        </div>
+        {% if submission.review_notes %}
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Notes for Submitter</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);">{{ submission.review_notes }}</div>
+        </div>
+        {% endif %}
+        {% if submission.moderation_notes %}
+        <div style="margin-bottom:16px;">
+          <label class="form-label">Internal Moderation Notes</label>
+          <div style="background:var(--bg);padding:12px;border-radius:var(--radius);">{{ submission.moderation_notes }}</div>
+        </div>
+        {% endif %}
+        <a href="{{ url_for('admin.moderator.content_moderation') }}" class="btn btn-outline" style="width:100%;">
+          <i class="fas fa-arrow-left"></i> Back to List
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,559 @@
+{% extends "user/base_user_dashboard.html" %}
+
+{% block title %}My Event Registrations - AFCON360{% endblock %}
+
+{% block content_section %}
+<style>
+.event-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.event-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.event-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.event-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #f8fafc, #ffffff);
+}
+
+.event-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.event-status.confirmed {
+    background: #bee3f8;
+    color: #2b6cb0;
+}
+
+.event-status.checked_in {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.event-status.cancelled {
+    background: #fed7d7;
+    color: #742a2a;
+}
+
+.event-status.pending {
+    background: #faf089;
+    color: #744210;
+}
+
+.event-body {
+    padding: 1.5rem;
+}
+
+.event-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 1rem;
+}
+
+.event-details {
+    color: #718096;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.event-detail {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.event-detail i {
+    width: 20px;
+    margin-right: 0.75rem;
+    color: #667eea;
+}
+
+.event-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.btn-action {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #5a67d8, #6b46c1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #48bb78, #38a169);
+    color: white;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #38a169, #2f855a);
+    transform: translateY(-1px);
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #f6ad55, #ed8936);
+    color: white;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #ed8936, #dd6b20);
+    transform: translateY(-1px);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #fc8181, #f56565);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #f56565, #e53e3e);
+    transform: translateY(-1px);
+}
+
+.btn-outline {
+    background: white;
+    color: #667eea;
+    border: 1px solid #667eea;
+}
+
+.btn-outline:hover {
+    background: #667eea;
+    color: white;
+    transform: translateY(-1px);
+}
+
+.qr-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.qr-modal-content {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+.qr-code {
+    width: 200px;
+    height: 200px;
+    margin: 1rem auto;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: white;
+}
+
+.qr-code img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #718096;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state h3 {
+    margin-bottom: 0.5rem;
+    color: #2d3748;
+}
+
+.filter-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.filter-tab {
+    padding: 1rem 1.5rem;
+    background: none;
+    border: none;
+    color: #718096;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-bottom: 3px solid transparent;
+}
+
+.filter-tab:hover {
+    color: #667eea;
+}
+
+.filter-tab.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+}
+
+.contact-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.contact-modal-content {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 500px;
+    width: 90%;
+}
+
+.contact-form {
+    margin-top: 1rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    resize: vertical;
+    min-height: 100px;
+}
+
+@media (max-width: 768px) {
+    .event-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .event-actions {
+        flex-direction: column;
+    }
+    
+    .btn-action {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+
+<div class="content-header">
+    <h1 class="content-title">My Event Registrations</h1>
+    <p class="content-subtitle">Manage your event registrations and access your tickets</p>
+</div>
+
+<!-- Filter Tabs -->
+<div class="filter-tabs">
+    <button class="filter-tab active" onclick="filterEvents('all')">All Events ({{ registrations|length if registrations else 0 }})</button>
+    <button class="filter-tab" onclick="filterEvents('upcoming')">Upcoming ({{ registrations|selectattr('event.start_date')|selectattr('event.start_date', '>=', current_date)|list|length if registrations else 0 }})</button>
+    <button class="filter-tab" onclick="filterEvents('past')">Past ({{ registrations|selectattr('event.start_date')|selectattr('event.start_date', '<', current_date)|list|length if registrations else 0 }})</button>
+</div>
+
+<!-- Events Grid -->
+<div class="event-grid" id="eventsGrid">
+    {% if registrations %}
+        {% for reg in registrations %}
+            <div class="event-card" data-status="{{ reg.event.start_date >= current_date if reg.event.start_date else 'unknown' }}">
+                <div class="event-header">
+                    <span class="event-status {{ reg.status }}">
+                        <i class="fas {% if reg.status == 'checked_in' %}fa-check-circle{% elif reg.status == 'confirmed' %}fa-clock{% elif reg.status == 'cancelled' %}fa-ban{% else %}fa-question{% endif %}"></i>
+                        {{ reg.status|upper }}
+                    </span>
+                    <span class="event-status" style="background: #e2e8f0; color: #4a5568;">
+                        {{ reg.ticket_type|upper if reg.ticket_type else 'STANDARD' }}
+                    </span>
+                </div>
+                <div class="event-body">
+                    <h3 class="event-title">{{ reg.event.name }}</h3>
+                    <div class="event-details">
+                        <div class="event-detail">
+                            <i class="fas fa-map-marker-alt"></i>
+                            {{ reg.event.city }}{% if reg.event.venue %} - {{ reg.event.venue }}{% endif %}
+                        </div>
+                        <div class="event-detail">
+                            <i class="fas fa-calendar-alt"></i>
+                            {{ reg.event.start_date[:10] if reg.event.start_date else 'TBD' }}
+                            {% if reg.event.end_date and reg.event.end_date != reg.event.start_date %}
+                                to {{ reg.event.end_date[:10] }}
+                            {% endif %}
+                        </div>
+                        <div class="event-detail">
+                            <i class="fas fa-hashtag"></i>
+                            Registration #{{ reg.registration_ref }}
+                        </div>
+                        {% if reg.event.price %}
+                        <div class="event-detail">
+                            <i class="fas fa-tag"></i>
+                            ${{ "%.2f"|format(reg.event.price) }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="event-actions">
+                        <button onclick="showQRCode('{{ reg.registration_ref }}')" class="btn-action btn-primary">
+                            <i class="fas fa-qrcode"></i>
+                            QR Code
+                        </button>
+                        <a href="{{ safe_url('events.landing', identifier=reg.event.slug) }}" class="btn-action btn-outline">
+                            <i class="fas fa-info-circle"></i>
+                            Event Details
+                        </a>
+                        <button onclick="contactOrganizer('{{ reg.event.id }}', '{{ reg.event.name }}')" class="btn-action btn-success">
+                            <i class="fas fa-envelope"></i>
+                            Contact
+                        </button>
+                        {% if reg.event.start_date and reg.event.start_date >= current_date and reg.status != 'cancelled' %}
+                        <button onclick="cancelRegistration('{{ reg.registration_ref }}')" class="btn-action btn-warning">
+                            <i class="fas fa-times-circle"></i>
+                            Cancel
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state" style="grid-column: 1 / -1;">
+            <i class="fas fa-calendar-alt"></i>
+            <h3>No Event Registrations</h3>
+            <p>You haven't registered for any events yet.</p>
+            <a href="{{ safe_url('events.list') }}" class="btn-action btn-primary">
+                <i class="fas fa-search"></i>
+                Browse Events
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- QR Code Modal -->
+<div id="qrModal" class="qr-modal">
+    <div class="qr-modal-content">
+        <h3 style="margin-bottom: 1rem;">Event QR Code</h3>
+        <div class="qr-code" id="qrCodeContainer">
+            <!-- QR code will be loaded here -->
+        </div>
+        <p style="color: #718096; margin-bottom: 1rem;">Show this code at the event entrance</p>
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <button onclick="closeQRModal()" class="btn-action btn-outline">Close</button>
+            <button onclick="downloadQR()" class="btn-action btn-primary">
+                <i class="fas fa-download"></i>
+                Download
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Contact Organizer Modal -->
+<div id="contactModal" class="contact-modal">
+    <div class="contact-modal-content">
+        <h3 style="margin-bottom: 1rem;">Contact Event Organizer</h3>
+        <p style="color: #718096; margin-bottom: 1rem;">Event: <span id="contactEventName"></span></p>
+        <form class="contact-form" onsubmit="sendContactMessage(event)">
+            <div class="form-group">
+                <label for="contactMessage">Message</label>
+                <textarea id="contactMessage" placeholder="Type your message here..." required></textarea>
+            </div>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <button type="button" onclick="closeContactModal()" class="btn-action btn-outline">Cancel</button>
+                <button type="submit" class="btn-action btn-primary">
+                    <i class="fas fa-paper-plane"></i>
+                    Send Message
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let currentQRRegRef = '';
+let currentEventId = '';
+
+// Filter events
+function filterEvents(filter) {
+    const tabs = document.querySelectorAll('.filter-tab');
+    const events = document.querySelectorAll('.event-card');
+    
+    // Update active tab
+    tabs.forEach(tab => tab.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Filter events
+    events.forEach(event => {
+        const status = event.dataset.status;
+        if (filter === 'all') {
+            event.style.display = 'block';
+        } else if (filter === 'upcoming' && status === 'true') {
+            event.style.display = 'block';
+        } else if (filter === 'past' && status === 'false') {
+            event.style.display = 'block';
+        } else {
+            event.style.display = 'none';
+        }
+    });
+}
+
+// Show QR Code
+function showQRCode(regRef) {
+    currentQRRegRef = regRef;
+    const modal = document.getElementById('qrModal');
+    const qrContainer = document.getElementById('qrCodeContainer');
+    
+    // Load QR code
+    qrContainer.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 2rem;"></i>';
+    
+    fetch(`{{ safe_url('events.registration_confirmation', reg_ref='') }}${regRef}`)
+        .then(response => response.text())
+        .then(html => {
+            // Extract QR code from the HTML response
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const qrImage = doc.querySelector('img[src*="qr"]');
+            
+            if (qrImage) {
+                qrContainer.innerHTML = `<img src="${qrImage.src}" alt="QR Code" style="max-width: 100%; max-height: 100%;">`;
+            } else {
+                qrContainer.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: #f6ad55;"></i>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading QR code:', error);
+            qrContainer.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: #fc8181;"></i>';
+        });
+    
+    modal.style.display = 'flex';
+}
+
+// Close QR Modal
+function closeQRModal() {
+    document.getElementById('qrModal').style.display = 'none';
+}
+
+// Download QR Code
+function downloadQR() {
+    const qrImage = document.querySelector('#qrCodeContainer img');
+    if (qrImage) {
+        const link = document.createElement('a');
+        link.href = qrImage.src;
+        link.download = `event-qr-${currentQRRegRef}.png`;
+        link.click();
+    }
+}
+
+// Contact Organizer
+function contactOrganizer(eventId, eventName) {
+    currentEventId = eventId;
+    document.getElementById('contactEventName').textContent = eventName;
+    document.getElementById('contactModal').style.display = 'flex';
+}
+
+// Close Contact Modal
+function closeContactModal() {
+    document.getElementById('contactModal').style.display = 'none';
+    document.getElementById('contactMessage').value = '';
+}
+
+// Send Contact Message
+function sendContactMessage(event) {
+    event.preventDefault();
+    const message = document.getElementById('contactMessage').value;
+    
+    // Here you would typically send the message to the server
+    // For now, we'll just show a success message
+    alert('Message sent to event organizer!');
+    closeContactModal();
+}
+
+// Cancel Registration
+function cancelRegistration(regRef) {
+    if (confirm('Are you sure you want to cancel this registration?')) {
+        // Here you would typically send a request to cancel the registration
+        // For now, we'll just show a success message
+        alert('Registration cancelled successfully!');
+        // You might want to refresh the page or update the UI
+    }
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const qrModal = document.getElementById('qrModal');
+    const contactModal = document.getElementById('contactModal');
+    
+    if (event.target === qrModal) {
+        closeQRModal();
+    }
+    if (event.target === contactModal) {
+        closeContactModal();
+    }
+}
+</script>
+{% endblock %}

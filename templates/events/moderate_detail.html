@@ -68,7 +68,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
     <span class="mod-badge">MODERATOR</span>
     <span class="mod-title">Review Event</span>
   </div>
-  <a href="{{ safe_url('url_for\(['"]events.moderate') }}" class="btn-ghost">
+  <a href="{{ safe_url('events.moderate') }}" class="btn-ghost">
     <i class="fas fa-arrow-left"></i> Back to Queue
   </a>
 </div>
@@ -77,7 +77,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
   <div class="breadcrumb-row">
     <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
     <span class="sep">/</span>
-    <a href="{{ safe_url('url_for\(['"]events.moderate') }}">Events</a>
+    <a href="{{ safe_url('events.moderate') }}">Events</a>
     <span class="sep">/</span>
     <span class="active">{{ event.name }}</span>
   </div>
@@ -159,7 +159,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
     </div>
 
     <div class="action-bar">
-      <form method="POST" action="{{ safe_url('url_for\(['"]events.moderate_action', id=event.id, action='approve') }}" style="display: inline;">
+      <form method="POST" action="{{ safe_url('events.moderate_action', id=event.id, action='approve') }}" style="display: inline;">
         <button type="submit" class="btn btn-approve">
           <i class="fas fa-check"></i> Approve
         </button>
@@ -179,7 +179,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
       <div class="panel-title">Reject Event</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('url_for\(['"]events.moderate_action', id=event.id, action='reject') }}">
+      <form method="POST" action="{{ safe_url('events.moderate_action', id=event.id, action='reject') }}">
         <div class="form-group">
           <label class="form-label">Rejection Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this event is being rejected..."></textarea>
@@ -198,7 +198,7 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
       <div class="panel-title">Flag for Review</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('url_for\(['"]events.moderate_action', id=event.id, action='flag') }}">
+      <form method="POST" action="{{ safe_url('events.moderate_action', id=event.id, action='flag') }}">
         <div class="form-group">
           <label class="form-label">Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this event needs further review..."></textarea>

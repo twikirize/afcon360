@@ -13,7 +13,7 @@
   </div>
 </div>
 
-<form method="POST" action="{{ safe_url('url_for\(['"]transport.driver_update', id=driver.id) if driver else safe_url('transport.drivers_create') }}" enctype="multipart/form-data">
+<form method="POST" action="{{ safe_url('transport.driver_update', id=driver.id) if driver else safe_url('transport.drivers_create') }}" enctype="multipart/form-data">
   {{ form.hidden_tag() if form }}
   <div class="grid-2" style="align-items:start;">
 

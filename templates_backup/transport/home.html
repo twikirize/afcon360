@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+/* Uber-style Transport Dashboard - More Specific Styles */
+.transport-dashboard {
+    background: #f8f9fa !important;
+    min-height: 100vh;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.transport-dashboard .booking-card {
+    background: white !important;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;
+    border: none !important;
+    overflow: hidden;
+}
+
+.transport-dashboard .location-input {
+    border: 2px solid #e9ecef !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    font-size: 16px !important;
+    transition: all 0.3s ease !important;
+    width: 100% !important;
+}
+
+.transport-dashboard .location-input:focus {
+    border-color: #000 !important;
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.1) !important;
+    outline: none !important;
+}
+
+.transport-dashboard .location-icon {
+    position: absolute !important;
+    left: 20px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    color: #6c757d !important;
+    z-index: 10 !important;
+}
+
+.transport-dashboard .ride-type-card {
+    border: 2px solid #e9ecef !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    height: 100% !important;
+    background: white !important;
+}
+
+.transport-dashboard .ride-type-card:hover {
+    border-color: #000 !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
+}
+
+.transport-dashboard .ride-type-card.selected {
+    border-color: #000 !important;
+    background: #f8f9fa !important;
+}
+
+.transport-dashboard .ride-icon {
+    font-size: 2.5rem !important;
+    margin-bottom: 10px !important;
+    color: #000 !important;
+}
+
+.transport-dashboard .price-tag {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    color: #000 !important;
+}
+
+.transport-dashboard .book-ride-btn {
+    background: #000 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 18px 40px !important;
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    transition: all 0.3s ease !important;
+    width: 100% !important;
+}
+
+.transport-dashboard .book-ride-btn:hover {
+    background: #333 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+}
+
+.transport-dashboard .recent-ride {
+    background: white !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    margin-bottom: 15px !important;
+    border: 1px solid #e9ecef !important;
+    transition: all 0.3s ease !important;
+}
+
+.transport-dashboard .recent-ride:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+
+.transport-dashboard .ride-status {
+    padding: 6px 12px !important;
+    border-radius: 20px !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+}
+
+.transport-dashboard .ride-status.completed {
+    background: #d4edda !important;
+    color: #155724 !important;
+}
+
+.transport-dashboard .ride-status.active {
+    background: #cce5ff !important;
+    color: #004085 !important;
+}
+
+.transport-dashboard .ride-status.cancelled {
+    background: #f8d7da !important;
+    color: #721c24 !important;
+}
+
+.transport-dashboard .quick-action-btn {
+    background: white !important;
+    border: 2px solid #e9ecef !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    text-align: center !important;
+    text-decoration: none !important;
+    color: #000 !important;
+    transition: all 0.3s ease !important;
+    display: block !important;
+}
+
+.transport-dashboard .quick-action-btn:hover {
+    border-color: #000 !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
+    color: #000 !important;
+    text-decoration: none !important;
+}
+
+.transport-dashboard .quick-action-icon {
+    font-size: 2rem !important;
+    margin-bottom: 10px !important;
+    color: #000 !important;
+}
+
+.transport-dashboard .stats-card {
+    background: white !important;
+    border-radius: 12px !important;
+    padding: 25px !important;
+    text-align: center !important;
+    border: 1px solid #e9ecef !important;
+}
+
+.transport-dashboard .stat-number {
+    font-size: 2.5rem !important;
+    font-weight: 700 !important;
+    color: #000 !important;
+    margin-bottom: 5px !important;
+}
+
+.transport-dashboard .stat-label {
+    color: #6c757d !important;
+    font-size: 0.95rem !important;
+}
+
+/* Override any conflicting Bootstrap styles */
+.transport-dashboard .container-fluid {
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+}
+
+.transport-dashboard .btn {
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+}
+
+.transport-dashboard .card {
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+}
+
+/* Remove default body margins */
+body {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="transport-dashboard">
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="mb-1" style="font-weight: 700; color: #000;">AFCON Transport</h1>
+                        <p class="mb-0" style="color: #6c757d;">Get where you need to go, safely and quickly</p>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <button class="btn btn-outline-secondary">
+                            <i class="fas fa-history"></i> Ride History
+                        </button>
+                        <button class="btn btn-outline-secondary">
+                            <i class="fas fa-headset"></i> Support
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Booking Section -->
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="booking-card p-4">
+                    <h3 class="mb-4" style="font-weight: 600;">Where to?</h3>
+                    
+                    <!-- Location Inputs -->
+                    <div class="mb-4">
+                        <div class="position-relative mb-3">
+                            <span class="location-icon">
+                                <i class="fas fa-circle"></i>
+                            </span>
+                            <input type="text" class="form-control location-input" placeholder="Enter pickup location" style="padding-left: 50px;">
+                        </div>
+                        
+                        <div class="position-relative">
+                            <span class="location-icon">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </span>
+                            <input type="text" class="form-control location-input" placeholder="Enter destination" style="padding-left: 50px;">
+                        </div>
+                    </div>
+
+                    <!-- Ride Type Selection -->
+                    <div class="mb-4">
+                        <h5 class="mb-3" style="font-weight: 600;">Choose your ride</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="ride-type-card selected">
+                                    <div class="ride-icon">
+                                        <i class="fas fa-car"></i>
+                                    </div>
+                                    <h6 class="mb-2">AFCON Go</h6>
+                                    <p class="text-muted mb-2 small">Affordable, everyday rides</p>
+                                    <div class="price-tag">UGX 15,000-25,000</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="ride-type-card">
+                                    <div class="ride-icon">
+                                        <i class="fas fa-car-side"></i>
+                                    </div>
+                                    <h6 class="mb-2">AFCON Comfort</h6>
+                                    <p class="text-muted mb-2 small">Comfortable sedans</p>
+                                    <div class="price-tag">UGX 25,000-40,000</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="ride-type-card">
+                                    <div class="ride-icon">
+                                        <i class="fas fa-users"></i>
+                                    </div>
+                                    <h6 class="mb-2">AFCON XL</h6>
+                                    <p class="text-muted mb-2 small">For up to 6 passengers</p>
+                                    <div class="price-tag">UGX 35,000-50,000</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Book Button -->
+                    <button class="book-ride-btn">
+                        <i class="fas fa-car me-2"></i> Book AFCON Go
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Sidebar -->
+            <div class="col-lg-4">
+                <!-- Stats -->
+                <div class="row g-3 mb-4">
+                    <div class="col-6">
+                        <div class="stats-card">
+                            <div class="stat-number">12</div>
+                            <div class="stat-label">Total Rides</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stats-card">
+                            <div class="stat-number">4.8</div>
+                            <div class="stat-label">Your Rating</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="mb-4">
+                    <h5 class="mb-3" style="font-weight: 600;">Quick Actions</h5>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <a href="#" class="quick-action-btn">
+                                <div class="quick-action-icon">
+                                    <i class="fas fa-calendar-plus"></i>
+                                </div>
+                                <div>Schedule</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="#" class="quick-action-btn">
+                                <div class="quick-action-icon">
+                                    <i class="fas fa-gift"></i>
+                                </div>
+                                <div>Send Gift</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="#" class="quick-action-btn">
+                                <div class="quick-action-icon">
+                                    <i class="fas fa-briefcase"></i>
+                                </div>
+                                <div>Business</div>
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="#" class="quick-action-btn">
+                                <div class="quick-action-icon">
+                                    <i class="fas fa-shield-alt"></i>
+                                </div>
+                                <div>Safety</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Rides -->
+                <div>
+                    <h5 class="mb-3" style="font-weight: 600;">Recent Rides</h5>
+                    <div class="recent-ride">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <div class="fw-bold">Kampala Stadium</div>
+                                <div class="text-muted small">to Entebbe Airport</div>
+                            </div>
+                            <span class="ride-status completed">Completed</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Dec 8, 2025 • 2:30 PM</span>
+                            <span class="fw-bold">UGX 35,000</span>
+                        </div>
+                    </div>
+                    <div class="recent-ride">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <div class="fw-bold">Hotel Africana</div>
+                                <div class="text-muted small">to Nakawa Market</div>
+                            </div>
+                            <span class="ride-status completed">Completed</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Dec 7, 2025 • 10:15 AM</span>
+                            <span class="fw-bold">UGX 18,000</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Driver Options -->
+        <div class="row">
+            <div class="col-12">
+                <div class="booking-card p-4">
+                    <h4 class="mb-4" style="font-weight: 600;">Want to drive with AFCON?</h4>
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <div class="me-4">
+                                    <div class="ride-icon">
+                                        <i class="fas fa-user-tie"></i>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">Become a Driver</h6>
+                                    <p class="text-muted mb-0">Earn money during AFCON tournament</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <div class="me-4">
+                                    <div class="ride-icon">
+                                        <i class="fas fa-truck"></i>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">Register Vehicle</h6>
+                                    <p class="text-muted mb-0">Add your vehicle to our fleet</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button class="btn btn-outline-dark me-3">
+                            <i class="fas fa-car me-2"></i> Start Driving
+                        </button>
+                        <button class="btn btn-outline-dark">
+                            <i class="fas fa-plus-circle me-2"></i> Add Vehicle
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    // Ride type selection
+    const rideTypeCards = document.querySelectorAll('.ride-type-card');
+    const bookButton = document.querySelector('.book-ride-btn');
+    
+    rideTypeCards.forEach(card => {
+        card.addEventListener('click', function() {
+            rideTypeCards.forEach(c => c.classList.remove('selected'));
+            this.classList.add('selected');
+            
+            const rideType = this.querySelector('h6').textContent;
+            bookButton.innerHTML = `<i class="fas fa-car me-2"></i> Book ${rideType}`;
+        });
+    });
+    
+    // Location input autocomplete simulation
+    const locationInputs = document.querySelectorAll('.location-input');
+    const popularLocations = [
+        'Kampala Stadium',
+        'Entebbe Airport', 
+        'Hotel Africana',
+        'Nakawa Market',
+        'Makerere University',
+        'Mall Kampala',
+        'Rubaga Cathedral',
+        'Kibuli Mosque'
+    ];
+    
+    locationInputs.forEach(input => {
+        input.addEventListener('focus', function() {
+            if (!this.value) {
+                this.placeholder = 'Start typing to see suggestions...';
+            }
+        });
+        
+        input.addEventListener('blur', function() {
+            if (!this.value) {
+                const icon = this.parentElement.querySelector('.location-icon i');
+                if (icon.classList.contains('fa-circle')) {
+                    this.placeholder = 'Enter pickup location';
+                } else {
+                    this.placeholder = 'Enter destination';
+                }
+            }
+        });
+    });
+    
+    // Book ride button
+    bookButton.addEventListener('click', function() {
+        const pickup = locationInputs[0].value;
+        const destination = locationInputs[1].value;
+        
+        if (!pickup || !destination) {
+            alert('Please enter both pickup and destination locations');
+            return;
+        }
+        
+        // Simulate booking process
+        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Finding drivers...';
+        this.disabled = true;
+        
+        setTimeout(() => {
+            this.innerHTML = '<i class="fas fa-check me-2"></i> Driver Found! Arriving in 5 mins';
+            this.style.background = '#28a745';
+            
+            setTimeout(() => {
+                this.innerHTML = '<i class="fas fa-car me-2"></i> Book AFCON Go';
+                this.style.background = '#000';
+                this.disabled = false;
+            }, 3000);
+        }, 2000);
+    });
+});
+</script>

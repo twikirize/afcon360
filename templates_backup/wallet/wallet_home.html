@@ -1,0 +1,123 @@
+{#wallet_home.html#}
+{% extends "base.html" %}
+
+{% block content %}
+<section class="wallet-landing" style="max-width:900px;margin:0 auto;padding:48px 20px;text-align:center;">
+
+  <!-- Hero -->
+  <div style="margin-bottom:48px;">
+    <div style="width:72px;height:72px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;">
+      <i class="fas fa-wallet" style="font-size:32px;color:#16a34a;"></i>
+    </div>
+    <h1 style="font-size:40px;font-weight:800;color:#1a1916;margin-bottom:12px;line-height:1.1;">Power Your Payments with Our Wallet</h1>
+    <p style="font-size:18px;color:#6b7280;max-width:550px;margin:0 auto 32px;">Quick, secure, and easy payments for tickets, packages, and more — all in one place.</p>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <a href="{{ url_for('auth.register') }}" style="padding:12px 28px;background:#16a34a;color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:15px;">Get Started</a>
+      <a href="{{ url_for('auth.login') }}" style="padding:12px 28px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-weight:600;text-decoration:none;font-size:15px;">Sign In</a>
+    </div>
+  </div>
+
+  <hr style="margin:48px 0;border-color:#e5e7eb;">
+
+  <!-- Benefits -->
+  <div style="text-align:left;margin-bottom:48px;">
+    <h2 style="font-size:28px;font-weight:700;color:#1a1916;margin-bottom:24px;text-align:center;">Why use our Wallet?</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;">
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+        <div style="font-weight:600;margin-bottom:6px;"><i class="fas fa-bolt" style="color:#16a34a;margin-right:8px;"></i> Fast Payments</div>
+        <p style="font-size:14px;color:#6b7280;">Instantly pay for tickets and packages without delays.</p>
+      </div>
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+        <div style="font-weight:600;margin-bottom:6px;"><i class="fas fa-shield-alt" style="color:#16a34a;margin-right:8px;"></i> Secure Transactions</div>
+        <p style="font-size:14px;color:#6b7280;">Your payment history is encrypted and safe.</p>
+      </div>
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+        <div style="font-weight:600;margin-bottom:6px;"><i class="fas fa-hand-holding-usd" style="color:#16a34a;margin-right:8px;"></i> Flexible Payouts</div>
+        <p style="font-size:14px;color:#6b7280;">Receive agent payouts and refunds when activated.</p>
+      </div>
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+        <div style="font-weight:600;margin-bottom:6px;"><i class="fas fa-plus-circle" style="color:#16a34a;margin-right:8px;"></i> Easy Top-Ups</div>
+        <p style="font-size:14px;color:#6b7280;">Add funds with multiple payment methods.</p>
+      </div>
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+        <div style="font-weight:600;margin-bottom:6px;"><i class="fas fa-list" style="color:#16a34a;margin-right:8px;"></i> Manage Everything</div>
+        <p style="font-size:14px;color:#6b7280;">Track your spending and transactions seamlessly.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr style="margin:48px 0;border-color:#e5e7eb;">
+
+  <!-- How it works -->
+  <div style="text-align:left;margin-bottom:48px;padding:32px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+    <h2 style="font-size:28px;font-weight:700;color:#1a1916;margin-bottom:24px;text-align:center;">How It Works</h2>
+    <div style="display:grid;gap:20px;max-width:600px;margin:0 auto;">
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="width:32px;height:32px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">1</div>
+        <div>
+          <div style="font-weight:600;">Create an account</div>
+          <p style="font-size:14px;color:#6b7280;margin:0;">Sign up or log in to your dashboard.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="width:32px;height:32px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">2</div>
+        <div>
+          <div style="font-weight:600;">Activate your wallet</div>
+          <p style="font-size:14px;color:#6b7280;margin:0;">Enable wallet features from your profile.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="width:32px;height:32px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">3</div>
+        <div>
+          <div style="font-weight:600;">Top up balance</div>
+          <p style="font-size:14px;color:#6b7280;margin:0;">Add funds using your preferred payment method.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="width:32px;height:32px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">4</div>
+        <div>
+          <div style="font-weight:600;">Use your wallet</div>
+          <p style="font-size:14px;color:#6b7280;margin:0;">Pay for tickets, view transaction history, and more.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr style="margin:48px 0;border-color:#e5e7eb;">
+
+  <!-- FAQs -->
+  <div style="text-align:left;margin-bottom:48px;padding:32px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+    <h2 style="font-size:28px;font-weight:700;color:#1a1916;margin-bottom:24px;text-align:center;">Frequently Asked Questions</h2>
+    <div style="display:grid;gap:16px;max-width:700px;margin:0 auto;">
+      <div style="padding:16px;background:#f9fafb;border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:4px;">Is the wallet secure?</div>
+        <p style="font-size:14px;color:#6b7280;margin:0;">Yes, we use encryption and best practices to ensure your funds and data are safe.</p>
+      </div>
+      <div style="padding:16px;background:#f9fafb;border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:4px;">How do I top up my wallet?</div>
+        <p style="font-size:14px;color:#6b7280;margin:0;">You can add money via credit card, bank transfer, or other supported payment options.</p>
+      </div>
+      <div style="padding:16px;background:#f9fafb;border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:4px;">Can I get refunds through the wallet?</div>
+        <p style="font-size:14px;color:#6b7280;margin:0;">Refunds and agent payouts are available once your wallet is activated.</p>
+      </div>
+      <div style="padding:16px;background:#f9fafb;border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:4px;">Do I need to log in to view wallet features?</div>
+        <p style="font-size:14px;color:#6b7280;margin:0;">No, you can browse all features here. But to use the wallet, please log in or register.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr style="margin:48px 0;border-color:#e5e7eb;">
+
+  <footer style="padding:32px 0;">
+    <p style="font-size:16px;color:#6b7280;">
+      Ready to get started?
+      <a href="{{ url_for('auth.register') }}" style="color:#16a34a;font-weight:600;">Create an account</a>
+      or
+      <a href="{{ url_for('auth.login') }}" style="color:#16a34a;font-weight:600;">log in</a>
+    </p>
+  </footer>
+
+</section>
+{% endblock %}

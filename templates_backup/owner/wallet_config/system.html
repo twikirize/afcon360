@@ -1,0 +1,267 @@
+{% extends "owner/layout.html" %}
+
+{% block title %}System Configuration - Owner Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">System Configuration</h1>
+            <p class="text-muted mb-0">Configure wallet system settings and limits</p>
+        </div>
+        <a href="{{ url_for('wallet_config.index') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Wallet Config
+        </a>
+    </div>
+
+    <form method="POST" action="{{ url_for('wallet_config.system_config') }}">
+        <div class="row">
+            <!-- Feature Flags -->
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-toggle-on me-2"></i>Feature Flags</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="deposits_enabled" name="deposits_enabled" 
+                                   {% if config.deposits_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="deposits_enabled">
+                                <strong>Deposits Enabled</strong>
+                                <small class="text-muted d-block">Allow users to deposit funds into their wallets</small>
+                            </label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="withdrawals_enabled" name="withdrawals_enabled" 
+                                   {% if config.withdrawals_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="withdrawals_enabled">
+                                <strong>Withdrawals Enabled</strong>
+                                <small class="text-muted d-block">Allow users to withdraw funds from their wallets</small>
+                            </label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="transfers_enabled" name="transfers_enabled" 
+                                   {% if config.transfers_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="transfers_enabled">
+                                <strong>Transfers Enabled</strong>
+                                <small class="text-muted d-block">Allow users to transfer funds to other users</small>
+                            </label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="fx_enabled" name="fx_enabled" 
+                                   {% if config.fx_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="fx_enabled">
+                                <strong>FX Conversion Enabled</strong>
+                                <small class="text-muted d-block">Allow currency conversion between wallets</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KYC Settings -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>KYC Requirements</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="require_kyc_for_deposits" name="require_kyc_for_deposits" 
+                                   {% if config.require_kyc_for_deposits %}checked{% endif %}>
+                            <label class="form-check-label" for="require_kyc_for_deposits">
+                                <strong>Require KYC for Deposits</strong>
+                                <small class="text-muted d-block">Users must complete KYC before depositing</small>
+                            </label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="require_kyc_for_withdrawals" name="require_kyc_for_withdrawals" 
+                                   {% if config.require_kyc_for_withdrawals %}checked{% endif %}>
+                            <label class="form-check-label" for="require_kyc_for_withdrawals">
+                                <strong>Require KYC for Withdrawals</strong>
+                                <small class="text-muted d-block">Users must complete KYC before withdrawing</small>
+                            </label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="require_kyc_for_transfers" name="require_kyc_for_transfers" 
+                                   {% if config.require_kyc_for_transfers %}checked{% endif %}>
+                            <label class="form-check-label" for="require_kyc_for_transfers">
+                                <strong>Require KYC for Transfers</strong>
+                                <small class="text-muted d-block">Users must complete KYC before transferring</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaction Limits & Fees -->
+            <div class="col-lg-6">
+                <!-- Transaction Limits -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Transaction Limits</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="max_deposit_amount" class="form-label">Maximum Deposit Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="max_deposit_amount" name="max_deposit_amount" 
+                                       value="{{ config.max_deposit_amount }}" min="0" step="0.01">
+                            </div>
+                            <div class="form-text">Maximum amount allowed per deposit transaction</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="max_withdrawal_amount" class="form-label">Maximum Withdrawal Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="max_withdrawal_amount" name="max_withdrawal_amount" 
+                                       value="{{ config.max_withdrawal_amount }}" min="0" step="0.01">
+                            </div>
+                            <div class="form-text">Maximum amount allowed per withdrawal transaction</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="max_transfer_amount" class="form-label">Maximum Transfer Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="max_transfer_amount" name="max_transfer_amount" 
+                                       value="{{ config.max_transfer_amount }}" min="0" step="0.01">
+                            </div>
+                            <div class="form-text">Maximum amount allowed per transfer transaction</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fees -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-percentage me-2"></i>Transaction Fees (%)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="deposit_fee_percent" class="form-label">Deposit Fee</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="deposit_fee_percent" name="deposit_fee_percent" 
+                                       value="{{ config.deposit_fee_percent }}" min="0" max="100" step="0.01">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <div class="form-text">Fee charged on deposits (0 = no fee)</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="withdrawal_fee_percent" class="form-label">Withdrawal Fee</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="withdrawal_fee_percent" name="withdrawal_fee_percent" 
+                                       value="{{ config.withdrawal_fee_percent }}" min="0" max="100" step="0.01">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <div class="form-text">Fee charged on withdrawals</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="transfer_fee_percent" class="form-label">Transfer Fee</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="transfer_fee_percent" name="transfer_fee_percent" 
+                                       value="{{ config.transfer_fee_percent }}" min="0" max="100" step="0.01">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <div class="form-text">Fee charged on transfers between users</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="fx_spread_percent" class="form-label">FX Spread</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="fx_spread_percent" name="fx_spread_percent" 
+                                       value="{{ config.fx_spread_percent }}" min="0" max="100" step="0.01">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <div class="form-text">Markup on foreign exchange conversions</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Notifications</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_large_transactions" name="notify_large_transactions" 
+                                   {% if config.notify_large_transactions %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_large_transactions">
+                                <strong>Notify on Large Transactions</strong>
+                                <small class="text-muted d-block">Send alerts for transactions above threshold</small>
+                            </label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="large_transaction_threshold" class="form-label">Large Transaction Threshold</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="large_transaction_threshold" name="large_transaction_threshold" 
+                                       value="{{ config.large_transaction_threshold }}" min="0" step="0.01">
+                            </div>
+                            <div class="form-text">Transactions above this amount trigger notifications</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Buttons -->
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+            <a href="{{ url_for('wallet_config.index') }}" class="btn btn-outline-secondary">
+                Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save System Configuration
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Validation
+(function() {
+    'use strict';
+    
+    // Fee validation
+    const feeInputs = document.querySelectorAll('input[name$="_fee_percent"]');
+    feeInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            if (this.value < 0) this.value = 0;
+            if (this.value > 100) {
+                alert('Fee percentage cannot exceed 100%');
+                this.value = 100;
+            }
+        });
+    });
+    
+    // Limit validation
+    const limitInputs = document.querySelectorAll('input[name$="_amount"]');
+    limitInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            if (this.value < 0) {
+                alert('Amount cannot be negative');
+                this.value = 0;
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}
+</CodeContent>
+<parameter>EmptyFile=false</parameter>
+</function>
+
+<function=write_to_file>
+<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\templates\owner\wallet_configenv_setup.html

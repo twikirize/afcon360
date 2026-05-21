@@ -1,0 +1,794 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Sandbox Testing - Payment Gateways{% endblock %}
+
+{% block extra_css %}
+<style>
+.sandbox-dashboard {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.test-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.results-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.gateway-selector {
+    margin-bottom: 2rem;
+}
+
+.gateway-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #E5E7EB;
+}
+
+.tab {
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    color: #6B7280;
+}
+
+.tab.active {
+    color: #4F46E5;
+    border-bottom-color: #4F46E5;
+}
+
+.tab:hover {
+    color: #374151;
+}
+
+.test-form {
+    background: #F9FAFB;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4F46E5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.test-btn {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.test-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.test-btn:disabled {
+    background: #9CA3AF;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.test-results {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.result-title {
+    font-weight: 600;
+    color: #1F2937;
+}
+
+.result-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-success {
+    background: #10B981;
+    color: white;
+}
+
+.status-failed {
+    background: #EF4444;
+    color: white;
+}
+
+.status-pending {
+    background: #F59E0B;
+    color: white;
+}
+
+.status-running {
+    background: #3B82F6;
+    color: white;
+}
+
+.result-details {
+    font-family: 'Courier New', monospace;
+    background: #F3F4F6;
+    border: 1px solid #E5E7EB;
+    border-radius: 4px;
+    padding: 1rem;
+    font-size: 0.875rem;
+    color: #374151;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.test-history {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.history-table th,
+.history-table td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.history-table th {
+    background: #F9FAFB;
+    font-weight: 600;
+    color: #374151;
+}
+
+.history-table tbody tr:hover {
+    background: #F9FAFB;
+}
+
+.test-type-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.type-deposit {
+    background: #10B981;
+    color: white;
+}
+
+.type-withdrawal {
+    background: #F59E0B;
+    color: white;
+}
+
+.type-refund {
+    background: #EF4444;
+    color: white;
+}
+
+.type-webhook {
+    background: #8B5CF6;
+    color: white;
+}
+
+.environment-toggle {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.env-btn {
+    padding: 0.5rem 1rem;
+    border: 2px solid #E5E7EB;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.env-btn.active {
+    background: #4F46E5;
+    color: white;
+    border-color: #4F46E5;
+}
+
+.env-btn:hover {
+    border-color: #4F46E5;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #E5E7EB;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 1rem 0;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10B981, #059669);
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Payment Gateway Sandbox</h1>
+            <p class="text-gray-600 mt-2">Test all payment gateway integrations in a safe environment</p>
+        </div>
+        <div class="flex gap-4">
+            <button onclick="clearAllResults()" class="test-btn" style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);">
+                🗑️ Clear All Results
+            </button>
+            <button onclick="exportTestResults()" class="test-btn">
+                📊 Export Results
+            </button>
+        </div>
+    </div>
+
+    <div class="sandbox-dashboard">
+        <!-- Test Panel -->
+        <div class="test-panel">
+            <!-- Environment Toggle -->
+            <div class="environment-toggle">
+                <button class="env-btn active" onclick="setEnvironment('sandbox')" id="sandboxBtn">
+                    🧪 Sandbox Mode
+                </button>
+                <button class="env-btn" onclick="setEnvironment('production')" id="productionBtn">
+                    🚀 Production Mode
+                </button>
+            </div>
+
+            <!-- Gateway Tabs -->
+            <div class="gateway-selector">
+                <div class="gateway-tabs">
+                    <button class="tab active" onclick="selectGateway('paypal')" id="paypalTab">PayPal</button>
+                    <button class="tab" onclick="selectGateway('alipay')" id="alipayTab">Alipay</button>
+                    <button class="tab" onclick="selectGateway('flutterwave')" id="flutterwaveTab">Flutterwave</button>
+                    <button class="tab" onclick="selectGateway('paystack')" id="paystackTab">Paystack</button>
+                    <button class="tab" onclick="selectGateway('mobile_money')" id="mobileMoneyTab">Mobile Money</button>
+                    <button class="tab" onclick="selectGateway('wechat')" id="wechatTab">WeChat Pay</button>
+                </div>
+            </div>
+
+            <!-- PayPal Test Form -->
+            <div id="paypalTest" class="test-form">
+                <h3 class="text-lg font-semibold mb-4">PayPal Test Configuration</h3>
+                
+                <div class="form-group">
+                    <label>Test Type</label>
+                    <select id="paypalTestType" onchange="updateTestForm('paypal')">
+                        <option value="deposit">Deposit Test</option>
+                        <option value="execute">Execute Payment Test</option>
+                        <option value="refund">Refund Test</option>
+                        <option value="webhook">Webhook Test</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Amount (USD)</label>
+                    <input type="number" id="paypalAmount" value="10.00" step="0.01" min="0.01">
+                </div>
+                
+                <div class="form-group">
+                    <label>Return URL</label>
+                    <input type="url" id="paypalReturnUrl" value="https://sandbox.afcon360.com/wallet/paypal/return">
+                </div>
+                
+                <div class="form-group">
+                    <label>Cancel URL</label>
+                    <input type="url" id="paypalCancelUrl" value="https://sandbox.afcon360.com/wallet/paypal/cancel">
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Email</label>
+                    <input type="email" id="paypalTestEmail" value="test@afcon360.com">
+                </div>
+                
+                <button onclick="runTest('paypal')" class="test-btn">
+                    🚀 Run PayPal Test
+                </button>
+            </div>
+
+            <!-- Alipay Test Form -->
+            <div id="alipayTest" class="test-form" style="display: none;">
+                <h3 class="text-lg font-semibold mb-4">Alipay Test Configuration</h3>
+                
+                <div class="form-group">
+                    <label>Test Type</label>
+                    <select id="alipayTestType" onchange="updateTestForm('alipay')">
+                        <option value="deposit">Deposit Test</option>
+                        <option value="verify">Verify Payment Test</option>
+                        <option value="query">Query Order Test</option>
+                        <option value="close">Close Order Test</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Amount (CNY)</label>
+                    <input type="number" id="alipayAmount" value="100.00" step="0.01" min="0.01">
+                </div>
+                
+                <div class="form-group">
+                    <label>Return URL</label>
+                    <input type="url" id="alipayReturnUrl" value="https://sandbox.afcon360.com/wallet/alipay/return">
+                </div>
+                
+                <div class="form-group">
+                    <label>Notify URL</label>
+                    <input type="url" id="alipayNotifyUrl" value="https://sandbox.afcon360.com/wallet/alipay/notify">
+                </div>
+                
+                <button onclick="runTest('alipay')" class="test-btn">
+                    🚀 Run Alipay Test
+                </button>
+            </div>
+
+            <!-- Flutterwave Test Form -->
+            <div id="flutterwaveTest" class="test-form" style="display: none;">
+                <h3 class="text-lg font-semibold mb-4">Flutterwave Test Configuration</h3>
+                
+                <div class="form-group">
+                    <label>Test Type</label>
+                    <select id="flutterwaveTestType" onchange="updateTestForm('flutterwave')">
+                        <option value="deposit">Deposit Test</option>
+                        <option value="verify">Verify Transaction Test</option>
+                        <option value="refund">Refund Test</option>
+                        <option value="webhook">Webhook Test</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Amount (UGX)</label>
+                    <input type="number" id="flutterwaveAmount" value="50000" step="100" min="100">
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Email</label>
+                    <input type="email" id="flutterwaveTestEmail" value="test@afcon360.com">
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Phone</label>
+                    <input type="tel" id="flutterwaveTestPhone" value="+256700000000">
+                </div>
+                
+                <button onclick="runTest('flutterwave')" class="test-btn">
+                    🚀 Run Flutterwave Test
+                </button>
+            </div>
+
+            <!-- Mobile Money Test Form -->
+            <div id="mobileMoneyTest" class="test-form" style="display: none;">
+                <h3 class="text-lg font-semibold mb-4">Mobile Money Test Configuration</h3>
+                
+                <div class="form-group">
+                    <label>Operator</label>
+                    <select id="mobileOperator" onchange="updateMobileForm()">
+                        <option value="mtn_ug">MTN Uganda</option>
+                        <option value="airtel_ug">Airtel Uganda</option>
+                        <option value="mtn_ug">MTN Uganda</option>
+                        <option value="airtel_ug">Airtel Uganda</option>
+                        <option value="mpesa_ke">M-PESA Kenya</option>
+                        <option value="mtn_ng">MTN Nigeria</option>
+                        <option value="airtel_ng">Airtel Nigeria</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Type</label>
+                    <select id="mobileTestType">
+                        <option value="deposit">Deposit Test</option>
+                        <option value="transfer">Transfer Test</option>
+                        <option value="webhook">Webhook Test</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Amount</label>
+                    <input type="number" id="mobileAmount" value="10000" step="100" min="100">
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Phone Number</label>
+                    <input type="tel" id="mobileTestPhone" value="+256700000000">
+                </div>
+                
+                <button onclick="runTest('mobile_money')" class="test-btn">
+                    🚀 Run Mobile Money Test
+                </button>
+            </div>
+
+            <!-- WeChat Pay Test Form -->
+            <div id="wechatTest" class="test-form" style="display: none;">
+                <h3 class="text-lg font-semibold mb-4">WeChat Pay Test Configuration</h3>
+                
+                <div class="form-group">
+                    <label>Test Type</label>
+                    <select id="wechatTestType" onchange="updateTestForm('wechat')">
+                        <option value="deposit">Deposit Test</option>
+                        <option value="verify">Verify Payment Test</option>
+                        <option value="query">Query Order Test</option>
+                        <option value="close">Close Order Test</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Amount (CNY)</label>
+                    <input type="number" id="wechatAmount" value="100.00" step="0.01" min="0.01">
+                </div>
+                
+                <div class="form-group">
+                    <label>Test Description</label>
+                    <input type="text" id="wechatDescription" value="Sandbox Test Payment">
+                </div>
+                
+                <div class="form-group">
+                    <label>Test User ID</label>
+                    <input type="number" id="wechatUserId" value="1">
+                </div>
+                
+                <button onclick="runTest('wechat')" class="test-btn">
+                    🚀 Run WeChat Pay Test
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Panel -->
+        <div class="results-panel">
+            <h2 class="text-xl font-semibold mb-6">Test Results</h2>
+            
+            <div id="currentTest" class="test-results">
+                <div class="result-header">
+                    <div class="result-title">No Test Running</div>
+                    <div class="result-status status-pending">Ready</div>
+                </div>
+                <div class="result-details">
+                    Select a payment gateway and test type, then click "Run Test" to begin testing.
+                </div>
+            </div>
+
+            <!-- Test History -->
+            <div class="test-history">
+                <h3 class="text-lg font-semibold mb-4">Test History</h3>
+                
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Gateway</th>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Duration</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testHistoryBody">
+                        <tr>
+                            <td>2025-05-07 14:23:45</td>
+                            <td>PayPal</td>
+                            <td><span class="test-type-badge type-deposit">Deposit</span></td>
+                            <td>$10.00</td>
+                            <td><span class="result-status status-success">Success</span></td>
+                            <td>2.3s</td>
+                            <td>
+                                <button class="text-blue-600 hover:text-blue-800 text-sm">View</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>2025-05-07 14:15:22</td>
+                            <td>Flutterwave</td>
+                            <td><span class="test-type-badge type-deposit">Deposit</span></td>
+                            <td>UGX 50,000</td>
+                            <td><span class="result-status status-failed">Failed</span></td>
+                            <td>5.1s</td>
+                            <td>
+                                <button class="text-blue-600 hover:text-blue-800 text-sm">View</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>2025-05-07 13:45:10</td>
+                            <td>Alipay</td>
+                            <td><span class="test-type-badge type-webhook">Webhook</span></td>
+                            <td>¥100.00</td>
+                            <td><span class="result-status status-success">Success</span></td>
+                            <td>1.8s</td>
+                            <td>
+                                <button class="text-blue-600 hover:text-blue-800 text-sm">View</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentGateway = 'paypal';
+let currentEnvironment = 'sandbox';
+let testResults = [];
+
+// Select gateway
+function selectGateway(gateway) {
+    // Hide all test forms
+    document.querySelectorAll('.test-form').forEach(form => {
+        form.style.display = 'none';
+    });
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected form and activate tab
+    document.getElementById(gateway + 'Test').style.display = 'block';
+    document.getElementById(gateway + 'Tab').classList.add('active');
+    
+    currentGateway = gateway;
+}
+
+// Set environment
+function setEnvironment(env) {
+    currentEnvironment = env;
+    
+    // Update button states
+    document.getElementById('sandboxBtn').classList.toggle('active', env === 'sandbox');
+    document.getElementById('productionBtn').classList.toggle('active', env === 'production');
+    
+    // Update form placeholders based on environment
+    updateEnvironmentUrls(env);
+}
+
+// Update environment URLs
+function updateEnvironmentUrls(env) {
+    const baseUrl = env === 'sandbox' ? 'https://sandbox.afcon360.com' : 'https://afcon360.com';
+    
+    // Update PayPal URLs
+    const paypalReturnInput = document.getElementById('paypalReturnUrl');
+    const paypalCancelInput = document.getElementById('paypalCancelUrl');
+    if (paypalReturnInput) paypalReturnInput.value = `${baseUrl}/wallet/paypal/return`;
+    if (paypalCancelInput) paypalCancelInput.value = `${baseUrl}/wallet/paypal/cancel`;
+    
+    // Update Alipay URLs
+    const alipayReturnInput = document.getElementById('alipayReturnUrl');
+    const alipayNotifyInput = document.getElementById('alipayNotifyUrl');
+    if (alipayReturnInput) alipayReturnInput.value = `${baseUrl}/wallet/alipay/return`;
+    if (alipayNotifyInput) alipayNotifyInput.value = `${baseUrl}/wallet/alipay/notify`;
+}
+
+// Update test form based on test type
+function updateTestForm(gateway) {
+    const testType = document.getElementById(gateway + 'TestType').value;
+    console.log(`Updated ${gateway} test form for type: ${testType}`);
+}
+
+// Update mobile money form
+function updateMobileForm() {
+    const operator = document.getElementById('mobileOperator').value;
+    console.log(`Updated mobile form for operator: ${operator}`);
+}
+
+// Run test
+function runTest(gateway) {
+    const testType = document.getElementById(gateway + 'TestType').value;
+    const amount = document.getElementById(gateway + 'Amount').value;
+    
+    // Show progress
+    updateTestResult('running', `Running ${testType} test on ${gateway}...`);
+    
+    // Prepare test data
+    const testData = {
+        gateway: gateway,
+        test_type: testType,
+        amount: amount,
+        environment: currentEnvironment
+    };
+    
+    // Add gateway-specific data
+    if (gateway === 'paypal') {
+        testData.return_url = document.getElementById('paypalReturnUrl').value;
+        testData.cancel_url = document.getElementById('paypalCancelUrl').value;
+        testData.email = document.getElementById('paypalTestEmail').value;
+    } else if (gateway === 'alipay') {
+        testData.return_url = document.getElementById('alipayReturnUrl').value;
+        testData.notify_url = document.getElementById('alipayNotifyUrl').value;
+    } else if (gateway === 'flutterwave') {
+        testData.email = document.getElementById('flutterwaveTestEmail').value;
+        testData.phone = document.getElementById('flutterwaveTestPhone').value;
+    } else if (gateway === 'mobile_money') {
+        testData.operator = document.getElementById('mobileOperator').value;
+        testData.phone = document.getElementById('mobileTestPhone').value;
+    } else if (gateway === 'wechat') {
+        testData.description = document.getElementById('wechatDescription').value;
+        testData.user_id = document.getElementById('wechatUserId').value;
+    }
+    
+    // Run test
+    fetch('/admin/sandbox/run-test', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(testData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateTestResult('success', 'Test completed successfully', data);
+            addToHistory(testData, 'success', data);
+        } else {
+            updateTestResult('failed', data.error || 'Test failed', data);
+            addToHistory(testData, 'failed', data);
+        }
+    })
+    .catch(error => {
+        console.error('Test error:', error);
+        updateTestResult('failed', 'Network error occurred', {error: error.message});
+        addToHistory(testData, 'failed', {error: error.message});
+    });
+}
+
+// Update test result display
+function updateTestResult(status, message, data = null) {
+    const resultDiv = document.getElementById('currentTest');
+    const statusClass = status === 'running' ? 'status-running' : 
+                          status === 'success' ? 'status-success' : 'status-failed';
+    
+    resultDiv.innerHTML = `
+        <div class="result-header">
+            <div class="result-title">Test Result</div>
+            <div class="result-status ${statusClass}">${status.toUpperCase()}</div>
+        </div>
+        <div class="result-details">
+            ${message}
+            ${data ? '<pre>' + JSON.stringify(data, null, 2) + '</pre>' : ''}
+        </div>
+    `;
+}
+
+// Add to test history
+function addToHistory(testData, status, result) {
+    const historyBody = document.getElementById('testHistoryBody');
+    const row = document.createElement('tr');
+    
+    const typeBadge = `type-${testData.test_type}`;
+    const statusBadge = status === 'success' ? 'status-success' : 'status-failed';
+    const duration = result.duration ? `${result.duration}s` : '-';
+    
+    row.innerHTML = `
+        <td>${new Date().toLocaleString()}</td>
+        <td>${testData.gateway.toUpperCase()}</td>
+        <td><span class="test-type-badge ${typeBadge}">${testData.test_type}</span></td>
+        <td>${testData.amount} ${testData.currency || ''}</td>
+        <td><span class="result-status ${statusBadge}">${status.toUpperCase()}</span></td>
+        <td>${duration}</td>
+        <td>
+            <button class="text-blue-600 hover:text-blue-800 text-sm" onclick="viewTestResult('${testData.gateway}', '${testData.test_type}')">
+                View
+            </button>
+        </td>
+    `;
+    
+    historyBody.insertBefore(row, historyBody.firstChild);
+}
+
+// View test result details
+function viewTestResult(gateway, testType) {
+    // Find and display detailed test result
+    console.log(`Viewing details for ${gateway} ${testType}`);
+}
+
+// Clear all results
+function clearAllResults() {
+    if (confirm('Clear all test results? This cannot be undone.')) {
+        document.getElementById('testHistoryBody').innerHTML = '';
+        testResults = [];
+        updateTestResult('pending', 'No Test Running', null);
+    }
+}
+
+// Export test results
+function exportTestResults() {
+    const exportData = {
+        export_date: new Date().toISOString(),
+        environment: currentEnvironment,
+        results: testResults
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sandbox-test-results-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    selectGateway('paypal');
+    setEnvironment('sandbox');
+});
+</script>
+{% endblock %}
