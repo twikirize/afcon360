@@ -1,1 +1,231 @@
-# Admin services package
+"""Admin services package - Core moderation and dashboard services"""
+
+from datetime import datetime, timezone, timedelta
+from sqlalchemy import func
+from app.extensions import db
+from app.identity.models import User, UserRole
+from app.identity.models.organisation import Organisation
+from app.identity.models.roles_permission import Role
+from app.admin.owner.models import OwnerAuditLog
+from app.admin.owner.utils import get_system_health
+from app.identity.services import load_user_roles
+from app.utils.transactions import transactional
+from app.profile.models import get_profile_by_user
+from app.admin.models import ContentFlag
+from app.auth.helpers import has_global_permission
+
+__all__ = ['create_flag', 'resolve_flag', 'get_owner_dashboard_data', 'user_to_dict']
+
+
+def user_to_dict(user):
+    """Convert User model to dictionary to prevent lazy loading issues"""
+    if not user: return None
+    return {
+        'id': user.id,
+        'user_id': user.user_id,
+        'username': user.username,
+        'email': user.email,
+        'is_verified': user.is_verified,
+        'is_active': user.is_active,
+        'created_at': user.created_at
+    }
+
+
+@transactional("Create content flag")
+def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: str = "normal", category: str | None = None):
+    """
+    Create a ContentFlag record if the user has `content.flag` permission.
+    Does not change entity state.
+    Returns (ok: bool, result: ContentFlag|str)
+    """
+    # Permission check
+    if not has_global_permission(user, "content.flag"):
+        return False, "Not authorized"
+
+    # Calculate SLA due time based on priority
+    now = datetime.now(timezone.utc)
+    sla_hours = {
+        'critical': 4,
+        'high': 12,
+        'medium': 24,
+        'normal': 72,
+        'low': 72
+    }.get(priority or 'normal', 72)
+
+    sla_due_at = now + timedelta(hours=sla_hours)
+
+    # Map entity_type to content_type for the content_type field
+    content_type_mapping = {
+        'event': 'event',
+        'user': 'profile',
+        'content_submission': 'submission',
+        'manageable_item': 'listing',
+        'accommodation': 'listing',
+        'transport': 'listing',
+        'tourism': 'listing'
+    }
+    content_type = content_type_mapping.get(entity_type, entity_type)
+    
+    # Set default category if none provided
+    if category is None:
+        category = 'review'  # Default category for general content review
+
+    flag = ContentFlag(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        flagged_by=user.id,
+        reason=reason,
+        priority=priority or "normal",
+        category=category,
+        status="open",
+        sla_due_at=sla_due_at,
+        content_type=content_type,
+    )
+    db.session.add(flag)
+    db.session.flush()  # get ID
+
+    # Audit log
+    OwnerAuditLog.log_action(
+        user,
+        action="flag.create",
+        category="moderation",
+        details={
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "priority": priority,
+            "category": category,
+            "reason": reason,
+            "flag_id": int(flag.id),
+            "sla_due_at": sla_due_at.isoformat(),
+        }
+    )
+
+    return True, flag
+
+
+@transactional("Resolve content flag")
+def resolve_flag(user, flag_id: int, resolution_action: str, resolution_notes: str = None):
+    """Resolve a content flag with the given action and notes"""
+    from datetime import datetime, timezone
+    flag = ContentFlag.query.get(flag_id)
+    if not flag:
+        return False, "Flag not found"
+    if flag.status == "resolved":
+        return False, "Already resolved"
+
+    flag.status = "resolved"
+    flag.resolved_by = user.id
+    flag.resolution_action = resolution_action
+    flag.resolution_notes = resolution_notes
+    flag.resolved_at = datetime.now(timezone.utc)
+
+    OwnerAuditLog.log_action(user, "flag.resolve", "moderation", {
+        "flag_id": flag_id,
+        "entity_type": flag.entity_type,
+        "entity_id": flag.entity_id,
+        "resolution_action": resolution_action,
+    })
+    return True, flag
+
+
+def get_owner_dashboard_data(user_id: int):
+    """
+    Fetch all owner dashboard info, including platform stats,
+    RBAC roles, and system health.
+    This will roll back if any part fails and logs detailed errors.
+    """
+    # Load RBAC roles using the nested identity service call
+    user_roles = load_user_roles(user_id)
+
+    # Platform stats
+    total_users = User.query.count()
+    verified_users = User.query.filter_by(is_verified=True).count()
+    active_users = User.query.filter_by(is_active=True).count()
+    new_users_today = User.query.filter(
+        User.created_at >= datetime.now(timezone.utc).date()
+    ).count()
+
+    # Organisation stats
+    total_orgs = Organisation.query.count()
+    active_orgs = Organisation.query.filter_by(is_active=True).count()
+    pending_orgs = Organisation.query.filter_by(verification_status='pending').count()
+
+    # Role stats
+    total_roles = Role.query.count()
+
+    # Get super admins
+    super_admin_role = Role.query.filter_by(name='super_admin').first()
+    super_admins_list = []
+    if super_admin_role:
+        super_admins_list = User.query.join(User.roles).filter(
+            UserRole.role_id == super_admin_role.id
+        ).all()
+
+    super_admins = [user_to_dict(u) for u in super_admins_list]
+
+    # Get regular users (not super admin, not owner)
+    owner_role = Role.query.filter_by(name='owner').first()
+    regular_users_list = []
+    if super_admin_role and owner_role:
+        regular_users_list = User.query.filter(
+            ~User.roles.any(UserRole.role_id.in_([
+                super_admin_role.id,
+                owner_role.id
+            ]))
+        ).order_by(User.username).limit(20).all()
+
+    regular_users = [user_to_dict(u) for u in regular_users_list]
+
+    # Recent signups
+    recent_users_list = User.query.order_by(User.created_at.desc()).limit(10).all()
+    recent_users = [user_to_dict(u) for u in recent_users_list]
+
+    # System health
+    health = get_system_health()
+
+    # Recent audit logs
+    recent_logs = OwnerAuditLog.query.order_by(
+        OwnerAuditLog.created_at.desc()
+    ).limit(10).all()
+
+    # Detach logs from session to avoid lazy loading issues
+    logs_data = []
+    for log in recent_logs:
+        logs_data.append({
+            'id': log.id,
+            'action': log.action,
+            'category': log.category,
+            'status': log.status,
+            'created_at': log.created_at,
+            'details': log.details
+        })
+
+    # User growth chart data (last 7 days)
+    dates = []
+    counts = []
+    for i in range(6, -1, -1):
+        date = (datetime.now(timezone.utc) - timedelta(days=i)).date()
+        count = User.query.filter(
+            func.date(User.created_at) == date
+        ).count()
+        dates.append(date.strftime('%a'))
+        counts.append(count)
+
+    return {
+        "user_roles": user_roles,
+        "total_users": total_users,
+        "verified_users": verified_users,
+        "active_users": active_users,
+        "new_users_today": new_users_today,
+        "total_orgs": total_orgs,
+        "active_orgs": active_orgs,
+        "pending_orgs": pending_orgs,
+        "total_roles": total_roles,
+        "super_admins": super_admins,
+        "regular_users": regular_users,
+        "recent_users": recent_users,
+        "recent_logs": logs_data,
+        "health": health,
+        "chart_labels": dates,
+        "chart_data": counts
+    }

@@ -852,10 +852,10 @@ def create_app(config_object=None) -> Flask:
     
     # Payment methods API (register under admin)
     try:
-        from app.admin.services.payment_methods import payment_methods_bp
+        from app.admin.admin_services.payment_methods import payment_methods_bp
         app.register_blueprint(payment_methods_bp)
     except ImportError:
-        logger.warning('admin.services.payment_methods not found; payment methods API not registered')
+        logger.warning('admin.admin_services.payment_methods not found; payment methods API not registered')
 
     # 4. Event Listeners
     try:
