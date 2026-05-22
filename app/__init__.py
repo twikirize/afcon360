@@ -786,15 +786,16 @@ def create_app(config_object=None) -> Flask:
         app.register_blueprint(bp)
 
     # 3. Load database module flags BEFORE blueprint registration (single source of truth)
-    try:
-        from app.services.module_toggle_service import ModuleToggleService
-        ModuleToggleService.load_overrides_into_app()
-        logger.debug("✅ Module flags loaded from DB (single source of truth)")
-    except Exception as exc:
-        logger.warning(f"Failed to load module flags from DB: {exc}")
+    with app.app_context():
+        try:
+            from app.services.module_toggle_service import ModuleToggleService
+            ModuleToggleService.load_overrides_into_app()
+            logger.debug("✅ Module flags loaded from DB (single source of truth)")
+        except Exception as exc:
+            logger.warning(f"Failed to load module flags from DB: {exc}")
 
-    # Start Redis Pub/Sub subscriber for real-time module updates
-    start_module_toggle_subscriber()
+        # Start Redis Pub/Sub subscriber for real-time module updates
+        start_module_toggle_subscriber()
 
     # 4. Register ALL blueprints at startup (runtime checks handle module status)
     # Tournament module
