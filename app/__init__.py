@@ -118,29 +118,26 @@ logger = logging.getLogger("app")
 def require_redis(url: str, purpose: str, existing_client=None):
     """
     Ensure Redis is available before starting the app.
-    Raises RuntimeError if Redis connection fails.
+    Never raises RuntimeError – always falls back to None and logs error.
     """
     if existing_client:
-        # Test the existing client connection with shorter timeout
         try:
             existing_client.ping()
             return existing_client
         except Exception:
-            pass  # Fall through silently to create new connection
+            pass
 
     if not REDIS_AVAILABLE:
         logging.warning(f"Redis not available for {purpose} - using fallback")
         return None
 
     try:
-        # Optimization: much shorter timeout for startup, no decode for performance
         client = redis.Redis.from_url(url, decode_responses=False, socket_connect_timeout=1, socket_timeout=1)
         client.ping()
         return client
     except Exception as e:
-        error_msg = f"Redis must be running at {url} for AFCON360 to start ({purpose}). Error: {e}"
-        logging.error(error_msg)
-        raise RuntimeError(error_msg) from e
+        logging.error(f"Redis not available for {purpose}. Error: {e}")
+        return None
 
 
 def create_app(config_object=None) -> Flask:
@@ -159,7 +156,9 @@ def create_app(config_object=None) -> Flask:
     app = Flask(__name__, static_folder=static_path, template_folder=template_path)
 
     # Remove Flask's default handler to prevent duplicate logging
-    app.logger.handlers.clear()
+    # Only clear if no handlers already exist (safe for Gunicorn)
+    if not app.logger.handlers:
+        app.logger.handlers.clear()
 
     # ------------------------------------------------------------------
     # PERMANENT FIX: Custom Jinja2 Loader with Encoding Fallback
@@ -258,7 +257,7 @@ def create_app(config_object=None) -> Flask:
     app.config["SESSION_SERIALIZER"] = "json"
 
     # ------------------------------------------------------------------
-    # Redis & Extensions (Shared)
+    # Redis & Extensions (Shared) – resilient fallback
     # ------------------------------------------------------------------
     redis_url = app.config.get("REDIS_URL") or os.getenv("REDIS_URL")
 
@@ -272,25 +271,32 @@ def create_app(config_object=None) -> Flask:
 
     from app.extensions import limiter, cache, redis_client
 
-    # Configure Redis for caching
-    cache.config.update({
-        "CACHE_TYPE": "RedisCache",
-        "CACHE_REDIS_URL": redis_url,
-        "CACHE_DEFAULT_TIMEOUT": 300
-    })
-    redis_client.configure(redis_url)
+    # Try to configure Redis for caching; fallback to SimpleCache
+    _redis_available_for_cache = False
+    try:
+        if REDIS_AVAILABLE:
+            cache.config.update({
+                "CACHE_TYPE": "RedisCache",
+                "CACHE_REDIS_URL": redis_url,
+                "CACHE_DEFAULT_TIMEOUT": 300
+            })
+            redis_client.configure(redis_url)
+            _redis_available_for_cache = True
+        else:
+            cache.config.update({"CACHE_TYPE": "SimpleCache"})
+    except Exception:
+        cache.config.update({"CACHE_TYPE": "SimpleCache"})
+        logger.warning("Redis cache configuration failed – using SimpleCache")
 
-    # Configure Flask-Limiter to use Redis
-    # Set storage URI in app config
-    app.config["RATELIMIT_STORAGE_URI"] = redis_url
-    # Also update the limiter instance
-    limiter.storage_uri = redis_url
+    # Configure Flask-Limiter to use Redis if available, else memory
+    app.config["RATELIMIT_STORAGE_URI"] = redis_url if _redis_available_for_cache else "memory://"
+    limiter.storage_uri = app.config["RATELIMIT_STORAGE_URI"]
 
-    # Get Redis client for sessions - reuse existing connection
+    # Get Redis client for sessions – reuse existing connection
     redis_session_client = None
     try:
-        redis_session_client = redis_client.client
-        # Skip ping test to avoid delay - trust the existing connection
+        if _redis_available_for_cache:
+            redis_session_client = redis_client.client
     except Exception:
         pass
 
@@ -306,13 +312,12 @@ def create_app(config_object=None) -> Flask:
         Session(app)
         logging.warning("Using filesystem sessions - Redis not available")
 
-    if REDIS_AVAILABLE:
+    if _redis_available_for_cache:
         cache.init_app(app, config={"CACHE_TYPE": "RedisCache", "CACHE_REDIS_URL": redis_url})
     else:
         cache.init_app(app, config={"CACHE_TYPE": "SimpleCache"})
 
     # Initialize limiter with app
-    # The storage URI should already be set in app.config["RATELIMIT_STORAGE_URI"]
     limiter.init_app(app)
 
     # Configure Flask error logging
@@ -353,6 +358,9 @@ def create_app(config_object=None) -> Flask:
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.INFO)
     werkzeug_logger.addFilter(_SuppressAccessLogs())
+    # Ensure no duplicate handlers (safe for Gunicorn)
+    if len(werkzeug_logger.handlers) > 1:
+        werkzeug_logger.handlers = werkzeug_logger.handlers[:1]
     
     @app.before_request
     def log_request():
@@ -370,28 +378,75 @@ def create_app(config_object=None) -> Flask:
         # Log in a clean format
         log_func(f"📡 {request.method} {request.path}")
 
+    # ── Combined after_request pipeline ──────────────────────────────
     @app.after_request
-    def log_response(response):
-        """Clean response logging"""
-        # Skip static assets
-        if request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
-            return response
-        
-        # Determine icon based on status
-        if response.status_code >= 500:
-            icon = "💥"
-            log_func = logger.error
-        elif response.status_code >= 400:
-            icon = "⚠️"
-            log_func = logger.warning
-        else:
-            icon = "✅"
-            log_func = logger.debug
-        
-        # Log only non-200 responses in normal mode, all in debug
-        if response.status_code != 200 or app.debug:
-            log_func(f"{icon} {request.method} {request.path} → {response.status_code}")
-        
+    def after_request_pipeline(response):
+        """Single after_request handler that runs logging then security headers."""
+        # 1. Logging
+        if not request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
+            if response.status_code >= 500:
+                icon = "💥"
+                log_func = logger.error
+            elif response.status_code >= 400:
+                icon = "⚠️"
+                log_func = logger.warning
+            else:
+                icon = "✅"
+                log_func = logger.debug
+            if response.status_code != 200 or app.debug:
+                log_func(f"{icon} {request.method} {request.path} → {response.status_code}")
+
+        # 2. Security headers (CSP, HSTS, etc.)
+        from flask import g
+        nonce = getattr(g, "csp_nonce", "")
+        csp_enforce = (
+            "default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
+            "connect-src 'self' https://cdn.jsdelivr.net; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "upgrade-insecure-requests;"
+        )
+        response.headers["Content-Security-Policy"] = csp_enforce
+
+        csp_report_only = (
+            "default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+            "style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
+            "connect-src 'self' https://cdn.jsdelivr.net; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "upgrade-insecure-requests; "
+            "report-to csp-endpoint; report-uri /csp-report"
+        )
+        response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
+
+        response.headers["Report-To"] = (
+            '{"group":"csp-endpoint","max_age":10886400,'
+            '"endpoints":[{"url":"/csp-report"}],"include_subdomains":true}'
+        )
+        response.headers["Reporting-Endpoints"] = "csp-endpoint=\"/csp-report\""
+
+        if request.is_secure:
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        if session.get("user_id"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         return response
     
     # Keep 404 handler but make it cleaner
@@ -464,11 +519,6 @@ def create_app(config_object=None) -> Flask:
     from app.core.model_registry import register_all_models
     register_all_models()
 
-    # Verify Redis is available for rate limiting only if needed
-    if REDIS_AVAILABLE and app.config.get("RATELIMIT_STORAGE_URI", "").startswith("redis://"):
-        # Skip verification to avoid startup delay - trust the connection
-        pass
-
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
@@ -513,24 +563,27 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     @app.before_request
     def load_identity_context():
-        """Inject real actor and effective user into request context for every request."""
+        """Inject real actor and effective user into request context for every request.
+        Uses flask.g to cache per-request to avoid duplicate DB queries."""
         try:
+            from flask import g as _g
+            if hasattr(_g, '_identity_loaded'):
+                return
+            _g._identity_loaded = True
+
             from flask_login import current_user
-            from flask import session as flask_session, request as flask_request
+            from flask import session as flask_session
             from app.core.context import RequestContext
             from app.identity.models.user import User
             from app.extensions import db
 
-            # Real actor is the authenticated Flask-Login user
             actor_user = current_user if getattr(current_user, "is_authenticated", False) else None
             RequestContext.set_actor(actor_user)
 
-            # Effective user is impersonated user if set, else the actor
             effective_user = actor_user
             impersonated_id = flask_session.get("impersonated_user_id")
             if impersonated_id:
                 try:
-                    # Prefer session.get via SQLAlchemy 2 if available
                     user = db.session.get(User, impersonated_id) if hasattr(db.session, 'get') else None
                 except Exception:
                     db.session.rollback()
@@ -580,7 +633,7 @@ def create_app(config_object=None) -> Flask:
     # Deferred Startup — runs once on first real request, not at boot time
     # Moves blocking DB operations out of the startup critical path.
     # ------------------------------------------------------------------
-    _deferred_done = threading.Event()
+    import threading
     _deferred_lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -647,31 +700,33 @@ def create_app(config_object=None) -> Flask:
 
     @app.before_request
     def _run_deferred_startup():
-        if _deferred_done.is_set():
+        """Safe idempotent startup guard – never blocks the request."""
+        if app.config.get("STARTUP_DONE"):
             return
         with _deferred_lock:
-            if _deferred_done.is_set():
+            if app.config.get("STARTUP_DONE"):
                 return
-            _deferred_done.set()
-            # 1. DB module flags already loaded during create_app (single source of truth)
-            # No need to reload here
-            # 2. Validate DB schema (purely informational)
-            try:
-                from sqlalchemy import inspect as _sa_inspect
-                _ins = _sa_inspect(db.engine)
-                _cols = [c['name'] for c in _ins.get_columns('users')]
-                if 'id' in _cols and 'user_id' in _cols:
-                    logger.info("✅ Dual ID system validated.")
-                _idxs = _ins.get_indexes('transactions')
-                if any(i.get('column_names') == ['client_request_id'] and i.get('unique') for i in _idxs):
-                    logger.info("✅ transactions.client_request_id unique index present")
-                else:
-                    logger.critical(
-                        "Missing unique index on transactions.client_request_id – "
-                        "idempotency may be broken. Add a DB migration."
-                    )
-            except Exception as exc:
-                logger.warning(f"Deferred startup – DB validation: {exc}")
+            app.config["STARTUP_DONE"] = True
+            # Non-blocking background validation (purely informational)
+            import threading
+            def _validate_schema():
+                try:
+                    from sqlalchemy import inspect as _sa_inspect
+                    _ins = _sa_inspect(db.engine)
+                    _cols = [c['name'] for c in _ins.get_columns('users')]
+                    if 'id' in _cols and 'user_id' in _cols:
+                        logger.info("✅ Dual ID system validated.")
+                    _idxs = _ins.get_indexes('transactions')
+                    if any(i.get('column_names') == ['client_request_id'] and i.get('unique') for i in _idxs):
+                        logger.info("✅ transactions.client_request_id unique index present")
+                    else:
+                        logger.critical(
+                            "Missing unique index on transactions.client_request_id – "
+                            "idempotency may be broken. Add a DB migration."
+                        )
+                except Exception as exc:
+                    logger.warning(f"Deferred startup – DB validation: {exc}")
+            threading.Thread(target=_validate_schema, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Lazy Imports - Blueprints & Models
@@ -711,24 +766,31 @@ def create_app(config_object=None) -> Flask:
     # Missing blueprints - import with fallback (suppress warnings)
     from importlib import import_module
 
-    optional_blueprints = [
-        ('org_bp', 'app.identity.routes'),
-        ('compliance_bp', 'app.admin.compliance.routes'),
-        ('auditor_bp', 'app.admin.auditor.routes'),
-        ('support_bp', 'app.admin.support.routes'),
-        ('moderator_bp', 'app.admin.moderator'),
-    ]
-
-    for bp_name, module_path in optional_blueprints:
+    # ── Safe optional blueprint resolution ──────────────────────────
+    _optional_blueprint_map = {
+        'org_bp': ('app.identity.routes', 'org_bp'),
+        'compliance_bp': ('app.admin.compliance.routes', 'compliance_bp'),
+        'auditor_bp': ('app.admin.auditor.routes', 'auditor_bp'),
+        'support_bp': ('app.admin.support.routes', 'support_bp'),
+        'moderator_bp': ('app.admin.moderator', 'moderator_bp'),
+    }
+    _resolved_blueprints = {}
+    for bp_name, (module_path, attr_name) in _optional_blueprint_map.items():
         try:
             module = import_module(module_path)
-            bp = getattr(module, bp_name, None)
+            bp = getattr(module, attr_name, None)
             if bp:
-                locals()[bp_name] = bp
+                _resolved_blueprints[bp_name] = bp
             else:
                 logger.debug(f"Blueprint {bp_name} not found in {module_path}")
         except ImportError:
             logger.debug(f"Module {module_path} not available - blueprint {bp_name} skipped")
+    # Assign to local variables for later registration
+    org_bp = _resolved_blueprints.get('org_bp')
+    compliance_bp = _resolved_blueprints.get('compliance_bp')
+    auditor_bp = _resolved_blueprints.get('auditor_bp')
+    support_bp = _resolved_blueprints.get('support_bp')
+    moderator_bp = _resolved_blueprints.get('moderator_bp')
     # API Blueprints
     from app.wallet.api.wallet_api import wallet_api_bp
     from app.wallet.api.fx_api import fx_api_bp
@@ -779,6 +841,9 @@ def create_app(config_object=None) -> Flask:
         from flask import Blueprint
         org_bp = Blueprint('org', __name__)
         app.register_blueprint(org_bp)
+    except Exception as e:
+        logger.error(f"Failed to register organization blueprint: {e}")
+
 
     # 2. Register API Blueprints
     api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp]
@@ -862,7 +927,7 @@ def create_app(config_object=None) -> Flask:
         from app.transport.listeners import register_event_listeners
         register_event_listeners()
     except ImportError:
-        pass
+        logger.debug("Transport event listeners not found – skipping")
 
     # ------------------------------------------------------------------
     # CLI Commands
@@ -874,13 +939,15 @@ def create_app(config_object=None) -> Flask:
         from app.cli import register_all_cli_commands
         register_all_cli_commands(app)
     except ImportError:
-        pass
+        logger.debug("CLI commands not found – skipping")
 
     # Register IDGuard CLI commands if available
     if IDGUARD_AVAILABLE:
         try:
             register_id_guard_commands(app)
             logger.info("✅ IDGuard CLI commands registered")
+        except ImportError:
+            logger.warning("IDGuard CLI commands not found – skipping")
         except Exception as e:
             logger.error(f"Failed to register IDGuard CLI commands: {e}")
     else:
@@ -893,8 +960,8 @@ def create_app(config_object=None) -> Flask:
         from app.events.signal_handlers import connect_event_signal_handlers
         connect_event_signal_handlers()
         logger.info("✅ Event signal handlers connected")
-    except ImportError as e:
-        logger.warning(f"Could not import event signal handlers: {e}")
+    except ImportError:
+        logger.warning("Event signal handlers not found – skipping")
     except Exception as e:
         logger.error(f"Failed to connect event signal handlers: {e}")
 
@@ -905,6 +972,8 @@ def create_app(config_object=None) -> Flask:
         from app.utils.module_disabled import module_disabled_bp
         app.register_blueprint(module_disabled_bp)
         app.logger.info("✅ Module disabled page handler registered")
+    except ImportError:
+        app.logger.warning("Module disabled page handler not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to register module disabled page handler: {e}")
 
@@ -1357,66 +1426,12 @@ def create_app(config_object=None) -> Flask:
     @app.context_processor
     def inject_csp_nonce():
         from flask import g
-        return {"csp_nonce": getattr(g, "csp_nonce", None)}
-
-    @app.after_request
-    def apply_security_headers(response):
-        from flask import g
-        nonce = getattr(g, "csp_nonce", "")
-        # Strict CSP for scripts using per-request nonce. We still allow inline styles for now to
-        # avoid regressions; a Report-Only header below shows violations for a future no-inline style policy.
-        csp_enforce = (
-            "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
-            "img-src 'self' data: https:; "
-            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
-            "connect-src 'self' https://cdn.jsdelivr.net; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "form-action 'self'; "
-            "base-uri 'self'; "
-            "upgrade-insecure-requests;"
-        )
-        response.headers["Content-Security-Policy"] = csp_enforce
-
-        # Report-Only header to monitor a stricter style policy (no inline styles)
-        csp_report_only = (
-            "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-            "style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
-            "img-src 'self' data: https:; "
-            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
-            "connect-src 'self' https://cdn.jsdelivr.net; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "form-action 'self'; "
-            "base-uri 'self'; "
-            "upgrade-insecure-requests; "
-            "report-to csp-endpoint; report-uri /csp-report"
-        )
-        response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
-
-        # Reporting endpoints (Report-To / Reporting-Endpoints for broader browser support)
-        response.headers["Report-To"] = (
-            '{"group":"csp-endpoint","max_age":10886400,'
-            '"endpoints":[{"url":"/csp-report"}],"include_subdomains":true}'
-        )
-        response.headers["Reporting-Endpoints"] = "csp-endpoint=\"/csp-report\""
-
-        if request.is_secure:
-            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # Additional modern security headers
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
-        if session.get("user_id"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
-        return response
+        nonce = getattr(g, "csp_nonce", None)
+        if nonce is None:
+            # Fallback if middleware ordering changed
+            import secrets
+            nonce = secrets.token_urlsafe(16)
+        return {"csp_nonce": nonce}
 
     @app.route('/csp-report', methods=['POST'])
     def csp_report():
@@ -1481,6 +1496,8 @@ def create_app(config_object=None) -> Flask:
         from app.admin.owner.api.module_api import module_api_bp
         app.register_blueprint(module_api_bp)
         app.logger.info("✅ Module API blueprint registered")
+    except ImportError:
+        app.logger.warning("Module API blueprint not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to register module API blueprint: {e}")
 
@@ -1488,6 +1505,8 @@ def create_app(config_object=None) -> Flask:
         from app.api.health import health_bp
         app.register_blueprint(health_bp)
         app.logger.info("✅ Health API blueprint registered")
+    except ImportError:
+        app.logger.warning("Health API blueprint not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to register health API blueprint: {e}")
 
@@ -1497,6 +1516,8 @@ def create_app(config_object=None) -> Flask:
     try:
         from app.middleware.reload_modules import init_module_reload
         init_module_reload(app)
+    except ImportError:
+        app.logger.warning("Module reload middleware not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to initialize module reload middleware: {e}")
 
@@ -1505,16 +1526,14 @@ def create_app(config_object=None) -> Flask:
     # This prevents EventTheme initialization issues during app startup
 
     # ------------------------------------------------------------------
-    # Startup Endpoint Validator
+    # Startup Endpoint Validator (non-blocking, runs in background)
     # ------------------------------------------------------------------
     def _validate_endpoint_references():
         """Check known endpoint references against actual app.url_map."""
         import logging as _logging
         _log = _logging.getLogger("app.endpoint_validator")
         
-        # Known references that should exist
         _known_refs = [
-            # admin.owner.*
             "admin.owner.dashboard",
             "admin.owner.settings",
             "admin.owner.manage_aggregators",
@@ -1533,32 +1552,22 @@ def create_app(config_object=None) -> Flask:
             "admin.owner.kyc_tier_management",
             "admin.owner.compliance_dashboard",
             "admin.owner.auth_settings",
-            # accommodation.*
             "accommodation.guest_search",
             "accommodation.admin_dashboard",
             "accommodation.admin_main_dashboard",
             "accommodation.legacy_detail",
-            # wallet.*
             "wallet.wallet_home",
             "wallet.wallet_dashboard",
-            # events.*
             "events.list",
             "events.events_hub",
-            # auth.*
             "auth.login",
             "auth.register",
-            # fan.*
             "fan.dashboard",
-            # profile.*
             "profile.my_public_profile",
             "profile.account_overview",
-            # kyc.*
             "kyc.index",
-            # tourism.*
             "tourism.home",
-            # transport.*
             "transport.home",
-            # tournament.*
             "tournament.home",
         ]
         
@@ -1573,7 +1582,9 @@ def create_app(config_object=None) -> Flask:
         else:
             _log.info("✅ All known endpoint references validated successfully")
     
-    _validate_endpoint_references()
+    # Run in background thread to avoid blocking startup
+    import threading
+    threading.Thread(target=_validate_endpoint_references, daemon=True).start()
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app
