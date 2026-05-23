@@ -19,11 +19,12 @@ class ModuleToggleService:
         """Fetch persisted module flags from SystemSetting (JSON)."""
         try:
             from app.admin.owner.models import SystemSetting  # Local import to avoid circulars
+            stored = SystemSetting.get(cls.SETTINGS_KEY, default={})
+            return stored if isinstance(stored, dict) else {}
         except Exception:
+            # Table may not exist yet or other DB issues - gracefully return empty dict
+            # The app will use default MODULE_FLAGS from config
             return {}
-
-        stored = SystemSetting.get(cls.SETTINGS_KEY, default={})
-        return stored if isinstance(stored, dict) else {}
 
     @classmethod
     def _persist_flags(cls, flags: Dict[str, bool], updated_by: Optional[int] = None) -> None:

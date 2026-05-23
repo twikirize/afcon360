@@ -60,18 +60,9 @@ def legacy_detail(identifier):
 
 
 # Compatibility aliases for legacy endpoint references
-@accommodation_bp.route("/admin/dashboard", endpoint="admin_dashboard")
-@module_enabled
-def admin_dashboard_compat():
-    """Compatibility alias - redirects to guest search."""
-    return redirect(url_for('accommodation.guest_search'))
-
-
-@accommodation_bp.route("/admin/main-dashboard", endpoint="admin_main_dashboard")
-@module_enabled
-def admin_main_dashboard_compat():
-    """Compatibility alias - redirects to guest search."""
-    return redirect(url_for('accommodation.guest_search'))
+# Removed duplicate admin_dashboard route - primary route is in routes.py
+# This was causing endpoint conflicts; use routes.py definition instead
+# Removed duplicate admin_main_dashboard route - primary route is in routes.py
 
 
 __all__ = ['accommodation_bp', 'module_enabled', 'require_accommodation_permission']
