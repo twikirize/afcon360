@@ -23,41 +23,15 @@ depends_on = None
 
 def upgrade():
     conn = op.get_bind()
-    inspector = inspect(conn)
+    inspector = sa.inspect(conn)
     existing_tables = inspector.get_table_names()
 
-    # ### Create ENUM types if not exists ###
-    conn.execute(text("""
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'entry_type_enum') THEN
-                CREATE TYPE entry_type_enum AS ENUM ('DEBIT', 'CREDIT');
-            END IF;
-        END $$;
-    """))
-
-    conn.execute(text("""
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transaction_type_enum') THEN
-                CREATE TYPE transaction_type_enum AS ENUM ('deposit', 'withdraw', 'transfer', 'fee', 'refund', 'adjustment');
-            END IF;
-        END $$;
-    """))
-
-    conn.execute(text("""
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transaction_status_enum') THEN
-                CREATE TYPE transaction_status_enum AS ENUM ('pending', 'completed', 'failed', 'cancelled');
-            END IF;
-        END $$;
-    """))
-
-    # ### Create accounts table ###
     if 'accounts' not in existing_tables:
         op.create_table(
             'accounts',
             sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
             sa.Column('user_id', sa.BigInteger(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
-            sa.Column('currency', sa.String(10), nullable=False, default='USD'),
+            sa.Column('currency', sa.String(10), nullable=False),
             sa.Column('is_frozen', sa.Boolean(), nullable=False, default=False),
             sa.Column('frozen_reason', sa.Text(), nullable=True),
             sa.Column('frozen_at', sa.DateTime(timezone=True), nullable=True),
@@ -72,14 +46,13 @@ def upgrade():
         op.create_index('ix_accounts_user_id', 'accounts', ['user_id'])
         op.create_index('ix_accounts_currency', 'accounts', ['currency'])
 
-    # ### Create transactions table ###
     if 'transactions' not in existing_tables:
         op.create_table(
             'transactions',
             sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
             sa.Column('client_request_id', sa.String(255), nullable=False, unique=True),
-            sa.Column('tx_type', postgresql.ENUM('deposit', 'withdraw', 'transfer', 'fee', 'refund', 'adjustment', name='transaction_type_enum', create_type=False), nullable=False),
-            sa.Column('status', postgresql.ENUM('pending', 'completed', 'failed', 'cancelled', name='transaction_status_enum', create_type=False), nullable=False, default='pending'),
+            sa.Column('tx_type', sa.String(50), nullable=False),
+            sa.Column('status', sa.String(50), nullable=False, default='pending'),
             sa.Column('amount', sa.Numeric(18, 6), nullable=False),
             sa.Column('currency', sa.String(10), nullable=False),
             sa.Column('user_id', sa.BigInteger(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
@@ -92,7 +65,7 @@ def upgrade():
             sa.Column('conversion_rate', sa.Numeric(18, 8), nullable=True),
             sa.Column('converted_amount', sa.Numeric(18, 6), nullable=True),
             sa.Column('converted_currency', sa.String(10), nullable=True),
-            sa.Column('tx_metadata', postgresql.JSONB(), nullable=True, default=dict),
+            sa.Column('tx_metadata', postgresql.JSONB(), nullable=True),
             sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
             sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
             sa.Column('failed_at', sa.DateTime(timezone=True), nullable=True),
@@ -100,24 +73,16 @@ def upgrade():
         )
         op.create_index('ix_transactions_client_request_id', 'transactions', ['client_request_id'], unique=True)
         op.create_index('ix_transactions_status', 'transactions', ['status'])
-        op.create_index('ix_transactions_type', 'transactions', ['tx_type'])
         op.create_index('ix_transactions_created_at', 'transactions', ['created_at'])
         op.create_index('ix_transactions_user_id', 'transactions', ['user_id'])
-        op.create_index('ix_transactions_external_ref', 'transactions', ['external_reference'])
-        op.create_check_constraint(
-            'ck_transaction_amount_positive',
-            'transactions',
-            'amount > 0'
-        )
 
-    # ### Create ledger_entries table ###
     if 'ledger_entries' not in existing_tables:
         op.create_table(
             'ledger_entries',
             sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
             sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
             sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
-            sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum', create_type=False), nullable=False),
+            sa.Column('entry_type', sa.String(10), nullable=False),
             sa.Column('amount', sa.Numeric(18, 6), nullable=False),
             sa.Column('currency', sa.String(10), nullable=False),
             sa.Column('meta', postgresql.JSONB(), nullable=True),
@@ -127,14 +92,7 @@ def upgrade():
         op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])
         op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])
         op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])
-        op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])
-        op.create_check_constraint(
-            'ck_ledger_amount_positive',
-            'ledger_entries',
-            'amount > 0'
-        )
 
-    # ### Create wallet_audit_logs table ###
     if 'wallet_audit_logs' not in existing_tables:
         op.create_table(
             'wallet_audit_logs',
@@ -143,25 +101,21 @@ def upgrade():
             sa.Column('actor_id', sa.BigInteger(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
             sa.Column('action', sa.String(100), nullable=False),
             sa.Column('description', sa.Text(), nullable=True),
-            sa.Column('before_state', postgresql.JSONB(), nullable=True, default=dict),
-            sa.Column('after_state', postgresql.JSONB(), nullable=True, default=dict),
+            sa.Column('before_state', postgresql.JSONB(), nullable=True),
+            sa.Column('after_state', postgresql.JSONB(), nullable=True),
             sa.Column('ip_address', sa.String(45), nullable=True),
             sa.Column('user_agent', sa.Text(), nullable=True),
             sa.Column('request_id', sa.String(100), nullable=True),
             sa.Column('risk_score', sa.Numeric(5, 2), nullable=True),
             sa.Column('aml_flagged', sa.Boolean(), nullable=False, default=False),
             sa.Column('requires_review', sa.Boolean(), nullable=False, default=False),
-            sa.Column('audit_metadata', postgresql.JSONB(), nullable=True, default=dict),
+            sa.Column('audit_metadata', postgresql.JSONB(), nullable=True),
             sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         )
         op.create_index('ix_wallet_audit_transaction_id', 'wallet_audit_logs', ['transaction_id'])
         op.create_index('ix_wallet_audit_actor_id', 'wallet_audit_logs', ['actor_id'])
-        op.create_index('ix_wallet_audit_action', 'wallet_audit_logs', ['action'])
         op.create_index('ix_wallet_audit_created_at', 'wallet_audit_logs', ['created_at'])
-        op.create_index('ix_wallet_audit_ip_address', 'wallet_audit_logs', ['ip_address'])
-        op.create_index('ix_wallet_audit_actor_time', 'wallet_audit_logs', ['actor_id', 'created_at'])
 
-    # ### Create idempotency_keys table ###
     if 'idempotency_keys' not in existing_tables:
         op.create_table(
             'idempotency_keys',
@@ -177,67 +131,6 @@ def upgrade():
         )
         op.create_index('ix_idempotency_key_value', 'idempotency_keys', ['key_value'], unique=True)
         op.create_index('ix_idempotency_expires_at', 'idempotency_keys', ['expires_at'])
-        op.create_index('ix_idempotency_resource', 'idempotency_keys', ['resource_type', 'resource_id'])
-
-    # ### Backfill existing data ###
-    try:
-        op.execute("""
-            INSERT INTO accounts (user_id, currency, is_frozen, created_at)
-            SELECT DISTINCT user_id, home_currency, FALSE, NOW()
-            FROM wallets
-            WHERE user_id IS NOT NULL
-            ON CONFLICT (user_id, currency) DO NOTHING;
-        """)
-    except Exception:
-        pass
-
-    try:
-        op.execute("""
-            INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, currency, created_at)
-            SELECT
-                wt.id as transaction_id,
-                a.id as account_id,
-                CASE
-                    WHEN wt.type = 'deposit' THEN 'CREDIT'::entry_type_enum
-                    WHEN wt.type IN ('withdrawal', 'send') THEN 'DEBIT'::entry_type_enum
-                    WHEN wt.type = 'receive' THEN 'CREDIT'::entry_type_enum
-                    ELSE 'CREDIT'::entry_type_enum
-                END as entry_type,
-                wt.amount,
-                wt.currency,
-                wt.created_at
-            FROM wallet_transactions wt
-            JOIN wallets w ON wt.wallet_id = w.id
-            JOIN accounts a ON w.user_id = a.user_id
-            WHERE w.user_id IS NOT NULL;
-        """)
-    except Exception:
-        pass
-
-    # ### Add constraints to wallets table if not exists ###
-    try:
-        op.create_unique_constraint('uq_wallets_user_id', 'wallets', ['user_id'])
-    except Exception:
-        pass
-
-    try:
-        op.create_check_constraint(
-            'ck_wallets_balance_home_nonnegative',
-            'wallets',
-            'balance_home >= 0'
-        )
-    except Exception:
-        pass
-
-    try:
-        op.create_check_constraint(
-            'ck_wallets_balance_local_nonnegative',
-            'wallets',
-            'balance_local >= 0'
-        )
-    except Exception:
-        pass
-
 
 def downgrade():
     op.drop_table('idempotency_keys')
