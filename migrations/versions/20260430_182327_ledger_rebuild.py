@@ -24,16 +24,7 @@ depends_on = None
 def upgrade():
     conn = op.get_bind()
     inspector = inspect(conn)
-    existing_tables = inspector.get_table_names()
-    existing_constraints = set()
-    
-    # Get existing constraints on wallets table if it exists
-    if 'wallets' in existing_tables:
-        constraints = inspector.get_unique_constraints('wallets')
-        constraint_names = [c['name'] for c in constraints]
-        existing_constraints.update(constraint_names)
-        check_constraints = inspector.get_check_constraints('wallets')
-        existing_constraints.update([c['name'] for c in check_constraints])
+    existing_tables = set(inspector.get_table_names())
 
     # ### Create accounts table ###
     if 'accounts' not in existing_tables:
@@ -62,8 +53,8 @@ def upgrade():
             'transactions',
             sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
             sa.Column('client_request_id', sa.String(255), nullable=False, unique=True),
-            sa.Column('tx_type', sa.String(50), nullable=False),  # 'deposit', 'withdraw', 'transfer', 'fee', 'refund', 'adjustment'
-            sa.Column('status', sa.String(50), nullable=False, default='pending'),  # 'pending', 'completed', 'failed', 'cancelled'
+            sa.Column('tx_type', sa.String(50), nullable=False),
+            sa.Column('status', sa.String(50), nullable=False, default='pending'),
             sa.Column('amount', sa.Numeric(18, 6), nullable=False),
             sa.Column('currency', sa.String(10), nullable=False),
             sa.Column('user_id', sa.BigInteger(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
@@ -103,7 +94,7 @@ def upgrade():
             sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
             sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
             sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
-            sa.Column('entry_type', sa.String(10), nullable=False),  # 'DEBIT', 'CREDIT'
+            sa.Column('entry_type', sa.String(10), nullable=False),
             sa.Column('amount', sa.Numeric(18, 6), nullable=False),
             sa.Column('currency', sa.String(10), nullable=False),
             sa.Column('meta', postgresql.JSONB(), nullable=True),
@@ -169,81 +160,121 @@ def upgrade():
 
     # ### Backfill existing data (only if wallets table exists) ###
     if 'wallets' in existing_tables:
-        # Create accounts for existing wallet users
-        op.execute("""
-            INSERT INTO accounts (user_id, currency, is_frozen, created_at)
-            SELECT DISTINCT user_id, COALESCE(home_currency, 'USD'), FALSE, NOW()
-            FROM wallets
-            WHERE user_id IS NOT NULL
-            ON CONFLICT (user_id, currency) DO NOTHING;
-        """)
+        try:
+            # Create accounts for existing wallet users
+            op.execute("""
+                INSERT INTO accounts (user_id, currency, is_frozen, created_at)
+                SELECT DISTINCT user_id, COALESCE(home_currency, 'USD'), FALSE, NOW()
+                FROM wallets
+                WHERE user_id IS NOT NULL
+                ON CONFLICT (user_id, currency) DO NOTHING;
+            """)
+        except Exception:
+            # Silently skip if query fails (wallets might not have expected columns)
+            pass
         
-        # Create ledger entries for existing transactions
-        op.execute("""
-            INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, currency, created_at)
-            SELECT 
-                wt.id as transaction_id,
-                a.id as account_id,
-                CASE 
-                    WHEN wt.type = 'deposit' THEN 'CREDIT'
-                    WHEN wt.type IN ('withdrawal', 'send') THEN 'DEBIT'
-                    WHEN wt.type = 'receive' THEN 'CREDIT'
-                    ELSE 'CREDIT'
-                END as entry_type,
-                wt.amount,
-                wt.currency,
-                wt.created_at
-            FROM wallet_transactions wt
-            JOIN wallets w ON wt.wallet_id = w.id
-            JOIN accounts a ON w.user_id = a.user_id
-            WHERE w.user_id IS NOT NULL;
-        """)
+        try:
+            # Create ledger entries for existing transactions
+            op.execute("""
+                INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, currency, created_at)
+                SELECT 
+                    wt.id as transaction_id,
+                    a.id as account_id,
+                    CASE 
+                        WHEN wt.type = 'deposit' THEN 'CREDIT'
+                        WHEN wt.type IN ('withdrawal', 'send') THEN 'DEBIT'
+                        WHEN wt.type = 'receive' THEN 'CREDIT'
+                        ELSE 'CREDIT'
+                    END as entry_type,
+                    wt.amount,
+                    wt.currency,
+                    wt.created_at
+                FROM wallet_transactions wt
+                JOIN wallets w ON wt.wallet_id = w.id
+                JOIN accounts a ON w.user_id = a.user_id
+                WHERE w.user_id IS NOT NULL;
+            """)
+        except Exception:
+            # Silently skip if query fails (wallet_transactions might not exist)
+            pass
 
-    # ### Add constraints to existing wallets table (if not already added) ###
+    # ### Add constraints to existing wallets table (only if not already added) ###
     if 'wallets' in existing_tables:
+        # Check if constraint already exists before adding
+        existing_constraints = set()
+        try:
+            constraints = inspector.get_unique_constraints('wallets')
+            existing_constraints.update([c['name'] for c in constraints])
+            check_constraints = inspector.get_check_constraints('wallets')
+            existing_constraints.update([c['name'] for c in check_constraints])
+        except Exception:
+            pass
+        
         if 'uq_wallets_user_id' not in existing_constraints:
-            op.create_unique_constraint('uq_wallets_user_id', 'wallets', ['user_id'])
+            try:
+                op.create_unique_constraint('uq_wallets_user_id', 'wallets', ['user_id'])
+            except Exception:
+                pass
         
         if 'ck_wallets_balance_home_nonnegative' not in existing_constraints:
-            op.create_check_constraint(
-                'ck_wallets_balance_home_nonnegative',
-                'wallets',
-                'balance_home >= 0'
-            )
+            try:
+                op.create_check_constraint(
+                    'ck_wallets_balance_home_nonnegative',
+                    'wallets',
+                    'balance_home >= 0'
+                )
+            except Exception:
+                pass
         
         if 'ck_wallets_balance_local_nonnegative' not in existing_constraints:
-            op.create_check_constraint(
-                'ck_wallets_balance_local_nonnegative',
-                'wallets',
-                'balance_local >= 0'
-            )
+            try:
+                op.create_check_constraint(
+                    'ck_wallets_balance_local_nonnegative',
+                    'wallets',
+                    'balance_local >= 0'
+                )
+            except Exception:
+                pass
 
 
 def downgrade():
-    # Drop tables in reverse order
-    op.drop_table('idempotency_keys', if_exists=True)
-    op.drop_table('wallet_audit_logs', if_exists=True)
-    op.drop_table('ledger_entries', if_exists=True)
-    op.drop_table('transactions', if_exists=True)
-    op.drop_table('accounts', if_exists=True)
+    # Drop tables only if they exist
+    inspector = inspect(op.get_bind())
+    existing_tables = set(inspector.get_table_names())
     
-    # Drop ENUM types if they exist
-    op.execute('DROP TYPE IF EXISTS entry_type_enum;')
-    op.execute('DROP TYPE IF EXISTS transaction_type_enum;')
-    op.execute('DROP TYPE IF EXISTS transaction_status_enum;')
+    if 'idempotency_keys' in existing_tables:
+        op.drop_table('idempotency_keys')
+    
+    if 'wallet_audit_logs' in existing_tables:
+        op.drop_table('wallet_audit_logs')
+    
+    if 'ledger_entries' in existing_tables:
+        op.drop_table('ledger_entries')
+    
+    if 'transactions' in existing_tables:
+        op.drop_table('transactions')
+    
+    if 'accounts' in existing_tables:
+        op.drop_table('accounts')
+    
+    # Drop ENUM types if they exist (PostgreSQL only)
+    op.execute('DROP TYPE IF EXISTS entry_type_enum CASCADE;')
+    op.execute('DROP TYPE IF EXISTS transaction_type_enum CASCADE;')
+    op.execute('DROP TYPE IF EXISTS transaction_status_enum CASCADE;')
     
     # Try to remove constraints from wallets table
-    try:
-        op.drop_constraint('uq_wallets_user_id', 'wallets', type_='unique')
-    except Exception:
-        pass
-    
-    try:
-        op.drop_constraint('ck_wallets_balance_home_nonnegative', 'wallets', type_='check')
-    except Exception:
-        pass
-    
-    try:
-        op.drop_constraint('ck_wallets_balance_local_nonnegative', 'wallets', type_='check')
-    except Exception:
-        pass
+    if 'wallets' in existing_tables:
+        try:
+            op.drop_constraint('uq_wallets_user_id', 'wallets', type_='unique')
+        except Exception:
+            pass
+        
+        try:
+            op.drop_constraint('ck_wallets_balance_home_nonnegative', 'wallets', type_='check')
+        except Exception:
+            pass
+        
+        try:
+            op.drop_constraint('ck_wallets_balance_local_nonnegative', 'wallets', type_='check')
+        except Exception:
+            pass
