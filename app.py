@@ -1,26 +1,58 @@
-# app.py
-import time#Jus to determine howlong the app takes to start / Enable reloader to know the  difference in the time takes to start
+import os
+import time
+
 print("App starting at:", time.time())
 
 from app import create_app
 from app.config import Config
 
+# =========================
+# Create app
+# =========================
 app = create_app()
 
-# Make sure the app's config has our custom settings
+# Inject config into templates
 app.config['REQUIRE_EMAIL_VERIFICATION'] = Config.REQUIRE_EMAIL_VERIFICATION
 
-# Context processor to make config available in templates
+
 @app.context_processor
 def inject_config():
     return dict(config=app.config)
 
+
+# =========================
+# ENVIRONMENT SETUP
+# =========================
+ENV = os.getenv("FLASK_ENV", "development").lower()
+DEBUG = os.getenv("FLASK_DEBUG", "true").lower() in ("true", "1", "yes")
+PORT = int(os.getenv("PORT", 5000))
+
+IS_PRODUCTION = ENV == "production"
+
+# Force safety rules in production
+if IS_PRODUCTION:
+    DEBUG = False
+
+
+# =========================
+# MAIN RUN
+# =========================
 if __name__ == "__main__":
-    import os
-    # SECURITY: Never run with debug=True in production
-    # Set FLASK_DEBUG=true only in development environment
-    debug_mode = os.getenv('FLASK_DEBUG', 'true').lower() in ('true', '1', 'yes')
-    if debug_mode and os.getenv('FLASK_ENV', 'production') == 'production':
-        print("WARNING: FLASK_DEBUG is enabled but FLASK_ENV is production. Disabling debug mode for safety.")
-        debug_mode = False
-    app.run(debug=debug_mode, use_reloader=False)
+
+    HOST = "127.0.0.1"
+
+    # Allow external access only in production
+    if IS_PRODUCTION:
+        HOST = "0.0.0.0"
+
+    print(f"Running in {ENV} mode")
+    print(f"Debug: {DEBUG}")
+    print(f"Host: {HOST}")
+    print(f"Port: {PORT}")
+
+    app.run(
+        host=HOST,
+        port=PORT,
+        debug=DEBUG,
+        use_reloader=(not IS_PRODUCTION)
+    )
