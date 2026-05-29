@@ -5,6 +5,13 @@ from app.services.module_toggle_service import ModuleToggleService
 
 health_bp = Blueprint('health', __name__, url_prefix='/api/health')
 
+
+@health_bp.route('/ping', methods=['GET'])
+def ping():
+    """Public health check — no auth required. Used by Docker and Nginx."""
+    return jsonify({'status': 'ok'}), 200
+
+
 @health_bp.route('/modules', methods=['GET'])
 @login_required
 def module_health():

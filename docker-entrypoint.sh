@@ -1,21 +1,14 @@
-﻿#!/bin/bash
-# =============================================================================
-# AFCON360 - Docker Entrypoint
-# Waits for PostgreSQL + Redis, runs migrations, starts correct process
-# =============================================================================
+#!/bin/bash
 set -e
 
-echo "🚀 AFCON360 container starting (role: ${CONTAINER_ROLE:-web})..."
+echo "🚀 AFCON360 container starting (role: ${CONTAINER_ROLE:-web})"
 
 # ---------------------------------------------------------------------------
 # Wait for PostgreSQL
+# DB_USER defaults to 'israeli' to match base .env — prevents empty-user loop
 # ---------------------------------------------------------------------------
-DB_HOST_WAIT="${DB_HOST:-db}"
-DB_PORT_WAIT="${DB_PORT:-5432}"
-echo "⏳ Waiting for PostgreSQL at ${DB_HOST_WAIT}:${DB_PORT_WAIT}..."
-
-until PGPASSWORD=${DB_PASS} pg_isready -h "${DB_HOST_WAIT}" -p "${DB_PORT_WAIT}" -U "${DB_USER}" 2>/dev/null; do
-    echo "   PostgreSQL not ready — retrying in 2s..."
+until PGPASSWORD="${DB_PASS}" pg_isready -h "${DB_HOST:-db}" -U "${DB_USER:-israeli}" -d "${DB_NAME:-afcon360_prod}"; do
+    echo "   Waiting for PostgreSQL at ${DB_HOST:-db}..."
     sleep 2
 done
 echo "✅ PostgreSQL ready"
@@ -23,61 +16,69 @@ echo "✅ PostgreSQL ready"
 # ---------------------------------------------------------------------------
 # Wait for Redis
 # ---------------------------------------------------------------------------
-REDIS_HOST_WAIT="${REDIS_HOST:-redis}"
-REDIS_PORT_WAIT="${REDIS_PORT:-6379}"
-echo "⏳ Waiting for Redis at ${REDIS_HOST_WAIT}:${REDIS_PORT_WAIT}..."
-
-until nc -z "${REDIS_HOST_WAIT}" "${REDIS_PORT_WAIT}" 2>/dev/null; do
-    echo "   Redis not ready — retrying in 2s..."
+until nc -z "${REDIS_HOST:-redis}" "${REDIS_PORT:-6379}"; do
+    echo "   Waiting for Redis at ${REDIS_HOST:-redis}:${REDIS_PORT:-6379}..."
     sleep 2
 done
 echo "✅ Redis ready"
 
 # ---------------------------------------------------------------------------
-# Migrations + seed (only on web container)
+# Startup env validation — fail fast before boot if critical vars are missing
 # ---------------------------------------------------------------------------
-if [ "${CONTAINER_ROLE}" = "web" ] || [ "$1" = "gunicorn" ]; then
+REQUIRED_VARS="DATABASE_URL REDIS_URL SECRET_KEY SECURITY_SALT"
+MISSING=""
+for var in $REQUIRED_VARS; do
+    if [ -z "${!var}" ]; then
+        MISSING="$MISSING $var"
+    fi
+done
+if [ -n "$MISSING" ]; then
+    echo "❌ FATAL: Missing required environment variables:$MISSING"
+    echo "   Check your .env.docker or .env.prod file and retry."
+    exit 1
+fi
+echo "✅ Environment validation passed"
+
+# ---------------------------------------------------------------------------
+# Run migrations ONLY on the web container — never on celery/beat
+# ---------------------------------------------------------------------------
+if [ "${CONTAINER_ROLE}" = "web" ]; then
     echo "🔄 Running database migrations..."
-    flask db upgrade || echo "⚠️  Migrations failed (may already be up to date)"
+    flask db upgrade
+    echo "✅ Migrations complete"
 
     echo "🌱 Seeding roles and permissions..."
-    flask seed-roles 2>/dev/null || echo "ℹ️  Seed skipped (already seeded or no changes)"
+    flask seed-roles 2>/dev/null || echo "ℹ️  Seed skipped (already seeded or not available)"
+else
+    echo "⏭️  Skipping migrations (role: ${CONTAINER_ROLE})"
 fi
 
 # ---------------------------------------------------------------------------
-# Start the correct process based on command
+# Start the correct process based on CONTAINER_ROLE
 # ---------------------------------------------------------------------------
 case "$1" in
     gunicorn)
-        echo "🌐 Starting Gunicorn with ${GUNICORN_WORKERS:-2} workers..."
+        echo "🌐 Starting Gunicorn (workers: ${GUNICORN_WORKERS:-2})..."
         exec gunicorn \
+            --reload \
             --bind 0.0.0.0:5000 \
             --workers "${GUNICORN_WORKERS:-2}" \
             --threads "${GUNICORN_THREADS:-2}" \
             --timeout "${GUNICORN_TIMEOUT:-120}" \
-            --keepalive 5 \
-            --max-requests 1000 \
-            --max-requests-jitter 100 \
             --access-logfile - \
             --error-logfile - \
             "app:create_app()"
         ;;
-
     celery)
-        echo "⚙️  Starting Celery worker with concurrency ${CELERY_CONCURRENCY:-2}..."
+        echo "⚙️  Starting Celery worker (concurrency: ${CELERY_CONCURRENCY:-2})..."
         exec celery -A app.celery_app worker \
-            --loglevel="${LOG_LEVEL:-warning}" \
-            --concurrency="${CELERY_CONCURRENCY:-2}" \
-            --max-tasks-per-child=100
+            --loglevel=info \
+            --concurrency="${CELERY_CONCURRENCY:-2}"
         ;;
-
     celery-beat)
         echo "🕐 Starting Celery Beat..."
-        exec celery -A app.celery_app beat \
-            --loglevel="${LOG_LEVEL:-warning}" \
-            --schedule=/tmp/celerybeat-schedule
+        exec celery -A app.celery_app beat --loglevel=info
         ;;
-
     *)
         exec "$@"
         ;;

@@ -44,8 +44,20 @@ def get_encryption_key():
     # Convert to 32-byte key for Fernet
     return base64.urlsafe_b64encode(hashlib.sha256(key_env.encode()).digest())
 
-# Global encryption instance
-_fernet = Fernet(get_encryption_key())
+# Global encryption instance — lazily initialised on first use.
+# NOT instantiated at module level because this file is imported before
+# create_app() runs, which means before .env.local/.env.docker/.env.prod
+# has been loaded. Calling get_encryption_key() here would crash with
+# "ENCRYPTION_KEY not set" even when the key exists in .env.local.
+_fernet = None
+
+
+def _get_fernet() -> Fernet:
+    """Return the Fernet instance, initialising it on first call."""
+    global _fernet
+    if _fernet is None:
+        _fernet = Fernet(get_encryption_key())
+    return _fernet
 
 def encrypt_field(data: str) -> str:
     """
@@ -60,7 +72,7 @@ def encrypt_field(data: str) -> str:
     if not data:
         return ""
     try:
-        encrypted = _fernet.encrypt(data.encode())
+        encrypted = _get_fernet().encrypt(data.encode())
         return encrypted.decode('utf-8')
     except Exception as e:
         # Log error and return original data
@@ -80,7 +92,7 @@ def decrypt_field(encrypted_data: str) -> str:
     if not encrypted_data:
         return ""
     try:
-        decrypted = _fernet.decrypt(encrypted_data.encode())
+        decrypted = _get_fernet().decrypt(encrypted_data.encode())
         return decrypted.decode('utf-8')
     except Exception as e:
         # Log error and return original data

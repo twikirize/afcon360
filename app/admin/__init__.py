@@ -29,7 +29,9 @@ from app.admin import routes
 # 1. Owner dashboard (highest privilege)
 try:
     from app.admin.owner import owner_bp
+    from app.admin.owner.csp_routes import csp_bp
     admin_bp.register_blueprint(owner_bp)
+    admin_bp.register_blueprint(csp_bp)
     logger.info("✅ Registered owner blueprint")
 except ImportError as e:
     logger.error(f"❌ Owner module import failed: {e}")
@@ -107,4 +109,4 @@ from app.admin import models  # noqa: F401, E402
 # EXPORT BLUEPRINT
 # ============================================
 __all__ = ["admin_bp"]
-
+
