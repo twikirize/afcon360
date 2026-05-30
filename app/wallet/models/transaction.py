@@ -49,11 +49,13 @@ class TransactionModel(BaseModel):
             name='ck_transaction_status_valid'
         ),
         CheckConstraint('amount > 0', name='ck_transaction_amount_positive'),
-        Index('ix_transactions_client_request_id', 'client_request_id', unique=True),
+        # NOTE: ix_transactions_client_request_id, ix_transactions_user_id
+        # are NOT defined here — they are already created by index=True on
+        # the column definitions above. Defining them twice causes
+        # DuplicateTable errors in PostgreSQL.
         Index('ix_transactions_status', 'status'),
         Index('ix_transactions_type', 'tx_type'),
         Index('ix_transactions_created_at', 'created_at'),
-        Index('ix_transactions_user_id', 'user_id'),
     )
 
     id = Column(

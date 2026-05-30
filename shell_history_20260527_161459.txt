@@ -1,0 +1,1654 @@
+docker compose down -v
+git pull origin main
+docker compose up -d --build
+docker compose logs -f web
+cd ~/afcon360  
+clear
+docker compose down -v
+git pull origin main
+docker compose up -d --build
+docker compose logs -f web
+docker compose logs web 2>&1 | grep -A 5 "ERROR\|error\|failed" | head -60
+clear
+docker compose exec db psql -U postgres -d afcon360 -c "SELECT * FROM alembic_version;"
+docker compose logs web 2>&1 | grep -B 20 "InFailedSqlTransaction" | head -80
+clear
+docker compose logs web 2>&1 | grep -A 2 "ledger_rebuild" | head -20
+# First find your DB user
+grep -E "POSTGRES_USER|POSTGRES_DB|DATABASE_URL" .env
+# Then check existing tables (replace USER and DBNAME with your values)
+docker compose exec db psql -U YOUR_USER -d YOUR_DBNAME -c "
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public' 
+AND table_name IN ('accounts','transactions','ledger_entries','wallet_audit_logs','idempotency_keys','wallets')
+ORDER BY table_name;
+"
+docker compose exec db psql -U YOUR_USER -d YOUR_DBNAME -c "SELECT * FROM alembic_version;"
+# Check which tables already exist
+docker compose exec db psql -U israeli -d afcon360_prod -c "
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public' 
+AND table_name IN ('accounts','transactions','ledger_entries','wallet_audit_logs','idempotency_keys','wallets')
+ORDER BY table_name;
+"
+# Check current alembic state
+docker compose exec db psql -U israeli -d afcon360_prod -c "SELECT * FROM alembic_version;"
+docker compose exec web flask db upgrade 2>&1
+clear
+rm -rf migrations/versions/*
+docker compose run --rm web flask db migrate -m "initial_fresh"
+# 1. Wipe volumes (DB data gone)
+docker compose down -v
+# 2. Delete ALL migration files including __pycache__
+rm -rf migrations/versions/*
+find migrations -name "*.pyc" -delete
+find migrations -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+# 3. Rebuild image (forces fresh copy, no cache)
+docker compose build --no-cache web
+# 4. Generate ONE fresh migration from your current models
+docker compose run --rm web flask db migrate -m "initial_fresh"
+# 5. Start everything
+docker compose up -d
+# 6. Watch logs
+docker compose logs -f web
+docker compose exec db psql -U israeli -d afcon360_prod -c "SELECT * FROM alembic_version;"
+cat docker-entrypoint.sh
+clear
+cat docker-compose.yml | grep -A 10 "web:"
+docker compose run --rm web flask db upgrade
+docker compose exec db psql -U israeli -d afcon360_prod -c "SELECT * FROM alembic_version;"
+clear
+cat docker-compose.yml
+docker compose run --rm web ls migrations/versions/
+grep -A 20 "volumes:" docker-compose.yml
+clear
+# Verify the migration file exists locally
+ls -la migrations/versions/
+# Check what alembic sees as current heads
+docker compose run --rm web flask db heads 2>&1 | tail -5
+# Run upgrade with verbose output
+docker compose run --rm web flask db upgrade --sql 2>&1 | head -30
+ls -la migrations/versions/
+clear
+# Generate the migration file directly on the host
+docker compose run --rm -v $(pwd)/migrations:/app/migrations web flask db migrate -m "initial_fresh"
+# Verify it was created
+ls -la migrations/versions/
+clear
+# Fix permissions on the migrations folder
+sudo chown -R ubuntu:docker migrations/
+chmod -R 775 migrations/
+# Now generate with the volume mount
+docker compose run --rm -v $(pwd)/migrations:/app/migrations web flask db migrate -m "initial_fresh"
+# Verify file was created on disk
+ls -la migrations/versions/
+clear
+# Generate inside container without volume mount
+docker compose run --rm web flask db migrate -m "initial_fresh"
+# Get the container ID of the last run
+CONTAINER_ID=$(docker ps -a --filter "name=web-run" --format "{{.ID}}" | head -1)
+# Copy the file out
+docker cp $CONTAINER_ID:/app/migrations/versions/. ./migrations/versions/
+# Check
+ls -la migrations/versions/
+c,ear
+clear
+chmod 777 migrations/versions/
+docker compose run --rm -v $(pwd)/migrations:/app/migrations web flask db migrate -m "initial_fresh"
+ls -la migrations/versions/
+curl -s ifconfig.me
+scp "C:\Users\ADMIN\Downloads\docker-compose.yml" ubuntu@79.76.104.169:~/afcon360/docker-compose.yml
+docker compose up -d --build
+docker compose logs -f web
+cat Dockerfile
+grep -i gunicorn requirements.txt
+# Add gunicorn to requirements.txt
+echo "gunicorn" >> requirements.txt
+# Verify it's there
+grep -i gunicorn requirements.txt
+clear
+docker compose run --rm web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('✅ All tables created!')
+"
+# Step 1 - Delete the broken migration file
+rm migrations/versions/bd974ca68a1d_initial_fresh.py
+# Step 2 - Create all tables directly via db.create_all()
+docker compose run --rm -e SKIP_MIGRATIONS=true web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('✅ All tables created!')
+"
+clear
+# 1. Comment out migrations in entrypoint
+sed -i 's/flask db upgrade || echo/echo "skipping" || echo/' docker-entrypoint.sh
+# 2. Rebuild image (bakes in deleted migration file + gunicorn)
+docker compose build --no-cache web
+# 3. Create all tables directly
+docker compose run --rm web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all(checkfirst=True)
+    print('✅ All tables created!')
+"
+# 4. Stamp alembic as up to date (no migration files = no history needed)
+docker compose run --rm web flask db stamp head
+# 5. Restore the migration line in entrypoint
+sed -i 's/echo "skipping" || echo/flask db upgrade || echo/' docker-entrypoint.sh
+# 6. Start everything
+docker compose up -d
+docker compose logs -f web
+clear
+sed -i 's/--keepalive/--keep-alive/' docker-entrypoint.sh
+# Verify the fix
+grep "keep-alive" docker-entrypoint.sh
+# Create all tables
+docker compose run --rm web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('✅ All tables created!')
+"
+# Stamp alembic
+docker compose run --rm web flask db stamp head
+# Restart
+docker compose up -d
+docker compose logs -f web
+# Verify the file is correct first
+grep "keep" docker-entrypoint.sh
+# Rebuild the image with the fix baked in
+docker compose build web
+# Restart
+docker compose up -d
+docker compose logs -f web
+docker compose exec web flask routes 2>/dev/null | grep -i health
+sed -i 's|http://localhost:5000/health|http://localhost:5000/api/health/modules|' docker-compose.yml
+# Verify
+grep "health" docker-compose.yml | grep curl
+docker compose up -d
+docker compose logs -f web
+docker compose ps
+docker compose logs nginx | tail -20
+# Remove the BOM from nginx.conf
+sed -i 's/^\xef\xbb\xbf//' docker/nginx/nginx.conf
+# Verify line 6 looks clean
+head -10 docker/nginx/nginx.conf
+# Restart nginx
+docker compose restart nginx
+docker compose logs nginx | tail -10
+cat > docker/nginx/nginx.conf << 'NGINXEOF'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+    include /etc/nginx/conf.d/*.conf;
+}
+NGINXEOF
+
+# Verify it looks correct
+cat docker/nginx/nginx.conf
+# Restart nginx
+docker compose restart nginx
+docker compose logs nginx | tail -5
+docker compose restart nginx
+docker compose logs nginx | tail -10
+# Remove BOM from default.conf
+sed -i '1s/^\xef\xbb\xbf//' docker/nginx/afcon360.conf
+# Verify first line looks clean
+head -3 docker/nginx/afcon360.conf
+# Restart nginx
+docker compose restart nginx
+docker compose logs nginx | tail -5
+docker compose ps nginx
+# Test locally first
+curl -s -o /dev/null -w "%{http_code}" http://localhost
+# See what's in the static folder
+ls -la static/
+# Check nginx config for static file serving
+cat docker/nginx/afcon360.conf
+CLEAR
+clear
+docker compose exec nginx ls /app/static/
+[200~curl -s http://localhost | grep -i "stylesheet\|\.css\|\.js" | head -10~
+curl -s http://localhost | grep -i "stylesheet\|\.css\|\.js" | head -10
+curl -s -o /dev/null -w "%{http_code}" http://localhost/static/css/global/style.css
+# Check what's set
+grep -i "https\|secure\|scheme\|ssl\|force" .env
+# Add these to .env
+echo "PREFERRED_URL_SCHEME=http" >> .env
+echo "SESSION_COOKIE_SECURE=false" >> .env
+sed -i 's/SESSION_COOKIE_SECURE: "true"/SESSION_COOKIE_SECURE: "false"/' docker-compose.yml
+docker compose up -d
+# Fix SESSION_COOKIE_SECURE in docker-compose.yml
+sed -i 's/SESSION_COOKIE_SECURE: "true"/SESSION_COOKIE_SECURE: "false"/' docker-compose.yml
+# Also add to .env
+echo "PREFERRED_URL_SCHEME=http" >> .env
+# Restart
+docker compose up -d
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ubuntu
+newgrp docker
+clear
+docker --version
+docker compose version
+cd ~
+git clone https://github.com/twikirize/afcon360.git afcon360
+cd afcon360
+ls
+cat > .dockerignore << 'EOF'
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+flask_session/
+*.log
+.env
+.git/
+node_modules/
+*.md
+model_backups/
+pushups/
+docs/
+tests/
+templates_backup/
+reports/
+*.sqlite
+.pytest_cache/
+EOF
+
+cat > .env << 'EOF'
+EOF
+
+ssh -i "C:\Users\ADMIN\Downloads\ssh-key-2026-05-23.key" ubuntu@92.5.127.205
+cat ~/afcon360/.env
+cat > .env << 'EOF'
+# =========================
+# PostgreSQL Database Configuration
+# =========================
+DB_HOST=db
+DB_PORT=5432
+DB_NAME=afcon360_prod
+DB_USER=israeli
+DB_PASS=Israelipass
+APP_DB_USER=afcon_app_user
+APP_DB_PASS=Israelipass
+DATABASE_URL=postgresql://israeli:Israelipass@db:5432/afcon360_prod
+
+# =========================
+# Redis
+# =========================
+REDIS_PASSWORD=Muhereza@1993
+REDIS_URL=redis://:Muhereza%401993@redis:6379/0
+
+# =========================
+# Celery
+# =========================
+CELERY_BROKER_URL=redis://:Muhereza%401993@redis:6379/0
+CELERY_RESULT_BACKEND=redis://:Muhereza%401993@redis:6379/1
+CELERY_CONCURRENCY=2
+
+# =========================
+# Auth secrets
+# =========================
+SECRET_KEY=ajT3Udt0ig7Zn1AaEIqPOzbxspfzehnoIFzrt7XR2JpRjMXXFwhv28t6i7iryWWtIlrgTUphHqVJ_e1TLt_aIw
+SECURITY_SALT=xWUJ7bXWs_rvRmOYJAWacHYisGA8XKgYGsp7MegWI16RbtU1wqekLmGDqCMScMB6i4YmOSS5QCgJ2E50QqkUUw
+ENCRYPTION_KEY=hMT_N5BjMr0jq3SQsLK03nTKXSnLbPcEJ8Kkbp4hTzw
+QR_SECRET_KEY=AQZl01FAYA0tyl9mZxXNnmWJJxdsSEwJitbnDPCz6_o
+MFA_ENCRYPTION_KEY=mfa-afcon360-secure-key-prod-2026!
+
+# =========================
+# Application
+# =========================
+FLASK_ENV=production
+LOG_LEVEL=WARNING
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_SAMESITE=Strict
+SESSION_TIMEOUT_MINUTES=30
+REQUIRE_OWNER_MFA=true
+
+# =========================
+# Rate limiting
+# =========================
+RATELIMIT_DEFAULT=2000 per day;1000 per hour
+
+# =========================
+# Modules
+# =========================
+ENABLE_WALLET=true
+ENABLE_TOURISM=false
+ENABLE_TRANSPORT=true
+ENABLE_ACCOMMODATION=true
+ENABLE_TOURNAMENT=true
+ENABLE_AGENTS=false
+ENABLE_ADMIN=true
+
+# =========================
+# Wallet
+# =========================
+WALLET_DEPOSIT_ENABLED=true
+WALLET_WITHDRAW_ENABLED=true
+WALLET_PEER_SEND_ENABLED=true
+WALLET_REFUND_ENABLED=true
+WALLET_MULTI_CURRENCY_ENABLED=true
+WALLET_CONVERT_ENABLED=true
+WALLET_AUDIT_ENABLED=true
+WALLET_DAILY_LIMIT_HOME=10000
+WALLET_DAILY_LIMIT_LOCAL=50000000
+WALLET_MAX_DEPOSIT=10000
+WALLET_MAX_WITHDRAWAL=5000
+WALLET_MAX_TRANSFER=2000
+WALLET_WITHDRAW_DAILY_LIMIT=1000
+WALLET_WITHDRAW_REQUIRE_VERIFICATION=true
+WALLET_ENABLED=true
+MAX_TRANSACTION_AMOUNT=10000000
+DAILY_TRANSACTION_LIMIT=50000000
+
+# =========================
+# Currency
+# =========================
+SUPPORTED_CURRENCIES=USD,UGX,KES,TZS,NGN,EUR,CFA
+HOME_CURRENCY_DEFAULT=USD
+LOCAL_CURRENCY_DEFAULT=UGX
+FX_CACHE_TTL_SECONDS=300
+CONVERSION_FEE_PCT=0.02
+IDEMPOTENCY_ENABLED=true
+IDEMPOTENCY_REQUIRE_CLIENT_ID=true
+IDEMPOTENCY_TTL_SECONDS=86400
+
+# =========================
+# Compliance
+# =========================
+AML_ENABLED=true
+KYC_REQUIRED=true
+TRAVEL_RULE_ENABLED=true
+COMPLIANCE_EMAIL=compliance@afcon360.com
+AUDIT_ENABLED=true
+AUDIT_RETENTION_DAYS=3650
+AUDIT_ARCHIVE_DAYS=365
+METRICS_ENABLED=true
+
+# =========================
+# Email
+# =========================
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USE_TLS=true
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+MAIL_DEFAULT_SENDER=AFCON360 <noreply@afcon360.com>
+
+# =========================
+# SMS
+# =========================
+SMS_PROVIDER=twilio
+TWILIO_ACCOUNT_SID=your-twilio-sid
+TWILIO_AUTH_TOKEN=your-twilio-token
+TWILIO_PHONE_NUMBER=+1234567890
+
+# =========================
+# Payments
+# =========================
+FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret-key
+FLUTTERWAVE_PUBLIC_KEY=your-flutterwave-public-key
+PAYSTACK_SECRET_KEY=your-paystack-secret-key
+PAYSTACK_PUBLIC_KEY=your-paystack-public-key
+
+# =========================
+# Backup
+# =========================
+BACKUP_DIR=/var/backups/afcon360
+S3_BUCKET=your-backup-bucket-name
+AWS_ACCESS_KEY_ID=your-aws-access-key
+AWS_SECRET_ACCESS_KEY=your-aws-secret-key
+
+# =========================
+# DeepSeek
+# =========================
+DEEPSEEK_API_KEY=sk-e9d8491b0a3a4a3fbe08352da9e05894
+EOF
+
+grep -E "DB_HOST|DATABASE_URL|REDIS_URL|CELERY_BROKER|FLASK_ENV|MFA_ENCRYPTION" ~/afcon360/.env
+echo "FX_PROVIDER=" >> ~/afcon360/.env
+head -5 .env
+grep -E "DB_HOST|REDIS_URL|FLASK_ENV" .env
+grep -E "DB_HOST|DATABASE_URL|REDIS_URL|CELERY_BROKER|FLASK_ENV|MFA_ENCRYPTION" ~/afcon360/.env
+clear
+[200~cat > .dockerignore << 'EOF'
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+flask_session/
+*.log
+.env
+.git/
+node_modules/
+*.md
+model_backups/
+pushups/
+docs/
+tests/
+templates_backup/
+reports/
+*.sqlite
+.pytest_cache/
+EOF~
+sed -i '/^version:/d' docker-compose.yml
+
+
+
+
+[200~cat > .dockerignore << 'EOF'
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+flask_session/
+*.log
+.env
+.git/
+node_modules/
+model_backups/
+pushups/
+docs/
+tests/
+templates_backup/
+reports/
+*.sqlite
+.pytest_cache/
+
+clear
+cat > .dockerignore << 'EOF'venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+flask_session/
+*.log
+.env
+.git/
+node_modules/
+model_backups/
+pushups/
+docs/
+tests/
+templates_backup/
+reports/
+*.sqlite
+.pytest_cache/
+EOF
+
+sed -i '/^version:/d' docker-compose.yml
+
+clear
+cat > .dockerignore << 'EOF'
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+flask_session/
+*.log
+.env
+.git/
+node_modules/
+model_backups/
+pushups/
+docs/
+tests/
+templates_backup/
+reports/
+*.sqlite
+.pytest_cache/
+EOF
+
+sed -i '/^version:/d' docker-compose.yml
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=20 web
+sed -i 's/\r//' docker-entrypoint.sh
+head -1 docker-entrypoint.sh | cat -A
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=10 web
+# Remove BOM from entrypoint
+sed -i '1s/^\xEF\xBB\xBF//' docker-entrypoint.sh
+# Verify it's clean
+head -1 docker-entrypoint.sh | cat -A
+docker compose down
+docker compose up -d --build
+docker compose logs --tail=10 web
+docker compose logs -f web
+docker compose exec web flask db stamp 20260430_182327
+docker compose exec web flask db current
+docker compose exec web flask db upgrade
+docker compose restart web
+docker compose logs --tail=20 web
+clear
+docker compose exec web flask db stamp head
+docker compose restart web
+docker compose logs --tail=15 web
+docker compose exec web flask db history --verbose 2>/dev/null | tail -20
+docker compose exec web flask db current
+ls ~/afcon360/migrations/versions/ | sort
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt" 2>/dev/null | grep ledger
+# Stop everything and wipe the database volume
+docker compose down -v
+# Now fix the broken migration file
+cat ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py | head -20
+grep -n "def upgrade" ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+sed -n '50,150p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+docker compose up -d
+docker compose logs -f web
+# Find which line creates ledger_entries in the ledger_rebuild migration
+grep -n "ledger_entries" ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+sed -n '130,155p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+sed -n '1,5p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+sed -n '1,25p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+python3 << 'PYEOF'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+
+with open(filepath, 'r') as f:
+    content = f.read()
+
+old = "    # ### Create ledger_entries table ###\n    op.create_table(\n        'ledger_entries',"
+
+new = """    # ### Create ledger_entries table ###
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'ledger_entries' not in inspector.get_table_names():
+        op.create_table(
+        'ledger_entries',"""
+
+if old in content:
+    content = content.replace(old, new)
+    with open(filepath, 'w') as f:
+        f.write(content)
+    print("✅ Fixed successfully")
+else:
+    print("❌ Pattern not found")
+PYEOF
+
+sed -n '130,145p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+sed -n '145,165p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+clear
+python3 << 'PYEOF'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+
+with open(filepath, 'r') as f:
+    content = f.read()
+
+old = """    # ### Create ledger_entries table ###
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'ledger_entries' not in inspector.get_table_names():
+        op.create_table(
+        'ledger_entries',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+        sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),
+        sa.Column('amount', sa.Numeric(18, 6), nullable=False),
+        sa.Column('currency', sa.String(10), nullable=False),
+        sa.Column('meta', postgresql.JSONB(), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
+    op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])
+    op.create_index('ix_ledger_transaction_id', 'ledge
+
+
+clear
+python3 << 'PYEOF'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+
+with open(filepath, 'r') as f:
+    content = f.read()
+
+old = """    # ### Create ledger_entries table ###
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'ledger_entries' not in inspector.get_table_names():
+        op.create_table(
+        'ledger_entries',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+        sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),
+        sa.Column('amount', sa.Numeric(18, 6), nullable=False),
+        sa.Column('currency', sa.String(10), nullable=False),
+        sa.Column('meta', postgresql.JSONB(), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
+    op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])
+    op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])
+    op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])
+    op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])
+    op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])
+    # Check constraints
+    op.create_check_constraint(
+        'ck_ledger_amount_positive',
+        'ledger_entries',
+        'amount > 0'
+    )"""
+
+new = """    # ### Create ledger_entries table ###
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'ledger_entries' not in inspector.get_table_names():
+        op.create_table(
+            'ledger_entries',
+            sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+            sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),
+            sa.Column('amount', sa.Numeric(18, 6), nullable=False),
+            sa.Column('currency', sa.String(10), nullable=False),
+            sa.Column('meta', postgresql.JSONB(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        )
+        op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])
+        op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])
+        op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])
+        op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])
+        op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])
+        op.create_check_constraint(
+            'ck_ledger_amount_positive',
+            'ledger_entries',
+            'amount > 0'
+        )"""
+
+if old in content:
+    content = content.replace(old, new)
+    with open(filepath, 'w') as f:
+        f.write(content)
+    print("✅ Fixed successfully")
+else:
+    print("❌ Pattern not found")
+PYEOF
+
+clear
+sed -n '131,158p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+python3 << 'PYEOF'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+
+with open(filepath, 'r') as f:
+    lines = f.readlines()
+
+# Replace lines 131-157 (0-indexed: 130-156) with fixed version
+new_block = """    # ### Create ledger_entries table ###
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'ledger_entries' not in inspector.get_table_names():
+        op.create_table(
+            'ledger_entries',
+            sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+            sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),
+            sa.Column('amount', sa.Numeric(18, 6), nullable=False),
+            sa.Column('currency', sa.String(10), nullable=False),
+            sa.Column('meta', postgresql.JSONB(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        )
+        op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])
+        op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])
+        op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])
+        op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])
+        op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])
+        op.create_check_constraint(
+            'ck_ledger_amount_positive',
+            'ledger_entries',
+            'amount > 0'
+        )
+"""
+
+# Lines 131-157 are index 130-156 (0-based), line 158 starts next section
+new_lines = lines[:130] + [new_block] + lines[157:]
+
+with open(filepath, 'w') as f:
+    f.writelines(new_lines)
+
+print("✅ Done — verifying:")
+w
+
+python3 << 'PYEOF'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+
+with open(filepath, 'r') as f:
+    lines = f.readlines()
+
+# Replace lines 131-157 (0-indexed: 130-156) with fixed version
+new_block = """    # ### Create ledger_entries table ###
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'ledger_entries' not in inspector.get_table_names():
+        op.create_table(
+            'ledger_entries',
+            sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+            sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),
+            sa.Column('amount', sa.Numeric(18, 6), nullable=False),
+            sa.Column('currency', sa.String(10), nullable=False),
+            sa.Column('meta', postgresql.JSONB(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        )
+        op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])
+        op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])
+        op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])
+        op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])
+        op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])
+        op.create_check_constraint(
+            'ck_ledger_amount_positive',
+            'ledger_entries',
+            'amount > 0'
+        )
+"""
+
+# Lines 131-157 are index 130-156 (0-based), line 158 starts next section
+new_lines = lines[:130] + [new_block] + lines[157:]
+
+with open(filepath, 'w') as f:
+    f.writelines(new_lines)
+
+print("✅ Done — verifying:")
+w
+
+cd ~/afcon360
+cp migrations/versions/20260430_182327_ledger_rebuild.py migrations/versions/20260430_182327_ledger_rebuild.py.bak
+# Write the fix using nano - simple and reliable
+nano migrations/versions/20260430_182327_ledger_rebuild.py
+cat > /tmp/fix_migration.py << 'ENDOFSCRIPT'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+with open(filepath, 'r') as f:
+    content = f.read()
+
+# Find and replace the broken section
+old = "        'ledger_entries',\n        sa.Column('id'"
+new = "            'ledger_entries',\n            sa.Column('id'"
+
+print("Found:", old in content)
+ENDOFSCRIPT
+
+python3 /tmp/fix_migration.py
+cat > /tmp/fix_migration.py << 'ENDOFSCRIPT'
+filepath = '/home/ubuntu/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py'
+with open(filepath, 'r') as f:
+    content = f.read()
+
+# Fix the create_table indentation and move closing items inside if block
+content = content.replace(
+    "        'ledger_entries',\n        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),\n        sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),\n        sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),\n        sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),\n        sa.Column('amount', sa.Numeric(18, 6), nullable=False),\n        sa.Column('currency', sa.String(10), nullable=False),\n        sa.Column('meta', postgresql.JSONB(), nullable=True),\n        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),\n    )\n    op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])\n    op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])\n    op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])\n    op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])\n    op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])\n    # Check constraints\n    op.create_check_constraint(\n        'ck_ledger_amount_positive',\n        'ledger_entries',\n        'amount > 0'\n    )",
+    "            'ledger_entries',\n            sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),\n            sa.Column('transaction_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),\n            sa.Column('account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False),\n            sa.Column('entry_type', postgresql.ENUM('DEBIT', 'CREDIT', name='entry_type_enum'), nullable=False),\n            sa.Column('amount', sa.Numeric(18, 6), nullable=False),\n            sa.Column('currency', sa.String(10), nullable=False),\n            sa.Column('meta', postgresql.JSONB(), nullable=True),\n            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),\n        )\n        op.create_index('ix_ledger_account_id', 'ledger_entries', ['account_id'])\n        op.create_index('ix_ledger_transaction_id', 'ledger_entries', ['transaction_id'])\n        op.create_index('ix_ledger_currency', 'ledger_entries', ['currency'])\n        op.create_index('ix_ledger_created_at', 'ledger_entries', ['created_at'])\n        op.create_index('ix_ledger_account_currency', 'ledger_entries', ['account_id', 'currency'])\n        op.create_check_constraint(\n            'ck_ledger_amount_positive',\n            'ledger_entries',\n            'amount > 0'\n        )"
+)
+
+with open(filepath, 'w') as f:
+    f.write(content)
+print("✅ Done")
+ENDOFSCRIPT
+
+python3 /tmp/fix_migration.py
+sed -n '131,160p' ~/afcon360/migrations/versions/20260430_182327_ledger_rebuild.py
+clear
+cd ~/afcon360
+docker compose down -v
+git pull origin main
+docker compose up -d
+docker compose logs -f web
+clear
+cd ~/afcon360
+docker compose down -v
+git checkout -- migrations/versions/20260430_182327_ledger_rebuild.py
+git pull origin main
+head -5 migrations/versions/20260430_182327_ledger_rebuild.py
+grep "if 'ledger_entries'" migrations/versions/20260430_182327_ledger_rebuild.py
+clear
+docker compose up -d
+docker compose logs -f web
+clear
+docker compose down -v
+docker compose up -d --build
+docker compose logs -f web
+Yes:
+```bash
+cd ~/afcon360
+```
+cd ~/afcon360
+clear
+docker compose exec web flask shell
+from app.auth.models import User
+from app.extensions import db
+# Create owner user
+user = User(
+)
+user.set_password('Muhereza@1993')
+user.is_active = True
+db.session.add(user)
+db.session.commit() print(f"✅ User created: {user.email}")
+docker compose exec web flask shell
+clear
+clr
+sudo apt install mailutils
+docker compose exec web flask shell
+# Create missing table directly in DB
+docker compose exec db psql -U israeli -d afcon360_prod -c "
+CREATE TABLE IF NOT EXISTS data_change_logs (
+    id BIGSERIAL PRIMARY KEY,
+    public_id VARCHAR(36),
+    entity_type VARCHAR(100),
+    entity_id BIGINT,
+    operation VARCHAR(50),
+    old_value JSON,
+    new_value JSON,
+    changed_by BIGINT,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    extra_data JSON,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    deleted_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+"
+# Now go back into flask shell
+docker compose exec web flask shell
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt"
+docker compose exec web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('done')
+" 2>&1 | grep -E "done|Error|error" | head -20
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt"
+docker compose exec web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('done')
+" 2>&1
+docker compose exec web python -c "
+from app import create_app, db
+print('step 1 - importing')
+app = create_app()
+print('step 2 - app created')
+with app.app_context():
+    print('step 3 - in context')
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    tables = inspector.get_table_names()
+    print(f'step 4 - existing tables: {len(tables)}')
+    db.create_all()
+    print('step 5 - create_all done')
+    tables = inspector.get_table_names()
+    print(f'step 6 - tables after: {len(tables)}')
+" 2>&1 | grep "step"
+docker compose ps
+docker compose exec web bash -c "echo 'shell works'"
+docker compose ps -a
+docker ps -a | grep afcon
+docker compose up -d
+docker compose ps
+docker ps
+docker compose up 2>&1 | tail -30
+docker compose up --no-deps db 2>&1 | tail -20
+docker info | head -5
+sudo systemctl restart docker
+sleep 5
+docker info | head -5
+sudo systemctl status docker
+sudo systemctl status docker --no-pager
+sudo journalctl -u docker -n 50 --no-pager
+which docker
+ls -la /var/run/docker.sock
+sudo service docker status
+df -h
+free -h
+sudo snap restart docker
+sudo reboot
+cd ~/afcon360
+docker ps
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt" | head -30
+docker compose exec web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('done')
+" 2>&1 | tail -3
+docker compose exec db psql -U israeli -d afcon360_prod -c "DROP INDEX IF EXISTS ix_transactions_user_id;"
+docker compose exec web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('done')
+" 2>&1 | tail -3
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt" | wc -l
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt"
+docker compose exec web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('done')
+" 2>&1 | grep -i "error\|Error\|done"
+docker compose exec web python 2>&1 << 'EOF'
+from app import create_app, db
+import sqlalchemy
+app = create_app()
+with app.app_context():
+    try:
+        db.create_all()
+        print('done')
+    except Exception as e:
+        print(f'ERROR: {e}')
+EOF
+
+docker compose exec -T web python << 'EOF'
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    try:
+        db.create_all()
+        print('done')
+    except Exception as e:
+        print(f'ERROR: {e}')
+EOF
+
+docker compose exec db psql -U israeli -d afcon360_prod -c "
+SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+"
+docker compose exec db psql -U israeli -d afcon360_prod -c "
+DROP INDEX IF EXISTS ix_transactions_user_id;
+DROP INDEX IF EXISTS ix_transactions_client_request_id;
+DROP INDEX IF EXISTS ix_transactions_status;
+DROP INDEX IF EXISTS ix_transactions_type;
+DROP INDEX IF EXISTS ix_transactions_created_at;
+DROP INDEX IF EXISTS ix_transactions_external_reference;
+DROP INDEX IF EXISTS ix_transactions_recipient_user_id;
+DROP INDEX IF EXISTS ix_transactions_account_id;
+DROP INDEX IF EXISTS ix_transactions_updated_at;
+DROP INDEX IF EXISTS ix_transactions_is_deleted;
+"
+docker compose exec -T web python << 'EOF'
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    try:
+        db.create_all()
+        print('done')
+    except Exception as e:
+        print(f'ERROR: {e}')
+EOF
+
+cd ~/afcon360
+docker ps
+docker compose down -v
+docker compose up -d
+sleep 10
+docker compose exec -T web python << 'EOF'
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('done')
+EOF
+
+# 1. Stop everything and wipe volumes
+docker compose down -v
+# 2. Remove the broken migration from entrypoint temporarily
+sed -i 's/flask db upgrade || echo "⏭️  Skipping migrations"/echo "skipping migrations"/' docker-entrypoint.sh
+# 3. Rebuild image cleanly
+docker compose build --no-cache web
+# 4. Start fresh
+docker compose up -d
+sleep 15
+# 5. Now create all tables on a truly empty DB
+docker compose exec -T web python << 'EOF'
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    try:
+        db.create_all()
+        print('done')
+    except Exception as e:
+        print(f'ERROR: {e}')
+EOF
+
+cd ~/afcon360
+grep -n "db upgrade\|skipping\|migration" docker-entrypoint.sh
+# 1. Show me your docker-entrypoint.sh (critical)
+cat docker-entrypoint.sh
+# 2. Show me your Dockerfile
+cat Dockerfile
+# 3. Show me your docker-compose.yml
+cat docker-compose.yml
+# 4. Show me the web container's startup logs
+docker compose logs web --tail=50
+# 5. Show me celery's logs too
+docker compose logs celery --tail=30
+# 6. Check if there are any Alembic migration files already
+ls -la migrations/versions/ 2>/dev/null || echo "No migrations folder"
+# 7. Check your app's init script for auto-creation
+grep -r "create_all\|db.create_all" app/ --include="*.py" | head -20
+# 1. Wipe everything clean
+docker compose down -v
+# 2. Remove the conflicting db.create_all() call
+sed -i '/db.create_all()/d' app/transport/models.py
+# 3. Start fresh with proper migrations
+docker compose up -d db redis
+sleep 10
+# 4. Initialize migrations from scratch (if no migrations folder or corrupted)
+docker compose run --rm web bash -c "
+flask db init &&
+flask db migrate -m 'initial_schema' &&
+flask db upgrade
+"
+# 5. Start all services
+docker compose up -d
+# 6. Verify everything works
+docker compose ps
+docker compose logs web --tail=20 | grep -E "ERROR|✅|ready"
+# On server - check for changes
+cd ~/afcon360
+git status
+# If you have changes, commit them first or stash
+git stash
+git pull origin main
+git stash pop  # restore local changes if needed
+# Then rebuild
+docker compose down -v
+docker compose build --no-cache web
+docker compose up -d
+cd ~/afcon360
+# First, let's see what's in the conflicting file
+cat docker-compose.yml | head -20
+# Check the merge conflict markers
+grep -n "=======\|<<<<<<<\|>>>>>>>" docker-compose.yml
+cd ~/afcon360
+# Remove the conflicting file and restore from GitHub
+git checkout --ours docker-compose.yml
+# OR use theirs (GitHub version which is likely correct)
+git checkout --theirs docker-compose.yml
+# If that doesn't work, manually resolve:
+# Remove the conflict markers and keep the content
+sed -i '/<<<<<<< Updated upstream/,/>>>>>>> Stashed changes/d' docker-compose.yml
+# Now add the resolved file
+git add docker-compose.yml
+# Drop the stash that's causing conflicts
+git stash drop
+# Verify YAML syntax is valid
+python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))" 2>/dev/null && echo "✅ YAML valid" || echo "❌ YAML invalid"
+# 1. Wipe and rebuild (clean slate)
+docker compose down -v
+docker compose build --no-cache web
+# 2. Start everything
+docker compose up -d
+# 3. Check it's working
+docker compose ps
+docker compose logs web --tail=30
+# Wait a bit for migrations to complete
+sleep 15
+# Check web logs for migration result
+docker compose logs web --tail=50
+# Check if tables were created
+docker compose exec web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    tables = inspect(db.engine).get_table_names()
+    print(f'\n✅ Database ready with {len(tables)} tables\n')
+    # Check critical tables
+    for table in ['users', 'roles', 'transactions', 'webhook_events']:
+        status = '✅' if table in tables else '❌'
+        print(f'{status} {table}')
+"
+# Check if Celery is working
+docker compose logs celery --tail=20
+# Check if the web app is responding
+curl -s http://localhost:5000/health | head -20
+docker compose run --rm web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    # Drop all and recreate
+    db.drop_all()
+    db.create_all()
+    print('✅ All tables created directly')
+    
+    # Verify
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    tables = inspector.get_table_names()
+    print(f'📊 Created {len(tables)} tables')
+"
+cd ~/afcon360
+# Stop all services
+docker compose down
+# Wipe the PostgreSQL volume completely
+docker volume rm afcon360_postgres_data
+# Start fresh database
+docker compose up -d db redis
+sleep 15
+# Now create ALL tables fresh (no partial data)
+docker compose run --rm web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    print('Creating all tables from scratch...')
+    db.create_all()
+    print('✅ All tables created successfully')
+    
+    # Verify
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    tables = inspector.get_table_names()
+    print(f'\n📊 Total tables: {len(tables)}')
+    
+    # Show first 20 tables
+    print('\nFirst 20 tables:')
+    for table in sorted(tables)[:20]:
+        print(f'  - {table}')
+"
+# Start all services
+docker compose up -d
+# Wait for everything to initialize
+sleep 15
+# Check if web is responding
+curl -s http://localhost:5000/health
+# Check Celery logs
+docker compose logs celery --tail=30
+cd ~/afcon360
+# Find where the transactions model is defined
+find . -name "*.py" -exec grep -l "class Transaction" {} \;
+# Check for duplicate index definitions
+grep -n "Index\|index=True\|unique=True" app/models/transaction* app/wallet/models.py 2>/dev/null | head -30
+# Or search the entire codebase for the duplicate index
+grep -r "ix_transactions_client_request_id" app/ --include="*.py"
+grep -r "client_request_id.*index" app/ --include="*.py"
+# Show the full Transaction model definition
+cat app/wallet/models/transaction.py
+cd ~/afcon360
+# Create backup
+cp app/wallet/models/transaction.py app/wallet/models/transaction.py.backup
+# Verify file uploaded (should see the fix)
+head -30 app/wallet/models/transaction.py
+# Stop everything
+docker compose down -v
+# Start fresh database
+docker compose up -d db redis
+sleep 15
+# Now create tables (simplified command)
+docker compose run --rm web python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all(); print('Tables created')"
+# Check if tables exist
+docker compose run --rm web python -c "from app import create_app, db; from sqlalchemy import inspect; app = create_app(); app.app_context().push(); tables = inspect(db.engine).get_table_names(); print(f'Total tables: {len(tables)}'); print('transactions exists:', 'transactions' in tables)"
+# If tables created successfully, start all services
+docker compose up -d
+# Check status
+docker compose ps
+# View web logs
+docker compose logs web --tail=30
+cd ~/afcon360
+# 1. Create a migration script (not a full destroy)
+cat > migrations/versions/fix_duplicate_index.py << 'EOF'
+"""Fix duplicate transaction index
+
+Revision ID: fix_duplicate_index
+Revises: 
+Create Date: 2026-05-26
+"""
+
+from alembic import op
+import sqlalchemy as sa
+
+def upgrade():
+    # Idempotent: Only create index if it doesn't exist
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    indexes = inspector.get_indexes('transactions')
+    index_exists = any(idx['name'] == 'ix_transactions_client_request_id' for idx in indexes)
+    
+    if not index_exists:
+        op.create_index('ix_transactions_client_request_id', 'transactions', ['client_request_id'], unique=True)
+        print("✅ Created ix_transactions_client_request_id")
+    else:
+        print("⏭️  Index already exists, skipping")
+
+def downgrade():
+    # Only drop if it exists
+    op.drop_index('ix_transactions_client_request_id', table_name='transactions', if_exists=True)
+EOF
+
+# 2. Apply migration safely
+docker compose exec web flask db upgrade
+# 3. No need to destroy anything!
+cd ~/afcon360
+# Verify the transaction.py file is fixed
+grep -A3 "client_request_id = Column" app/wallet/models/transaction.py
+# Should show NO "unique=True" or "index=True"
+# If not fixed, apply the fix
+sed -i '/client_request_id = Column/,/)/ s/, unique=True//' app/wallet/models/transaction.py
+sed -i '/client_request_id = Column/,/)/ s/, index=True//' app/wallet/models/transaction.py
+# Rebuild the image with the fix
+docker compose build --no-cache web
+# Reset database (acceptable once since no production data)
+docker compose down -v
+docker compose up -d db redis
+sleep 15
+# Create tables
+docker compose run --rm web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    db.create_all()
+    tables = inspect(db.engine).get_table_names()
+    print(f'✅ {len(tables)} tables created')
+"
+# Start everything
+docker compose up -d
+# Verify
+docker compose ps
+curl http://localhost:5000/health
+cd ~/afcon360
+cat > app/wallet/models/transaction.py << 'EOF'
+import uuid
+from datetime import datetime
+from sqlalchemy import Column, String, Numeric, DateTime, ForeignKey, CheckConstraint, Index, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from app.extensions import db
+from app.models.base import BaseModel
+import enum
+
+class TransactionType(str, enum.Enum):
+    DEPOSIT = 'deposit'
+    WITHDRAW = 'withdraw'
+    TRANSFER = 'transfer'
+    FEE = 'fee'
+    REFUND = 'refund'
+    ADJUSTMENT = 'adjustment'
+
+class TransactionStatus(str, enum.Enum):
+    PENDING = 'pending'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
+
+class TransactionModel(BaseModel):
+    __tablename__ = 'transactions'
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED')", name='ck_transaction_status_valid'),
+        CheckConstraint('amount > 0', name='ck_transaction_amount_positive'),
+        Index('ix_transactions_client_request_id', 'client_request_id', unique=True),
+        Index('ix_transactions_status', 'status'),
+        Index('ix_transactions_type', 'tx_type'),
+        Index('ix_transactions_created_at', 'created_at'),
+        Index('ix_transactions_user_id', 'user_id'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_request_id = Column(String(255), nullable=False)
+    tx_type = Column(SQLEnum(TransactionType, name='transaction_type_enum', create_type=True), nullable=False)
+    status = Column(SQLEnum(TransactionStatus, name='transaction_status_enum', create_type=True), nullable=False, default=TransactionStatus.PENDING)
+    amount = Column(Numeric(18, 6), nullable=False)
+    currency = Column(String(10), nullable=False)
+    user_id = Column(db.BigInteger, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
+    failure_reason = Column(db.Text, nullable=True)
+
+    def __repr__(self):
+        return f"<Transaction {self.id} {self.tx_type} {self.amount} {self.currency} {self.status}>"
+EOF
+
+echo "File created. Now rebuilding..."
+docker compose build --no-cache web
+docker compose down -v
+docker compose up -d db redis
+sleep 15
+docker compose run --rm web python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all(); print('Tables created successfully')"
+docker compose up -d
+sleep 10
+docker compose ps
+curl http://localhost:5000/health
+cd ~/afcon360
+# 1. Stop everything
+docker compose down
+# 2. Update the entrypoint to prevent celery from running migrations
+cat > docker-entrypoint.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "🚀 AFCON360 container starting (role: ${CONTAINER_ROLE:-web})"
+
+# Wait for PostgreSQL
+until PGPASSWORD=${DB_PASS} pg_isready -h ${DB_HOST:-db} -U ${DB_USER}; do
+    echo "   Waiting for PostgreSQL..."
+    sleep 2
+done
+echo "✅ PostgreSQL ready"
+
+# Wait for Redis
+until nc -z ${REDIS_HOST:-redis} ${REDIS_PORT:-6379}; do
+    echo "   Waiting for Redis..."
+    sleep 2
+done
+echo "✅ Redis ready"
+
+# ONLY run migrations if this is the web container
+if [ "${CONTAINER_ROLE}" = "web" ]; then
+    echo "🔄 Running database migrations (web container only)..."
+    flask db upgrade
+    echo "✅ Migrations complete"
+    
+    echo "🌱 Seeding roles and permissions..."
+    flask seed-roles 2>/dev/null || echo "ℹ️  Seed skipped"
+else
+    echo "⏭️  Skipping migrations (role: ${CONTAINER_ROLE})"
+fi
+
+# Start the correct process
+case "$1" in
+    gunicorn)
+        echo "🌐 Starting Gunicorn..."
+        exec gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 2 "app:create_app()"
+        ;;
+    celery)
+        echo "⚙️  Starting Celery worker..."
+        exec celery -A app.celery_app worker --loglevel=info --concurrency=2
+        ;;
+    celery-beat)
+        echo "🕐 Starting Celery Beat..."
+        exec celery -A app.celery_app beat --loglevel=info
+        ;;
+    *)
+        exec "$@"
+        ;;
+esac
+EOF
+
+chmod +x docker-entrypoint.sh
+# 3. Wipe volumes and rebuild
+docker compose down -v
+docker compose build --no-cache web
+# 4. Start database first
+docker compose up -d db redis
+sleep 15
+# 5. Run migrations manually once
+docker compose run --rm web flask db upgrade
+# 6. Start all services
+docker compose up -d
+# 7. Check status
+sleep 10
+docker compose ps
+docker compose logs web --tail=30 | grep -E "migrations|ready|ERROR"
+cd ~/afcon360
+# Check container health
+docker compose ps
+# Test web endpoint
+curl http://localhost:5000/health
+# Check database tables
+docker compose exec web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    tables = inspect(db.engine).get_table_names()
+    print(f'✅ {len(tables)} tables created successfully')
+    # Check critical tables
+    for t in ['users', 'transactions', 'agent_commissions']:
+        if t in tables:
+            print(f'   ✅ {t}')
+        else:
+            print(f'   ❌ {t}')
+"
+# Check Celery is working
+docker compose logs celery --tail=20 | grep -E "celery.*ready|ERROR"
+# Check real-time logs (press Ctrl+C to exit)
+docker compose logs -f --tail=20 web
+cd ~/afcon360
+# Stop everything
+docker compose down -v
+# Remove old image cache
+docker system prune -af
+# Rebuild with the complete requirements
+docker compose build --no-cache
+# Start fresh
+docker compose up -d
+# Wait for startup
+sleep 30
+# Check if it's working
+docker compose ps
+curl http://localhost:5000/health
+docker compose logs web --tail=50
+# Check if tables were created
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt" | head -20
+# Check if web can connect to db
+docker compose exec web python -c "
+import psycopg2
+try:
+    conn = psycopg2.connect(host='db', database='afcon360_prod', user='israeli', password='Israelipass')
+    print('✅ Database connection successful')
+    conn.close()
+except Exception as e:
+    print(f'❌ Connection failed: {e}')
+"
+cd ~/afcon360
+# Run migrations manually
+docker compose run --rm web flask db upgrade
+# Check if tables were created
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt" | wc -l
+# If still no tables, create them directly
+docker compose run --rm web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    db.create_all()
+    tables = inspect(db.engine).get_table_names()
+    print(f'✅ {len(tables)} tables created')
+    for table in sorted(tables)[:10]:
+        print(f'  - {table}')
+"
+# Restart web container
+docker compose restart web
+# Test health endpoint
+sleep 10
+curl http://localhost:5000/health
+docker compose run --rm web flask db current
+# On the server (direct deployment)
+cd ~/afcon360
+source venv/bin/activate
+pip install -r requirements.txt  # Use YOUR complete requirements
+flask db upgrade                 # Create all tables
+python app.py                    # Run the app
+cd ~/afcon360
+# Run migrations manually (this is ALL you need)
+docker compose run --rm web flask db upgrade
+# Check if tables were created
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt" | wc -l
+# Restart web container
+docker compose restart web
+# Test
+curl http://localhost:5000/health
+cd ~/afcon360
+# Drop everything and use the same method that worked locally
+docker compose exec db psql -U israeli -d afcon360_prod << 'EOF'
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO israeli;
+EOF
+
+# Use db.create_all() - the same method that created 98 tables locally
+docker compose run --rm web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    db.create_all()
+    tables = inspect(db.engine).get_table_names()
+    print(f'✅ {len(tables)} tables created')
+    for t in sorted(tables)[:15]:
+        print(f'  - {t}')
+"
+# Now restart and test
+docker compose restart web
+sleep 10
+curl http://localhost:5000/health
+cd ~/afcon360 && docker compose ps && curl http://localhost:5000/health
+docker compose exec db pg_isready -U afcon_user
+docker compose exec db psql -U afcon_user -d afcon360_prod -c "\dt"
+docker compose exec web flask db current 2>&1
+ocker compose exec web python -c "
+from app import db
+from app import create_app
+app = create_app()
+with app.app_context():
+    print(f'Number of registered models: {len(db.metadata.tables)}')
+    print('Models found:')
+    for table in db.metadata.tables.keys():
+        print(f'  - {table}')
+"
+# FACT 5: What happens when we try to create tables?
+docker compose exec web python -c "
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    try:
+        db.create_all()
+        print('db.create_all() executed without error')
+    except Exception as e:
+        print(f'Error: {e}')
+"
+# FACT 6: What tables exist AFTER create_all?
+docker compose exec db psql -U afcon_user -d afcon360_prod -c "\dt"
+cat .env | grep -E "DB_|POSTGRES_"
+# List all PostgreSQL users
+docker compose exec db psql -U postgres -c "\du"
+cd ~/afcon360
+# Stop everything
+docker compose down
+# Remove the PostgreSQL volume completely
+docker volume rm afcon360_postgres_data
+# Check your .env for PostgreSQL superuser credentials
+cat .env | grep -E "POSTGRES_"
+# If POSTGRES_USER isn't set, add it to .env
+echo "POSTGRES_USER=postgres" >> .env
+echo "POSTGRES_PASSWORD=postgrespass" >> .env
+# Now start just the database
+docker compose up -d db
+# Wait for it to initialize
+sleep 15
+# Check if postgres user exists now
+docker compose exec db psql -U postgres -c "\du"
+# Now create your app user 'israeli'
+docker compose exec db psql -U postgres -c "CREATE USER israeli WITH PASSWORD 'Israelipass' SUPERUSER CREATEDB;"
+# Create the database
+docker compose exec db psql -U postgres -c "CREATE DATABASE afcon360_prod OWNER israeli;"
+# Grant privileges
+docker compose exec db psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE afcon360_prod TO israeli;"
+# Now create all tables
+docker compose run --rm web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    db.create_all()
+    tables = inspect(db.engine).get_table_names()
+    print(f'✅ {len(tables)} tables created')
+"
+# Start all services
+docker compose up -d
+# Test
+sleep 10
+curl http://localhost:5000/health
+# On your LOCAL machine
+cd /path/to/afcon360
+# Check your local .env
+cat .env | grep DB_
+# Check how you start PostgreSQL locally
+docker ps | grep postgres
+# Or
+psql --version
+cd ~/afcon360
+# Check what tables exist with the 'israeli' user
+docker compose exec db psql -U israeli -d afcon360_prod -c "\dt"
+# If that fails, try with postgres user
+docker compose exec db psql -U postgres -d afcon360_prod -c "\dt"
+# Check what tables SQLAlchemy sees
+docker compose exec web python -c "
+from app import create_app, db
+from sqlalchemy import inspect
+app = create_app()
+with app.app_context():
+    tables = inspect(db.engine).get_table_names()
+    print(f'Total tables in database: {len(tables)}')
+    if len(tables) > 1:
+        print('\nTables found:')
+        for table in sorted(tables)[:20]:
+            print(f'  - {table}')
+    else:
+        print('Only 1 table exists - likely alembic_version')
+        # Show what that one table is
+        if tables:
+            print(f'  Only table: {tables[0]}')
+"
+# Also check if alembic_version table exists (migrations tracking)
+docker compose exec db psql -U israeli -d afcon360_prod -c "SELECT * FROM alembic_version;" 2>&1
+ls ~/afcon360/
+ls ~/afcon360/app/ && echo "---" && docker compose -f ~/afcon360/docker-compose.yml ps
+docker logs afcon360_web --tail 50
+scp -i "C:\Users\ADMIN\Downloads\ssh-key-2026-05-23.key" -r C:\Users\ADMIN\Desktop\afcon360_app\app ubuntu@79.76.104.169:~/afcon360/
+cd ~/afcon360 && ls -la && echo "---" && ls app/ | head -20 && echo "---" && cat docker-compose.yml | head -5
+cd ~/afcon360
+# 1. Check what the current docker-compose.yml has for SESSION_COOKIE_SECURE
+grep "SESSION_COOKIE_SECURE\|env_file\|APP_ENV" docker-compose.yml
+cd ~/afcon360
+# Create the missing .env.docker
+cat > .env.docker << 'EOF'
+APP_ENV=docker
+FLASK_ENV=production
+LOG_LEVEL=WARNING
+DB_HOST=db
+DATABASE_URL=postgresql://israeli:Israelipass@db:5432/afcon360_prod
+REDIS_URL=redis://:Muhereza%401993@redis:6379/0
+CELERY_BROKER_URL=redis://:Muhereza%401993@redis:6379/0
+CELERY_RESULT_BACKEND=redis://:Muhereza%401993@redis:6379/1
+SESSION_COOKIE_SECURE=true
+EOF
+
+# Verify it exists then deploy
+ls -la .env.docker && docker compose up -d --build

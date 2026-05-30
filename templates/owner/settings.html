@@ -97,6 +97,69 @@
     border-bottom: 2px solid #e5e7eb;
   }
 </style>
+<!-- CSP Settings Section -->
+<div class="card mt-4">
+    <div class="card-header bg-warning">
+        <h5><i class="bi bi-shield-lock"></i> Content Security Policy (CSP)</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <strong>ℹ️ Info:</strong> "upgrade-insecure-requests" forces all HTTP requests to HTTPS.
+            Only enable this when you have a valid SSL certificate configured!
+        </div>
+        
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="cspToggle">
+            <label class="form-check-label" for="cspToggle">
+                <strong>Upgrade Insecure Requests</strong>
+            </label>
+            <p class="text-muted mt-2">
+                When enabled: All HTTP requests are automatically upgraded to HTTPS<br>
+                When disabled: HTTP requests work normally
+            </p>
+        </div>
+        
+        <div id="cspMessage" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/owner/csp/status')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('cspToggle').checked = data.enabled;
+        });
+    
+    document.getElementById('cspToggle').addEventListener('change', function(e) {
+        const enabled = e.target.checked;
+        const msgDiv = document.getElementById('cspMessage');
+        msgDiv.innerHTML = '<div class="alert alert-info">Updating setting...</div>';
+        
+        fetch('/owner/csp/toggle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ enabled: enabled })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                msgDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+                setTimeout(() => msgDiv.innerHTML = '', 3000);
+            } else {
+                msgDiv.innerHTML = '<div class="alert alert-danger">Failed to update setting</div>';
+            }
+        })
+        .catch(() => {
+            msgDiv.innerHTML = '<div class="alert alert-danger">Error updating setting</div>';
+        });
+    });
+});
+</script>
+
 {% endblock %}
 
 {% block content %}

@@ -2363,20 +2363,21 @@ def get_vehicle_history(vehicle_id, days=30):
 # ===========================================================================
 
 def init_transport_module():
-    """Initialize transport module with production defaults"""
+    """Initialize transport module with production defaults.
+
+    IMPORTANT: db.create_all() has been removed intentionally.
+    Tables are managed exclusively by Alembic migrations (flask db upgrade).
+    Calling db.create_all() alongside Alembic causes DuplicateTable /
+    DuplicateIndex errors when migrations have already been applied.
+    """
     try:
-        # Create tables if they don't exist
-        from app.extensions import db
-        db.create_all()
-
-        # Initialize settings
+        # Initialize settings only — do NOT call db.create_all()
         init_transport_settings()
-
-        print("🚀 Production Transport Module Initialized")
+        print("🚀 Transport Module Settings Initialized")
 
     except Exception as e:
-        print(f"⚠️  Transport module initialization warning: {e}")
-        # Continue - tables might already exist
+        print(f"⚠️  Transport module settings initialization warning: {e}")
+        # Continue — settings will be created on first access
 
 
 # Initialize on import if in development

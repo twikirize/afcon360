@@ -21,43 +21,53 @@ import time
 import threading
 from datetime import datetime
 
-# Load environment variables at the very beginning
-from dotenv import load_dotenv
-load_dotenv()
+# ============================================================================
+# ENVIRONMENT LOADING — layered: .env (base defaults) → .env.{APP_ENV} (overrides)
+#
+# APP_ENV controls which overlay is loaded:
+#   local  → .env + .env.local   (your machine, localhost DB/Redis)
+#   docker → .env + .env.docker  (Docker Compose, service names db/redis)
+#   prod   → .env + .env.prod    (Oracle Cloud / bare metal)
+#
+# Set before starting:
+#   export APP_ENV=local | docker | prod
+# ============================================================================
+# ENV loading is handled by config.py (_load_env) when get_config() is imported.
+# No duplicate load needed here.
 
-# Ensure ENCRYPTION_KEY is set for development
-if not os.getenv('ENCRYPTION_KEY'):
-    # Generate a temporary key for development
-    import secrets
-    temp_key = secrets.token_urlsafe(32)
-    os.environ['ENCRYPTION_KEY'] = temp_key
-    logging.warning(f"ENCRYPTION_KEY not set. Generated a temporary key for development. "
-                    f"Please add ENCRYPTION_KEY={temp_key} to your .env file for consistency.")
-
-# Now we can safely import other modules that may depend on environment variables
-
-# Import Redis conditionally. Allow forcing disable via DISABLE_REDIS env var for local runs.
+# ============================================================================
+# NOTE: ENCRYPTION_KEY guard has been moved inside create_app(), after
+# get_config() loads .env.{APP_ENV}. Checking it here (module level) fires
+# before .env.local is loaded, causes a temp key to be written to os.environ,
+# and then blocks the real value from .env.local from taking effect.
+# ============================================================================
+# REDIS AVAILABILITY CHECK
+# ============================================================================
 try:
     import redis
-    # Allow developer to force-disable Redis checks when running locally
-    if os.getenv('DISABLE_REDIS', 'false').lower() in ('1', 'true', 'yes'):
+
+    if os.getenv("DISABLE_REDIS", "false").lower() in ("1", "true", "yes"):
         redis = None
         REDIS_AVAILABLE = False
-        logging.warning("Redis checks disabled via DISABLE_REDIS environment variable")
+        logging.warning("[ENV] Redis disabled via DISABLE_REDIS env var")
     else:
         REDIS_AVAILABLE = True
 except ImportError:
     redis = None
     REDIS_AVAILABLE = False
-    logging.warning("Redis not available - some features may be limited")
+    logging.warning("[ENV] Redis not installed — some features will be limited")
 
-# Import IDGuard for runtime protection against ID mixing
+# ============================================================================
+# OPTIONAL IMPORTS
+# ============================================================================
 try:
     from app.utils.id_guard import init_id_guard, register_id_guard_commands
+
     IDGUARD_AVAILABLE = True
 except ImportError:
     IDGUARD_AVAILABLE = False
-    logging.warning("IDGuard not available - ID mixing protection disabled")
+    logging.warning("[ENV] IDGuard not available — ID mixing protection disabled")
+
 from flask import Flask, flash, redirect, render_template, session, current_app, url_for, request, jsonify
 
 try:
@@ -67,10 +77,11 @@ try:
 except ImportError:
     Session = None
     FLASK_SESSION_AVAILABLE = False
-    logging.warning("Flask-Session not available - using fallback sessions")
+    logging.warning("[ENV] Flask-Session not available — using fallback sessions")
+
 from flask_wtf.csrf import CSRFError
 from typing import Dict
-from app.config import Config
+from app.config import get_config  # layered config with env validation
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client
 from app.services.module_toggle_service import ModuleToggleService
 
@@ -80,11 +91,11 @@ def configure_logging():
     root = logging.getLogger()
     if root.handlers:
         return
-    
+
     # Get log level from environment or use default based on FLASK_ENV
     log_level_str = os.getenv('LOG_LEVEL', '').upper()
     flask_env = os.getenv('FLASK_ENV', 'development').lower()
-    
+
     # Determine logging level
     if log_level_str == 'DEBUG':
         root.setLevel(logging.DEBUG)
@@ -102,17 +113,28 @@ def configure_logging():
             root.setLevel(logging.INFO)
         else:
             root.setLevel(logging.DEBUG)
-    
+
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
     root.addHandler(handler)
-    
-    
+
 
 configure_logging()
 logger = logging.getLogger("app")
+
+
+def should_upgrade_insecure():
+    """Check if upgrade-insecure-requests should be enabled"""
+    from flask import current_app
+    try:
+        with current_app.app_context():
+            from app.admin.owner.models import SystemSetting
+            setting = SystemSetting.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
+            return setting and setting.value == 'true'
+    except:
+        return False
 
 
 def require_redis(url: str, purpose: str, existing_client=None):
@@ -166,7 +188,6 @@ def create_app(config_object=None) -> Flask:
     from jinja2 import FileSystemLoader
     import warnings
 
-
     class EncodingSafeLoader(FileSystemLoader):
         """Custom loader that handles encoding errors gracefully."""
 
@@ -201,12 +222,24 @@ def create_app(config_object=None) -> Flask:
                     )
             raise Exception(f"Template {template} not found")
 
-
     # Replace the default loader with our encoding-safe one
     app.jinja_env.loader = EncodingSafeLoader(template_path)
 
-    # Load configuration
-    app.config.from_object(config_object or Config)
+    # Load configuration — this triggers _load_env() in config.py which loads
+    # .env (base) then .env.{APP_ENV} (local/docker/prod) before we read anything
+    app.config.from_object(config_object or get_config())
+
+    # -------------------------------------------------------------------------
+    # ENCRYPTION KEY GUARD — must run AFTER get_config() so .env.local is loaded
+    # -------------------------------------------------------------------------
+    if not os.getenv("ENCRYPTION_KEY") or os.getenv("ENCRYPTION_KEY", "").startswith("REPLACE_"):
+        import secrets as _secrets
+        _temp_key = _secrets.token_urlsafe(32)
+        os.environ["ENCRYPTION_KEY"] = _temp_key
+        logging.warning(
+            f"[ENV] ENCRYPTION_KEY not set. Generated a temporary key for this session. "
+            f"Add ENCRYPTION_KEY={_temp_key} to your .env.local for consistency."
+        )
 
     # Critical Config Fallbacks with validation
     # SECRET_KEY validation
@@ -330,11 +363,11 @@ def create_app(config_object=None) -> Flask:
     else:
         # In development, show all logs
         app.logger.setLevel(logging.DEBUG)
-    
+
     # ============================================================
-# CLEAN REQUEST LOGGING (without clutter)
-# ============================================================
-    
+    # CLEAN REQUEST LOGGING (without clutter)
+    # ============================================================
+
     # Ensure all Flask loggers are visible
     flask_loggers = ['app', 'flask', 'admin', 'admin.owner', 'admin.trust_settings']
     for logger_name in flask_loggers:
@@ -347,7 +380,7 @@ def create_app(config_object=None) -> Flask:
                 "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
             ))
             log.addHandler(handler)
-    
+
     # Restore werkzeug INFO so the startup URL link and dev-server warning are visible.
     # Filter only the per-request access lines (e.g. "127.0.0.1 - - GET /...")
     # since we already have a custom request logger above.
@@ -361,20 +394,20 @@ def create_app(config_object=None) -> Flask:
     # Ensure no duplicate handlers (safe for Gunicorn)
     if len(werkzeug_logger.handlers) > 1:
         werkzeug_logger.handlers = werkzeug_logger.handlers[:1]
-    
+
     @app.before_request
     def log_request():
         """Clean request logging - one line per request"""
         # Skip static assets and favicon
         if request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
             return
-        
+
         # Determine log level based on method
         if request.method == 'GET':
             log_func = logger.debug
         else:
             log_func = logger.info
-        
+
         # Log in a clean format
         log_func(f"📡 {request.method} {request.path}")
 
@@ -410,7 +443,7 @@ def create_app(config_object=None) -> Flask:
             "frame-ancestors 'none'; "
             "form-action 'self'; "
             "base-uri 'self'; "
-            "upgrade-insecure-requests;"
+            "upgrade-insecure-requests;" if should_upgrade_insecure() else ""
         )
         response.headers["Content-Security-Policy"] = csp_enforce
 
@@ -425,7 +458,7 @@ def create_app(config_object=None) -> Flask:
             "frame-ancestors 'none'; "
             "form-action 'self'; "
             "base-uri 'self'; "
-            "upgrade-insecure-requests; "
+            "upgrade-insecure-requests; " if should_upgrade_insecure() else ""
             "report-to csp-endpoint; report-uri /csp-report"
         )
         response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
@@ -448,7 +481,7 @@ def create_app(config_object=None) -> Flask:
         if session.get("user_id"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         return response
-    
+
     # Keep 404 handler but make it cleaner
     @app.errorhandler(404)
     def handle_404(error):
@@ -456,14 +489,14 @@ def create_app(config_object=None) -> Flask:
         # Don't log missing favicon or static files
         if request.path.startswith(('/favicon.ico', '/static/')):
             return render_template('errors/404.html'), 404
-        
+
         # Log once, clearly
         logger.warning(f"❓ 404: {request.method} {request.path} - Page not found")
-        
+
         # For API requests, return JSON
         if request.path.startswith('/api/'):
             return jsonify({"error": "Not found", "path": request.path}), 404
-        
+
         return render_template('errors/404.html'), 404
 
     # Keep 500 handler for errors
@@ -473,18 +506,18 @@ def create_app(config_object=None) -> Flask:
         import traceback
         from flask_login import current_user
         from app.audit.models import AuditLog
-        
+
         # Log to console/file
         logger.error(f"💥 Exception: {type(e).__name__}: {str(e)}")
         logger.debug(f"Full traceback:", exc_info=True)
-        
+
         # Log to database for admin visibility
         try:
             user_id = current_user.id if current_user.is_authenticated else None
             org_id = current_user.org_id if hasattr(current_user, 'org_id') else None
-            
+
             error_traceback = traceback.format_exc()
-            
+
             AuditLog.log(
                 user_id=user_id,
                 org_id=org_id,
@@ -508,7 +541,7 @@ def create_app(config_object=None) -> Flask:
             # Don't let error logging crash the error handler
             logger.error(f"Failed to log error to database: {log_error}")
             db.session.rollback()
-        
+
         if request.path.startswith('/api/'):
             return jsonify({"error": str(e)}), 500
         return render_template('errors/500.html'), 500
@@ -551,10 +584,11 @@ def create_app(config_object=None) -> Flask:
         logger.warning("IDGuard not available - skipping ID mixing protection")
 
     # ------------------------------------------------------------------
-    # SESSION SECURITY (Corrected for Localhost)
+    # SESSION SECURITY
+    # SESSION_COOKIE_SECURE is set by config.py from .env.{APP_ENV} — do NOT
+    # override it here. .env.local sets false (HTTP dev), .env.docker/.env.prod
+    # set true (HTTPS only). setdefault is safe — only fills if not already set.
     # ------------------------------------------------------------------
-    # Only enforce secure cookies in production (not in debug mode)
-    app.config["SESSION_COOKIE_SECURE"] = not app.config.get('DEBUG', False)
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
 
@@ -644,11 +678,12 @@ def create_app(config_object=None) -> Flask:
         """Check if requested module is enabled before processing request"""
         from flask import request, render_template
         from app.utils.module_guard import module_enabled
-        
+
         # Skip checks for static files, health checks, and admin routes
-        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith('/admin'):
+        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith(
+                '/admin'):
             return
-        
+
         # Extract module name from path (e.g., /tourism/... -> tourism)
         path_parts = request.path.strip('/').split('/')
         if path_parts and path_parts[0] in ['tourism', 'transport', 'accommodation', 'tournament', 'wallet', 'events']:
@@ -667,7 +702,7 @@ def create_app(config_object=None) -> Flask:
             pubsub = redis_client.pubsub()
             pubsub.subscribe('module_toggles')
             logger.info("Redis Pub/Sub subscriber started for module toggles")
-            
+
             def listen_for_toggles():
                 """Background thread to listen for module toggle events"""
                 try:
@@ -676,25 +711,25 @@ def create_app(config_object=None) -> Flask:
                             data = message['data'].decode('utf-8')
                             module, enabled = data.split(':')
                             enabled = enabled.lower() == 'true'
-                            
+
                             # Update in-memory config immediately
                             app.config['MODULE_FLAGS'][module] = enabled
                             app.config[f"{module.upper()}_ENABLED"] = enabled
-                            
+
                             # Invalidate request-scoped cache
                             from flask import g
                             if hasattr(g, 'module_flags_loaded'):
                                 g.module_flags_loaded = False
-                            
+
                             logger.info(f"Module toggle received via Pub/Sub: {module}={enabled}")
                 except Exception as e:
                     logger.error(f"Error in module toggle subscriber: {e}")
-            
+
             # Start listener in background thread
             import threading
             subscriber_thread = threading.Thread(target=listen_for_toggles, daemon=True)
             subscriber_thread.start()
-            
+
         except Exception as e:
             logger.warning(f"Failed to start module toggle subscriber: {e}")
 
@@ -726,6 +761,7 @@ def create_app(config_object=None) -> Flask:
                         )
                 except Exception as exc:
                     logger.warning(f"Deferred startup – DB validation: {exc}")
+
             threading.Thread(target=_validate_schema, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -844,7 +880,6 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         logger.error(f"Failed to register organization blueprint: {e}")
 
-
     # 2. Register API Blueprints
     api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp]
     for bp in api_blueprints:
@@ -914,7 +949,7 @@ def create_app(config_object=None) -> Flask:
         app.register_blueprint(pin_bp)
     except ImportError:
         app.logger.warning('wallet.routes_pin not found; PIN JSON API endpoints not registered')
-    
+
     # Payment methods API (register under admin)
     try:
         from app.admin.admin_services.payment_methods import payment_methods_bp
@@ -1060,8 +1095,8 @@ def create_app(config_object=None) -> Flask:
             "tournament_mode": current_app.config.get("MODULE_FLAGS", {}).get("tournament", False),
             # ADD THESE FOUR at the end of the return dict:
             "nav_profile_completed": _profile_completed,
-            "nav_in_org_context":    _in_org_context,
-            "nav_org_name":          _org_name,
+            "nav_in_org_context": _in_org_context,
+            "nav_org_name": _org_name,
         }
 
     def _safe_url(endpoint, *args, **kwargs):
@@ -1116,12 +1151,17 @@ def create_app(config_object=None) -> Flask:
             "index": _safe_url("index"),
         }
         vf = current_app.view_functions
-        links["wallet_home"] = _safe_url("wallet.wallet_home") if modules.get("wallet") and "wallet.wallet_home" in vf else "#"
-        links["wallet_dashboard"] = _safe_url("wallet.wallet_dashboard") if modules.get("wallet") and "wallet.wallet_dashboard" in vf else "#"
-        links["tournament_home"] = _safe_url("tournament.home") if modules.get("tournament") and "tournament.home" in vf else "#"
+        links["wallet_home"] = _safe_url("wallet.wallet_home") if modules.get(
+            "wallet") and "wallet.wallet_home" in vf else "#"
+        links["wallet_dashboard"] = _safe_url("wallet.wallet_dashboard") if modules.get(
+            "wallet") and "wallet.wallet_dashboard" in vf else "#"
+        links["tournament_home"] = _safe_url("tournament.home") if modules.get(
+            "tournament") and "tournament.home" in vf else "#"
         links["tourism_home"] = _safe_url("tourism.home") if modules.get("tourism") and "tourism.home" in vf else "#"
-        links["transport_home"] = _safe_url("transport.home") if modules.get("transport") and "transport.home" in vf else "#"
-        links["accommodation_index"] = _safe_url("accommodation.guest_search") if modules.get("accommodation") and "accommodation.guest_search" in vf else "#"
+        links["transport_home"] = _safe_url("transport.home") if modules.get(
+            "transport") and "transport.home" in vf else "#"
+        links["accommodation_index"] = _safe_url("accommodation.guest_search") if modules.get(
+            "accommodation") and "accommodation.guest_search" in vf else "#"
         links["kyc_index"] = _safe_url("kyc.index") if "kyc.index" in vf else "#"
         links["profile_public"] = _safe_url("profile.my_public_profile") if "profile.my_public_profile" in vf else "#"
         links["profile_account"] = _safe_url("profile.account_overview") if "profile.account_overview" in vf else "#"
@@ -1146,7 +1186,7 @@ def create_app(config_object=None) -> Flask:
 
         # Return both - string version and callable version
         return {
-            'raw_csrf_token': token,      # For meta tags and JavaScript
+            'raw_csrf_token': token,  # For meta tags and JavaScript
             'csrf_token': csrf_token_func  # Callable - use {{ csrf_token() }}
         }
 
@@ -1172,6 +1212,7 @@ def create_app(config_object=None) -> Flask:
                 return f"{int(value):,}"
             except (ValueError, TypeError):
                 return str(value)
+
         return {'intcomma': intcomma}
 
     @app.context_processor
@@ -1179,27 +1220,27 @@ def create_app(config_object=None) -> Flask:
         """Make wallet status available in all templates"""
         from flask_login import current_user
         from app.wallet.services.wallet_status_service import WalletStatusService
-        
+
         def get_wallet_status():
             if current_user.is_authenticated:
                 return WalletStatusService.get_wallet_status(current_user)
             return None
-        
+
         def get_sidebar_items():
             if current_user.is_authenticated:
                 return WalletStatusService.get_visible_sidebar_items(current_user)
             return []
-        
+
         def get_action_buttons():
             if current_user.is_authenticated:
                 return WalletStatusService.get_action_buttons(current_user)
             return []
-        
+
         def get_wallet_banner():
             if current_user.is_authenticated:
                 return WalletStatusService.get_wallet_banner(current_user)
             return None
-        
+
         return {
             'get_wallet_status': get_wallet_status,
             'get_sidebar_items': get_sidebar_items,
@@ -1231,7 +1272,7 @@ def create_app(config_object=None) -> Flask:
             'kyc_info': None, 'kyc_tier': 0, 'kyc_tier_name': 'Unregistered',
             'kyc_limits': {}, 'kyc_missing_reqs': [],
             'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
-                           3: 'success', 4: 'warning', 5: 'danger'}
+                            3: 'success', 4: 'warning', 5: 'danger'}
         }
         if not current_user.is_authenticated:
             return _empty
@@ -1250,7 +1291,7 @@ def create_app(config_object=None) -> Flask:
                 'kyc_limits': user_limits,
                 'kyc_missing_reqs': kyc_info.get('missing_requirements', []),
                 'tier_colors': {0: 'secondary', 1: 'info', 2: 'primary',
-                               3: 'success', 4: 'warning', 5: 'danger'}
+                                3: 'success', 4: 'warning', 5: 'danger'}
             }
             cache.set(_cache_key, result, timeout=300)
             return result
@@ -1448,12 +1489,9 @@ def create_app(config_object=None) -> Flask:
 
     # DB schema validation moved to _run_deferred_startup (first-request handler)
 
-
-
-
-    #===================================================
-    #Whre am i
-    #===================================
+    # ===================================================
+    # Whre am i
+    # ===================================
     from flask import abort
     from flask_login import login_required
     from app.auth.decorators import require_role
@@ -1532,7 +1570,7 @@ def create_app(config_object=None) -> Flask:
         """Check known endpoint references against actual app.url_map."""
         import logging as _logging
         _log = _logging.getLogger("app.endpoint_validator")
-        
+
         _known_refs = [
             "admin.owner.dashboard",
             "admin.owner.settings",
@@ -1570,10 +1608,10 @@ def create_app(config_object=None) -> Flask:
             "transport.home",
             "tournament.home",
         ]
-        
+
         _rules = {rule.endpoint for rule in app.url_map.iter_rules()}
         _missing = [ref for ref in _known_refs if ref not in _rules]
-        
+
         if _missing:
             _log.warning(
                 "⚠️  Missing endpoint references detected (will cause url_for errors):\n%s",
@@ -1581,7 +1619,7 @@ def create_app(config_object=None) -> Flask:
             )
         else:
             _log.info("✅ All known endpoint references validated successfully")
-    
+
     # Run in background thread to avoid blocking startup
     import threading
     threading.Thread(target=_validate_endpoint_references, daemon=True).start()
@@ -1590,4 +1628,3 @@ def create_app(config_object=None) -> Flask:
     return app
 
     # Diagnostic routes for identity separation testing
-    
