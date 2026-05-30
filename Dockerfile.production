@@ -41,7 +41,7 @@ USER appuser
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:5000/api/health/ping || exit 1
+    CMD curl -f http://localhost:5000/health || exit 1
 
 # Uses docker-entrypoint.sh — handles migrations, seeding, readiness checks
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -60,7 +60,6 @@ case "$1" in
     gunicorn)
         echo "🌐 Starting Gunicorn (workers: ${GUNICORN_WORKERS:-2})..."
         exec gunicorn \
-            --reload \
             --bind 0.0.0.0:5000 \
             --workers "${GUNICORN_WORKERS:-2}" \
             --threads "${GUNICORN_THREADS:-2}" \

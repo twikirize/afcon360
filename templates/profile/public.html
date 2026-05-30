@@ -7,409 +7,503 @@
 {% endif %}
 
 {% block title %}{{ user.username }} - Public Profile{% endblock %}
+
 {% block styles %}
 <style>
-    .profile-cover {
-        height: 280px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        position: relative;
-        border-radius: 0 0 20px 20px;
-        margin-bottom: 100px;
+    /* ===== CLEAN PROFILE CARD STYLES (Student Card Layout) ===== */
+    :root {
+        --primary-dark: #1a3a1a;
+        --primary: #2d5a2d;
+        --primary-light: #4a7c4a;
+        --accent: #ffcc00;
+        --accent-dark: #e6b800;
+        --gray-50: #f8faf8;
+        --gray-100: #f1f4f1;
+        --gray-200: #e2e8e2;
+        --gray-300: #cbd5c1;
+        --gray-400: #94a394;
+        --gray-500: #6b7c6b;
+        --gray-600: #4a5a4a;
+        --gray-700: #2d3a2d;
+        --white: #ffffff;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
     }
-    .profile-avatar {
-        position: absolute;
-        bottom: -80px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 160px;
-        height: 160px;
-        border: 6px solid white;
-        border-radius: 50%;
-        background: white;
+
+    .profile-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+
+    /* Main Profile Card */
+    .profile-card {
+        background: var(--white);
+        border-radius: 24px;
+        box-shadow: var(--shadow-md);
         overflow: hidden;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
-    .profile-avatar-img {
+
+    .profile-card:hover {
+        box-shadow: var(--shadow-lg);
+    }
+
+    /* Profile Header with Avatar */
+    .profile-header {
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+        padding: 2rem 2rem 1.5rem;
+        text-align: center;
+    }
+
+    .profile-avatar {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 1rem;
+        border-radius: 50%;
+        background: var(--white);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        border: 4px solid var(--accent);
+    }
+
+    .profile-avatar img {
         width: 100%;
         height: 100%;
         object-fit: cover;
     }
+
     .profile-avatar-initials {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 60px;
-        font-weight: bold;
-        background: linear-gradient(135deg, #1e3c72, #2a5298);
-        color: white;
+        font-size: 48px;
+        font-weight: 800;
+        color: var(--primary-dark);
     }
-    .profile-stats-card {
-        background: white;
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.05);
-        transition: transform 0.3s ease;
-        height: 100%;
+
+    .profile-name {
+        font-size: 28px;
+        font-weight: 800;
+        color: var(--white);
+        margin-bottom: 4px;
     }
-    .profile-stats-card:hover {
-        transform: translateY(-5px);
+
+    .profile-username {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.8);
     }
-    .stat-number {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #2d3748;
-        line-height: 1;
-    }
-    .stat-label {
-        font-size: 0.9rem;
-        color: #718096;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .badge-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1rem;
-        box-shadow: 0 3px 15px rgba(0,0,0,0.05);
-        display: flex;
-        align-items: center;
-        margin-bottom: 1rem;
-    }
-    .badge-icon {
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 1rem;
-        color: white;
-        font-size: 1.5rem;
-    }
-    .activity-item {
-        border-left: 3px solid #4f46e5;
-        padding-left: 1rem;
-        margin-bottom: 1.5rem;
-    }
-    .activity-time {
-        font-size: 0.85rem;
-        color: #718096;
-    }
-    .verified-badge-large {
-        background: linear-gradient(135deg, #10b981, #059669);
-        color: white;
-        padding: 0.5rem 1.5rem;
-        border-radius: 50px;
+
+    .verified-badge {
         display: inline-flex;
         align-items: center;
+        gap: 6px;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(4px);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 11px;
         font-weight: 600;
-        box-shadow: 0 5px 15px rgba(16, 185, 129, 0.3);
+        margin-top: 8px;
     }
-    .location-text {
-        color: #4a5568;
-        font-size: 1.1rem;
+
+    /* Profile Body */
+    .profile-body {
+        padding: 2rem;
     }
-    .bio-text {
-        font-size: 1.1rem;
-        line-height: 1.6;
-        color: #2d3748;
-    }
-    .member-since {
-        color: #718096;
-        font-size: 0.95rem;
-    }
+
+    /* Section Titles */
     .section-title {
+        font-size: 18px;
         font-weight: 700;
-        color: #2d3748;
-        margin-bottom: 1.5rem;
+        color: var(--primary-dark);
+        margin-bottom: 1.25rem;
         padding-bottom: 0.5rem;
-        border-bottom: 2px solid #e2e8f0;
+        border-bottom: 2px solid var(--accent);
+        display: inline-block;
+    }
+
+    /* Info Grid - Like Student Card */
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .info-row {
+        display: flex;
+        align-items: baseline;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--gray-200);
+        gap: 1rem;
+    }
+
+    .info-row--full {
+        grid-column: span 2;
+    }
+
+    .info-label {
+        width: 110px;
+        flex-shrink: 0;
+        font-weight: 600;
+        color: var(--gray-600);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .info-value {
+        flex: 1;
+        color: var(--gray-700);
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    @media (max-width: 640px) {
+        .info-grid {
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+        .info-row--full {
+            grid-column: span 1;
+        }
+        .info-label {
+            width: 90px;
+            font-size: 12px;
+        }
+        .info-value {
+            font-size: 13px;
+        }
+    }
+
+    /* Bio Section (Other Information) */
+    .bio-section {
+        background: var(--gray-50);
+        border-radius: 16px;
+        padding: 1.25rem;
+        margin: 1.5rem 0;
+    }
+
+    .bio-text {
+        color: var(--gray-700);
+        line-height: 1.6;
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .bio-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+
+    /* Stats Row */
+    .stats-row {
+        display: flex;
+        justify-content: space-around;
+        gap: 1rem;
+        margin: 1.5rem 0;
+        padding: 1rem 0;
+        border-top: 1px solid var(--gray-200);
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .stat-item {
+        text-align: center;
+        flex: 1;
+    }
+
+    .stat-number {
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--primary-dark);
+    }
+
+    .stat-label {
+        font-size: 11px;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+    }
+
+    /* Role Pills */
+    .role-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 1rem 0;
+    }
+
+    .role-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        background: var(--gray-100);
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--primary);
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .btn-primary {
+        flex: 1;
+        background: var(--primary);
+        color: white;
+        border: none;
+        padding: 12px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        transition: background 0.2s;
+    }
+
+    .btn-primary:hover {
+        background: var(--primary-dark);
+    }
+
+    .btn-outline {
+        flex: 1;
+        background: transparent;
+        border: 1px solid var(--gray-300);
+        color: var(--gray-700);
+        padding: 12px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.2s;
+    }
+
+    .btn-outline:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+    }
+
+    /* AFCON Fan Badge */
+    .afcon-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: linear-gradient(135deg, #1a3a1a, #2d5a2d);
+        color: white;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 8px;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+        .profile-container {
+            padding: 1rem;
+        }
+        .profile-header {
+            padding: 1.5rem 1rem 1rem;
+        }
+        .profile-avatar {
+            width: 90px;
+            height: 90px;
+        }
+        .profile-avatar-initials {
+            font-size: 36px;
+        }
+        .profile-name {
+            font-size: 22px;
+        }
+        .info-grid {
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+        .stats-row {
+            flex-wrap: wrap;
+        }
+        .action-buttons {
+            flex-direction: column;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Cover Banner -->
-<div class="profile-cover"></div>
-
-<div class="container">
-    <div class="row">
-        <div class="col-lg-4">
-            <!-- Profile Info Card -->
-            <div class="card border-0 shadow-lg mb-4">
-                <div class="card-body text-center pt-5">
-                    <!-- Avatar -->
-                    <div class="profile-avatar">
-                        {% if public_info.avatar_url %}
-                            <img src="{{ public_info.avatar_url }}" alt="{{ user.username }}" class="profile-avatar-img">
-                        {% else %}
-                            <div class="profile-avatar-initials">
-                                {{ user.username[0]|upper }}
-                            </div>
-                        {% endif %}
+<div class="profile-container">
+    <div class="profile-card">
+        <!-- Header with Avatar (Like Student Card Header) -->
+        <div class="profile-header">
+            <div class="profile-avatar">
+                {% if public_info.avatar_url %}
+                    <img src="{{ public_info.avatar_url }}" alt="{{ user.username }}">
+                {% else %}
+                    <div class="profile-avatar-initials">
+                        {{ (public_info.full_name or user.username)[0]|upper }}
                     </div>
-
-                    <!-- Name and Username -->
-                    <h1 class="h3 mt-5 mb-1">
-                        {% if public_info.full_name %}
-                            {{ public_info.full_name }}
-                        {% else %}
-                            {{ user.username }}
-                        {% endif %}
-                    </h1>
-                    <p class="text-muted mb-3">@{{ user.username }}</p>
-
-                    {% if tournament_mode and profile.fan_team %}
-                    <span class="badge" style="background:#E1F5EE;color:#085041;font-size:12px;padding:4px 10px;border-radius:20px;">
-                      AFCON fan — {{ profile.fan_team }}
-                    </span>
-                    {% endif %}
-
-                    <!-- Location -->
-                    {% if public_info.city or public_info.country %}
-                    <div class="location-text mb-3">
-                        <i class="fas fa-map-marker-alt me-1"></i>
-                        {% if public_info.city %}{{ public_info.city }}{% endif %}{% if public_info.city and public_info.country %}, {% endif %}{% if public_info.country %}{{ public_info.country }}{% endif %}
-                    </div>
-                    {% endif %}
-
-                    <!-- Verification Badge -->
-                    {% if profile and profile.verification_status == 'verified' %}
-                    <div class="mb-4">
-                        <div class="verified-badge-large">
-                            <i class="fas fa-check-circle me-2"></i>
-                            Verified User
-                        </div>
-                        <p class="text-muted small mt-2 mb-0">Identity verified</p>
-                    </div>
-                    {% endif %}
-
-                    <!-- Bio -->
-                    {% if public_info.bio %}
-                    <div class="bio-text mb-4">
-                        {{ public_info.bio }}
-                    </div>
-                    {% endif %}
-
-                    <!-- KYC Status -->
-                    {% if profile %}
-                    <div class="mb-4">
-                        <h6 class="text-muted mb-2">KYC Verification</h6>
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="badge 
-                                {% if profile.verification_status == 'verified' %}bg-success
-                                {% elif profile.verification_status == 'pending' %}bg-warning text-dark
-                                {% elif profile.verification_status == 'rejected' %}bg-danger
-                                {% else %}bg-secondary{% endif %}
-                                me-2">
-                                {{ profile.verification_status|title }}
-                            </span>
-                            <span class="text-muted small">{{ profile.kyc_level|title }} Level</span>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Member Since -->
-                    {% if public_info.joined_date %}
-                    <div class="member-since mb-4">
-                        <i class="far fa-calendar-alt me-1"></i>
-                        Member since {{ public_info.joined_date.strftime('%B %Y') }}
-                    </div>
-                    {% endif %}
-
-                    <!-- Action Buttons for Own Profile -->
-                    {% if is_own_profile %}
-                    <div class="d-grid gap-2">
-                        <a href="{{ url_for('profile.account_overview') }}" class="btn btn-primary">
-                            <i class="fas fa-user-cog me-2"></i>Account Settings
-                        </a>
-                        <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline-secondary">
-                            <i class="fas fa-edit me-2"></i>Edit Profile
-                        </a>
-                    </div>
-                    {% endif %}
-                </div>
+                {% endif %}
             </div>
-
-            <!-- Badges Section -->
-            {% if badges %}
-            <div class="card border-0 shadow-lg mb-4">
-                <div class="card-body">
-                    <h3 class="section-title">Badges</h3>
-                    {% for badge in badges %}
-                    <div class="badge-card">
-                        <div class="badge-icon">
-                            <i class="{{ badge.icon|default('fas fa-award') }}"></i>
-                        </div>
-                        <div>
-                            <h6 class="mb-1">{{ badge.name }}</h6>
-                            <p class="text-muted small mb-0">{{ badge.description|default('Achievement unlocked') }}</p>
-                            {% if badge.earned_date %}
-                            <small class="text-muted">Earned {{ badge.earned_date.strftime('%b %Y') }}</small>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% endfor %}
+            <div class="profile-name">{{ public_info.full_name or user.username }}</div>
+            <div class="profile-username">@{{ user.username }}</div>
+            
+            {% if profile and profile.verification_status == 'verified' %}
+                <div class="verified-badge">
+                    <i class="fas fa-check-circle"></i> Verified Member
                 </div>
-            </div>
+            {% endif %}
+
+            {% if tournament_mode and profile and profile.fan_team %}
+                <div class="afcon-badge">
+                    <i class="fas fa-futbol"></i> AFCON fan — {{ profile.fan_team }}
+                </div>
             {% endif %}
         </div>
 
-        <div class="col-lg-8">
-            <!-- Stats Grid -->
-            <div class="row mb-4">
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="profile-stats-card text-center">
-                        <div class="stat-number">{{ stats.events_count|default(0) }}</div>
-                        <div class="stat-label">Events</div>
+        <!-- Body with Information (Like Student Card Content) -->
+        <div class="profile-body">
+            <!-- General Information Section - Key/Value Pairs -->
+            <div class="section-title">General Information</div>
+            <div class="info-grid">
+                <div class="info-row">
+                    <div class="info-label">User ID</div>
+                    <div class="info-value">{{ user.public_id[:8] if user.public_id else user.id }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Member Since</div>
+                    <div class="info-value">{{ user.created_at.strftime('%B %Y') if user.created_at else '2024' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Full Name</div>
+                    <div class="info-value">{{ public_info.full_name or user.username }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Display Name</div>
+                    <div class="info-value">{{ profile.display_name if profile and profile.display_name else (public_info.full_name or user.username) }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Date of Birth</div>
+                    <div class="info-value">{{ profile.date_of_birth.strftime('%B %d, %Y') if profile and profile.date_of_birth else 'Not specified' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Gender</div>
+                    <div class="info-value">{{ profile.gender|title if profile and profile.gender else 'Not specified' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Nationality</div>
+                    <div class="info-value">{{ profile.nationality if profile and profile.nationality else 'Not specified' }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Location</div>
+                    <div class="info-value">
+                        {% if public_info.city or public_info.country %}
+                            {{ public_info.city or '' }}{% if public_info.city and public_info.country %}, {% endif %}{{ public_info.country or '' }}
+                        {% else %}
+                            Not specified
+                        {% endif %}
                     </div>
                 </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="profile-stats-card text-center">
-                        <div class="stat-number">{{ stats.reviews_count|default(0) }}</div>
-                        <div class="stat-label">Reviews</div>
-                    </div>
+                <div class="info-row info-row--full">
+                    <div class="info-label">Fan of</div>
+                    <div class="info-value">{{ profile.fan_team if profile and profile.fan_team else 'Not declared' }}</div>
                 </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="profile-stats-card text-center">
-                        <div class="stat-number">{{ stats.stays_count|default(0) }}</div>
-                        <div class="stat-label">Stays</div>
-                    </div>
-                </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="profile-stats-card text-center">
-                        <div class="stat-number">{{ stats.trips_count|default(0) }}</div>
-                        <div class="stat-label">Trips</div>
-                    </div>
-                </div>
-                {% if 'driver' in user_roles %}
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="profile-stats-card text-center">
-                        <div class="stat-number">{{ stats.get('driver_trips', 0) }}</div>
-                        <div class="stat-label">Driver Trips</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if 'host' in user_roles %}
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="profile-stats-card text-center">
-                        <div class="stat-number">{{ stats.get('host_properties', 0) }}</div>
-                        <div class="stat-label">Properties</div>
-                    </div>
-                </div>
-                {% endif %}
             </div>
 
-            <!-- Role Badges -->
-            {% if user_roles %}
-            <div class="card border-0 shadow-lg mb-4">
-                <div class="card-body">
-                    <h3 class="section-title">Roles</h3>
-                    <div class="d-flex flex-wrap gap-2">
-                        {% for role in user_roles %}
-                        <span class="badge
-                            {% if role == 'owner' %}bg-danger
-                            {% elif role == 'admin' %}bg-warning text-dark
-                            {% elif role == 'driver' %}bg-primary
-                            {% elif role == 'host' %}bg-success
-                            {% else %}bg-secondary{% endif %}
-                            p-2 fs-6">
-                            <i class="fas
-                                {% if role == 'owner' %}fa-crown
-                                {% elif role == 'admin' %}fa-user-shield
-                                {% elif role == 'driver' %}fa-car
-                                {% elif role == 'host' %}fa-home
-                                {% else %}fa-user{% endif %}
-                                me-1"></i>
-                            {{ role|title }}
-                        </span>
-                        {% endfor %}
-                    </div>
-                </div>
+            <!-- Roles Section -->
+            {% if user_roles and user_roles|length > 0 %}
+            <div class="section-title">Roles</div>
+            <div class="role-pills">
+                {% for role in user_roles %}
+                    <span class="role-pill">
+                        {% if role == 'host' %}🏠 Host
+                        {% elif role == 'driver' %}🚗 Driver
+                        {% elif role == 'admin' %}👑 Admin
+                        {% elif role == 'owner' %}⭐ Owner
+                        {% else %}🧳 Traveler
+                        {% endif %}
+                    </span>
+                {% endfor %}
             </div>
             {% endif %}
 
-            <!-- Personal Information -->
-            {% if profile %}
-            <div class="card border-0 shadow-lg mb-4">
-                <div class="card-body">
-                    <h3 class="section-title">Personal Information</h3>
-                    <div class="row">
-                        {% if profile.date_of_birth %}
-                        <div class="col-md-6 mb-3">
-                            <small class="text-muted">Date of Birth</small>
-                            <div class="fw-semibold">{{ profile.date_of_birth.strftime('%B %d, %Y') }}</div>
-                        </div>
-                        {% endif %}
-                        {% if profile.gender %}
-                        <div class="col-md-6 mb-3">
-                            <small class="text-muted">Gender</small>
-                            <div class="fw-semibold">{{ profile.gender|title }}</div>
-                        </div>
-                        {% endif %}
-                        {% if profile.nationality %}
-                        <div class="col-md-6 mb-3">
-                            <small class="text-muted">Nationality</small>
-                            <div class="fw-semibold">{{ profile.nationality }}</div>
-                        </div>
-                        {% endif %}
-                        {% if profile.email %}
-                        <div class="col-md-6 mb-3">
-                            <small class="text-muted">Email</small>
-                            <div class="fw-semibold">{{ profile.email }}</div>
-                        </div>
-                        {% endif %}
-                        {% if profile.phone_number %}
-                        <div class="col-md-6 mb-3">
-                            <small class="text-muted">Phone</small>
-                            <div class="fw-semibold">{{ profile.phone_number }}</div>
-                        </div>
-                        {% endif %}
-                    </div>
+            <!-- Stats Row (Stays, Trips, Reviews) -->
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-number">{{ stats.stays_count|default(0) }}</div>
+                    <div class="stat-label">Stays</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{ stats.trips_count|default(0) }}</div>
+                    <div class="stat-label">Trips</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{ stats.reviews_count|default(0) }}</div>
+                    <div class="stat-label">Reviews</div>
                 </div>
             </div>
-            {% endif %}
 
-            <!-- Recent Activity Feed -->
-            <div class="card border-0 shadow-lg">
-                <div class="card-body">
-                    <h3 class="section-title">Recent Activity</h3>
+            <!-- Bio Section (Personal story, hobbies, interests) -->
+            <div class="bio-section">
+                <div class="bio-label">About & Interests</div>
+                {% if public_info.bio %}
+                    <p class="bio-text">{{ public_info.bio }}</p>
+                {% elif is_own_profile %}
+                    <p class="bio-text">
+                        Add a short bio here so visitors can learn about your hobbies, favorite places,
+                        passions, and what makes you unique.
+                    </p>
+                    <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline" style="display:inline-block; margin-top:0.75rem;">
+                        Edit your bio
+                    </a>
+                {% else %}
+                    <p class="bio-text text-muted">This user has not added a public bio yet.</p>
+                {% endif %}
+            </div>
 
-                    {% if recent_activity %}
-                        {% for activity in recent_activity %}
-                        <div class="activity-item">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <h5 class="h6 mb-1">{{ activity.title|default('Activity') }}</h5>
-                                <span class="activity-time">{{ activity.time|default('') }}</span>
-                            </div>
-                            {% if activity.description %}
-                            <p class="mb-2">{{ activity.description }}</p>
-                            {% endif %}
-                            {% if activity.resource_type %}
-                            <span class="badge bg-light text-dark">
-                                {{ activity.resource_type }}
-                            </span>
-                            {% endif %}
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="text-center py-4">
-                            <i class="fas fa-stream fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">No recent activity to display</p>
-                        </div>
-                    {% endif %}
-
-                    {% if recent_activity and recent_activity|length > 5 %}
-                    <div class="text-center mt-4">
-                        <a href="#" class="btn btn-outline-primary">View All Activity</a>
-                    </div>
-                    {% endif %}
-                </div>
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                {% if is_own_profile %}
+                    <a href="{{ url_for('profile.account_overview') }}" class="btn-primary">
+                        <i class="fas fa-user-cog"></i> My Account
+                    </a>
+                    <a href="{{ url_for('profile.edit_profile') }}" class="btn-outline">
+                        <i class="fas fa-edit"></i> Edit Profile
+                    </a>
+                {% else %}
+                    <button class="btn-primary" onclick="sendMessage('{{ user.username }}')">
+                        <i class="fas fa-envelope"></i> Send Message
+                    </button>
+                    <button class="btn-outline" onclick="followUser('{{ user.username }}')">
+                        <i class="fas fa-user-plus"></i> Follow
+                    </button>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
+
+<script>
+function sendMessage(username) {
+    alert(`Message @${username}`);
+}
+
+function followUser(username) {
+    alert(`You are now following @${username}`);
+}
+</script>
 {% endblock %}

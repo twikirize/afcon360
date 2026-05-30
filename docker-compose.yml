@@ -1,7 +1,14 @@
 # =============================================================================
 # AFCON360 - Docker Compose
 # Stack: Flask + PostgreSQL + Redis + Celery + Nginx
+#
+# Usage:
+#   docker compose up -d          # start everything
+#   docker compose logs -f web    # watch logs
+#   docker compose down -v        # stop and remove volumes
 # =============================================================================
+
+version: '3.9'
 
 networks:
   afcon_net:
@@ -16,6 +23,7 @@ volumes:
     driver: local
 
 services:
+
   # ---------------------------------------------------------------------------
   # PostgreSQL
   # ---------------------------------------------------------------------------
@@ -86,7 +94,6 @@ services:
     volumes:
       - app_logs:/app/logs
       - ./static:/app/static:ro
-      - ./templates:/app/templates
     env_file:
       - .env
       - .env.docker
@@ -103,7 +110,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health/ping"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -175,7 +182,7 @@ services:
           cpus: '0.1'
 
   # ---------------------------------------------------------------------------
-  # Nginx
+  # Nginx — reverse proxy
   # ---------------------------------------------------------------------------
   nginx:
     image: nginx:alpine

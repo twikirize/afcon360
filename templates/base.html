@@ -465,12 +465,10 @@
                   <i class="fas fa-user me-2"></i>Switch to Consumer View</a></li>
                 <li><hr class="drop-divider"></li>
                 {% endif %}
-                <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
-                  <i class="bi bi-person-circle me-2"></i>My Profile</a></li>
                 <li><a class="drop-item" href="{{ url_for('profile.account_overview') }}">
                   <i class="bi bi-person-badge me-2"></i>My Account</a></li>
-                <li><a class="drop-item" href="{{ url_for('profile.edit_profile') }}">
-                  <i class="bi bi-gear me-2"></i>Settings</a></li>
+                <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
+                  <i class="bi bi-person-circle me-2"></i>My Profile</a></li>
                 <li><hr class="drop-divider"></li>
                 <li>
                   <form method="POST" action="{{ url_for('auth.logout') }}">
@@ -586,15 +584,16 @@
 
         <div class="drawer-divider"></div>
 
-        <a class="drawer-link" href="{{ url_for('profile.my_public_profile') }}">
-          <i class="bi bi-person-circle me-2"></i>My Profile
-        </a>
         {% if nav_profile_completed %}
           <a class="drawer-link" href="{{ url_for('profile.account_overview') }}">
             <i class="bi bi-person-badge me-2"></i>My Account
           </a>
-          <a class="drawer-link" href="{{ url_for('profile.edit_profile') }}">
-            <i class="bi bi-gear me-2"></i>Settings
+          <a class="drawer-sub-link" href="{{ url_for('profile.my_public_profile') }}">
+            <i class="bi bi-person-circle me-2"></i>My Profile
+          </a>
+        {% else %}
+          <a class="drawer-link" href="{{ url_for('profile.my_public_profile') }}">
+            <i class="bi bi-person-circle me-2"></i>My Profile
           </a>
         {% endif %}
 
