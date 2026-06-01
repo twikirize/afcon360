@@ -1545,12 +1545,12 @@
                                         </div>
                                         <div class="property-action">
                                             <div class="property-price">${{ property.price }}/night</div>
-                                            <a href="{{ safe_url('accommodation.guest.detail', identifier=property.slug or property.id) }}" class="btn-property-modern">View</a>
+                                            <a href="{{ safe_url('accommodation.guest_detail', identifier=property.slug or property.id) }}" class="btn-property-modern">View</a>
                                         </div>
                                     </div>
                                     {% endfor %}
                                 </div>
-                                <a href="{{ safe_url('accommodation.guest.search', city=event.city) }}" class="btn-view-all-modern">
+                                <a href="{{ safe_url('accommodation.guest_search', city=event.city) }}" class="btn-view-all-modern">
                                     <i class="fas fa-th-large"></i>
                                     <span>View All Properties</span>
                                 </a>

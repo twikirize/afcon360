@@ -19,7 +19,7 @@
                     <h4 class="mb-0">Complete Your Booking</h4>
                 </div>
                 <div class="card-body">
-                    <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest.checkout') }}">
+                    <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest_checkout') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <!-- Guest Information -->
                         <h5 class="mb-3">Guest Details</h5>

@@ -10,7 +10,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Check if this is a free event (no paid tickets)
     const hasPaidTickets = ticketTypes.some(tt => tt.price > 0);
-    const isFreeEvent = !hasPaidTickets;
+
+    const paymentSection = document.getElementById('payment-section');
+    const ticketDescriptionElement = document.getElementById('ticket-description');
 
     // Group registration functionality
     const groupToggle = document.getElementById('group-registration-toggle');
@@ -94,33 +96,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    if (isFreeEvent) {
-        // For free events, ensure no ticket selection is shown
-        if (ticketSelect) {
-            ticketSelect.style.display = 'none';
+    function updatePaymentSection(selectedTicket) {
+        if (!paymentSection) return;
+        if (selectedTicket && selectedTicket.price > 0) {
+            paymentSection.style.display = 'block';
+        } else {
+            paymentSection.style.display = 'none';
         }
-        // Remove any ticket_type_id from URL to avoid confusion
-        if (window.location.search.includes('ticket_type_id')) {
-            const url = new URL(window.location);
-            url.searchParams.delete('ticket_type_id');
-            window.history.replaceState({}, '', url);
-        }
-    } else if (ticketSelect) {
-        // For paid events, setup ticket selection
+    }
+
+    if (ticketSelect) {
         ticketSelect.addEventListener('change', function() {
             const ticketId = parseInt(this.value);
             const selectedTicket = ticketTypes.find(tt => tt.id === ticketId);
             if (selectedTicket) {
                 ticketInfo.classList.remove('d-none');
-                const descriptionElement = document.getElementById('ticket-description');
-                if (descriptionElement) {
-                    descriptionElement.textContent = selectedTicket.description || '';
+                if (ticketDescriptionElement) {
+                    ticketDescriptionElement.textContent = selectedTicket.description || '';
                 }
-                updateTotalPrice(); // Use the group-aware price calculation
+                updateTotalPrice();
+                updatePaymentSection(selectedTicket);
             } else {
                 ticketInfo.classList.add('d-none');
+                updatePaymentSection(null);
             }
         });
+
+        // Initialize section state based on any selected ticket
+        const initialTicket = ticketTypes.find(tt => tt.id === parseInt(ticketSelect.value));
+        if (initialTicket) {
+            updatePaymentSection(initialTicket);
+        } else {
+            updatePaymentSection(null);
+        }
+    } else {
+        updatePaymentSection(null);
     }
 
     // Form submission handler

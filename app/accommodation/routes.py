@@ -328,7 +328,7 @@ def guest_checkout():
         booking_data = request.session.get('pending_booking')
         if not booking_data:
             flash('No booking in progress', 'warning')
-            return redirect(url_for('accommodation.guest.search'))
+            return redirect(url_for('accommodation.guest_search'))
 
         return render_template(
             "accommodation/guest/checkout.html",
@@ -341,7 +341,7 @@ def guest_checkout():
         for field in required:
             if not data.get(field):
                 flash(f'Missing required field: {field}', 'danger')
-                return redirect(url_for('accommodation.guest.search'))
+                return redirect(url_for('accommodation.guest_search'))
 
         check_in = datetime.strptime(data['check_in'], '%Y-%m-%d').date()
         check_out = datetime.strptime(data['check_out'], '%Y-%m-%d').date()
@@ -380,7 +380,7 @@ def guest_checkout():
 
         if error:
             flash(error, 'danger')
-            return redirect(url_for('accommodation.guest.detail', identifier=data['property_id']))
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         success, txn_id, payment_error = WalletService.charge_wallet(
             user_id=current_user.id,
@@ -398,7 +398,7 @@ def guest_checkout():
                 user_agent=request.headers.get('User-Agent')
             )
             flash(f'Payment failed: {payment_error}', 'danger')
-            return redirect(url_for('accommodation.guest.detail', identifier=data['property_id']))
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         success, confirm_error = BookingService.confirm_booking(
             booking.id,
@@ -409,16 +409,16 @@ def guest_checkout():
 
         if not success:
             flash(f'Booking confirmation failed: {confirm_error}', 'danger')
-            return redirect(url_for('accommodation.guest.detail', identifier=data['property_id']))
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         request.session.pop('pending_booking', None)
         flash(f'Booking confirmed! Your reference: {booking.booking_reference}', 'success')
-        return redirect(url_for('accommodation.guest.confirmation', reference=booking.booking_reference))
+        return redirect(url_for('accommodation.guest_confirmation', reference=booking.booking_reference))
 
     except Exception as e:
         logger.exception(f"Checkout error: {e}")
         flash(f'Error processing booking: {str(e)}', 'danger')
-        return redirect(url_for('accommodation.guest.search'))
+        return redirect(url_for('accommodation.guest_search'))
 
 
 @accommodation_bp.route("/guest/confirmation/<reference>", endpoint="guest_confirmation")
@@ -429,7 +429,7 @@ def guest_confirmation(reference):
 
     if not booking:
         flash('Booking not found', 'danger')
-        return redirect(url_for('accommodation.guest.my_bookings'))
+        return redirect(url_for('accommodation.guest_my_bookings'))
 
     if booking.guest_user_id != current_user.id and booking.host_user_id != current_user.id:
         abort(403)
@@ -471,11 +471,11 @@ def guest_cancel_booking(reference):
 
     if not booking:
         flash('Booking not found', 'danger')
-        return redirect(url_for('accommodation.guest.my_bookings'))
+        return redirect(url_for('accommodation.guest_my_bookings'))
 
     if booking.guest_user_id != current_user.id:
         flash('You are not authorized to cancel this booking', 'danger')
-        return redirect(url_for('accommodation.guest.my_bookings'))
+        return redirect(url_for('accommodation.guest_my_bookings'))
 
     reason = request.form.get('reason', 'User requested cancellation')
 
@@ -501,7 +501,7 @@ def guest_cancel_booking(reference):
     else:
         flash(message, 'danger')
 
-    return redirect(url_for('accommodation.guest.my_bookings'))
+    return redirect(url_for('accommodation.guest_my_bookings'))
 
 
 # ============================================================================

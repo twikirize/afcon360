@@ -355,7 +355,7 @@
                                     <a href="{{ safe_url('transport.home') }}" class="reg-btn reg-btn-outline">
                                         <i class="fas fa-bus"></i> Transport
                                     </a>
-                                    <a href="{{ safe_url('accommodation.guest.search') }}" class="reg-btn reg-btn-outline">
+                                    <a href="{{ safe_url('accommodation.guest_search') }}" class="reg-btn reg-btn-outline">
                                         <i class="fas fa-bed"></i> Stay
                                     </a>
                                     {% if status not in ['cancelled', 'checked_in'] %}
@@ -564,7 +564,7 @@
                         </div>
                         <i class="fas fa-chevron-right ms-auto" style="font-size:0.7rem;color:#cbd5e0;"></i>
                     </a>
-                    <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-link">
+                    <a href="{{ safe_url('accommodation.guest_search') }}" class="quick-link">
                         <div class="quick-link-icon ql-orange"><i class="fas fa-bed"></i></div>
                         <div>
                             <div style="font-weight:600;">Book Accommodation</div>

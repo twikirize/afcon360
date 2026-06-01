@@ -452,7 +452,7 @@ def verify_email_code():
 # Phone verification via OTP code
 # ---------------------------------------------------------------------------
 
-@auth_bp.route("/verify-phone", methods=["POST"], endpoint="verify_phone")
+@auth_bp.route("/verify-phone", methods=["GET", "POST"], endpoint="verify_phone")
 @login_required
 @limiter.limit("10 per hour")
 @require_fresh_user
@@ -460,6 +460,10 @@ def verify_phone():
     """
     Verify phone number using OTP code sent via SMS.
     """
+    if request.method == "GET":
+        flash("Please use the phone verification form to verify your number.", "info")
+        return redirect(request.referrer or url_for("profile.edit_profile"))
+
     code = request.form.get("code", "").strip()
     phone_number = request.form.get("phone_number", "").strip()
 
@@ -494,6 +498,50 @@ def verify_phone():
         flash("Invalid or expired verification code.", "danger")
 
     return redirect(request.referrer or url_for("index"))
+
+@auth_bp.route("/resend-verification", methods=["GET"], endpoint="resend_verification")
+@login_required
+@limiter.limit("5 per hour")
+def resend_verification():
+    """Resend a verification email to the current user."""
+    from app.auth.email import send_verification_email
+
+    if not current_user.is_authenticated:
+        return redirect(url_for("auth.login"))
+
+    if getattr(current_user, "is_verified", False):
+        flash("Your email is already verified.", "info")
+        return redirect(request.referrer or url_for("profile.account_overview"))
+
+    if not getattr(current_user, "email", None):
+        flash("No email address is set on your account.", "danger")
+        return redirect(request.referrer or url_for("profile.account_overview"))
+
+    if send_verification_email(current_user):
+        flash("Verification email resent. Please check your inbox.", "success")
+    else:
+        flash("Unable to resend verification email at this time. Please contact support.", "danger")
+
+    return redirect(request.referrer or url_for("profile.account_overview"))
+
+@auth_bp.route("/deactivate-account", endpoint="deactivate_account")
+@login_required
+def deactivate_account():
+    from app.auth.services import activate_user
+
+    if activate_user(str(current_user.public_id), active=False, actor_id=str(current_user.public_id)):
+        logout_user()
+        flash("Your account has been deactivated.", "info")
+        return redirect(url_for("auth.login"))
+
+    flash("Unable to deactivate your account. Please contact support.", "danger")
+    return redirect(request.referrer or url_for("profile.account_overview"))
+
+@auth_bp.route("/delete-account", endpoint="delete_account")
+@login_required
+def delete_account():
+    flash("Account deletion is currently unavailable. Please contact support.", "warning")
+    return redirect(request.referrer or url_for("profile.account_overview"))
 
 @auth_bp.route("/send-phone-verification", methods=["POST"], endpoint="send_phone_verification")
 @login_required
@@ -746,6 +794,20 @@ def login():
 
     from config import APP_NAME
     return render_template("login.html", app_name=APP_NAME)
+
+
+@auth_bp.route("/change-username", methods=["GET"], endpoint="change_username")
+@login_required
+def change_username():
+    """Redirect missing username-change endpoint to profile edit."""
+    return redirect(url_for("profile.edit_profile"))
+
+
+@auth_bp.route("/change-password", methods=["GET"], endpoint="change_password")
+@login_required
+def change_password():
+    """Redirect missing password-change endpoint to reset request."""
+    return redirect(url_for("auth.reset_request"))
 
 
 # ---------------------------------------------------------------------------
@@ -1071,6 +1133,9 @@ def mfa_setup():
         return redirect(url_for('auth.mfa_status'))
     
     return render_template('auth/mfa_setup.html')
+
+# Backwards compatible alias for templates that still link to auth.setup_mfa
+auth_bp.add_url_rule('/mfa/setup', endpoint='setup_mfa', view_func=mfa_setup)
 
 @auth_bp.route('/mfa/enable', methods=['POST'])
 @login_required

@@ -835,6 +835,12 @@
         <i class="fas fa-exclamation-triangle"></i>
         Please activate your wallet to use all features.
       </div>
+    {% elif wallet_status and wallet_status.requires_terms_acceptance %}
+      <div class="alert alert-info" style="margin:16px;padding:12px;font-size:12px;">
+        <i class="fas fa-file-contract"></i>
+        Please accept the wallet terms so you can continue using wallet services.
+        <a href="{{ safe_url('wallet.wallet_activate') }}" style="color:inherit;font-weight:600;display:block;margin-top:6px;">Review terms and activate</a>
+      </div>
     {% endif %}
 
 

@@ -435,7 +435,7 @@ def status():
                            records=records,
                            kyc_info=kyc_info)
 
-@kyc_bp.route('/verify/upload', methods=['GET', 'POST'])
+@kyc_bp.route('/verify/upload', methods=['GET', 'POST'], endpoint='upload')
 @login_required
 @require_fresh_user
 def verify_upload():

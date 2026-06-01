@@ -55,7 +55,7 @@ from app.accommodation import routes  # noqa: F401 – attaches main routes to b
 @module_enabled
 def legacy_detail(identifier):
     return redirect(
-        url_for('accommodation.guest.detail', identifier=identifier)
+        url_for('accommodation.guest_detail', identifier=identifier)
     )
 
 

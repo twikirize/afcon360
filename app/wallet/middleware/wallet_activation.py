@@ -27,7 +27,7 @@ def require_wallet_activated(f):
         if not wallet or not wallet.verified:
             # No wallet or wallet not activated
             flash("Please activate your wallet to access this feature.", "warning")
-            return redirect(url_for("wallet.activate_wallet"))
+            return redirect(url_for("wallet.wallet_activate"))
 
         return f(*args, **kwargs)
 

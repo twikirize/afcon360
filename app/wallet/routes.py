@@ -22,9 +22,11 @@ from app.wallet.middleware.wallet_check import (
     require_withdraw_access,
     require_payout_access
 )
-from app.wallet.services.wallet_status_service import WalletFeature
+from app.wallet.services.wallet_status_service import WalletFeature, WalletStatusService
 from app.auth.decorators import require_fresh_user
+from app.services.analytics import AnalyticsService
 from uuid import UUID
+
 from uuid import uuid4
 
 wallet_bp = Blueprint('wallet', __name__, url_prefix='/wallet')
@@ -128,7 +130,7 @@ def get_or_create_account(user_id, currency='UGX'):
     return account
 
 
-@wallet_bp.route("/activate", methods=["GET", "POST"])
+@wallet_bp.route("/activate", methods=["GET", "POST"], endpoint='wallet_activate')
 @login_required
 @require_fresh_user
 def activate_wallet():
@@ -146,28 +148,39 @@ def activate_wallet():
         owner_type=AccountOwnerType.USER,
     ).first()
 
-    if existing:
-        flash("You already have a wallet.", "info")
-        return redirect(url_for("wallet.wallet_dashboard"))
+    if not existing:
+        flash('You need to create a wallet first.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
 
-    if request.method == "POST":
-        if not request.form.get("accept_terms"):
-            flash("You must accept the terms to activate your wallet.", "warning")
-            return render_template("wallet/wallet_activate.html")
+    if request.method == 'POST':
+        from flask_wtf.csrf import validate_csrf
+        csrf_token = request.form.get('csrf_token')
+        if not csrf_token:
+            flash('Security token missing. Please try again.', 'danger')
+            return redirect(url_for('wallet.wallet_activate'))
+        try:
+            validate_csrf(csrf_token)
+        except Exception:
+            flash('Invalid security token. Please try again.', 'danger')
+            return redirect(url_for('wallet.wallet_activate'))
 
-        with db_transaction("Wallet activation"):
-            account = AccountModel(
-                user_id=db_user.id,
-                owner_type=AccountOwnerType.USER,
-                currency="UGX",
-                balance=0,
-            )
-            db.session.add(account)
+        if existing.verified:
+            flash('Your wallet is already activated.', 'info')
+            return redirect(url_for('wallet.wallet_dashboard'))
 
-        flash("Your wallet has been activated!", "success")
-        return redirect(url_for("wallet.wallet_dashboard"))
+        if not request.form.get('accept_terms'):
+            flash('You must accept the terms to activate your wallet.', 'warning')
+            return render_template('wallet/wallet_activate.html', action='verify', wallet=existing)
 
-    return render_template("wallet/wallet_activate.html")
+        with db_transaction('Wallet activation'):
+            existing.verified = True
+            existing.terms_accepted_at = datetime.utcnow()
+            db.session.add(existing)
+
+        flash('Your wallet has been activated!', 'success')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+    return render_template('wallet/wallet_activate.html', action='verify', wallet=existing)
 
 
 # =============================================================================
@@ -175,73 +188,54 @@ def activate_wallet():
 # =============================================================================
 
 @wallet_bp.route('/')
-@login_required
 def home():
-    """Wallet home page - redirect to overview/dashboard"""
-    # Log access - not a specific entity, so pass None for entity_id
+    """Wallet module entry point — intelligent traffic director."""
+    if not current_user.is_authenticated:
+        return render_template('wallet/wallet_home.html')
+
     try:
-        from app.audit.forensic_audit import ForensicAuditService
-        ForensicAuditService.log_attempt(
-            entity_type="wallet",
-            entity_id=None,  # Not a specific entity, so pass None
-            action="view_home",
-            user_id=current_user.id,
-            ip_address=request.remote_addr,
-            user_agent=request.user_agent.string if request.user_agent else None
-        )
-    except Exception:
-        pass  # Don't block redirect if logging fails
-    return redirect(url_for('wallet.wallet_dashboard'))
+        wallet_status = WalletStatusService.get_wallet_status(current_user)
+        if wallet_status is None or not wallet_status.exists:
+            return redirect(url_for('wallet.wallet_dashboard'))
+
+        if not wallet_status.is_activated:
+            return redirect(url_for('wallet.wallet_activate'))
+
+        return redirect(url_for('wallet.wallet_dashboard'))
+    except Exception as e:
+        current_app.logger.error(f"Wallet home routing error: {e}")
+        return redirect(url_for('wallet.wallet_dashboard'))
 
 
 @wallet_bp.route('/home')
-@login_required
 def wallet_home():
-    """Alternative wallet home endpoint"""
-    # Log access - not a specific entity, so pass None for entity_id
-    try:
-        from app.audit.forensic_audit import ForensicAuditService
-        ForensicAuditService.log_attempt(
-            entity_type="wallet",
-            entity_id=None,  # Not a specific entity, so pass None
-            action="view_home",
-            user_id=current_user.id,
-            ip_address=request.remote_addr,
-            user_agent=request.user_agent.string if request.user_agent else None
-        )
-    except Exception:
-        pass  # Don't block redirect if logging fails
-    return redirect(url_for('wallet.wallet_dashboard'))
+    """Public wallet marketing page — accessible without login."""
+    if current_user.is_authenticated:
+        try:
+            wallet_status = WalletStatusService.get_wallet_status(current_user)
+            if wallet_status and wallet_status.is_activated:
+                return redirect(url_for('wallet.wallet_dashboard'))
+        except Exception:
+            pass
+    return render_template('wallet/wallet_home.html')
 
 
 @wallet_bp.route('/dashboard')
 @login_required
 def wallet_dashboard():
-    """Main wallet dashboard page"""
-    # Log access - not a specific entity, so pass None for entity_id
-    try:
-        from app.audit.forensic_audit import ForensicAuditService
-        ForensicAuditService.log_attempt(
-            entity_type="wallet",
-            entity_id=None,  # Not a specific entity, so pass None
-            action="view_dashboard",
-            user_id=current_user.id,
-            ip_address=request.remote_addr,
-            user_agent=request.user_agent.string if request.user_agent else None
-        )
-    except Exception:
-        pass  # Don't block dashboard if logging fails
-    
+    """Main wallet dashboard — the real landing page."""
+    AnalyticsService.track_page_view('wallet')
+
     # Clear admin/module flash messages from previous page loads
     from flask import session
     if '_flashes' in session:
         session['_flashes'] = [(category, message) for category, message in session['_flashes'] if 'module' not in message.lower()]
-    
+
     try:
-        # Get existing account (do NOT auto-create)
+        wallet_status = WalletStatusService.get_wallet_status(current_user)
         account = get_account(current_user.id)
+
         if not account:
-            # No wallet yet - show zero balance and prompt to create
             return render_template(
                 'wallet/wallet_dashboard.html',
                 account=None,
@@ -249,29 +243,38 @@ def wallet_dashboard():
                 recent_transactions=[],
                 commission=Decimal('0'),
                 transaction_count=0,
-                no_wallet=True
+                no_wallet=True,
+                wallet_activated=False
             )
-        
-        # Get balance using WalletService (pass user_id, not account.id)
+
+        if account and account.id:
+            try:
+                from app.audit.forensic_audit import ForensicAuditService
+                ForensicAuditService.log_attempt(
+                    entity_type="wallet",
+                    entity_id=str(account.id),
+                    action="view_dashboard",
+                    user_id=current_user.id,
+                    ip_address=request.remote_addr,
+                    user_agent=request.user_agent.string if request.user_agent else None
+                )
+            except Exception:
+                pass
+
         service = WalletService()
         balance_data = service.get_balance(account.user_id)
-        # get_balance returns dict with 'balance' key
         balance = balance_data.get('balance', Decimal('0'))
-        
-        # Get recent transactions where current user is sender or recipient
+
         recent_transactions = TransactionModel.query.filter(
             or_(
                 TransactionModel.user_id == current_user.id,
                 TransactionModel.recipient_user_id == current_user.id
             )
         ).order_by(TransactionModel.created_at.desc()).limit(10).all()
-        
-        # Calculate transaction usage count using correct fields
+
         transaction_count = calculate_transaction_usage(current_user.id)
-        
-        # Mock commission for agent users (implement properly later)
         commission = Decimal('0')
-        
+
         return render_template(
             'wallet/wallet_dashboard.html',
             account=account,
@@ -279,7 +282,8 @@ def wallet_dashboard():
             recent_transactions=recent_transactions,
             commission=commission,
             transaction_count=transaction_count,
-            no_wallet=False
+            no_wallet=False,
+            wallet_activated=wallet_status.is_activated if wallet_status else False
         )
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
@@ -290,7 +294,7 @@ def wallet_dashboard():
             context={"component": "wallet_dashboard"}
         )
         flash('Unable to load wallet dashboard. Please try again later.', 'warning')
-        return render_template('wallet/wallet_dashboard.html', balance=Decimal('0'), recent_transactions=[], commission=Decimal('0'), no_wallet=True)
+        return render_template('wallet/wallet_dashboard.html', balance=Decimal('0'), recent_transactions=[], commission=Decimal('0'), no_wallet=True, wallet_activated=False)
 
 
 @wallet_bp.route('/overview')
@@ -452,7 +456,7 @@ def deposit_form():
             account_id=account.id,  # UUID - correct per Alipay model
             amount=amount,
             currency=currency,
-            client_request_id=str(uuid.uuid4()),  # Required parameter
+            client_request_id=str(uuid4()),  # Required parameter
             metadata={'source': 'web_form'}
         )
         
@@ -632,7 +636,7 @@ def withdraw_funds():
             account_id=account.id,  # UUID - correct per Alipay model
             amount=amount,
             currency=currency,
-            client_request_id=str(uuid.uuid4()),  # Required parameter
+            client_request_id=str(uuid4()),  # Required parameter
             metadata={'method': method, 'agent_id': agent_id}
         )
         
@@ -718,7 +722,7 @@ def wallet_transactions():
 
 @wallet_bp.route('/agent/payout/history')
 @login_required
-@require_wallet_for_feature(feature=WalletFeature.VIEW_PAYOUT_HISTORY)
+@require_payout_access
 def agent_payout_history():
     """View agent payout history"""
     try:

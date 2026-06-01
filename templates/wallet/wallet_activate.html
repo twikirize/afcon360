@@ -231,7 +231,7 @@
       </div>
 
       <form method="POST" id="wallet-create-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action_type" value="create">
         <input type="hidden" name="accept_terms" id="accept-terms-field" value="0">
 

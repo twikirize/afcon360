@@ -636,6 +636,46 @@ class EventRegistration(BaseModel):
         CheckConstraint("registration_fee >= 0", name="ck_reg_fee_non_negative"),
     )
 
+    """
+    Event Registration with full database-backed ID hierarchy:
+    
+    ID STRUCTURE (all database-backed):
+    ──────────────────────────────────
+    Event
+      ├─ event.id (BigInteger PK)
+      ├─ event.public_id (UUID string, unique)
+      └─ event.slug (human-readable unique string)
+    
+    TicketType
+      ├─ ticket_type.id (BigInteger PK) ← FK'd by registrations
+      ├─ ticket_type.event_id (FK → events.id)
+      ├─ ticket_type.name (e.g. "VIP", "General", "Free Entry")
+      └─ ticket_type.price (Decimal - 0 for free tiers)
+    
+    EventRegistration (this table)
+      ├─ registration.id (BigInteger PK)
+      ├─ registration.seq_number (PostgreSQL SEQUENCE - globally unique)
+      ├─ registration.registration_ref (human-readable e.g. "ER-AFCON2024-00001234")
+      ├─ registration.ticket_number (e.g. "TKT-AFCON2024-00001234")
+      ├─ registration.event_id (FK → events.id)
+      ├─ registration.ticket_type_id (FK → event_ticket_types.id) ← ALWAYS SET
+      ├─ registration.id_type (String - registration-specific ID type: passport/national_id/etc)
+      └─ registration.id_number (String - registration-specific ID number)
+    
+    KEY DESIGN:
+    ───────────
+    1. ticket_type_id is NEVER NULL - every event has ≥1 TicketType
+       - Free events: one "Free Entry" ticket type (price=0, capacity=0/unlimited)
+       - Paid events: one or more paid ticket tiers
+    
+    2. All IDs are database-backed for referential integrity
+    
+    3. id_type in registration is a STRING (not a foreign key):
+       - Stores values like "passport", "national_id", "driver_license"
+       - Allows flexibility for future ID types without schema migration
+       - Registration can collect ID info independently of event ID requirements
+    """
+
     # Payment status constants
     PAYMENT_FREE     = "free"
     PAYMENT_PENDING  = "pending"

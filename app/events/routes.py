@@ -1,4 +1,4 @@
-# app/events/routes.py
+﻿# app/events/routes.py
 
 """
 Event routes - Unified entry points for all user roles
@@ -129,45 +129,37 @@ def list():
 
 @events_bp.route("/<identifier>")
 def landing(identifier=None):
-    """Landing page for an event"""
-    # Get ORM model
-    event_model = resolve_event(identifier)
-    if not event_model:
+    """Landing page for an event - Clean Flask pattern with safe context"""
+    
+    # Build safe template context (no ORM objects)
+    context = EventService.build_event_context(
+        identifier, 
+        current_user.id if current_user.is_authenticated else None
+    )
+    
+    if not context.get('event_found'):
         return render_template('events/public/not_found.html', event_slug=identifier), 404
     
-    # Use ViewModel for template
-    from app.events.services import EventRegistrationViewModel
-    vm = EventRegistrationViewModel(event_model, current_user if current_user.is_authenticated else None)
+    # Get properties for accommodation (existing functionality)
+    properties = search_properties(city=context['event_city'])
     
-    # Check if current user is registered
-    user_registered = False
-    if current_user.is_authenticated:
-        registration = EventRegistration.query.filter_by(
-            event_id=event_model.id,
-            user_id=current_user.id,
-            status='confirmed'
-        ).first()
-        user_registered = registration is not None
+    # Get start time from metadata
+    start_time = context['event_metadata'].get('start_time', '00:00:00')
     
-    total_registrations = EventRegistration.query.filter_by(event_id=event_model.id).count()
-    start_time = event_model.event_metadata.get('start_time', '00:00:00') if event_model.event_metadata else '00:00:00'
-    properties = search_properties(city=event_model.city)
-    
+    # Pass context to template - this makes all variables available
     return render_template(
         'events/public/landing.html',
-        vm=vm,  # Pass ViewModel instead of dict
+        **context,  # Unpacks event_name, event_description, ticket_types, etc.
         properties=properties,
         context_type=BookingContextType.EVENT.value,
-        context_id=event_model.slug,
+        context_id=context['event_slug'],
         context_metadata={
-            'event_name': event_model.name,
-            'event_dates': f"{event_model.start_date} to {event_model.end_date}" if event_model.start_date else '',
-            'venue': event_model.venue or ''
+            'event_name': context['event_name'],
+            'event_dates': f"{context['event_start_date']} to {context['event_end_date']}" if context['event_end_date'] else '',
+            'venue': context['event_venue'] or ''
         },
         is_admin=is_system_admin(current_user) if current_user.is_authenticated else False,
-        user_registered=user_registered,
         now=datetime.utcnow,
-        total_registrations=total_registrations,
         event_start_time=start_time
     )
 
@@ -244,6 +236,8 @@ def attendee_dashboard():
     """Attendee Dashboard - Post-registration hub (QR code, transport, accommodation, cancel, etc.)"""
     try:
         attendee_data = EventService.get_attendee_dashboard_data(current_user.id)
+
+        from app.wallet.services.wallet_service import WalletService
 
         wallet = None
         try:
@@ -405,7 +399,7 @@ def create_event():
                         'capacity': int(tier_capacities[i]) if i < len(tier_capacities) and tier_capacities[i] else None
                     })
 
-    print(f"🔥 Received data: {data}")
+    print(f"ðŸ”¥ Received data: {data}")
 
     if not data:
         return jsonify({'success': False, 'error': 'No data provided'}), 400
@@ -437,7 +431,7 @@ def create_event():
         return redirect(url_for('events.my_events'))
     except Exception as e:
         logger.error(f"Error creating event: {e}")
-        print(f"🔥 Exception in create_event: {e}")
+        print(f"ðŸ”¥ Exception in create_event: {e}")
         if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'error': 'Internal server error'}), 500
         flash('Internal server error', 'danger')
@@ -605,7 +599,7 @@ def api_payment_methods(identifier):
     if not event:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
     
-    from app.events.services.payment_service import EventPaymentService
+    from app.events.payment_service import EventPaymentService
     payment_service = EventPaymentService()
     
     payment_methods = payment_service.get_available_payment_methods(event.currency, event.id)
@@ -622,27 +616,72 @@ def api_payment_methods(identifier):
 @require_fresh_user
 def register(identifier):
     """Register for an event with async processing and payment integration"""
-    # Use ViewModel for template rendering - clean separation from ORM
-    from app.events.services import EventRegistrationViewModel
     from app.events.models import Event as EventModel
     
-    event_model = EventModel.query.filter_by(slug=identifier).first()
-    if not event_model:
-        return render_template('events/public/not_found.html', event_slug=identifier), 404
-
-    # Build ViewModel for the template
-    view_model = EventRegistrationViewModel(event_model, current_user)
-
     if request.method == 'GET':
+        # Use context builder (no ViewModel needed)
+        context = EventService.build_event_context(identifier, current_user.id)
+        
+        if not context.get('event_found'):
+            return render_template('events/public/not_found.html', event_slug=identifier), 404
+        
+        # Check if event is in the past
+        from datetime import date
+        event_data = context.get('event', {})
+        event_end_date = event_data.get('end_date')
+        if event_end_date:
+            try:
+                if isinstance(event_end_date, str):
+                    from datetime import datetime
+                    event_end = datetime.fromisoformat(event_end_date).date()
+                else:
+                    event_end = event_end_date
+                
+                if event_end < date.today():
+                    flash('This event has already passed and is no longer accepting registrations.', 'danger')
+                    return redirect(url_for('events.landing', identifier=identifier))
+            except (ValueError, TypeError):
+                pass  # Fail open if date parsing fails
+        
         user_data = {
             'full_name': getattr(current_user, 'username', current_user.email),
             'email': current_user.email,
             'phone': getattr(current_user, 'phone', ''),
             'nationality': getattr(current_user, 'nationality', ''),
         }
+
+        free_ticket_type_id = None
+        if context['event'].ticket_types:
+            active_free_tickets = [
+                tt for tt in context['event'].ticket_types
+                if tt.get('is_active', True) and tt.get('price', 0) == 0
+            ]
+            if len(active_free_tickets) == 1:
+                free_ticket_type_id = active_free_tickets[0]['id']
+
         return render_template('events/attendee/register.html', 
-                               event=view_model, 
-                               user_data=user_data)
+                               event=context['event'], 
+                               user_data=user_data,
+                               free_ticket_type_id=free_ticket_type_id)
+    
+    # POST handling - keep existing logic unchanged
+    event_model = EventModel.query.filter_by(slug=identifier).first()
+    if not event_model:
+        return render_template('events/public/not_found.html', event_slug=identifier), 404
+    
+    # Validate event is not past its end date (critical time check)
+    from datetime import date
+    if event_model.end_date and event_model.end_date < date.today():
+        logger.warning(f"Registration attempt for past event: {identifier} (ended {event_model.end_date})")
+        return jsonify({
+            'success': False,
+            'error': 'Event registration closed. This event has already ended.'
+        }), 400
+
+    from app.events.view_models import EventRegistrationViewModel
+    view_model = EventRegistrationViewModel(event_model, current_user)
+
+    logger.info(f"POST data received: {request.form if request.form else request.get_json()}")
 
     try:
         # Handle both JSON and form data
@@ -651,12 +690,42 @@ def register(identifier):
         else:
             # Handle form data
             data = request.form.to_dict()
-            # Convert numeric fields only if event has ticket types
-            if 'ticket_type_id' in data and data['ticket_type_id'] and event_model.ticket_types:
+
+        active_tickets = [
+            tt for tt in event_model.ticket_types
+            if getattr(tt, 'is_active', True)
+        ]
+
+        if data.get('ticket_type_id'):
+            try:
                 data['ticket_type_id'] = int(data['ticket_type_id'])
-            elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event_model.ticket_types):
-                # For free events, ensure no ticket_type_id
+            except (TypeError, ValueError):
                 data['ticket_type_id'] = None
+
+        if not data.get('ticket_type_id'):
+            if len(active_tickets) == 1:
+                data['ticket_type_id'] = active_tickets[0].id
+                logger.info(f"Auto-selected ticket_type_id={data['ticket_type_id']} for event {identifier}")
+            else:
+                return jsonify({'success': False, 'error': 'Please select a ticket type.'}), 400
+
+        # Ensure the selected ticket type is valid for this event
+        selected_ticket = TicketType.query.filter_by(
+            id=data['ticket_type_id'],
+            event_id=event_model.id,
+            is_active=True
+        ).first()
+        if not selected_ticket:
+            return jsonify({'success': False, 'error': 'Invalid ticket type selected.'}), 400
+
+        is_paid_ticket = bool(selected_ticket.price and selected_ticket.price > 0)
+
+        # Check required registration fields and report missing ones
+        required_fields = ['full_name', 'email']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            logger.error(f"Missing required fields: {missing_fields}, POST data: {data}")
+            return jsonify({'success': False, 'error': f'Missing required fields: {missing_fields}'}), 400
 
         # Extract group registration data
         group_attendees = []
@@ -673,12 +742,9 @@ def register(identifier):
                 if attendee_data['name'] and attendee_data['email']:
                     group_attendees.append(attendee_data)
 
-        # Check if this is a paid event using ViewModel
-        is_paid_event = view_model.is_paid_event
-        
-        if is_paid_event and data.get('ticket_type_id'):
-            # Process paid event with payment service
-            from app.events.services.payment_service import EventPaymentService
+        if is_paid_ticket:
+            # Process paid ticket purchase using the selected ticket type
+            from app.events.payment_service import EventPaymentService
             payment_service = EventPaymentService()
             
             # Get payment method from form
@@ -748,7 +814,7 @@ def register(identifier):
             pass
         if not mail_configured and not session.get('email_reminder_shown', False):
             flash(
-                '⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
+                'âš ï¸ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
                 'warning')
             session['email_reminder_shown'] = True
 
@@ -808,7 +874,7 @@ def registration_confirmation(reg_ref):
             # Flash email reminder if not configured
             if not mail_configured and not session.get('email_reminder_shown', False):
                 flash(
-                    '⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
+                    'âš ï¸ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
                     'warning')
                 session['email_reminder_shown'] = True
 
@@ -845,7 +911,7 @@ def registration_confirmation(reg_ref):
         # Flash email reminder if not configured
         if not mail_configured and not session.get('email_reminder_shown', False):
             flash(
-                '⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
+                'âš ï¸ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
                 'warning')
             session['email_reminder_shown'] = True
 
@@ -1562,11 +1628,11 @@ def admin_events():
 
     # Normalize: strip the "EventStatus." prefix that templates sometimes
     # produce when they accidentally use str(EventStatus.X) instead of
-    # EventStatus.X.value.  e.g. "EventStatus.APPROVED" → "approved"
+    # EventStatus.X.value.  e.g. "EventStatus.APPROVED" â†’ "approved"
     # This handles the root-cause fix; sanitize_status handles the rest.
     normalized = raw_status
     if normalized.startswith("EventStatus."):
-        # "EventStatus.APPROVED" → "APPROVED" → try to match enum by name
+        # "EventStatus.APPROVED" â†’ "APPROVED" â†’ try to match enum by name
         enum_name = normalized.split(".", 1)[1]  # "APPROVED"
         try:
             normalized = EventStatus[enum_name].value  # "approved"
@@ -1604,7 +1670,7 @@ def admin_events():
         ).order_by(Event.created_at.desc()).all()
         current_filter = sanitized_status  # always a clean lowercase string
 
-    # Build a clean status → label map so the template never needs to
+    # Build a clean status â†’ label map so the template never needs to
     # construct URLs from enum objects directly.
     status_options = {s.value: s.value.replace("_", " ").title()
                       for s in EventStatus}
@@ -2129,4 +2195,5 @@ def moderate_action(id, action):
             flash(f'Failed to flag: {flag}', 'danger')
     
     return redirect(url_for('events.moderate'))
+
 

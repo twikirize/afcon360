@@ -28,7 +28,7 @@ def module_disabled_page(module_name):
             elif module_name == 'transport':
                 return redirect(url_for('transport.home'))
             elif module_name == 'accommodation':
-                return redirect(url_for('accommodation.guest.search'))
+                return redirect(url_for('accommodation.guest_search'))
             elif module_name == 'wallet':
                 return redirect(url_for('wallet.dashboard'))
             elif module_name == 'tournament':

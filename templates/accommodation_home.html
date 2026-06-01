@@ -424,7 +424,7 @@
         <div class="row justify-content-center mt-4">
             <div class="col-lg-10">
                 <div class="search-card">
-                    <form method="GET" action="{{ safe_url('accommodation.guest.search') }}" class="search-form" role="search">
+                    <form method="GET" action="{{ safe_url('accommodation.guest_search') }}" class="search-form" role="search">
                         <div class="row g-3">
                             <div class="col-md-5">
                                 <label class="form-label" for="search-city">📍 Where to?</label>
@@ -480,7 +480,7 @@
             {% if popular_destinations %}
                 {% for dest in popular_destinations %}
                 <div class="col-md-4 col-lg-2">
-                    <a href="{{ safe_url('accommodation.guest.search') }}?city={{ dest.city|urlencode }}"
+                    <a href="{{ safe_url('accommodation.guest_search') }}?city={{ dest.city|urlencode }}"
                        class="destination-card"
                        aria-label="Search properties in {{ dest.city }}, {{ dest.country }}">
                         <div class="destination-icon" aria-hidden="true">
@@ -519,7 +519,7 @@
             {% if featured_properties %}
                 {% for property in featured_properties %}
                 <div class="col-md-6 col-lg-3">
-                    <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.public_id or property.id) }}"
+                    <a href="{{ url_for('accommodation.guest_detail', identifier=property.slug or property.public_id or property.id) }}"
                        class="property-card"
                        aria-label="View details for {{ property.title }}">
                         <div class="property-image-wrapper">
@@ -574,7 +574,7 @@
                     <div class="empty-state">
                         <i class="fas fa-bed" aria-hidden="true"></i>
                         <p>No featured properties available at the moment.</p>
-                        <a href="{{ safe_url('accommodation.guest.search') }}" class="btn btn-outline-primary mt-2">
+                        <a href="{{ safe_url('accommodation.guest_search') }}" class="btn btn-outline-primary mt-2">
                             Browse all properties
                         </a>
                     </div>

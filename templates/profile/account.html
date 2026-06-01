@@ -1,799 +1,666 @@
 {% extends "base.html" %}
-
-{% block title %}My Account - {{ user.username or 'User' }}{% endblock %}
+{% block title %}Account — {{ user.username or 'Settings' }}{% endblock %}
 
 {% block styles %}
 <style>
-    /* ===== GREEN/GOLD THEME ===== */
-    :root {
-        --primary-dark: #1a3a1a;
-        --primary: #2d5a2d;
-        --primary-light: #4a7c4a;
-        --accent: #ffcc00;
-        --accent-dark: #e6b800;
-        --gray-50: #f8faf8;
-        --gray-100: #f1f4f1;
-        --gray-200: #e2e8e2;
-        --gray-300: #cbd5c1;
-        --gray-400: #94a394;
-        --gray-500: #6b7c6b;
-        --gray-600: #4a5a4a;
-        --gray-700: #2d3a2d;
-        --white: #ffffff;
-        --success: #10b981;
-        --success-light: #d1fae5;
-        --warning: #f59e0b;
-        --warning-light: #fef3c7;
-        --danger: #ef4444;
-        --danger-light: #fee2e2;
-        --info: #3b82f6;
-        --info-light: #dbeafe;
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-    }
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
 
-    .account-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem 1rem;
-    }
+.acc-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
 
-    /* Profile Header Card */
-    .profile-header-card {
-        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--accent) 100%);
-        border-radius: 24px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        display: flex;
-        align-items: center;
-        gap: 2rem;
-        flex-wrap: wrap;
-        box-shadow: var(--shadow-md);
-    }
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  border-bottom: 1px solid var(--surface-3);
+  margin-bottom: 2rem;
+  overflow-x: auto;
+}
+.subnav-link {
+  font-family: var(--font-head);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  text-decoration: none;
+  padding: .75rem 1rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.subnav-link:hover { background: var(--surface-2); color: var(--green-dark); }
+.subnav-link.active { background: rgba(255,204,0,.1); color: var(--green-dark); border-color: rgba(255,204,0,.3); }
 
-    .profile-avatar {
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        background: var(--white);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-        border: 4px solid var(--accent);
-        flex-shrink: 0;
-    }
+.page-hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1.25rem;
+  background: linear-gradient(180deg, #19301f 0%, #1a3a1a 100%);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem 2rem;
+  margin-bottom: 2rem;
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+}
+.page-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 60%, rgba(255,204,0,.12) 100%);
+  pointer-events: none;
+}
+.hero-stripe {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--green) 0%, var(--gold) 60%, var(--gold-light) 100%);
+}
+.hero-avatar {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: var(--green-dark);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; flex-shrink: 0;
+}
+.hero-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.hero-initials {
+  font-family: var(--font-head);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--gold);
+}
+.hero-info { min-width: 0; }
+.hero-name {
+  font-family: var(--font-head);
+  font-size: 1.3rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hero-sub { font-size: .9rem; color: rgba(255,255,255,.72); margin-top: .3rem; }
+.hero-badges { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; padding: 4px 9px; border-radius: 999px;
+}
+.badge-ok { background: rgba(5,150,105,.15); color: #0e7a5f; border: 1px solid rgba(5,150,105,.2); }
+.badge-warn { background: rgba(217,119,6,.15); color: #a75e0d; border: 1px solid rgba(217,119,6,.2); }
+.badge-danger-d { background: rgba(220,38,38,.15); color: #9e2f33; border: 1px solid rgba(220,38,38,.2); }
+.badge-purple { background: rgba(124,58,237,.15); color: #5b3fa6; border: 1px solid rgba(124,58,237,.2); }
+.badge-gold { background: rgba(255,204,0,.12); color: #7b6400; border: 1px solid rgba(255,204,0,.25); }
 
-    .profile-avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
+.alert-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: .95rem 1.1rem; border-radius: var(--radius-md);
+  margin-bottom: 1.25rem; font-size: .95rem; line-height: 1.5;
+  border: 1px solid;
+}
+.alert-banner i { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+.alert-banner.warn { background: var(--warn-bg); border-color: var(--warn-border); color: #92400e; }
+.alert-banner.danger { background: var(--danger-bg); border-color: var(--danger-border); color: #991b1b; }
+.alert-banner .alert-action { margin-left: auto; font-weight: 700; text-decoration: none; color: inherit; opacity: .85; }
+.alert-banner .alert-action:hover { opacity: 1; }
 
-    .profile-avatar-initials {
-        font-size: 40px;
-        font-weight: 800;
-        color: var(--primary-dark);
-    }
+.acc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+.span-2 { grid-column: 1 / -1; }
 
-    .profile-info {
-        flex: 1;
-    }
+.acc-card { background: var(--surface); border: 1px solid var(--surface-3); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-card); }
+.acc-card-head { display: flex; align-items: center; justify-content: space-between; padding: .95rem 1.25rem; background: var(--surface-2); border-bottom: 1px solid var(--surface-3); }
+.acc-card-title { font-family: var(--font-head); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: .5rem; }
+.acc-card-title i { color: var(--gold); font-size: .9rem; }
+.acc-card-body { padding: 1.25rem; }
 
-    .profile-name {
-        font-size: 28px;
-        font-weight: 800;
-        color: var(--white);
-        margin-bottom: 4px;
-    }
+.cred-row, .sec-row, .danger-row { display: flex; align-items: center; justify-content: space-between; padding: .85rem 0; border-bottom: 1px solid var(--surface-2); gap: .75rem; }
+.cred-row:last-child, .sec-row:last-child, .danger-row:last-child { border-bottom: none; }
+.cred-left, .sec-row-info, .danger-row-info { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.cred-label, .sec-row-title, .danger-row-title { font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-soft); }
+.cred-value, .sec-row-sub, .danger-row-sub { font-size: .95rem; color: var(--text); }
+.cred-value.mono { font-family: monospace; font-size: .85rem; letter-spacing: .05em; }
+.cred-right { flex-shrink: 0; }
+.link-btn { font-size: .82rem; font-weight: 700; color: var(--green-dark); text-decoration: none; background: none; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .8rem; border-radius: .5rem; transition: background .15s; }
+.link-btn:hover { background: rgba(45,90,45,.08); }
+.pill-ok, .pill-warn, .pill-danger, .pill-info, .pill-purple { display: inline-flex; align-items: center; gap: .4rem; font-size: .72rem; font-weight: 700; padding: 4px 8px; border-radius: 999px; }
+.pill-ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+.pill-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
+.pill-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+.pill-info { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-border); }
+.pill-purple { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-border); }
 
-    .profile-username {
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.8);
-        margin-bottom: 8px;
-    }
+.kyc-bar-wrap { margin-bottom: 1rem; }
+.kyc-bar-track { height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; margin-top: .75rem; }
+.kyc-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--green), var(--gold)); transition: width .4s ease; }
+.kyc-steps { display: grid; gap: .65rem; margin-top: 1rem; }
+.kyc-step { display: flex; align-items: center; justify-content: space-between; padding: .65rem .85rem; border-radius: var(--radius-md); font-size: .9rem; border: 1px solid transparent; }
+.kyc-step.done { background: var(--ok-bg); border-color: var(--ok-border); color: #065f46; }
+.kyc-step.todo { background: var(--surface-2); border-color: var(--surface-3); color: var(--text-soft); }
+.kyc-step-check { width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: .75rem; }
+.kyc-step.done .kyc-step-check { background: var(--ok); color: #fff; }
+.kyc-step.todo .kyc-step-check { background: var(--surface-3); color: var(--text-soft); }
 
-    .verified-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(4px);
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-    }
+.session-list { display: grid; gap: .75rem; }
+.session-item { display: flex; align-items: flex-start; justify-content: space-between; padding: .9rem; background: var(--surface-2); border: 1px solid var(--surface-3); border-radius: var(--radius-md); gap: .75rem; }
+.session-icon { font-size: 1rem; color: var(--text-soft); margin-top: 2px; flex-shrink: 0; }
+.session-info { flex: 1; min-width: 0; }
+.session-device { font-size: .9rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-meta { font-size: .75rem; color: var(--text-soft); margin-top: .25rem; font-family: monospace; }
+.session-revoke { font-size: .75rem; font-weight: 700; color: var(--danger); background: none; border: 1px solid var(--danger-border); border-radius: .45rem; padding: .45rem .8rem; cursor: pointer; transition: background .15s; }
+.session-revoke:hover { background: var(--danger-bg); }
+.no-sessions { font-size: .9rem; color: var(--text-soft); font-style: italic; text-align: center; padding: 1rem 0; }
 
-    .edit-btn-header {
-        background: var(--white);
-        color: var(--primary-dark);
-        border: none;
-        padding: 10px 24px;
-        border-radius: 40px;
-        font-weight: 600;
-        font-size: 14px;
-        cursor: pointer;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition: all 0.2s;
-    }
+.roles-grid { display: flex; flex-wrap: wrap; gap: .4rem; }
+.role-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: .78rem; font-weight: 700; border-radius: 999px; letter-spacing: .04em; text-transform: capitalize; background: var(--surface-2); border: 1px solid var(--surface-3); color: var(--text-soft); }
+.role-chip.elevated { background: var(--gold-light); border-color: rgba(255,204,0,.35); color: #92680a; }
+.role-chip i { font-size: 10px; }
+.org-block { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid var(--surface-2); }
+.org-name { font-size: .82rem; font-weight: 700; color: var(--text-soft); margin-bottom: .35rem; }
 
-    .edit-btn-header:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-sm);
-    }
+.limits-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .75rem; }
+.limit-cell { background: var(--surface-2); border-radius: var(--radius-md); padding: .95rem; text-align: center; }
+.limit-val { font-family: var(--font-head); font-size: 1.1rem; font-weight: 800; color: var(--text); line-height: 1; }
+.limit-lbl { font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-soft); margin-top: .3rem; }
 
-    /* Alert */
-    .alert-warning {
-        background: var(--warning-light);
-        border: 1px solid #fde68a;
-        border-radius: 16px;
-        padding: 1rem 1.5rem;
-        margin-bottom: 1.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 1rem;
-    }
+.danger-zone .acc-card-head { background: #fff5f5; border-color: var(--danger-border); }
+.danger-zone .acc-card-title { color: var(--danger); }
+.danger-zone .acc-card-title i { color: var(--danger); }
+.btn-danger-soft, .btn-danger-hard { font-size: .82rem; font-weight: 700; padding: .65rem 1rem; border-radius: var(--radius); cursor: pointer; white-space: nowrap; transition: background .15s, opacity .15s; }
+.btn-danger-soft { background: transparent; border: 1px solid var(--danger-border); color: var(--danger); }
+.btn-danger-soft:hover { background: var(--danger-bg); }
+.btn-danger-hard { background: var(--danger); color: #fff; border: 1px solid var(--danger); }
+.btn-danger-hard:hover { opacity: .9; }
 
-    /* ===== MAIN 2-COLUMN LAYOUT (Reduces Scrolling) ===== */
-    .account-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1.5rem;
-    }
+@media (max-width: 760px) { .acc-grid { grid-template-columns: 1fr; } .span-2 { grid-column: 1; } .limits-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } .page-hero { grid-template-columns: auto 1fr; } .hero-badges { display: none; } }
+@media (max-width: 560px) { .acc-wrap { padding: 1.5rem 1rem 3rem; } }
 
-    /* Cards */
-    .info-card {
-        background: var(--white);
-        border-radius: 20px;
-        box-shadow: var(--shadow-md);
-        overflow: hidden;
-        transition: all 0.2s ease;
-        height: fit-content;
-    }
-
-    .info-card:hover {
-        box-shadow: var(--shadow-lg);
-    }
-
-    .card-header {
-        padding: 1rem 1.5rem;
-        background: var(--gray-50);
-        border-bottom: 1px solid var(--gray-200);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .card-header h3 {
-        margin: 0;
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--primary-dark);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .card-body {
-        padding: 1.25rem 1.5rem;
-    }
-
-    /* 2-Column Info Grid (Horizontal Layout) */
-    .info-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.5rem 1.5rem;
-    }
-
-    .info-row {
-        display: flex;
-        align-items: baseline;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid var(--gray-200);
-    }
-
-    .info-label {
-        width: 100px;
-        flex-shrink: 0;
-        font-weight: 600;
-        color: var(--gray-600);
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .info-value {
-        flex: 1;
-        color: var(--gray-700);
-        font-size: 13px;
-        font-weight: 500;
-        word-break: break-word;
-    }
-
-    /* Full width rows (span both columns) */
-    .info-row-full {
-        grid-column: span 2;
-    }
-
-    /* Verification Chips */
-    .verification-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 8px;
-        border-radius: 20px;
-        font-size: 10px;
-        font-weight: 600;
-    }
-
-    .verification-chip.verified {
-        background: var(--success-light);
-        color: var(--success);
-    }
-
-    .verification-chip.pending {
-        background: var(--warning-light);
-        color: var(--warning);
-    }
-
-    /* KYC Progress */
-    .kyc-progress {
-        background: var(--gray-50);
-        border-radius: 12px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-
-    .progress-bar {
-        height: 6px;
-        background: var(--gray-200);
-        border-radius: 100px;
-        overflow: hidden;
-        margin: 0.75rem 0;
-    }
-
-    .progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, var(--primary), var(--accent));
-        border-radius: 100px;
-        transition: width 0.5s ease;
-    }
-
-    .requirement-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid var(--gray-200);
-        font-size: 13px;
-    }
-
-    .requirement-item:last-child {
-        border-bottom: none;
-    }
-
-    .requirement-status {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .status-icon {
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-    }
-
-    .status-icon.completed {
-        background: var(--success-light);
-        color: var(--success);
-    }
-
-    .status-icon.pending {
-        background: var(--gray-200);
-        color: var(--gray-500);
-    }
-
-    .btn-link {
-        background: none;
-        border: none;
-        color: var(--primary);
-        font-size: 11px;
-        cursor: pointer;
-        text-decoration: none;
-    }
-
-    .btn-link:hover {
-        text-decoration: underline;
-    }
-
-    /* Role Pills */
-    .role-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .role-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 12px;
-        background: var(--gray-100);
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--primary);
-    }
-
-    /* Danger Zone - Full Width Card */
-    .danger-zone {
-        grid-column: span 2;
-        border: 1px solid #fecaca;
-        background: var(--danger-light);
-    }
-
-    .danger-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        margin-top: 0.5rem;
-    }
-
-    .btn-danger-outline {
-        background: transparent;
-        border: 1px solid var(--danger);
-        color: var(--danger);
-        padding: 8px 16px;
-        border-radius: 40px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .btn-danger-outline:hover {
-        background: var(--danger);
-        color: white;
-    }
-
-    /* Settings Row (for security/preferences) */
-    .settings-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 0;
-        border-bottom: 1px solid var(--gray-200);
-    }
-
-    .settings-row:last-child {
-        border-bottom: none;
-    }
-
-    .settings-label {
-        font-weight: 600;
-        color: var(--gray-700);
-        font-size: 13px;
-    }
-
-    .settings-value {
-        color: var(--gray-500);
-        font-size: 12px;
-    }
-
-    /* Responsive */
-    @media (max-width: 900px) {
-        .account-grid {
-            grid-template-columns: 1fr;
-            gap: 1rem;
-        }
-        .danger-zone {
-            grid-column: span 1;
-        }
-        .info-grid {
-            grid-template-columns: 1fr;
-            gap: 0;
-        }
-        .info-row-full {
-            grid-column: span 1;
-        }
-        .profile-header-card {
-            flex-direction: column;
-            text-align: center;
-        }
-        .edit-btn-header {
-            align-self: center;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .account-container {
-            padding: 1rem;
-        }
-        .profile-avatar {
-            width: 80px;
-            height: 80px;
-        }
-        .profile-avatar-initials {
-            font-size: 32px;
-        }
-        .profile-name {
-            font-size: 22px;
-        }
-        .info-label {
-            width: 85px;
-            font-size: 11px;
-        }
-        .info-value {
-            font-size: 12px;
-        }
-        .card-body {
-            padding: 1rem;
-        }
-        .danger-buttons {
-            flex-direction: column;
-        }
-        .btn-danger-outline {
-            text-align: center;
-        }
-    }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.page-hero { animation: fadeUp .35s ease both; }
+.acc-card { animation: fadeUp .35s ease both; }
+.acc-grid > *:nth-child(1) { animation-delay: .05s; }
+.acc-grid > *:nth-child(2) { animation-delay: .1s; }
+.acc-grid > *:nth-child(3) { animation-delay: .15s; }
+.acc-grid > *:nth-child(4) { animation-delay: .2s; }
+.acc-grid > *:nth-child(5) { animation-delay: .25s; }
+.acc-grid > *:nth-child(6) { animation-delay: .3s; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="account-container">
-    <!-- Profile Completion Alert -->
-    {% if profile and not profile.profile_completed and profile_completion < 100 %}
-    <div class="alert-warning">
-        <div>
-            <strong>⚠️ Complete your profile!</strong> Your profile is only {{ profile_completion }}% complete.
-        </div>
-        <a href="{{ url_for('profile.edit_profile') }}" class="edit-btn-header" style="background: var(--warning); color: var(--primary-dark);">
-            Complete Profile →
-        </a>
-    </div>
-    {% endif %}
+<div class="acc-wrap">
 
-    <!-- Profile Header -->
-    <div class="profile-header-card">
-        <div class="profile-avatar">
-            {% if profile and profile.avatar_url %}
-                <img src="{{ profile.avatar_url }}" alt="{{ user.username }}">
+  {# ── Sub-navigation ── #}
+  <nav class="subnav" aria-label="Profile navigation">
+    <a href="{{ url_for('profile.public_profile', public_id=current_user.public_id) }}"
+       class="subnav-link {% if request.endpoint == 'profile.public_profile' %}active{% endif %}">
+      <i class="fas fa-id-card"></i>&nbsp; Public profile
+    </a>
+    <a href="{{ url_for('profile.account_overview') }}"
+       class="subnav-link {% if request.endpoint == 'profile.account_overview' %}active{% endif %}">
+      <i class="fas fa-user-cog"></i>&nbsp; Account
+    </a>
+    <a href="{{ url_for('profile.edit_profile') }}"
+       class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
+      <i class="fas fa-edit"></i>&nbsp; Edit profile
+    </a>
+    <a href="{{ url_for('user.user_dashboard') }}" class="subnav-link">
+      <i class="fas fa-tachometer-alt"></i>&nbsp; Dashboard
+    </a>
+  </nav>
+
+  {# ── Alerts ── #}
+  {% if password_expired %}
+  <div class="alert-banner danger" role="alert">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span>Your password expired. Update it now to keep your account secure.</span>
+    <a href="{{ url_for('auth.change_password') }}" class="alert-action">Change password →</a>
+  </div>
+  {% endif %}
+  {% if profile and profile.verification_status == 'rejected' %}
+  <div class="alert-banner danger" role="alert">
+    <i class="fas fa-times-circle"></i>
+    <span><strong>Verification rejected:</strong> {{ profile.rejected_reason or 'Please re-submit your documents.' }}</span>
+    <a href="{{ url_for('auth.kyc_routes.kyc_upload') }}" class="alert-action">Re-submit →</a>
+  </div>
+  {% endif %}
+  {% if profile and not profile.email_verified %}
+  <div class="alert-banner warn" role="alert">
+    <i class="fas fa-envelope"></i>
+    <span>Your email address is unverified. Check your inbox or resend the verification link.</span>
+    <a href="{{ url_for('auth.resend_verification') }}" class="alert-action">Resend →</a>
+  </div>
+  {% endif %}
+
+  {# ── Page hero ── #}
+  <div class="page-hero">
+    <div class="hero-stripe"></div>
+    <div class="hero-avatar">
+      {% if profile and profile.avatar_url %}
+        <img src="{{ profile.avatar_url }}" alt="{{ user.username }}">
+      {% else %}
+        <span class="hero-initials">
+          {{ (profile.full_name or user.username or 'U')[0]|upper if profile else (user.username or 'U')[0]|upper }}
+        </span>
+      {% endif %}
+    </div>
+    <div class="hero-info">
+      <div class="hero-name">{{ profile.full_name if profile and profile.full_name else user.username }}</div>
+      <div class="hero-sub">{{ user.email }} &nbsp;·&nbsp; Member since {{ user.created_at.strftime('%B %Y') if user.created_at else '—' }}</div>
+    </div>
+    <div class="hero-badges">
+      {% if profile %}
+        {% if profile.verification_status == 'verified' %}
+          <span class="badge badge-ok"><i class="fas fa-check-circle"></i> Verified</span>
+        {% elif profile.verification_status == 'pending' %}
+          <span class="badge badge-warn"><i class="fas fa-clock"></i> Pending</span>
+        {% elif profile.verification_status == 'rejected' %}
+          <span class="badge badge-danger-d"><i class="fas fa-times-circle"></i> Rejected</span>
+        {% elif profile.verification_status == 'suspended' %}
+          <span class="badge badge-purple"><i class="fas fa-ban"></i> Suspended</span>
+        {% endif %}
+      {% endif %}
+      {% if mfa_active %}<span class="badge badge-ok"><i class="fas fa-shield-alt"></i> MFA on</span>{% endif %}
+      {% if has_pin %}<span class="badge badge-gold"><i class="fas fa-key"></i> PIN set</span>{% endif %}
+    </div>
+  </div>
+
+  {# ── Main grid ── #}
+  <div class="acc-grid">
+
+    {# ── 1. Login credentials ── #}
+    <div class="acc-card">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-at"></i> Login credentials</span>
+      </div>
+      <div class="acc-card-body">
+        <div class="cred-row">
+          <div class="cred-left">
+            <span class="cred-label">Email</span>
+            <span class="cred-value">{{ user.email or '—' }}</span>
+          </div>
+          <div class="cred-right">
+            {% if profile and profile.email_verified %}
+              <span class="pill-ok"><i class="fas fa-check"></i> Verified</span>
             {% else %}
-                <div class="profile-avatar-initials">
-                    {{ (profile.display_name or profile.full_name or user.username)[0]|upper }}
-                </div>
+              <span class="pill-warn"><i class="fas fa-clock"></i> Unverified</span>
             {% endif %}
+          </div>
         </div>
-        <div class="profile-info">
-            <div class="profile-name">{{ profile.display_name or profile.full_name or user.username }}</div>
-            <div class="profile-username">@{{ user.username }}</div>
-            {% if verification_status == 'verified' %}
-                <div class="verified-badge">
-                    <i class="fas fa-check-circle"></i> Verified Account
-                </div>
+        <div class="cred-row">
+          <div class="cred-left">
+            <span class="cred-label">Phone</span>
+            <span class="cred-value">{{ user.phone or 'Not set' }}</span>
+          </div>
+          <div class="cred-right">
+            {% if profile and profile.phone_verified %}
+              <span class="pill-ok"><i class="fas fa-check"></i> Verified</span>
+            {% else %}
+              <a href="{{ url_for('auth.verify_phone') }}" class="link-btn"><i class="fas fa-arrow-right"></i> Verify</a>
             {% endif %}
+          </div>
         </div>
-        <a href="{{ url_for('profile.edit_profile') }}" class="edit-btn-header">
-            <i class="fas fa-edit"></i> Edit Profile
+        <div class="cred-row">
+          <div class="cred-left">
+            <span class="cred-label">Username</span>
+            <span class="cred-value">@{{ user.username or '—' }}</span>
+          </div>
+          <div class="cred-right">
+            <a href="{{ url_for('auth.change_username') }}" class="link-btn"><i class="fas fa-edit"></i> Change</a>
+          </div>
+        </div>
+        <div class="cred-row">
+          <div class="cred-left">
+            <span class="cred-label">Password</span>
+            <span class="cred-value">
+              {% if user.password_changed_at %}
+                Changed {{ user.password_changed_at.strftime('%d %b %Y') }}
+                {% if password_expired %}<span class="pill-danger" style="margin-left:6px;"><i class="fas fa-exclamation"></i> Expired</span>{% endif %}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="cred-right">
+            <a href="{{ url_for('auth.change_password') }}" class="link-btn"><i class="fas fa-lock"></i> Change</a>
+          </div>
+        </div>
+        <div class="cred-row">
+          <div class="cred-left">
+            <span class="cred-label">Public ID</span>
+            <span class="cred-value mono">{{ user.public_id[:16] }}…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── 2. Security ── #}
+    <div class="acc-card">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-shield-alt"></i> Security</span>
+      </div>
+      <div class="acc-card-body">
+        <div class="sec-row">
+          <div class="sec-row-info">
+            <span class="sec-row-title">Two-factor authentication</span>
+            <span class="sec-row-sub">
+              {% if mfa_active %}
+                Active via: {{ active_mfa_types | join(', ') | upper }}
+              {% else %}Not enabled — your account is less secure{% endif %}
+            </span>
+          </div>
+          {% if mfa_active %}
+            <span class="pill-ok"><i class="fas fa-check"></i> On</span>
+          {% else %}
+            <a href="{{ url_for('auth.setup_mfa') }}" class="link-btn" style="color:var(--warn);"><i class="fas fa-plus"></i> Enable</a>
+          {% endif %}
+        </div>
+        <div class="sec-row">
+          <div class="sec-row-info">
+            <span class="sec-row-title">Transaction PIN</span>
+            <span class="sec-row-sub">
+              {% if pin_locked %}PIN locked — too many failed attempts
+              {% elif has_pin %}Set and active
+              {% else %}Not set — required for wallet transactions{% endif %}
+            </span>
+          </div>
+          {% if pin_locked %}
+            <span class="pill-danger"><i class="fas fa-lock"></i> Locked</span>
+          {% elif has_pin %}
+            <a href="{{ url_for('wallet.change_pin') }}" class="link-btn"><i class="fas fa-edit"></i> Change</a>
+          {% else %}
+            <a href="{{ url_for('wallet.set_pin') }}" class="link-btn" style="color:var(--warn);"><i class="fas fa-plus"></i> Set PIN</a>
+          {% endif %}
+        </div>
+        <div class="sec-row">
+          <div class="sec-row-info">
+            <span class="sec-row-title">Last login</span>
+            <span class="sec-row-sub">
+              {{ user.last_login.strftime('%d %b %Y, %H:%M UTC') if user.last_login else 'Unknown' }}
+            </span>
+          </div>
+        </div>
+        <div class="sec-row">
+          <div class="sec-row-info">
+            <span class="sec-row-title">Failed login attempts</span>
+            <span class="sec-row-sub">{{ user.failed_logins or 0 }} recorded</span>
+          </div>
+          {% if user.failed_logins and user.failed_logins > 0 %}
+            <span class="pill-warn"><i class="fas fa-exclamation-triangle"></i> {{ user.failed_logins }}</span>
+          {% else %}
+            <span class="pill-ok"><i class="fas fa-check"></i> Clean</span>
+          {% endif %}
+        </div>
+        {% if user.is_locked() %}
+        <div class="sec-row">
+          <div class="sec-row-info">
+            <span class="sec-row-title" style="color:var(--danger);">Account locked</span>
+            <span class="sec-row-sub">Locked until {{ user.locked_until.strftime('%H:%M UTC') }}</span>
+          </div>
+          <span class="pill-danger"><i class="fas fa-lock"></i> Locked</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── 3. Active sessions ── #}
+    <div class="acc-card">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-desktop"></i> Active sessions</span>
+        <span style="font-size:11px;color:var(--ink-3);">{{ active_sessions | length }} device(s)</span>
+      </div>
+      <div class="acc-card-body">
+        {% if active_sessions %}
+          <div class="session-list">
+            {% for sess in active_sessions %}
+            <div class="session-item" id="sess-{{ sess.id }}">
+              <i class="fas
+                {% if 'Mobile' in (sess.user_agent or '') or 'Android' in (sess.user_agent or '') or 'iPhone' in (sess.user_agent or '') %}fa-mobile-alt
+                {% elif 'Tablet' in (sess.user_agent or '') %}fa-tablet-alt
+                {% else %}fa-laptop{% endif %}
+                session-icon" aria-hidden="true"></i>
+              <div class="session-info">
+                <div class="session-device">
+                  {% if sess.user_agent %}
+                    {{ sess.user_agent[:55] }}{% if sess.user_agent|length > 55 %}…{% endif %}
+                  {% else %}Unknown device{% endif %}
+                </div>
+                <div class="session-meta">
+                  {{ sess.ip or '—' }} &nbsp;·&nbsp;
+                  Started {{ sess.created_at.strftime('%d %b, %H:%M') if sess.created_at else '—' }} &nbsp;·&nbsp;
+                  Expires {{ sess.expires_at.strftime('%d %b') if sess.expires_at else '—' }}
+                </div>
+              </div>
+              <button class="session-revoke"
+                onclick="revokeSession({{ sess.id }}, this)"
+                aria-label="Revoke this session">
+                Revoke
+              </button>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="no-sessions"><i class="fas fa-check-circle" style="color:var(--ok);margin-right:6px;"></i>No other active sessions</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── 4. Verification & KYC ── #}
+    <div class="acc-card">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-id-card"></i> Verification & KYC</span>
+        {% if verification_status == 'verified' %}
+          <span class="pill-ok" style="font-size:10px;padding:2px 7px;"><i class="fas fa-check"></i> {{ tier_name }}</span>
+        {% elif verification_status == 'suspended' %}
+          <span class="pill-purple" style="font-size:10px;padding:2px 7px;"><i class="fas fa-ban"></i> Suspended</span>
+        {% elif verification_status == 'rejected' %}
+          <span class="pill-danger" style="font-size:10px;padding:2px 7px;"><i class="fas fa-times"></i> Rejected</span>
+        {% else %}
+          <span class="pill-warn" style="font-size:10px;padding:2px 7px;"><i class="fas fa-clock"></i> {{ tier_name }}</span>
+        {% endif %}
+      </div>
+      <div class="acc-card-body">
+        {% if verification_status == 'suspended' %}
+        <div class="alert-banner danger" style="margin-bottom:.75rem;" role="alert">
+          <i class="fas fa-ban"></i>
+          <span>Your account is suspended. Contact support to resolve this.</span>
+        </div>
+        {% elif verification_status == 'rejected' and profile and profile.rejected_reason %}
+        <div class="alert-banner danger" style="margin-bottom:.75rem;" role="alert">
+          <i class="fas fa-times-circle"></i>
+          <span>Rejection reason: {{ profile.rejected_reason }}</span>
+        </div>
+        {% endif %}
+        <div class="kyc-bar-wrap">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-size:12px;font-weight:600;color:var(--ink-2);">Progress</span>
+            <span style="font-size:13px;font-weight:700;color:var(--ink);">{{ progress_percentage }}%</span>
+          </div>
+          <div class="kyc-bar-track">
+            <div class="kyc-bar-fill" style="width:{{ progress_percentage }}%;"></div>
+          </div>
+        </div>
+        <div class="kyc-steps">
+          <div class="kyc-step {% if profile and profile.email_verified %}done{% else %}todo{% endif %}">
+            <span><i class="fas fa-envelope" style="margin-right:7px;"></i>Email verified</span>
+            <span class="kyc-step-check">{% if profile and profile.email_verified %}<i class="fas fa-check"></i>{% endif %}</span>
+          </div>
+          <div class="kyc-step {% if profile and profile.phone_verified %}done{% else %}todo{% endif %}">
+            <span><i class="fas fa-phone" style="margin-right:7px;"></i>Phone verified</span>
+            <span class="kyc-step-check">{% if profile and profile.phone_verified %}<i class="fas fa-check"></i>{% endif %}</span>
+          </div>
+          <div class="kyc-step {% if profile and profile.id_document_url %}done{% else %}todo{% endif %}">
+            <span><i class="fas fa-file-alt" style="margin-right:7px;"></i>Identity document</span>
+            <span class="kyc-step-check">{% if profile and profile.id_document_url %}<i class="fas fa-check"></i>{% endif %}</span>
+          </div>
+        </div>
+        {% if verification_status != 'verified' and verification_status != 'suspended' %}
+        <a href="{{ url_for('kyc.upload') }}" style="display:block;margin-top:1rem;text-align:center;font-size:12px;font-weight:600;color:var(--green);text-decoration:none;padding:.6rem;border:1px dashed var(--surface-3);border-radius:var(--radius-md);">
+          <i class="fas fa-arrow-up-from-bracket"></i> Upload documents →
         </a>
+        {% endif %}
+      </div>
     </div>
 
-    <!-- 2-COLUMN GRID (Reduces Scrolling) -->
-    <div class="account-grid">
-        
-        <!-- PERSONAL INFORMATION CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-user-circle"></i> Personal Information</h3>
-            </div>
-            <div class="card-body">
-                <div class="info-grid">
-                    <div class="info-row">
-                        <span class="info-label">Full Name</span>
-                        <span class="info-value">{{ profile.full_name or 'Not set' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Display Name</span>
-                        <span class="info-value">{{ profile.display_name or profile.full_name or user.username }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Date of Birth</span>
-                        <span class="info-value">{{ profile.date_of_birth.strftime('%B %d, %Y') if profile.date_of_birth else 'Not set' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Gender</span>
-                        <span class="info-value">{{ profile.gender|title if profile.gender else 'Not set' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Nationality</span>
-                        <span class="info-value">{{ profile.nationality or 'Not set' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Location</span>
-                        <span class="info-value">
-                            {% if profile.city or profile.country %}
-                                {{ profile.city or '' }}{% if profile.city and profile.country %}, {% endif %}{{ profile.country or '' }}
-                            {% else %}
-                                Not set
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Fan of</span>
-                        <span class="info-value">{{ profile.fan_team or 'Not declared' }}</span>
-                    </div>
-                </div>
-            </div>
+    {# ── 5. Roles & access ── #}
+    <div class="acc-card">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-layer-group"></i> Roles & access</span>
+      </div>
+      <div class="acc-card-body">
+        <div class="roles-grid">
+          {% for role in user_roles %}
+            <span class="role-chip {% if role in ['owner','super_admin','admin','event_manager','wallet_admin','accommodation_admin','tourism_admin','transport_admin'] %}elevated{% endif %}">
+              {% if role == 'owner' %}<i class="fas fa-crown"></i>
+              {% elif role in ['super_admin','admin'] %}<i class="fas fa-shield-alt"></i>
+              {% elif role == 'event_manager' %}<i class="fas fa-calendar-check"></i>
+              {% elif role == 'wallet_admin' %}<i class="fas fa-wallet"></i>
+              {% elif role == 'auditor' %}<i class="fas fa-search"></i>
+              {% elif role == 'compliance_officer' %}<i class="fas fa-balance-scale"></i>
+              {% elif role == 'support' %}<i class="fas fa-headset"></i>
+              {% elif role == 'driver' %}<i class="fas fa-car"></i>
+              {% else %}<i class="fas fa-user"></i>{% endif %}
+              {{ role | replace('_', ' ') | title }}
+            </span>
+          {% endfor %}
         </div>
-
-        <!-- CONTACT INFORMATION CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-address-card"></i> Contact Information</h3>
+        {% if org_memberships %}
+        <div class="org-block">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:.5rem;">Organisations</div>
+          {% for org in org_memberships %}
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--surface-2);">
+            <span style="font-size:13px;font-weight:500;color:var(--ink);">{{ org.org_name }}</span>
+            <div style="display:flex;gap:.3rem;flex-wrap:wrap;justify-content:flex-end;">
+              {% for r in org.roles %}
+                <span class="role-chip" style="font-size:10px;padding:2px 7px;">{{ r | replace('_', ' ') | title }}</span>
+              {% endfor %}
             </div>
-            <div class="card-body">
-                <div class="info-grid">
-                    <div class="info-row">
-                        <span class="info-label">Email</span>
-                        <span class="info-value">
-                            {{ profile.email or user.email or 'Not set' }}
-                            {% if profile.email_verified %}
-                                <span class="verification-chip verified">✓ Verified</span>
-                            {% else %}
-                                <span class="verification-chip pending">○ Unverified</span>
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Phone</span>
-                        <span class="info-value">
-                            {{ profile.phone_number or 'Not set' }}
-                            {% if profile.phone_verified %}
-                                <span class="verification-chip verified">✓ Verified</span>
-                            {% else %}
-                                <span class="verification-chip pending">○ Unverified</span>
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="info-row info-row-full">
-                        <span class="info-label">Address</span>
-                        <span class="info-value">{{ profile.address or 'Not set' }}</span>
-                    </div>
-                </div>
-            </div>
+          </div>
+          {% endfor %}
         </div>
-
-        <!-- VERIFICATION & KYC CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-shield-alt"></i> Verification & KYC</h3>
-            </div>
-            <div class="card-body">
-                <div class="kyc-progress">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
-                        <span><strong>KYC Level:</strong> {{ tier_name }}</span>
-                        <span class="verification-chip {% if verification_status == 'verified' %}verified{% else %}pending{% endif %}">
-                            {{ verification_status|title }}
-                        </span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ progress_percentage }}%"></div>
-                    </div>
-                </div>
-                <div class="requirement-list">
-                    <div class="requirement-item">
-                        <div class="requirement-status">
-                            <span class="status-icon {% if profile.email_verified %}completed{% else %}pending{% endif %}">
-                                {% if profile.email_verified %}✓{% else %}○{% endif %}
-                            </span>
-                            <span>Email Verification</span>
-                        </div>
-                        {% if not profile.email_verified %}
-                            <button class="btn-link">Verify →</button>
-                        {% endif %}
-                    </div>
-                    <div class="requirement-item">
-                        <div class="requirement-status">
-                            <span class="status-icon {% if profile.phone_verified %}completed{% else %}pending{% endif %}">
-                                {% if profile.phone_verified %}✓{% else %}○{% endif %}
-                            </span>
-                            <span>Phone Verification</span>
-                        </div>
-                        {% if not profile.phone_verified %}
-                            <button class="btn-link">Verify →</button>
-                        {% endif %}
-                    </div>
-                    <div class="requirement-item">
-                        <div class="requirement-status">
-                            <span class="status-icon {% if profile.id_document_url %}completed{% else %}pending{% endif %}">
-                                {% if profile.id_document_url %}✓{% else %}🔒{% endif %}
-                            </span>
-                            <span>Identity Document</span>
-                        </div>
-                        {% if not profile.id_document_url %}
-                            <button class="btn-link">Upload →</button>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ROLES & PERMISSIONS CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-tags"></i> Roles & Permissions</h3>
-            </div>
-            <div class="card-body">
-                <div class="role-pills">
-                    <span class="role-pill"><i class="fas fa-user-friends"></i> Traveler</span>
-                    {% if 'driver' in user_roles %}
-                        <span class="role-pill"><i class="fas fa-car"></i> Driver</span>
-                    {% endif %}
-                    {% if 'host' in user_roles %}
-                        <span class="role-pill"><i class="fas fa-home"></i> Host</span>
-                    {% endif %}
-                    {% if 'admin' in user_roles %}
-                        <span class="role-pill"><i class="fas fa-user-shield"></i> Admin</span>
-                    {% endif %}
-                    {% if 'owner' in user_roles %}
-                        <span class="role-pill"><i class="fas fa-crown"></i> Owner</span>
-                    {% endif %}
-                </div>
-                {% if 'host' in user_roles and role_stats.get('host_properties', 0) > 0 %}
-                    <div class="small text-muted mt-3">
-                        You have {{ role_stats.get('host_properties', 0) }} active property listing(s)
-                    </div>
-                {% endif %}
-                {% if 'driver' in user_roles and role_stats.get('driver_trips', 0) > 0 %}
-                    <div class="small text-muted mt-3">
-                        You have completed {{ role_stats.get('driver_trips', 0) }} trip(s)
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- SECURITY CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-lock"></i> Security</h3>
-            </div>
-            <div class="card-body">
-                <div class="settings-row">
-                    <span class="settings-label">Password</span>
-                    <span><button class="btn-link">Change Password</button></span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Two-Factor Authentication</span>
-                    <span><button class="btn-link">Enable</button></span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Active Sessions</span>
-                    <span><button class="btn-link">Manage (2 devices)</button></span>
-                </div>
-            </div>
-        </div>
-
-        <!-- PREFERENCES CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-sliders-h"></i> Preferences</h3>
-            </div>
-            <div class="card-body">
-                <div class="settings-row">
-                    <span class="settings-label">Language</span>
-                    <span>English <button class="btn-link">Change</button></span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Timezone</span>
-                    <span>Africa/Nairobi <button class="btn-link">Change</button></span>
-                </div>
-                <div class="settings-row">
-                    <span class="settings-label">Notifications</span>
-                    <span>Email, SMS, Push <button class="btn-link">Manage</button></span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ACCOUNT LIMITS CARD -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-chart-line"></i> Account Limits</h3>
-            </div>
-            <div class="card-body">
-                <div class="info-grid">
-                    <div class="info-row">
-                        <span class="info-label">Daily Limit</span>
-                        <span class="info-value">
-                            {% if limits.daily %}
-                                UGX {{ "{:,}".format(limits.daily) }}
-                            {% else %}
-                                Unlimited
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Monthly Limit</span>
-                        <span class="info-value">
-                            {% if limits.monthly %}
-                                UGX {{ "{:,}".format(limits.monthly) }}
-                            {% else %}
-                                Unlimited
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Per Transaction</span>
-                        <span class="info-value">
-                            {% if limits.transaction %}
-                                UGX {{ "{:,}".format(limits.transaction) }}
-                            {% else %}
-                                Unlimited
-                            {% endif %}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- BIO CARD (full width on desktop) -->
-        <div class="info-card">
-            <div class="card-header">
-                <h3><i class="fas fa-info-circle"></i> About Me</h3>
-            </div>
-            <div class="card-body">
-                {% if profile.bio %}
-                    <p style="margin: 0; line-height: 1.5; font-size: 14px;">{{ profile.bio }}</p>
-                {% else %}
-                    <p class="text-muted" style="margin: 0;">No bio added yet. <a href="{{ url_for('profile.edit_profile') }}">Add one →</a></p>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- DANGER ZONE (Full Width) -->
-        <div class="info-card danger-zone">
-            <div class="card-header">
-                <h3><i class="fas fa-exclamation-triangle"></i> Danger Zone</h3>
-            </div>
-            <div class="card-body">
-                <div class="danger-buttons">
-                    <button class="btn-danger-outline" onclick="downloadData()">
-                        <i class="fas fa-download"></i> Download My Data
-                    </button>
-                    <button class="btn-danger-outline" onclick="deactivateAccount()">
-                        <i class="fas fa-pause-circle"></i> Deactivate Account
-                    </button>
-                    <button class="btn-danger-outline" onclick="deleteAccount()">
-                        <i class="fas fa-trash-alt"></i> Delete Account
-                    </button>
-                </div>
-                <div class="small text-muted mt-3">
-                    <strong>⚠️ Warning:</strong> Deleting your account is permanent and cannot be undone. All your data will be removed.
-                </div>
-            </div>
-        </div>
-
+        {% endif %}
+      </div>
     </div>
+
+    {# ── 6. Account limits ── #}
+    <div class="acc-card">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-chart-bar"></i> Account limits</span>
+      </div>
+      <div class="acc-card-body">
+        <div class="limits-grid">
+          <div class="limit-cell">
+            <div class="limit-val">
+              {% if limits.daily %}UGX {{ "{:,.0f}".format(limits.daily) }}{% else %}∞{% endif %}
+            </div>
+            <div class="limit-lbl">Daily</div>
+          </div>
+          <div class="limit-cell">
+            <div class="limit-val">
+              {% if limits.monthly %}UGX {{ "{:,.0f}".format(limits.monthly) }}{% else %}∞{% endif %}
+            </div>
+            <div class="limit-lbl">Monthly</div>
+          </div>
+          <div class="limit-cell">
+            <div class="limit-val">
+              {% if limits.transaction %}UGX {{ "{:,.0f}".format(limits.transaction) }}{% else %}∞{% endif %}
+            </div>
+            <div class="limit-lbl">Per txn</div>
+          </div>
+        </div>
+        {% if tier_name %}
+        <p style="font-size:12px;color:var(--ink-3);margin-top:.75rem;text-align:center;">
+          Limits based on your <strong>{{ tier_name }}</strong> KYC level.
+          {% if verification_status != 'verified' %}
+            <a href="{{ url_for('kyc.upload') }}" style="color:var(--green);font-weight:600;text-decoration:none;">Upgrade →</a>
+          {% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── 7. Danger zone (full width) ── #}
+    <div class="acc-card danger-zone span-2">
+      <div class="acc-card-head">
+        <span class="acc-card-title"><i class="fas fa-exclamation-triangle"></i> Danger zone</span>
+      </div>
+      <div class="acc-card-body">
+        <div class="danger-row">
+          <div class="danger-row-info">
+            <span class="danger-row-title">Download my data</span>
+            <span class="danger-row-sub">Get a copy of everything we hold about you (GDPR / data portability)</span>
+          </div>
+          <button class="btn-danger-soft" onclick="requestDataExport()">
+            <i class="fas fa-download"></i> Export
+          </button>
+        </div>
+        <div class="danger-row">
+          <div class="danger-row-info">
+            <span class="danger-row-title">Deactivate account</span>
+            <span class="danger-row-sub">Temporarily disable your account. You can reactivate at any time.</span>
+          </div>
+          <button class="btn-danger-soft" onclick="confirmDeactivate()">
+            <i class="fas fa-pause-circle"></i> Deactivate
+          </button>
+        </div>
+        <div class="danger-row">
+          <div class="danger-row-info">
+            <span class="danger-row-title">Delete account permanently</span>
+            <span class="danger-row-sub">All data will be removed. This action cannot be undone.</span>
+          </div>
+          <button class="btn-danger-hard" onclick="confirmDelete()">
+            <i class="fas fa-trash-alt"></i> Delete account
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>{# end .acc-grid #}
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-function downloadData() { alert("Your data export will be prepared and emailed to you."); }
-function deactivateAccount() { if(confirm("Are you sure you want to deactivate your account?")) alert("Account deactivation requested."); }
-function deleteAccount() { if(confirm("⚠️ PERMANENT ACTION! Type 'DELETE' to confirm your account deletion.")) alert("Account deletion requested. Contact support."); }
+function revokeSession(sessionId, btn) {
+  if (!confirm('Revoke this session? The device will be signed out.')) return;
+  btn.textContent = '…';
+  btn.disabled = true;
+  fetch(`/profile/sessions/${sessionId}/revoke`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' }
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      const el = document.getElementById(`sess-${sessionId}`);
+      el.style.opacity = '0';
+      el.style.transition = 'opacity .3s';
+      setTimeout(() => el.remove(), 300);
+    } else {
+      btn.textContent = 'Revoke'; btn.disabled = false;
+      alert(d.error || 'Failed to revoke session.');
+    }
+  })
+  .catch(() => { btn.textContent = 'Revoke'; btn.disabled = false; });
+}
+
+function requestDataExport() {
+  if (confirm('We will prepare your data export and email it to you. Continue?'))
+    alert('Request received. You will get an email within 24 hours.');
+}
+function confirmDeactivate() {
+  if (confirm('Deactivate your account? You can reactivate by logging back in.'))
+    window.location.href = '{{ url_for("auth.deactivate_account") }}';
+}
+function confirmDelete() {
+  const code = prompt('Type DELETE to permanently delete your account:');
+  if (code === 'DELETE')
+    window.location.href = '{{ url_for("auth.delete_account") }}';
+}
 </script>
 {% endblock %}

@@ -1,509 +1,338 @@
-{# Pane mode: when ?_pane=1, don't use base template #}
-{% if request.args.get('_pane') == '1' %}
-    {% set is_pane = true %}
-{% else %}
-    {% extends "base.html" %}
-    {% set is_pane = false %}
-{% endif %}
-
-{% block title %}{{ user.username }} - Public Profile{% endblock %}
+{% extends "base.html" %}
+{% block title %}{{ public_info.display_name or public_info.full_name or user.username }} — AFCON360{% endblock %}
 
 {% block styles %}
 <style>
-    /* ===== CLEAN PROFILE CARD STYLES (Student Card Layout) ===== */
-    :root {
-        --primary-dark: #1a3a1a;
-        --primary: #2d5a2d;
-        --primary-light: #4a7c4a;
-        --accent: #ffcc00;
-        --accent-dark: #e6b800;
-        --gray-50: #f8faf8;
-        --gray-100: #f1f4f1;
-        --gray-200: #e2e8e2;
-        --gray-300: #cbd5c1;
-        --gray-400: #94a394;
-        --gray-500: #6b7c6b;
-        --gray-600: #4a5a4a;
-        --gray-700: #2d3a2d;
-        --white: #ffffff;
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-    }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
 
-    .profile-container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 2rem 1rem;
-    }
+/* ── Page shell ── */
+.pub-wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3.5rem;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 1.75rem;
+}
 
-    /* Main Profile Card */
-    .profile-card {
-        background: var(--white);
-        border-radius: 24px;
-        box-shadow: var(--shadow-md);
-        overflow: hidden;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
+/* ── Sub-nav ── */
+.subnav {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--surface-3);
+  padding-bottom: .85rem;
+}
+.subnav-link {
+  font-family: var(--font-head);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  text-decoration: none;
+  padding: .7rem 1rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.subnav-link:hover { background: var(--surface-2); color: var(--green-dark); }
+.subnav-link.active { color: var(--green-dark); background: rgba(255,204,0,.08); border-color: rgba(255,204,0,.3); }
 
-    .profile-card:hover {
-        box-shadow: var(--shadow-lg);
-    }
+/* ── Left column: identity card ── */
+.identity-card {
+  position: sticky;
+  top: 1.5rem;
+  background: linear-gradient(180deg, #213720 0%, #152114 100%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
 
-    /* Profile Header with Avatar */
-    .profile-header {
-        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
-        padding: 2rem 2rem 1.5rem;
-        text-align: center;
-    }
+.id-card-stripe { height: 6px; background: linear-gradient(90deg, var(--green) 0%, var(--gold) 55%, var(--gold-light) 100%); }
+.id-card-body { padding: 1.75rem 1.5rem 1.5rem; }
+.id-avatar-wrap { width: 88px; height: 88px; border-radius: 50%; border: 2px solid var(--gold); overflow: hidden; margin-bottom: 1.4rem; background: var(--green-dark); display: flex; align-items: center; justify-content: center; }
+.id-avatar-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.id-avatar-initials { font-family: var(--font-head); font-size: 1.75rem; font-weight: 800; color: var(--gold); }
+.id-name { font-family: var(--font-head); font-size: 1.5rem; font-weight: 700; color: #fff; line-height: 1.15; margin-bottom: .35rem; }
+.id-handle { font-size: .9rem; color: rgba(255,255,255,.65); margin-bottom: 1.25rem; }
 
-    .profile-avatar {
-        width: 120px;
-        height: 120px;
-        margin: 0 auto 1rem;
-        border-radius: 50%;
-        background: var(--white);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-        border: 4px solid var(--accent);
-    }
+.id-badges { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: 1.5rem; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 5px 10px; border-radius: 999px; }
+.badge-verified { background: rgba(5,150,105,.12); color: #0f8b61; border: 1px solid rgba(5,150,105,.2); }
+.badge-pending { background: rgba(217,119,6,.12); color: #b76b06; border: 1px solid rgba(217,119,6,.2); }
+.badge-rejected { background: rgba(220,38,38,.12); color: #9c2b2b; border: 1px solid rgba(220,38,38,.2); }
+.badge-suspended { background: rgba(124,58,237,.12); color: #6a49b0; border: 1px solid rgba(124,58,237,.2); }
+.badge-fan { background: rgba(255,204,0,.12); color: #927100; border: 1px solid rgba(255,204,0,.25); }
 
-    .profile-avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
+.id-meta { border-top: 1px solid rgba(255,255,255,.08); padding-top: 1.25rem; display: grid; gap: .75rem; }
+.id-meta-row { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+.id-meta-label { font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.45); }
+.id-meta-value { font-size: .9rem; font-weight: 500; color: rgba(255,255,255,.78); text-align: right; }
 
-    .profile-avatar-initials {
-        font-size: 48px;
-        font-weight: 800;
-        color: var(--primary-dark);
-    }
+.id-card-actions { padding: 1.25rem 1.5rem 1.5rem; border-top: 1px solid rgba(255,255,255,.06); display: grid; gap: .75rem; }
+.btn-gold, .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: .75rem 1rem; font-family: var(--font-head); font-size: .95rem; font-weight: 700; text-transform: uppercase; border-radius: var(--radius); transition: background .2s, transform .15s, border-color .15s; }
+.btn-gold { background: var(--gold); color: var(--green-dark); border: 1px solid transparent; }
+.btn-gold:hover { background: var(--gold-dark); transform: translateY(-1px); }
+.btn-ghost { background: transparent; color: rgba(255,255,255,.9); border: 1px solid rgba(255,255,255,.18); }
+.btn-ghost:hover { border-color: rgba(255,255,255,.32); }
 
-    .profile-name {
-        font-size: 28px;
-        font-weight: 800;
-        color: var(--white);
-        margin-bottom: 4px;
-    }
+.right-col { display: flex; flex-direction: column; gap: 1.5rem; }
+.stats-bar { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); background: var(--surface-2); border: 1px solid var(--surface-3); border-radius: var(--radius-lg); overflow: hidden; }
+.stat-cell { padding: 1.25rem; text-align: center; border-right: 1px solid var(--surface-3); }
+.stat-cell:last-child { border-right: none; }
+.stat-num { font-family: var(--font-head); font-size: 2rem; font-weight: 800; color: var(--text); line-height: 1; margin-bottom: .25rem; }
+.stat-lbl { font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-soft); }
 
-    .profile-username {
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.8);
-    }
+.content-card { background: var(--surface); border: 1px solid var(--surface-3); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-card); }
+.card-head { padding: 1rem 1.5rem; border-bottom: 1px solid var(--surface-3); display: flex; align-items: center; justify-content: space-between; }
+.card-title { font-family: var(--font-head); font-size: .82rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: .5rem; }
+.card-title i { color: var(--gold); font-size: 1rem; }
+.card-body { padding: 1.5rem; }
 
-    .verified-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(4px);
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 600;
-        margin-top: 8px;
-    }
+.info-table { width: 100%; border-collapse: collapse; }
+.info-table tr { border-bottom: 1px solid var(--surface-2); }
+.info-table tr:last-child { border-bottom: none; }
+.info-table td { padding: .75rem 0; vertical-align: top; }
+.info-table td:first-child { width: 150px; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-soft); padding-right: 1rem; }
+.info-table td:last-child { font-size: .95rem; color: var(--text); }
 
-    /* Profile Body */
-    .profile-body {
-        padding: 2rem;
-    }
+.bio-text { font-size: 1rem; line-height: 1.75; color: var(--text-soft); }
+.bio-empty { font-size: .95rem; color: var(--text-soft); font-style: italic; }
 
-    /* Section Titles */
-    .section-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--primary-dark);
-        margin-bottom: 1.25rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid var(--accent);
-        display: inline-block;
-    }
+.roles-wrap { display: flex; flex-wrap: wrap; gap: .5rem; }
+.role-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface-2); border: 1px solid var(--surface-3); border-radius: 999px; font-size: .85rem; font-weight: 700; color: var(--text-soft); }
+.role-chip.elevated { background: var(--gold-light); border-color: rgba(255,204,0,.35); color: #92680a; }
 
-    /* Info Grid - Like Student Card */
-    .info-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.75rem 1.5rem;
-        margin-bottom: 1.5rem;
-    }
+.loc-chip { display: inline-flex; align-items: center; gap: 6px; font-size: .95rem; color: var(--text-soft); }
 
-    .info-row {
-        display: flex;
-        align-items: baseline;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid var(--gray-200);
-        gap: 1rem;
-    }
+@media (max-width: 1024px) { .pub-wrap { grid-template-columns: 1fr; padding: 1.75rem 1.25rem 3rem; } .identity-card { position: static; top: auto; } }
+@media (max-width: 760px) { .subnav { gap: .35rem; } .subnav-link { padding: .65rem .9rem; font-size: .78rem; } .card-head, .card-body, .id-card-body { padding-left: 1.25rem; padding-right: 1.25rem; } }
+@media (max-width: 560px) { .pub-wrap { padding: 1.25rem 1rem 2rem; } .id-name { font-size: 1.35rem; } .stat-num { font-size: 24px; } }
 
-    .info-row--full {
-        grid-column: span 2;
-    }
-
-    .info-label {
-        width: 110px;
-        flex-shrink: 0;
-        font-weight: 600;
-        color: var(--gray-600);
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .info-value {
-        flex: 1;
-        color: var(--gray-700);
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    @media (max-width: 640px) {
-        .info-grid {
-            grid-template-columns: 1fr;
-            gap: 0.5rem;
-        }
-        .info-row--full {
-            grid-column: span 1;
-        }
-        .info-label {
-            width: 90px;
-            font-size: 12px;
-        }
-        .info-value {
-            font-size: 13px;
-        }
-    }
-
-    /* Bio Section (Other Information) */
-    .bio-section {
-        background: var(--gray-50);
-        border-radius: 16px;
-        padding: 1.25rem;
-        margin: 1.5rem 0;
-    }
-
-    .bio-text {
-        color: var(--gray-700);
-        line-height: 1.6;
-        font-size: 14px;
-        margin: 0;
-    }
-
-    .bio-label {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--gray-500);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 8px;
-    }
-
-    /* Stats Row */
-    .stats-row {
-        display: flex;
-        justify-content: space-around;
-        gap: 1rem;
-        margin: 1.5rem 0;
-        padding: 1rem 0;
-        border-top: 1px solid var(--gray-200);
-        border-bottom: 1px solid var(--gray-200);
-    }
-
-    .stat-item {
-        text-align: center;
-        flex: 1;
-    }
-
-    .stat-number {
-        font-size: 24px;
-        font-weight: 800;
-        color: var(--primary-dark);
-    }
-
-    .stat-label {
-        font-size: 11px;
-        color: var(--gray-500);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        font-weight: 600;
-    }
-
-    /* Role Pills */
-    .role-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin: 1rem 0;
-    }
-
-    .role-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 12px;
-        background: var(--gray-100);
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--primary);
-    }
-
-    /* Action Buttons */
-    .action-buttons {
-        display: flex;
-        gap: 1rem;
-        margin-top: 1.5rem;
-    }
-
-    .btn-primary {
-        flex: 1;
-        background: var(--primary);
-        color: white;
-        border: none;
-        padding: 12px;
-        border-radius: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        transition: background 0.2s;
-    }
-
-    .btn-primary:hover {
-        background: var(--primary-dark);
-    }
-
-    .btn-outline {
-        flex: 1;
-        background: transparent;
-        border: 1px solid var(--gray-300);
-        color: var(--gray-700);
-        padding: 12px;
-        border-radius: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        transition: all 0.2s;
-    }
-
-    .btn-outline:hover {
-        border-color: var(--primary);
-        color: var(--primary);
-    }
-
-    /* AFCON Fan Badge */
-    .afcon-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: linear-gradient(135deg, #1a3a1a, #2d5a2d);
-        color: white;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        margin-top: 8px;
-    }
-
-    /* Responsive */
-    @media (max-width: 600px) {
-        .profile-container {
-            padding: 1rem;
-        }
-        .profile-header {
-            padding: 1.5rem 1rem 1rem;
-        }
-        .profile-avatar {
-            width: 90px;
-            height: 90px;
-        }
-        .profile-avatar-initials {
-            font-size: 36px;
-        }
-        .profile-name {
-            font-size: 22px;
-        }
-        .info-grid {
-            grid-template-columns: 1fr;
-            gap: 0;
-        }
-        .stats-row {
-            flex-wrap: wrap;
-        }
-        .action-buttons {
-            flex-direction: column;
-        }
-    }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.identity-card { animation: fadeUp .4s ease both; }
+.stats-bar { animation: fadeUp .4s .1s ease both; }
+.content-card:nth-child(1) { animation: fadeUp .4s .15s ease both; }
+.content-card:nth-child(2) { animation: fadeUp .4s .2s ease both; }
+.content-card:nth-child(3) { animation: fadeUp .4s .25s ease both; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="profile-container">
-    <div class="profile-card">
-        <!-- Header with Avatar (Like Student Card Header) -->
-        <div class="profile-header">
-            <div class="profile-avatar">
-                {% if public_info.avatar_url %}
-                    <img src="{{ public_info.avatar_url }}" alt="{{ user.username }}">
-                {% else %}
-                    <div class="profile-avatar-initials">
-                        {{ (public_info.full_name or user.username)[0]|upper }}
-                    </div>
-                {% endif %}
-            </div>
-            <div class="profile-name">{{ public_info.full_name or user.username }}</div>
-            <div class="profile-username">@{{ user.username }}</div>
-            
-            {% if profile and profile.verification_status == 'verified' %}
-                <div class="verified-badge">
-                    <i class="fas fa-check-circle"></i> Verified Member
-                </div>
-            {% endif %}
+<div class="pub-wrap">
 
-            {% if tournament_mode and profile and profile.fan_team %}
-                <div class="afcon-badge">
-                    <i class="fas fa-futbol"></i> AFCON fan — {{ profile.fan_team }}
-                </div>
-            {% endif %}
+  {# ── Sub-navigation ── #}
+  <nav class="subnav" aria-label="Profile navigation">
+    <a href="{{ url_for('profile.public_profile', public_id=current_user.public_id) if current_user.is_authenticated else '#' }}"
+       class="subnav-link {% if request.endpoint == 'profile.public_profile' %}active{% endif %}">
+      <i class="fas fa-id-card"></i>&nbsp; Public profile
+    </a>
+    {% if current_user.is_authenticated %}
+    <a href="{{ url_for('profile.account_overview') }}"
+       class="subnav-link {% if request.endpoint == 'profile.account_overview' %}active{% endif %}">
+      <i class="fas fa-user-cog"></i>&nbsp; Account
+    </a>
+    <a href="{{ url_for('profile.edit_profile') }}"
+       class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
+      <i class="fas fa-edit"></i>&nbsp; Edit profile
+    </a>
+    <a href="{{ url_for('user.user_dashboard') }}" class="subnav-link">
+      <i class="fas fa-tachometer-alt"></i>&nbsp; Dashboard
+    </a>
+    {% endif %}
+  </nav>
+
+  {# ── Left: identity card ── #}
+  <aside>
+    <div class="identity-card">
+      <div class="id-card-stripe"></div>
+      <div class="id-card-body">
+
+        {# Avatar #}
+        <div class="id-avatar-wrap">
+          {% if public_info.avatar_url %}
+            <img src="{{ public_info.avatar_url }}" alt="{{ public_info.display_name or public_info.full_name }}">
+          {% else %}
+            <span class="id-avatar-initials">
+              {{ (public_info.display_name or public_info.full_name or user.username or 'U')[0]|upper }}
+            </span>
+          {% endif %}
         </div>
 
-        <!-- Body with Information (Like Student Card Content) -->
-        <div class="profile-body">
-            <!-- General Information Section - Key/Value Pairs -->
-            <div class="section-title">General Information</div>
-            <div class="info-grid">
-                <div class="info-row">
-                    <div class="info-label">User ID</div>
-                    <div class="info-value">{{ user.public_id[:8] if user.public_id else user.id }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Member Since</div>
-                    <div class="info-value">{{ user.created_at.strftime('%B %Y') if user.created_at else '2024' }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Full Name</div>
-                    <div class="info-value">{{ public_info.full_name or user.username }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Display Name</div>
-                    <div class="info-value">{{ profile.display_name if profile and profile.display_name else (public_info.full_name or user.username) }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Date of Birth</div>
-                    <div class="info-value">{{ profile.date_of_birth.strftime('%B %d, %Y') if profile and profile.date_of_birth else 'Not specified' }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Gender</div>
-                    <div class="info-value">{{ profile.gender|title if profile and profile.gender else 'Not specified' }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Nationality</div>
-                    <div class="info-value">{{ profile.nationality if profile and profile.nationality else 'Not specified' }}</div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Location</div>
-                    <div class="info-value">
-                        {% if public_info.city or public_info.country %}
-                            {{ public_info.city or '' }}{% if public_info.city and public_info.country %}, {% endif %}{{ public_info.country or '' }}
-                        {% else %}
-                            Not specified
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="info-row info-row--full">
-                    <div class="info-label">Fan of</div>
-                    <div class="info-value">{{ profile.fan_team if profile and profile.fan_team else 'Not declared' }}</div>
-                </div>
-            </div>
-
-            <!-- Roles Section -->
-            {% if user_roles and user_roles|length > 0 %}
-            <div class="section-title">Roles</div>
-            <div class="role-pills">
-                {% for role in user_roles %}
-                    <span class="role-pill">
-                        {% if role == 'host' %}🏠 Host
-                        {% elif role == 'driver' %}🚗 Driver
-                        {% elif role == 'admin' %}👑 Admin
-                        {% elif role == 'owner' %}⭐ Owner
-                        {% else %}🧳 Traveler
-                        {% endif %}
-                    </span>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <!-- Stats Row (Stays, Trips, Reviews) -->
-            <div class="stats-row">
-                <div class="stat-item">
-                    <div class="stat-number">{{ stats.stays_count|default(0) }}</div>
-                    <div class="stat-label">Stays</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">{{ stats.trips_count|default(0) }}</div>
-                    <div class="stat-label">Trips</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">{{ stats.reviews_count|default(0) }}</div>
-                    <div class="stat-label">Reviews</div>
-                </div>
-            </div>
-
-            <!-- Bio Section (Personal story, hobbies, interests) -->
-            <div class="bio-section">
-                <div class="bio-label">About & Interests</div>
-                {% if public_info.bio %}
-                    <p class="bio-text">{{ public_info.bio }}</p>
-                {% elif is_own_profile %}
-                    <p class="bio-text">
-                        Add a short bio here so visitors can learn about your hobbies, favorite places,
-                        passions, and what makes you unique.
-                    </p>
-                    <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline" style="display:inline-block; margin-top:0.75rem;">
-                        Edit your bio
-                    </a>
-                {% else %}
-                    <p class="bio-text text-muted">This user has not added a public bio yet.</p>
-                {% endif %}
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="action-buttons">
-                {% if is_own_profile %}
-                    <a href="{{ url_for('profile.account_overview') }}" class="btn-primary">
-                        <i class="fas fa-user-cog"></i> My Account
-                    </a>
-                    <a href="{{ url_for('profile.edit_profile') }}" class="btn-outline">
-                        <i class="fas fa-edit"></i> Edit Profile
-                    </a>
-                {% else %}
-                    <button class="btn-primary" onclick="sendMessage('{{ user.username }}')">
-                        <i class="fas fa-envelope"></i> Send Message
-                    </button>
-                    <button class="btn-outline" onclick="followUser('{{ user.username }}')">
-                        <i class="fas fa-user-plus"></i> Follow
-                    </button>
-                {% endif %}
-            </div>
+        <div class="id-name">
+          {{ public_info.display_name or public_info.full_name or user.username }}
         </div>
+        <div class="id-handle">@{{ user.username or user.public_id[:8] }}</div>
+
+        {# Badges #}
+        <div class="id-badges">
+          {% if profile %}
+            {% if profile.verification_status == 'verified' %}
+              <span class="badge badge-verified"><i class="fas fa-check-circle"></i> Verified</span>
+            {% elif profile.verification_status == 'pending' %}
+              <span class="badge badge-pending"><i class="fas fa-clock"></i> Pending</span>
+            {% elif profile.verification_status == 'rejected' %}
+              <span class="badge badge-rejected"><i class="fas fa-times-circle"></i> Rejected</span>
+            {% elif profile.verification_status == 'suspended' %}
+              <span class="badge badge-suspended"><i class="fas fa-ban"></i> Suspended</span>
+            {% endif %}
+          {% endif %}
+          {% if tournament_mode and profile and profile.fan_team %}
+            <span class="badge badge-fan"><i class="fas fa-futbol"></i> {{ profile.fan_team }}</span>
+          {% endif %}
+        </div>
+
+        {# Meta rows #}
+        <div class="id-meta">
+          <div class="id-meta-row">
+            <span class="id-meta-label">Member since</span>
+            <span class="id-meta-value">{{ user.created_at.strftime('%b %Y') if user.created_at else '—' }}</span>
+          </div>
+          <div class="id-meta-row">
+            <span class="id-meta-label">User ID</span>
+            <span class="id-meta-value" style="font-family:monospace;font-size:11px;letter-spacing:.05em;">
+              {{ user.public_id[:12] }}…
+            </span>
+          </div>
+          {% if public_info.city or public_info.country %}
+          <div class="id-meta-row">
+            <span class="id-meta-label">Location</span>
+            <span class="id-meta-value">
+              <span class="loc-chip">
+                <i class="fas fa-map-marker-alt"></i>
+                {{ public_info.city }}{% if public_info.city and public_info.country %}, {% endif %}{{ public_info.country }}
+              </span>
+            </span>
+          </div>
+          {% endif %}
+          {% if profile and profile.kyc_level %}
+          <div class="id-meta-row">
+            <span class="id-meta-label">KYC level</span>
+            <span class="id-meta-value">{{ profile.kyc_level|title }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Actions #}
+      <div class="id-card-actions">
+        {% if is_own_profile %}
+          <a href="{{ url_for('profile.edit_profile') }}" class="btn-gold">
+            <i class="fas fa-edit"></i> Edit my profile
+          </a>
+          <a href="{{ url_for('profile.account_overview') }}" class="btn-ghost">
+            <i class="fas fa-user-cog"></i> Account settings
+          </a>
+        {% else %}
+          <button class="btn-gold" onclick="alert('Messaging coming soon.')">
+            <i class="fas fa-envelope"></i> Send message
+          </button>
+          <button class="btn-ghost" onclick="alert('Follow coming soon.')">
+            <i class="fas fa-user-plus"></i> Follow
+          </button>
+        {% endif %}
+      </div>
     </div>
+  </aside>
+
+  {# ── Right column ── #}
+  <main class="right-col">
+
+    {# Stats bar #}
+    <div class="stats-bar">
+      <div class="stat-cell">
+        <div class="stat-num">{{ stats.stays_count | default(0) }}</div>
+        <div class="stat-lbl">Stays</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">{{ stats.trips_count | default(0) }}</div>
+        <div class="stat-lbl">Trips</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">{{ stats.reviews_count | default(0) }}</div>
+        <div class="stat-lbl">Reviews</div>
+      </div>
+    </div>
+
+    {# Bio #}
+    <div class="content-card">
+      <div class="card-head">
+        <span class="card-title"><i class="fas fa-quote-left"></i> About</span>
+      </div>
+      <div class="card-body">
+        {% if public_info.bio %}
+          <p class="bio-text">"{{ public_info.bio }}"</p>
+        {% elif is_own_profile %}
+          <p class="bio-empty">You haven't added a bio yet.</p>
+          <a href="{{ url_for('profile.edit_profile') }}" style="font-size:13px;color:var(--green);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px;margin-top:.75rem;">
+            <i class="fas fa-plus-circle"></i> Add bio →
+          </a>
+        {% else %}
+          <p class="bio-empty">This member hasn't added a bio yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# General info — NO PII #}
+    <div class="content-card">
+      <div class="card-head">
+        <span class="card-title"><i class="fas fa-info-circle"></i> General information</span>
+      </div>
+      <div class="card-body">
+        <table class="info-table">
+          <tr>
+            <td>Display name</td>
+            <td>{{ public_info.display_name or public_info.full_name or user.username or '—' }}</td>
+          </tr>
+          <tr>
+            <td>Member since</td>
+            <td>{{ user.created_at.strftime('%B %Y') if user.created_at else '—' }}</td>
+          </tr>
+          {% if tournament_mode and profile and profile.fan_team %}
+          <tr>
+            <td>Supports</td>
+            <td><i class="fas fa-futbol" style="color:var(--gold);margin-right:5px;"></i> {{ profile.fan_team }}</td>
+          </tr>
+          {% endif %}
+          {% if public_info.city or public_info.country %}
+          <tr>
+            <td>Location</td>
+            <td>{{ public_info.city }}{% if public_info.city and public_info.country %}, {% endif %}{{ public_info.country }}</td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+
+    {# Roles — only show if non-trivial #}
+    {% if user_roles and user_roles | reject('equalto', 'user') | list | length > 0 %}
+    <div class="content-card">
+      <div class="card-head">
+        <span class="card-title"><i class="fas fa-layer-group"></i> Roles</span>
+      </div>
+      <div class="card-body">
+        <div class="roles-wrap">
+          {% for role in user_roles %}
+            <span class="role-chip {% if role in ['owner','super_admin','admin','event_manager'] %}elevated{% endif %}">
+              {% if role == 'owner' %}<i class="fas fa-crown"></i>
+              {% elif role == 'super_admin' %}<i class="fas fa-shield-alt"></i>
+              {% elif role == 'admin' %}<i class="fas fa-user-shield"></i>
+              {% elif role == 'event_manager' %}<i class="fas fa-calendar-check"></i>
+              {% elif role == 'driver' %}<i class="fas fa-car"></i>
+              {% elif role == 'host' %}<i class="fas fa-home"></i>
+              {% else %}<i class="fas fa-user"></i>{% endif %}
+              {{ role | replace('_', ' ') | title }}
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
 </div>
-
-<script>
-function sendMessage(username) {
-    alert(`Message @${username}`);
-}
-
-function followUser(username) {
-    alert(`You are now following @${username}`);
-}
-</script>
 {% endblock %}

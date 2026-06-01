@@ -12,18 +12,17 @@ from datetime import datetime, timezone
 
 # Attach routes to the tourism blueprint
 @tourism_bp.route("/", endpoint="home")
-@login_required
-@require_role('fan', 'admin', 'owner')
 def home():
-    # Log access
-    ForensicAuditService.log_attempt(
-        entity_type="tourism",
-        entity_id=None,  # Not a specific entity, so pass None
-        action="view_home",
-        user_id=current_user.id,
-        ip_address=request.remote_addr,
-        user_agent=request.user_agent.string if request.user_agent else None
-    )
+    """Tourism home page.
+
+    No forensic audit is recorded for the listing page.
+    A lightweight analytics counter is tracked instead.
+    """
+    try:
+        from app.services.analytics import AnalyticsService
+        AnalyticsService.track_page_view("tourism")
+    except Exception:
+        pass
     return render_template("tourism_home.html")
 
 @tourism_bp.route("/detail/<string:slug>", endpoint="detail")

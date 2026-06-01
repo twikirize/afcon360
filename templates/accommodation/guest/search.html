@@ -20,7 +20,7 @@
     <div class="row mb-5">
         <div class="col-12">
             <div class="search-container">
-                <form method="GET" action="{{ safe_url('accommodation.guest.search') }}">
+                <form method="GET" action="{{ safe_url('accommodation.guest_search') }}">
                     <div class="ota-search-bar">
                         <!-- Destination -->
                         <div class="search-field search-field--destination">
@@ -85,7 +85,7 @@
             <article class="property-card" data-property-id="{{ property.id }}">
 
                 <!-- IMAGE -->
-                <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}"
+                <a href="{{ url_for('accommodation.guest_detail', identifier=property.slug or property.id) }}"
                    class="property-card__img-link">
                     <div class="property-card__img-wrap">
                         {% set thumb = property.images[0] if property.images else none %}
@@ -129,7 +129,7 @@
 
                     <!-- Title -->
                     <h3 class="card-title">
-                        <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}">
+                        <a href="{{ url_for('accommodation.guest_detail', identifier=property.slug or property.id) }}">
                             {{ property.name }}
                         </a>
                     </h3>
@@ -177,7 +177,7 @@
                             </span>
                             <span class="price-night">/ night</span>
                         </div>
-                        <a href="{{ url_for('accommodation.guest.detail', identifier=property.slug or property.id) }}"
+                        <a href="{{ url_for('accommodation.guest_detail', identifier=property.slug or property.id) }}"
                            class="card-cta">
                             See availability
                         </a>
@@ -193,7 +193,7 @@
         <div class="no-results">
             <p>No properties found. Try adjusting your search.</p>
             {% if request.args.get('city') or request.args.get('query') %}
-                <a href="{{ safe_url('accommodation.guest.search') }}" class="btn btn-primary">
+                <a href="{{ safe_url('accommodation.guest_search') }}" class="btn btn-primary">
                     Clear Filters
                 </a>
             {% endif %}

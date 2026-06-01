@@ -55,7 +55,7 @@
   <!-- ====== LEFT SIDEBAR ====== -->
   <aside class="home-left">
 
-    <a href="{{ safe_url('accommodation.guest.search') }}" class="left-nav-item {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+    <a href="{{ safe_url('accommodation.guest_search') }}" class="left-nav-item {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
       <div class="left-nav-icon">🏨</div>
       Accommodation
       {% if not modules.get('accommodation') %}<span class="disabled-badge">Disabled</span>{% endif %}
@@ -239,7 +239,7 @@
           <span>Book Flights</span>
           {% if not modules.get('transport') %}<span class="disabled-badge">Disabled</span>{% endif %}
         </a>
-        <a href="{{ safe_url('accommodation.guest.search') }}" class="quick-action {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+        <a href="{{ safe_url('accommodation.guest_search') }}" class="quick-action {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
           <span class="quick-action-icon">🏨</span>
           <span>Find Accommodation</span>
           {% if not modules.get('accommodation') %}<span class="disabled-badge">Disabled</span>{% endif %}

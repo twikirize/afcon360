@@ -1,4 +1,4 @@
-# app/events/__init__.py
+﻿# app/events/__init__.py
 """
 Events Module - top-level blueprint for AFCON360.
 Peer to: accommodation, transport, wallet, tourism.
@@ -15,6 +15,7 @@ print("Settings routes registered to events blueprint")  # Debug line
 
 # STEP 2: Now import routes (which will add the rest of the routes)
 from app.events import routes
+from app.events import routes_community_hosts
 from app.events.settings_model import EventSettings  # noqa: F401
 
 
@@ -48,3 +49,4 @@ try:
                    module_name='Events', icon='fa-calendar')
 except Exception:
     pass
+

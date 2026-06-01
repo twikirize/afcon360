@@ -145,6 +145,12 @@ class Config:
     SESSION_SERIALIZER       = "json"
     SESSION_REDIS_URL        = REDIS_URL
 
+    # ---- Analytics ----------------------------------------------------------
+    ANALYTICS_ENABLED    = os.getenv('ANALYTICS_ENABLED', 'true').lower() == 'true'
+    REDIS_HOST           = os.getenv('REDIS_HOST', 'localhost')
+    REDIS_PORT           = int(os.getenv('REDIS_PORT', 6379))
+    REDIS_ANALYTICS_DB   = int(os.getenv('REDIS_ANALYTICS_DB', 1))
+
     # ---- Rate limiting ------------------------------------------------------
     RATELIMIT_STORAGE_URI   = REDIS_URL
     RATELIMIT_STRATEGY      = "fixed-window"

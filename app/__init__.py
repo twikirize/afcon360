@@ -746,19 +746,20 @@ def create_app(config_object=None) -> Flask:
             import threading
             def _validate_schema():
                 try:
-                    from sqlalchemy import inspect as _sa_inspect
-                    _ins = _sa_inspect(db.engine)
-                    _cols = [c['name'] for c in _ins.get_columns('users')]
-                    if 'id' in _cols and 'user_id' in _cols:
-                        logger.info("✅ Dual ID system validated.")
-                    _idxs = _ins.get_indexes('transactions')
-                    if any(i.get('column_names') == ['client_request_id'] and i.get('unique') for i in _idxs):
-                        logger.info("✅ transactions.client_request_id unique index present")
-                    else:
-                        logger.critical(
-                            "Missing unique index on transactions.client_request_id – "
-                            "idempotency may be broken. Add a DB migration."
-                        )
+                    with app.app_context():
+                        from sqlalchemy import inspect as _sa_inspect
+                        _ins = _sa_inspect(db.engine)
+                        _cols = [c['name'] for c in _ins.get_columns('users')]
+                        if 'id' in _cols and 'user_id' in _cols:
+                            logger.info("✅ Dual ID system validated.")
+                        _idxs = _ins.get_indexes('transactions')
+                        if any(i.get('column_names') == ['client_request_id'] and i.get('unique') for i in _idxs):
+                            logger.info("✅ transactions.client_request_id unique index present")
+                        else:
+                            logger.critical(
+                                "Missing unique index on transactions.client_request_id – "
+                                "idempotency may be broken. Add a DB migration."
+                            )
                 except Exception as exc:
                     logger.warning(f"Deferred startup – DB validation: {exc}")
 
@@ -864,6 +865,11 @@ def create_app(config_object=None) -> Flask:
 
     for bp, prefix in core_blueprints:
         app.register_blueprint(bp, url_prefix=prefix)
+
+    if auth_kyc_bp:
+        def _auth_kyc_upload_alias():
+            return redirect(url_for('auth_kyc.overview'))
+        app.add_url_rule('/auth/kyc/upload', endpoint='auth.kyc_routes.kyc_upload', view_func=_auth_kyc_upload_alias)
 
     # Note: Compliance blueprint is already registered under admin_bp in app/admin/__init__.py
 

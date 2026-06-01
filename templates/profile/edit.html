@@ -1,638 +1,427 @@
-{# Check if this is a pane request - if yes, don't extend base #}
-{% if request.args.get('_pane') == '1' %}
-    {% set is_pane = true %}
-{% else %}
-    {% extends "base.html" %}
-    {% set is_pane = false %}
-{% endif %}
-
-{% block title %}Edit Profile - {{ app_name }}{% endblock %}
+{% extends "base.html" %}
+{% block title %}Edit profile — AFCON360{% endblock %}
 
 {% block styles %}
 <style>
-    /* ===== GREEN/GOLD THEME (Matching Your Platform) ===== */
-    :root {
-        --primary-dark: #1a3a1a;
-        --primary: #2d5a2d;
-        --primary-light: #4a7c4a;
-        --accent: #ffcc00;
-        --accent-dark: #e6b800;
-        --gray-50: #f8faf8;
-        --gray-100: #f1f4f1;
-        --gray-200: #e2e8e2;
-        --gray-300: #cbd5c1;
-        --gray-400: #94a394;
-        --gray-500: #6b7c6b;
-        --gray-600: #4a5a4a;
-        --gray-700: #2d3a2d;
-        --white: #ffffff;
-        --success: #10b981;
-        --success-light: #d1fae5;
-        --warning: #f59e0b;
-        --warning-light: #fef3c7;
-        --danger: #ef4444;
-        --info: #3b82f6;
-        --info-light: #dbeafe;
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-    }
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
 
-    .edit-profile-container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 2rem 1rem;
-    }
+.edit-wrap {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 0 1.75rem;
+  align-items: start;
+}
 
-    .profile-edit-card {
-        background: var(--white);
-        border: none;
-        border-radius: 24px;
-        box-shadow: var(--shadow-md);
-        overflow: hidden;
-    }
+.subnav {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  border-bottom: 1px solid var(--surface-3);
+  margin-bottom: 2rem;
+  overflow-x: auto;
+}
+.subnav-link {
+  font-family: var(--font-head);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  text-decoration: none;
+  padding: .75rem 1rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.subnav-link:hover { background: var(--surface-2); color: var(--green-dark); }
+.subnav-link.active { background: rgba(255,204,0,.1); color: var(--green-dark); border-color: rgba(255,204,0,.3); }
 
-    /* Header - Green/Gold Gradient */
-    .card-header-custom {
-        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--accent) 100%);
-        color: white;
-        padding: 1.5rem 2rem;
-        border: none;
-    }
+.flash-msg {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: .95rem 1.1rem;
+  border-radius: var(--radius-md);
+  font-size: .95rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid;
+}
+.flash-msg.success { background: var(--ok-bg); border-color: var(--ok-border); color: #065f46; }
+.flash-msg.danger { background: var(--danger-bg); border-color: var(--danger-border); color: #991b1b; }
+.flash-msg.warning { background: var(--warn-bg); border-color: var(--warn-border); color: #92400e; }
 
-    .card-header-custom h4 {
-        margin: 0;
-        font-weight: 700;
-        font-size: 1.5rem;
-    }
+.form-col { display: flex; flex-direction: column; gap: 1.25rem; }
+.sidebar-col { display: flex; flex-direction: column; gap: 1.25rem; position: sticky; top: 2rem; }
 
-    /* Progress Section */
-    .progress-section {
-        background: var(--gray-50);
-        padding: 1.5rem 2rem;
-        border-bottom: 1px solid var(--gray-200);
-    }
+.edit-card { background: var(--surface); border: 1px solid var(--surface-3); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-card); }
+.edit-card-head { display: flex; align-items: center; justify-content: space-between; padding: .95rem 1.25rem; background: var(--surface-2); border-bottom: 1px solid var(--surface-3); }
+.edit-card-title { font-family: var(--font-head); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: .5rem; }
+.edit-card-title i { color: var(--gold); font-size: .9rem; }
+.edit-card-body { padding: 1.25rem; }
 
-    .progress-bar-custom {
-        height: 10px;
-        background: var(--gray-200);
-        border-radius: 10px;
-        overflow: hidden;
-    }
+.avatar-row { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--surface-2); }
+.avatar-circle { width: 72px; height: 72px; border-radius: 50%; border: 2px solid var(--gold); overflow: hidden; background: var(--green-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-initials { font-family: var(--font-head); font-size: 1.3rem; font-weight: 800; color: var(--gold); }
+.avatar-info p { font-size: .95rem; color: var(--text-soft); margin-top: .35rem; line-height: 1.6; }
 
-    .progress-bar-fill {
-        height: 100%;
-        background: linear-gradient(90deg, var(--primary), var(--accent));
-        border-radius: 10px;
-        transition: width 0.3s ease;
-    }
+.field-group { margin-bottom: 1rem; }
+.field-group:last-child { margin-bottom: 0; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+label { display: block; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-soft); margin-bottom: .45rem; }
+.label-with-badge { display: flex; align-items: center; gap: .4rem; }
+input[type="text"], input[type="email"], input[type="tel"], input[type="url"], textarea, select {
+  width: 100%; padding: .8rem 1rem; font-family: var(--font-body); font-size: .95rem; color: var(--text); background: var(--surface); border: 1px solid var(--surface-3); border-radius: var(--radius-md); outline: none; transition: border-color .15s, box-shadow .15s; appearance: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(45,90,45,.1); }
+textarea { resize: vertical; min-height: 100px; }
+select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23757575' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .8rem center; padding-right: 2.2rem; }
+.field-hint { font-size: .8rem; color: var(--text-soft); margin-top: .35rem; line-height: 1.5; }
 
-    /* Section Cards */
-    .section-card {
-        border: 1px solid var(--gray-200);
-        border-radius: 16px;
-        margin-bottom: 1.5rem;
-        overflow: hidden;
-    }
+.field-locked input, .field-locked textarea, .field-locked select { background: var(--surface-2); border-color: var(--surface-3); color: var(--text-soft); cursor: not-allowed; }
+.lock-notice { display: inline-flex; align-items: center; gap: .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; padding: .35rem .75rem; border-radius: .75rem; background: var(--surface-2); border: 1px solid var(--surface-3); color: var(--text-soft); }
 
-    .section-card-header {
-        background: var(--gray-50);
-        padding: 1rem 1.5rem;
-        border-bottom: 1px solid var(--gray-200);
-        font-weight: 700;
-        color: var(--primary-dark);
-        font-size: 1rem;
-    }
+.chip-ok, .chip-warn { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+.chip-ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok); }
+.chip-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
 
-    /* Form Elements */
-    .form-label {
-        font-weight: 600;
-        color: var(--gray-700);
-        margin-bottom: 0.5rem;
-        font-size: 0.85rem;
-    }
+.submit-row { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; padding-top: .25rem; }
+.btn-cancel, .btn-save { font-family: var(--font-head); font-size: .82rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-radius: var(--radius); padding: .75rem 1.2rem; cursor: pointer; }
+.btn-cancel { background: transparent; color: var(--text-soft); border: 1px solid var(--surface-3); text-decoration: none; }
+.btn-cancel:hover { background: var(--surface-2); color: var(--text); }
+.btn-save { background: var(--green); color: #fff; border: 1px solid transparent; }
+.btn-save:hover { background: var(--green-dark); transform: translateY(-1px); }
 
-    .form-control, .form-select {
-        border: 1px solid var(--gray-300);
-        border-radius: 12px;
-        padding: 0.75rem 1rem;
-        font-size: 0.95rem;
-        transition: all 0.2s ease;
-        width: 100%;
-    }
+.completion-ring-wrap { display: flex; flex-direction: column; align-items: center; padding: 1.5rem 1.25rem 1.25rem; }
+.ring-svg { overflow: visible; }
+.ring-track { fill: none; stroke: var(--surface-3); stroke-width: 8; }
+.ring-fill { fill: none; stroke: var(--gold); stroke-width: 8; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .6s ease; }
+.ring-pct { font-family: var(--font-head); font-size: 1.3rem; font-weight: 800; fill: var(--text); text-anchor: middle; dominant-baseline: central; }
+.ring-label { font-size: .8rem; font-weight: 700; fill: var(--text-soft); text-anchor: middle; }
+.completion-title { font-family: var(--font-head); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text); margin-top: .75rem; }
 
-    .form-control:focus, .form-select:focus {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(45, 90, 45, 0.1);
-        outline: none;
-    }
+.checklist { display: grid; gap: .5rem; padding: 0 1.25rem 1.25rem; }
+.check-item { display: flex; align-items: center; justify-content: space-between; padding: .65rem .85rem; border-radius: var(--radius-md); font-size: .9rem; border: 1px solid; }
+.check-item.done { background: var(--ok-bg); border-color: var(--ok-border); color: #065f46; }
+.check-item.todo { background: var(--surface-2); border-color: var(--surface-3); color: var(--text-soft); }
+.check-dot { width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.check-item.done .check-dot { background: var(--ok); color: #fff; font-size: .75rem; }
+.check-item.todo .check-dot { background: var(--surface-3); }
 
-    .form-control.bg-light, .form-select.bg-light {
-        background-color: var(--gray-100) !important;
-        cursor: not-allowed;
-    }
+.tip-box { background: var(--gold-pale); border: 1px solid var(--gold-light); border-radius: var(--radius-lg); padding: 1rem 1.25rem; }
+.tip-box-title { font-family: var(--font-head); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #92680a; margin-bottom: .65rem; display: flex; align-items: center; gap: .4rem; }
+.tip-box p { font-size: .9rem; color: #78530d; line-height: 1.6; }
 
-    textarea.form-control {
-        resize: vertical;
-        min-height: 80px;
-    }
+@media (max-width: 820px) { .edit-wrap { grid-template-columns: 1fr; } .sidebar-col { position: static; top: auto; } }
+@media (max-width: 560px) { .field-row { grid-template-columns: 1fr; } .edit-wrap { padding: 1.5rem 1rem 3rem; } }
 
-    .form-text {
-        color: var(--gray-500);
-        font-size: 0.75rem;
-        margin-top: 0.25rem;
-    }
-
-    /* Avatar Upload Section */
-    .avatar-upload-section {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        margin-bottom: 1.5rem;
-        flex-wrap: wrap;
-    }
-
-    .avatar-preview {
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        box-shadow: var(--shadow-sm);
-        border: 3px solid var(--accent);
-    }
-
-    .avatar-preview img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    .avatar-initials {
-        font-size: 40px;
-        font-weight: 800;
-        color: white;
-    }
-
-    .avatar-upload-info {
-        flex: 1;
-    }
-
-    /* Buttons */
-    .btn-primary {
-        background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-        border: none;
-        padding: 0.75rem 2rem;
-        font-weight: 600;
-        border-radius: 40px;
-        transition: all 0.2s ease;
-        color: white;
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(45, 90, 45, 0.4);
-    }
-
-    .btn-outline-secondary {
-        border: 1px solid var(--gray-300);
-        background: transparent;
-        padding: 0.75rem 2rem;
-        font-weight: 600;
-        border-radius: 40px;
-        transition: all 0.2s ease;
-        color: var(--gray-700);
-    }
-
-    .btn-outline-secondary:hover {
-        background: var(--gray-100);
-        border-color: var(--primary);
-    }
-
-    /* Alerts */
-    .alert-info {
-        background: var(--info-light);
-        border: 1px solid #bae6fd;
-        border-radius: 16px;
-        padding: 1rem 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .alert-warning {
-        background: var(--warning-light);
-        border: 1px solid #fde68a;
-        border-radius: 16px;
-        padding: 1rem 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    /* Lock Badge */
-    .lock-badge {
-        background: var(--gray-200);
-        color: var(--gray-600);
-        padding: 2px 8px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        margin-left: 8px;
-    }
-
-    /* Completion Tips */
-    .completion-tips {
-        background: var(--gray-50);
-        border: 1px solid var(--gray-200);
-        border-radius: 16px;
-        margin-top: 1.5rem;
-        overflow: hidden;
-    }
-
-    .completion-tips .card-header {
-        background: transparent;
-        border-bottom: 1px solid var(--gray-200);
-        padding: 1rem 1.5rem;
-        font-weight: 700;
-        color: var(--primary-dark);
-    }
-
-    .completion-tips .list-group-item {
-        border: none;
-        padding: 0.75rem 1.5rem;
-        background: transparent;
-        border-bottom: 1px solid var(--gray-200);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .completion-tips .list-group-item:last-child {
-        border-bottom: none;
-    }
-
-    .badge-success {
-        background: var(--success);
-        color: white;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 600;
-    }
-
-    .badge-warning {
-        background: var(--warning);
-        color: white;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 600;
-    }
-
-    /* Responsive */
-    @media (max-width: 640px) {
-        .edit-profile-container {
-            padding: 1rem;
-        }
-        .card-header-custom {
-            padding: 1rem 1.5rem;
-        }
-        .progress-section {
-            padding: 1rem 1.5rem;
-        }
-        .avatar-upload-section {
-            flex-direction: column;
-            text-align: center;
-        }
-    }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.form-col > * { animation: fadeUp .35s ease both; }
+.form-col > *:nth-child(1) { animation-delay: .05s; }
+.form-col > *:nth-child(2) { animation-delay: .1s; }
+.form-col > *:nth-child(3) { animation-delay: .15s; }
+.form-col > *:nth-child(4) { animation-delay: .2s; }
+.sidebar-col { animation: fadeUp .4s .1s ease both; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="edit-profile-container">
-    <div class="profile-edit-card">
-        <div class="card-header-custom">
-            <h4>✏️ Edit Your Profile</h4>
-            <p class="mb-0 mt-1" style="opacity: 0.8; font-size: 0.85rem;">Update your personal information and public profile</p>
+<div class="edit-wrap">
+
+  {# ── Sub-nav ── #}
+  <nav class="subnav" aria-label="Profile navigation">
+    <a href="{{ url_for('profile.public_profile', public_id=current_user.public_id) }}"
+       class="subnav-link {% if request.endpoint == 'profile.public_profile' %}active{% endif %}">
+      <i class="fas fa-id-card"></i>&nbsp; Public profile
+    </a>
+    <a href="{{ url_for('profile.account_overview') }}"
+       class="subnav-link {% if request.endpoint == 'profile.account_overview' %}active{% endif %}">
+      <i class="fas fa-user-cog"></i>&nbsp; Account
+    </a>
+    <a href="{{ url_for('profile.edit_profile') }}"
+       class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
+      <i class="fas fa-edit"></i>&nbsp; Edit profile
+    </a>
+    <a href="{{ url_for('user.user_dashboard') }}" class="subnav-link">
+      <i class="fas fa-tachometer-alt"></i>&nbsp; Dashboard
+    </a>
+  </nav>
+
+  {# ── Flash messages ── #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash-msg {{ category }}" role="alert">
+        <i class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'danger' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %}"></i>
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# ── LEFT: Form column ── #}
+  <div class="form-col">
+    <form method="POST" action="{{ url_for('profile.edit_profile') }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      {# ── Identity card ── #}
+      <div class="edit-card">
+        <div class="edit-card-head">
+          <span class="edit-card-title"><i class="fas fa-user-circle"></i> Identity</span>
+          {% if is_verified %}
+            <span class="lock-notice"><i class="fas fa-lock"></i> Locked after verification</span>
+          {% endif %}
         </div>
-        
-        <!-- Progress Section -->
-        <div class="progress-section">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0" style="font-weight: 700; color: var(--primary-dark);">Profile Completion</h5>
-                <span class="badge" style="background: linear-gradient(135deg, var(--primary), var(--accent)); color: var(--primary-dark); padding: 0.5rem 1rem; border-radius: 40px; font-weight: 700;">
-                    {{ completion_percentage }}%
+        <div class="edit-card-body">
+
+          {# Avatar row #}
+          <div class="avatar-row">
+            <div class="avatar-circle" id="avatar-preview">
+              {% if profile and profile.avatar_url %}
+                <img src="{{ profile.avatar_url }}" alt="Avatar" id="avatar-img">
+              {% else %}
+                <span class="avatar-initials" id="avatar-initials">
+                  {{ (profile.full_name or current_user.username or 'U')[0]|upper if profile else 'U' }}
                 </span>
+              {% endif %}
             </div>
-            <div class="progress-bar-custom">
-                <div class="progress-bar-fill" style="width: {{ completion_percentage }}%;"></div>
+            <div class="avatar-info">
+              <label class="label-with-badge" for="avatar_url">
+                Profile photo URL
+              </label>
+              <input type="url" id="avatar_url" name="avatar_url"
+                     placeholder="https://…"
+                     value="{{ profile.avatar_url or '' if profile else '' }}"
+                     oninput="previewAvatar(this.value)">
+              <p>Paste a public image URL. Direct upload coming soon.</p>
             </div>
-            <small class="text-muted mt-2 d-block">
-                Complete your profile to unlock all features and improve your account security.
-            </small>
-        </div>
+          </div>
 
-        <div class="card-body p-4">
-            <!-- Verification Warning -->
+          {# Display name #}
+          <div class="field-group">
+            <label for="display_name">Display name</label>
+            <input type="text" id="display_name" name="display_name"
+                   placeholder="How you appear to others"
+                   value="{{ profile.display_name or '' if profile else '' }}">
+            <div class="field-hint">This is what other users see. Leave blank to use your full name.</div>
+          </div>
+
+          {# Full name — locked after verification #}
+          <div class="field-group {% if is_verified %}field-locked{% endif %}">
+            <label class="label-with-badge" for="full_name">
+              Full name
+              {% if is_verified %}
+                <span class="lock-notice"><i class="fas fa-lock"></i> Immutable</span>
+              {% endif %}
+            </label>
+            <input type="text" id="full_name" name="full_name"
+                   value="{{ profile.full_name or '' if profile else '' }}"
+                   {% if is_verified %}readonly aria-disabled="true"{% endif %}>
             {% if is_verified %}
-            <div class="alert-info">
-                <strong>🔒 Verified Account</strong><br>
-                Your account is verified. Identity fields (Name, Date of Birth, Gender, Nationality) are locked and cannot be changed.
-            </div>
+              <div class="field-hint"><i class="fas fa-info-circle"></i> Locked after KYC verification. Contact support to dispute.</div>
             {% endif %}
+          </div>
 
-            <!-- Edit Form -->
-            <form method="POST" action="{{ url_for('profile.edit_profile') }}" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                
-                <!-- ===== AVATAR SECTION ===== -->
-                <div class="section-card">
-                    <div class="section-card-header">
-                        📸 Profile Picture
-                    </div>
-                    <div class="card-body p-4">
-                        <div class="avatar-upload-section">
-                            <div class="avatar-preview">
-                                {% if profile and profile.avatar_url %}
-                                    <img src="{{ profile.avatar_url }}" alt="Avatar">
-                                {% else %}
-                                    <div class="avatar-initials">
-                                        {{ (profile.full_name or 'U')[0]|upper }}
-                                    </div>
-                                {% endif %}
-                            </div>
-                            <div class="avatar-upload-info">
-                                <label for="avatar_url" class="form-label">Avatar URL</label>
-                                <input type="url" class="form-control" id="avatar_url" name="avatar_url"
-                                       value="{{ profile.avatar_url or '' }}" placeholder="https://example.com/avatar.jpg">
-                                <div class="form-text">Paste a link to your profile picture (JPEG, PNG, GIF).</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ===== IDENTITY INFORMATION (Immutable after verification) ===== -->
-                <div class="section-card">
-                    <div class="section-card-header">
-                        🆔 Identity Information
-                        {% if is_verified %}
-                            <span class="lock-badge"><i class="fas fa-lock"></i> Locked</span>
-                        {% endif %}
-                    </div>
-                    <div class="card-body p-4">
-                        <!-- Display Name (Always mutable) -->
-                        <div class="mb-3">
-                            <label for="display_name" class="form-label">Display Name</label>
-                            <input type="text" class="form-control" id="display_name" name="display_name"
-                                   value="{{ profile.display_name or '' }}" placeholder="How you want to be seen publicly">
-                            <div class="form-text">Your public-facing name. Leave blank to use your full name.</div>
-                        </div>
-
-                        <!-- Full Name -->
-                        <div class="mb-3">
-                            <label for="full_name" class="form-label">Full Name *</label>
-                            <input type="text" class="form-control {% if is_verified %}bg-light{% endif %}" 
-                                   id="full_name" name="full_name"
-                                   value="{{ profile.full_name or '' }}" 
-                                   {% if is_verified %}readonly{% endif %}
-                                   {% if not is_verified %}required{% endif %}>
-                            <div class="form-text">
-                                Your legal full name as it appears on official documents.
-                                {% if is_verified %}<span class="text-danger fw-bold">Cannot be changed after verification.</span>{% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="date_of_birth" class="form-label">Date of Birth</label>
-                                <input type="date" class="form-control {% if is_verified %}bg-light{% endif %}" 
-                                       id="date_of_birth" name="date_of_birth"
-                                       value="{{ profile.date_of_birth.isoformat() if profile.date_of_birth else '' }}" 
-                                       {% if is_verified %}readonly{% endif %}>
-                                {% if is_verified %}<small class="text-danger d-block mt-1">Cannot be changed after verification.</small>{% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="gender" class="form-label">Gender</label>
-                                <select class="form-select {% if is_verified %}bg-light{% endif %}" 
-                                        id="gender" name="gender" 
-                                        {% if is_verified %}disabled{% endif %}>
-                                    <option value="">Select Gender</option>
-                                    <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>Male</option>
-                                    <option value="female" {% if profile.gender == 'female' %}selected{% endif %}>Female</option>
-                                    <option value="other" {% if profile.gender == 'other' %}selected{% endif %}>Other</option>
-                                    <option value="unspecified" {% if profile.gender == 'unspecified' %}selected{% endif %}>Unspecified</option>
-                                </select>
-                                {% if is_verified %}<small class="text-danger d-block mt-1">Cannot be changed after verification.</small>{% endif %}
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="nationality" class="form-label">Nationality</label>
-                            <input type="text" class="form-control {% if is_verified %}bg-light{% endif %}" 
-                                   id="nationality" name="nationality"
-                                   value="{{ profile.nationality or '' }}" 
-                                   {% if is_verified %}readonly{% endif %}>
-                            {% if is_verified %}<small class="text-danger d-block mt-1">Cannot be changed after verification.</small>{% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ===== BIO SECTION ===== -->
-                <div class="section-card">
-                    <div class="section-card-header">
-                        📝 Bio & About
-                    </div>
-                    <div class="card-body p-4">
-                        <div class="mb-3">
-                            <label for="bio" class="form-label">Bio</label>
-                            <textarea class="form-control" id="bio" name="bio" rows="4" 
-                                      placeholder="Tell others about yourself...">{{ profile.bio or '' }}</textarea>
-                            <div class="form-text">Short bio displayed on your public profile. Max 500 characters.</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ===== CONTACT INFORMATION ===== -->
-                <div class="section-card">
-                    <div class="section-card-header">
-                        📞 Contact Information
-                    </div>
-                    <div class="card-body p-4">
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email Address</label>
-                            <input type="email" class="form-control" id="email" name="email"
-                                   value="{{ profile.email or '' }}">
-                            <div class="form-text">
-                                {% if profile.email_verified %}
-                                    <span class="text-success">✓ Email verified</span>
-                                {% else %}
-                                    <span class="text-warning">⚠️ Email not verified. Changing email will require re-verification.</span>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="phone_number" class="form-label">Phone Number</label>
-                            <input type="tel" class="form-control" id="phone_number" name="phone_number"
-                                   value="{{ profile.phone_number or '' }}" placeholder="+256 XXX XXX XXX">
-                            <div class="form-text">
-                                Include country code (e.g., +256 for Uganda).
-                                {% if profile.phone_verified %}
-                                    <span class="text-success">✓ Phone verified</span>
-                                {% else %}
-                                    <span class="text-warning">⚠️ Phone not verified.</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ===== ADDRESS INFORMATION ===== -->
-                <div class="section-card">
-                    <div class="section-card-header">
-                        🏠 Address Information
-                    </div>
-                    <div class="card-body p-4">
-                        <div class="mb-3">
-                            <label for="address" class="form-label">Street Address</label>
-                            <textarea class="form-control" id="address" name="address" rows="2"
-                                      placeholder="Your street address, building, apartment...">{{ profile.address or '' }}</textarea>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="city" class="form-label">City</label>
-                                <input type="text" class="form-control" id="city" name="city"
-                                       value="{{ profile.city or '' }}" placeholder="e.g., Kampala">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="country" class="form-label">Country</label>
-                                <input type="text" class="form-control" id="country" name="country"
-                                       value="{{ profile.country or '' }}" placeholder="e.g., Uganda">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ===== PREFERENCES ===== -->
-                <div class="section-card">
-                    <div class="section-card-header">
-                        ⚽ Preferences
-                    </div>
-                    <div class="card-body p-4">
-                        <div class="mb-3">
-                            <label for="fan_team" class="form-label">AFCON Team You Support</label>
-                            <select class="form-select" id="fan_team" name="fan_team">
-                                <option value="">Not declared</option>
-                                <option value="Algeria" {% if profile.fan_team == 'Algeria' %}selected{% endif %}>🇩🇿 Algeria</option>
-                                <option value="Angola" {% if profile.fan_team == 'Angola' %}selected{% endif %}>🇦🇴 Angola</option>
-                                <option value="Cameroon" {% if profile.fan_team == 'Cameroon' %}selected{% endif %}>🇨🇲 Cameroon</option>
-                                <option value="DR Congo" {% if profile.fan_team == 'DR Congo' %}selected{% endif %}>🇨🇩 DR Congo</option>
-                                <option value="Egypt" {% if profile.fan_team == 'Egypt' %}selected{% endif %}>🇪🇬 Egypt</option>
-                                <option value="Ghana" {% if profile.fan_team == 'Ghana' %}selected{% endif %}>🇬🇭 Ghana</option>
-                                <option value="Ivory Coast" {% if profile.fan_team == 'Ivory Coast' %}selected{% endif %}>🇨🇮 Ivory Coast</option>
-                                <option value="Kenya" {% if profile.fan_team == 'Kenya' %}selected{% endif %}>🇰🇪 Kenya</option>
-                                <option value="Mali" {% if profile.fan_team == 'Mali' %}selected{% endif %}>🇲🇱 Mali</option>
-                                <option value="Morocco" {% if profile.fan_team == 'Morocco' %}selected{% endif %}>🇲🇦 Morocco</option>
-                                <option value="Nigeria" {% if profile.fan_team == 'Nigeria' %}selected{% endif %}>🇳🇬 Nigeria</option>
-                                <option value="Senegal" {% if profile.fan_team == 'Senegal' %}selected{% endif %}>🇸🇳 Senegal</option>
-                                <option value="South Africa" {% if profile.fan_team == 'South Africa' %}selected{% endif %}>🇿🇦 South Africa</option>
-                                <option value="Tanzania" {% if profile.fan_team == 'Tanzania' %}selected{% endif %}>🇹🇿 Tanzania</option>
-                                <option value="Tunisia" {% if profile.fan_team == 'Tunisia' %}selected{% endif %}>🇹🇳 Tunisia</option>
-                                <option value="Uganda" {% if profile.fan_team == 'Uganda' %}selected{% endif %}>🇺🇬 Uganda</option>
-                                <option value="Other" {% if profile.fan_team == 'Other' %}selected{% endif %}>🏳️ Other / Neutral</option>
-                            </select>
-                            <div class="form-text">Used to personalise your tournament experience.</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Form Actions -->
-                <div class="d-flex gap-3 justify-content-end mt-4">
-                    <a href="{{ url_for('profile.account_overview') }}" class="btn btn-outline-secondary">
-                        Cancel
-                    </a>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save me-2"></i> Save Changes
-                    </button>
-                </div>
-            </form>
-
-            <!-- Completion Tips -->
-            <div class="completion-tips">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i> Tips to Complete Your Profile</h5>
-                </div>
-                <div class="card-body p-0">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-envelope me-2"></i> Verify your email address</span>
-                            {% if profile.email_verified %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-phone me-2"></i> Verify your phone number</span>
-                            {% if profile.phone_verified %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-user me-2"></i> Provide your full name</span>
-                            {% if profile.full_name %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-address-card me-2"></i> Add your address</span>
-                            {% if profile.address %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-city me-2"></i> Specify your city</span>
-                            {% if profile.city %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-globe me-2"></i> Specify your country</span>
-                            {% if profile.country %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-image me-2"></i> Add a profile picture</span>
-                            {% if profile.avatar_url %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-info-circle me-2"></i> Write a bio</span>
-                            {% if profile.bio %}
-                                <span class="badge-success">✓ Completed</span>
-                            {% else %}
-                                <span class="badge-warning">⏳ Pending</span>
-                            {% endif %}
-                        </li>
-                    </ul>
-                </div>
-            </div>
         </div>
+      </div>
+
+      {# ── About ── #}
+      <div class="edit-card">
+        <div class="edit-card-head">
+          <span class="edit-card-title"><i class="fas fa-quote-left"></i> About you</span>
+        </div>
+        <div class="edit-card-body">
+          <div class="field-group">
+            <label for="bio">Bio</label>
+            <textarea id="bio" name="bio" rows="4"
+                      placeholder="Tell other fans about yourself — where you're from, which tournaments you've attended, what makes AFCON special to you…">{{ profile.bio or '' if profile else '' }}</textarea>
+            <div class="field-hint">Shown on your public profile. Max 500 characters.</div>
+          </div>
+          <div class="field-group">
+            <label for="nationality">Nationality</label>
+            <input type="text" id="nationality" name="nationality"
+                   placeholder="e.g. Ugandan"
+                   value="{{ profile.nationality or '' if profile else '' }}">
+          </div>
+        </div>
+      </div>
+
+      {# ── Location ── #}
+      <div class="edit-card">
+        <div class="edit-card-head">
+          <span class="edit-card-title"><i class="fas fa-map-marker-alt"></i> Location</span>
+        </div>
+        <div class="edit-card-body">
+          <div class="field-group">
+            <label for="address">Street address</label>
+            <textarea id="address" name="address" rows="2"
+                      placeholder="Building, street, area…">{{ profile.address or '' if profile else '' }}</textarea>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label for="city">City</label>
+              <input type="text" id="city" name="city"
+                     placeholder="e.g. Kampala"
+                     value="{{ profile.city or '' if profile else '' }}">
+            </div>
+            <div class="field-group">
+              <label for="country">Country</label>
+              <input type="text" id="country" name="country"
+                     placeholder="e.g. Uganda"
+                     value="{{ profile.country or '' if profile else '' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── AFCON preferences ── #}
+      <div class="edit-card">
+        <div class="edit-card-head">
+          <span class="edit-card-title"><i class="fas fa-futbol"></i> AFCON preferences</span>
+        </div>
+        <div class="edit-card-body">
+          <div class="field-group">
+            <label for="fan_team">Team you support</label>
+            <select id="fan_team" name="fan_team">
+              <option value="">Not declared</option>
+              {% set teams = [
+                ('Algeria','🇩🇿'), ('Angola','🇦🇴'), ('Cameroon','🇨🇲'), ('DR Congo','🇨🇩'),
+                ('Egypt','🇪🇬'), ('Ghana','🇬🇭'), ('Ivory Coast','🇨🇮'), ('Kenya','🇰🇪'),
+                ('Mali','🇲🇱'), ('Morocco','🇲🇦'), ('Nigeria','🇳🇬'), ('Senegal','🇸🇳'),
+                ('South Africa','🇿🇦'), ('Tanzania','🇹🇿'), ('Tunisia','🇹🇳'), ('Uganda','🇺🇬'),
+                ('Other','🏳️')
+              ] %}
+              {% for name, flag in teams %}
+                <option value="{{ name }}"
+                  {% if profile and profile.fan_team == name %}selected{% endif %}>
+                  {{ flag }} {{ name }}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="field-hint">Used to personalise your tournament experience and fan badge.</div>
+          </div>
+        </div>
+      </div>
+
+      {# ── Actions ── #}
+      <div class="submit-row">
+        <a href="{{ url_for('profile.account_overview') }}" class="btn-cancel">Cancel</a>
+        <button type="submit" class="btn-save"><i class="fas fa-save" style="margin-right:6px;"></i>Save changes</button>
+      </div>
+
+    </form>
+  </div>{# end .form-col #}
+
+  {# ── RIGHT: Sidebar ── #}
+  <aside class="sidebar-col">
+
+    {# Completion ring #}
+    <div class="edit-card">
+      <div class="edit-card-head">
+        <span class="edit-card-title"><i class="fas fa-tasks"></i> Completion</span>
+      </div>
+      <div class="completion-ring-wrap">
+        {% set pct = completion | default(0) %}
+        {% set circ = 2 * 3.14159 * 42 %}
+        {% set offset = circ * (1 - pct / 100) %}
+        <svg class="ring-svg" width="110" height="110" viewBox="0 0 110 110" aria-label="{{ pct }}% complete">
+          <circle class="ring-track" cx="55" cy="55" r="42"/>
+          <circle class="ring-fill" cx="55" cy="55" r="42"
+            stroke-dasharray="{{ circ | round(2) }}"
+            stroke-dashoffset="{{ offset | round(2) }}"
+            stroke="{{ '#c9a84c' if pct >= 80 else ('#059669' if pct >= 50 else '#d97706') }}"/>
+          <text class="ring-pct" x="55" y="52">{{ pct }}%</text>
+          <text class="ring-label" x="55" y="68">complete</text>
+        </svg>
+        <div class="completion-title">Profile strength</div>
+      </div>
+      <div class="checklist">
+        {% if completion_breakdown %}
+          {% for key, item in completion_breakdown.items() %}
+          <div class="check-item {% if item.completed %}done{% else %}todo{% endif %}">
+            <span>{{ item.label }}</span>
+            <span class="check-dot">
+              {% if item.completed %}<i class="fas fa-check" style="font-size:8px;"></i>{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        {% endif %}
+      </div>
     </div>
+
+    {# Tips #}
+    <div class="tip-box">
+      <div class="tip-box-title"><i class="fas fa-lightbulb"></i> Why it matters</div>
+      <p>A complete profile unlocks higher KYC tiers, higher wallet limits, and shows other fans you're a trusted AFCON community member.</p>
+    </div>
+
+    {# Quick links #}
+    <div class="edit-card">
+      <div class="edit-card-head">
+        <span class="edit-card-title"><i class="fas fa-link"></i> Quick links</span>
+      </div>
+      <div class="edit-card-body" style="display:grid;gap:.4rem;">
+        <a href="{{ url_for('profile.account_overview') }}"
+           style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;border-bottom:1px solid var(--surface-2);">
+          <i class="fas fa-user-cog" style="color:var(--gold);width:16px;text-align:center;"></i> Account & security
+        </a>
+        <a href="{{ url_for('auth.verify_phone') if not (profile and profile.phone_verified) else '#' }}"
+           style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;border-bottom:1px solid var(--surface-2);">
+          <i class="fas fa-phone" style="color:var(--gold);width:16px;text-align:center;"></i>
+          Phone verification
+          {% if profile and profile.phone_verified %}
+            <span class="chip-ok" style="margin-left:auto;"><i class="fas fa-check"></i></span>
+          {% else %}
+            <span class="chip-warn" style="margin-left:auto;"><i class="fas fa-clock"></i></span>
+          {% endif %}
+        </a>
+        <a href="{{ url_for('kyc.upload') }}"
+           style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;border-bottom:1px solid var(--surface-2);">
+          <i class="fas fa-id-card" style="color:var(--gold);width:16px;text-align:center;"></i>
+          KYC verification
+          {% if profile and profile.verification_status == 'verified' %}
+            <span class="chip-ok" style="margin-left:auto;"><i class="fas fa-check"></i></span>
+          {% else %}
+            <span class="chip-warn" style="margin-left:auto;"><i class="fas fa-clock"></i></span>
+          {% endif %}
+        </a>
+        <a href="{{ url_for('user.user_dashboard') }}"
+           style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;">
+          <i class="fas fa-tachometer-alt" style="color:var(--gold);width:16px;text-align:center;"></i> Dashboard
+        </a>
+      </div>
+    </div>
+
+  </aside>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function previewAvatar(url) {
+  const circle = document.getElementById('avatar-preview');
+  const initials = document.getElementById('avatar-initials');
+  let img = document.getElementById('avatar-img');
+  if (url) {
+    if (!img) {
+      img = document.createElement('img');
+      img.id = 'avatar-img';
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      if (initials) initials.style.display = 'none';
+      circle.appendChild(img);
+    }
+    img.src = url;
+    img.style.display = 'block';
+    if (initials) initials.style.display = 'none';
+  } else {
+    if (img) img.style.display = 'none';
+    if (initials) initials.style.display = 'block';
+  }
+}
+</script>
 {% endblock %}

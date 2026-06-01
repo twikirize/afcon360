@@ -791,8 +791,10 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
                     <!-- Event Status & Ticket Selection -->
                     {% set has_ticket_types = event.ticket_types and event.ticket_types|length > 0 %}
                     {% set has_paid_tickets = has_ticket_types and event.ticket_types|selectattr('price')|selectattr('price', 'greaterthan', 0)|list|length > 0 %}
+                    {% set show_ticket_selector = has_ticket_types and (has_paid_tickets or event.ticket_types|length > 1) %}
+                    {% set has_single_free_ticket = has_ticket_types and not has_paid_tickets and event.ticket_types|length == 1 %}
                     
-                    {% if has_paid_tickets %}
+                    {% if show_ticket_selector %}
                     <div class="form-section">
                         <h2 class="form-section-title">
                             <div class="form-section-icon">
@@ -823,7 +825,7 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
                             </div>
                         </div>
                     </div>
-                    {% else %}
+                    {% elif has_single_free_ticket %}
                     <!-- Free Event Notice - Integrated into Personal Info section -->
                     <div class="free-event-notice-card">
                         <div class="free-event-notice-content">
@@ -835,9 +837,11 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
                                 <p>No ticket required - just complete your details below to secure your spot!</p>
                             </div>
                         </div>
-                        <input type="hidden" name="ticket_type_id" value="">
+                        <input type="hidden" name="ticket_type_id" value="{{ free_ticket_type_id or '' }}">
                     </div>
+                    {% endif %}
                     
+                    {% if has_paid_tickets %}
                     <!-- Payment Method Selection -->
                     <div id="payment-section" class="form-section" style="display: none;">
                         <h2 class="form-section-title">
@@ -875,7 +879,7 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
                     {% endif %}
 
                     <!-- Group Registration -->
-                    {% if has_paid_tickets %}
+                    {% if has_ticket_types %}
                     <div class="form-section">
                         <h2 class="form-section-title">
                             <div class="form-section-icon">
@@ -981,5 +985,5 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
 window.ticketTypes = {{ event.ticket_types|tojson|safe if event.ticket_types else '[]' }};
 window.currency = "{{ event.currency }}";
 </script>
-<script src="{{ url_for('static', filename='js/event-register.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/events/event-register.js') }}"></script>
 {% endblock %}

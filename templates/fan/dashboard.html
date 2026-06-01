@@ -47,7 +47,7 @@
     {% if wallet_data.enabled %}
     <div class="wallet-quick-link"><a href="{{ safe_url('wallet.wallet_dashboard') }}">Open Wallet</a></div>
     {% else %}
-    <div class="wallet-prompt"><a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.activate_wallet') }}{% else %}#{% endif %}">Activate Wallet</a></div>
+    <div class="wallet-prompt"><a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_activate') }}{% else %}#{% endif %}">Activate Wallet</a></div>
     {% endif %}
 
     {% if tournament_mode %}

@@ -5,7 +5,7 @@ Event Service - DB-backed event management
 Now using SQLAlchemy models instead of in-memory dict
 """
 from datetime import datetime, timezone, timedelta, date
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import logging
 import re
 import qrcode
@@ -498,14 +498,27 @@ class EventService:
                 _assert_no_open_flags(event.id)
 
             # Handle ticket types based on event_type
+            # ALWAYS create at least one ticket type - ensures all registrations link to a ticket_type_id
             if data.get("registration_required"):
                 event_type = data.get("event_type", "free")
                 if event_type == "free":
-                    # Free events should NOT have ticket types
-                    # This allows the registration page to properly identify free events
-                    pass  # No ticket types created for free events
-                elif event_type in ("paid", "ticketed") and data.get("ticket_tiers"):
-                    # Create enhanced ticket types from form data
+                    # Free events get one default FREE ticket type (capacity unlimited)
+                    # This ensures registrations always have a valid ticket_type_id
+                    ticket = TicketType(
+                        event_id=event.id,
+                        name="Free Entry",
+                        description="Free admission to this event",
+                        price=0,
+                        capacity=0,  # 0 = unlimited
+                        is_active=True,
+                    )
+                    db.session.add(ticket)
+                elif event_type in ("paid", "ticketed"):
+                    # Create paid ticket types from form data
+                    if not data.get("ticket_tiers"):
+                        db.session.rollback()
+                        return None, "Paid events require at least one ticket tier."
+                    
                     for tier_data in data["ticket_tiers"]:
                         # Parse datetime strings
                         available_from = None
@@ -549,7 +562,7 @@ class EventService:
                         db.session.add(ticket)
                 else:
                     db.session.rollback()
-                    return None, "Invalid ticket configuration for ticketed event."
+                    return None, f"Invalid event type: {event_type}. Must be 'free' or 'paid'."
 
             db.session.commit()
 
@@ -914,6 +927,12 @@ class EventService:
                 event = Event.query.filter_by(slug=identifier).first()
                 if not event:
                     return None, None, "Event not found"
+                
+                # 1b. CRITICAL: Validate event is not in the past
+                from datetime import date
+                if event.end_date and event.end_date < date.today():
+                    logger.warning(f"Registration blocked: event {identifier} ended on {event.end_date}")
+                    return None, None, "Event registration closed. This event has already ended."
 
                 # 2. Identify the ticket type
                 ticket_type_id = data.get("ticket_type_id")
@@ -1143,6 +1162,12 @@ class EventService:
                 event = Event.query.with_for_update().filter_by(slug=identifier).first()
                 if not event:
                     return None, None, "Event not found"
+                
+                # CRITICAL: Validate event is not in the past
+                from datetime import date
+                if event.end_date and event.end_date < date.today():
+                    logger.warning(f"Payment registration blocked: event {identifier} ended on {event.end_date}")
+                    return None, None, "Event registration closed. This event has already ended."
 
                 # Get ticket type WITH LOCK
                 ticket_type_id = data.get("ticket_type_id")
@@ -2282,6 +2307,133 @@ class EventService:
             # Log unrecognized status for monitoring
             logger.warning(f"Legacy status value encountered: '{status_str}', defaulting to DRAFT")
             return EventStatus.DRAFT.value
+
+    @classmethod
+    def build_event_context_json(cls, event_slug: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+        """Build JSON-serializable context for caching and APIs.
+        Returns ONLY primitive types - no SimpleNamespace, no ORM objects.
+        """
+        from decimal import Decimal
+
+        event = cls.get_event_model(event_slug)
+        if not event:
+            return {'event_found': False, 'event_slug': event_slug}
+
+        # Get registration count
+        total_regs = EventRegistration.query.filter_by(
+            event_id=event.id, status='confirmed'
+        ).count()
+
+        # Check user registration
+        user_registered = False
+        user_registration_ref = None
+        if user_id:
+            user_reg = EventRegistration.query.filter_by(
+                event_id=event.id, user_id=user_id, status='confirmed'
+            ).first()
+            if user_reg:
+                user_registered = True
+                user_registration_ref = user_reg.registration_ref
+
+        # Calculate capacity
+        remaining = None
+        is_sold_out = False
+        if event.max_capacity and event.max_capacity > 0:
+            remaining = event.max_capacity - total_regs
+            is_sold_out = remaining <= 0
+
+        # Build ticket types (pure dicts)
+        ticket_types = []
+        is_free_event = True
+        min_price = 0
+
+        for tt in event.ticket_types:
+            if not tt.is_active:
+                continue
+            tt_regs = len([r for r in tt.registrations if r.status == 'confirmed'])
+            tt_remaining = tt.capacity - tt_regs if tt.capacity else None
+            price = float(tt.price)
+            if price > 0:
+                is_free_event = False
+                if min_price == 0 or price < min_price:
+                    min_price = price
+
+            ticket_types.append({
+                'id': tt.id,
+                'name': tt.name,
+                'description': tt.description or '',
+                'price': price,
+                'currency': event.currency,
+                'capacity': tt.capacity,
+                'remaining': tt_remaining,
+                'is_sold_out': tt_remaining == 0 if tt_remaining is not None else False,
+                'is_active': tt.is_active,
+            })
+
+        # Build JSON-serializable context
+        return {
+            'event_found': True,
+            'event_slug': event.slug,
+            'event_name': event.name,
+            'event_description': event.description or '',
+            'event_category': event.category,
+            'event_city': event.city,
+            'event_country': event.country,
+            'event_venue': event.venue or '',
+            'event_start_date': event.start_date.isoformat() if event.start_date else None,
+            'event_end_date': event.end_date.isoformat() if event.end_date else None,
+            'event_currency': event.currency,
+            'event_status': event.status.value if event.status else None,
+            'event_featured': event.featured,
+            'event_metadata': event.event_metadata or {},
+            'contact_email': event.contact_email,
+            'contact_phone': event.contact_phone,
+            'website': event.website,
+            'max_capacity': event.max_capacity or 0,
+            'total_registrations': total_regs,
+            'remaining_capacity': remaining,
+            'is_sold_out': is_sold_out,
+            'user_registered': user_registered,
+            'user_registration_ref': user_registration_ref,
+            'can_register': event.status == EventStatus.PUBLISHED and not is_sold_out,
+            'ticket_types': ticket_types,
+            'is_free_event': is_free_event,
+            'min_price': min_price,
+        }
+
+    @classmethod
+    def build_event_context(cls, event_slug: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+        """Build template-ready context with SimpleNamespace for backward compatibility."""
+        from types import SimpleNamespace
+
+        # Get JSON context as base
+        context = cls.build_event_context_json(event_slug, user_id)
+
+        if not context.get('event_found'):
+            return context
+
+        # Add SimpleNamespace for dot notation in templates
+        context['event'] = SimpleNamespace(
+            name=context['event_name'],
+            description=context['event_description'],
+            slug=context['event_slug'],
+            city=context['event_city'],
+            country=context['event_country'],
+            venue=context['event_venue'],
+            start_date=context['event_start_date'],
+            end_date=context['event_end_date'],
+            currency=context['event_currency'],
+            status=context['event_status'],
+            featured=context['event_featured'],
+            website=context['website'],
+            contact_email=context['contact_email'],
+            contact_phone=context['contact_phone'],
+            metadata=context['event_metadata'],
+            max_capacity=context['max_capacity'],
+            ticket_types=context['ticket_types'],
+        )
+
+        return context
 
     @classmethod
     def get_admin_dashboard_data(cls) -> Dict:
