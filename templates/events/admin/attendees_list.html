@@ -1,0 +1,512 @@
+{% extends "base.html" %}
+
+{% block title %}Attendees - {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1>
+                        <i class="fas fa-users"></i>
+                        Attendees: {{ event.name }}
+                    </h1>
+                    <p class="lead">Manage event attendees and assign accommodation/transport</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('event_assignment.assignment_dashboard', event_id=event.id) }}"
+                       class="btn btn-outline-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                    <a href="{{ url_for('event_assignment.export_assignments', event_id=event.id) }}"
+                       class="btn btn-outline-success ms-2">
+                        <i class="fas fa-download"></i> Export CSV
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Search and Filter #}
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" name="search" class="form-control"
+                               placeholder="Search by name or email..."
+                               value="{{ search }}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select name="filter" class="form-select">
+                        <option value="all" {% if filter_type == 'all' %}selected{% endif %}>All Attendees</option>
+                        <option value="accommodation" {% if filter_type == 'accommodation' %}selected{% endif %}>
+                            Need Accommodation
+                        </option>
+                        <option value="transport" {% if filter_type == 'transport' %}selected{% endif %}>
+                            Need Transport
+                        </option>
+                        <option value="both" {% if filter_type == 'both' %}selected{% endif %}>
+                            Need Both
+                        </option>
+                        <option value="assigned" {% if filter_type == 'assigned' %}selected{% endif %}>
+                            Fully Assigned
+                        </option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# Attendee Table #}
+    <div class="card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-list"></i> Attendee List
+                <span class="badge bg-secondary ms-2">{{ attendees.total }}</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="attendeeTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Ticket Type</th>
+                            <th>Status</th>
+                            <th>Accommodation</th>
+                            <th>Transport</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for reg in attendees.items %}
+                        {% set assignment = assignment_map.get(reg.id) %}
+                        <tr class="attendee-row"
+                            data-registration-id="{{ reg.id }}"
+                            data-user-id="{{ reg.user_id }}"
+                            data-name="{{ reg.full_name }}"
+                            data-email="{{ reg.email }}">
+                            <td>{{ loop.index + (attendees.page - 1) * attendees.per_page }}</td>
+                            <td>
+                                <strong>{{ reg.full_name }}</strong>
+                                <br>
+                                <small class="text-muted">{{ reg.registration_ref }}</small>
+                            </td>
+                            <td>{{ reg.email }}</td>
+                            <td>{{ reg.phone or '-' }}</td>
+                            <td>
+                                <span class="badge {% if reg.ticket_type == 'vip' %}bg-warning{% elif reg.ticket_type == 'media' %}bg-info{% else %}bg-secondary{% endif %}">
+                                    {{ reg.ticket_type|upper }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if reg.status == 'checked_in' %}
+                                    <span class="badge bg-success">✓ Checked In</span>
+                                {% elif reg.status == 'confirmed' %}
+                                    <span class="badge bg-primary">Confirmed</span>
+                                {% elif reg.status == 'cancelled' %}
+                                    <span class="badge bg-danger">Cancelled</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ reg.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if assignment and assignment.accommodation_booking_id %}
+                                    <span class="badge bg-success">Booked</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if assignment and assignment.transport_booking_id %}
+                                    <span class="badge bg-success">Booked</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button"
+                                            class="btn btn-outline-primary assign-accommodation-btn"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#accommodationModal"
+                                            data-registration-id="{{ reg.id }}"
+                                            data-user-id="{{ reg.user_id }}"
+                                            data-name="{{ reg.full_name }}"
+                                            {% if assignment and assignment.accommodation_booking_id %}disabled{% endif %}>
+                                        <i class="fas fa-bed"></i> Accommodation
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-outline-info assign-transport-btn"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#transportModal"
+                                            data-registration-id="{{ reg.id }}"
+                                            data-user-id="{{ reg.user_id }}"
+                                            data-name="{{ reg.full_name }}"
+                                            {% if assignment and assignment.transport_booking_id %}disabled{% endif %}>
+                                        <i class="fas fa-bus"></i> Transport
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-5">
+                                <i class="fas fa-users fa-3x mb-3"></i>
+                                <p>No attendees found matching your criteria.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if attendees.pages > 1 %}
+        <div class="card-footer bg-white">
+            <nav>
+                <ul class="pagination justify-content-center mb-0">
+                    {% for page_num in attendees.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                        {% if page_num %}
+                            <li class="page-item {% if page_num == attendees.page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('event_assignment.list_attendees', event_id=event.id, page=page_num, search=search, filter=filter_type) }}">
+                                    {{ page_num }}
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Accommodation Assignment Modal #}
+<div class="modal fade" id="accommodationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-hotel"></i> Assign Accommodation
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Attendee</label>
+                    <input type="text" class="form-control" id="accommodationAttendeeName" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Select Property</label>
+                    <select class="form-select" id="propertySelect">
+                        <option value="">Loading available properties...</option>
+                    </select>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Check-in Date</label>
+                        <input type="date" class="form-control" id="checkInDate"
+                               value="{{ event.start_date.strftime('%Y-%m-%d') if event.start_date else '' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Check-out Date</label>
+                        <input type="date" class="form-control" id="checkOutDate"
+                               value="{{ event.end_date.strftime('%Y-%m-%d') if event.end_date else '' }}">
+                    </div>
+                </div>
+                <div id="accommodationLoading" class="text-center py-3" style="display:none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Assigning accommodation...</p>
+                </div>
+                <div id="accommodationResult" class="alert" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmAccommodationBtn">
+                    <i class="fas fa-check"></i> Assign Accommodation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Transport Assignment Modal #}
+<div class="modal fade" id="transportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-bus"></i> Assign Transport
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Attendee</label>
+                    <input type="text" class="form-control" id="transportAttendeeName" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Pickup Time</label>
+                    <input type="datetime-local" class="form-control" id="pickupTime"
+                           value="{{ event.start_date.strftime('%Y-%m-%dT09:00') if event.start_date else '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Available Drivers</label>
+                    <div id="availableDriversInfo" class="text-muted">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        Checking availability...
+                    </div>
+                </div>
+                <div id="transportLoading" class="text-center py-3" style="display:none;">
+                    <div class="spinner-border text-info" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Assigning transport...</p>
+                </div>
+                <div id="transportResult" class="alert" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-info" id="confirmTransportBtn">
+                    <i class="fas fa-check"></i> Assign Transport
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============================================================================
+// ACCOMMODATION ASSIGNMENT
+// ============================================================================
+
+let currentAccommodationRegId = null;
+let currentTransportRegId = null;
+
+// Open accommodation modal
+document.querySelectorAll('.assign-accommodation-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        currentAccommodationRegId = this.dataset.registrationId;
+        document.getElementById('accommodationAttendeeName').value = this.dataset.name;
+        document.getElementById('accommodationResult').style.display = 'none';
+        document.getElementById('confirmAccommodationBtn').disabled = false;
+        loadAvailableProperties();
+    });
+});
+
+// Load available properties
+async function loadAvailableProperties() {
+    const select = document.getElementById('propertySelect');
+    select.innerHTML = '<option value="">Loading...</option>';
+    select.disabled = true;
+
+    try {
+        const response = await fetch('{{ url_for("event_assignment.check_available_properties", event_id=event.id) }}');
+        const data = await response.json();
+
+        if (data.success && data.properties.length > 0) {
+            select.innerHTML = '<option value="">-- Select Property --</option>';
+            data.properties.forEach(prop => {
+                const option = document.createElement('option');
+                option.value = prop.id;
+                option.textContent = `${prop.title} - $${prop.price_per_night}/night (${prop.bedrooms} bed, ${prop.max_guests} guests)`;
+                select.appendChild(option);
+            });
+            select.disabled = false;
+        } else {
+            select.innerHTML = '<option value="">No properties available in {{ event.city }}</option>';
+        }
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading properties</option>';
+        console.error('Error loading properties:', error);
+    }
+}
+
+// Confirm accommodation assignment
+document.getElementById('confirmAccommodationBtn').addEventListener('click', async function() {
+    const propertyId = document.getElementById('propertySelect').value;
+    const checkIn = document.getElementById('checkInDate').value;
+    const checkOut = document.getElementById('checkOutDate').value;
+
+    if (!propertyId) {
+        alert('Please select a property.');
+        return;
+    }
+    if (!checkIn || !checkOut) {
+        alert('Please select check-in and check-out dates.');
+        return;
+    }
+
+    const loading = document.getElementById('accommodationLoading');
+    const result = document.getElementById('accommodationResult');
+    const btn = this;
+
+    loading.style.display = 'block';
+    btn.disabled = true;
+    result.style.display = 'none';
+
+    try {
+        const response = await fetch('{{ url_for("event_assignment.assign_accommodation", event_id=event.id) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+            },
+            body: JSON.stringify({
+                attendee_id: currentAccommodationRegId,
+                property_id: parseInt(propertyId),
+                check_in: checkIn,
+                check_out: checkOut
+            })
+        });
+
+        const data = await response.json();
+
+        loading.style.display = 'none';
+
+        if (data.success) {
+            result.className = 'alert alert-success';
+            result.innerHTML = `
+                <strong>Success!</strong> Accommodation assigned.<br>
+                Booking Reference: <code>${data.booking_reference}</code>
+            `;
+            result.style.display = 'block';
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            result.className = 'alert alert-danger';
+            result.innerHTML = `<strong>Error:</strong> ${data.error}`;
+            result.style.display = 'block';
+            btn.disabled = false;
+        }
+    } catch (error) {
+        loading.style.display = 'none';
+        result.className = 'alert alert-danger';
+        result.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        result.style.display = 'block';
+        btn.disabled = false;
+    }
+});
+
+// ============================================================================
+// TRANSPORT ASSIGNMENT
+// ============================================================================
+
+// Open transport modal
+document.querySelectorAll('.assign-transport-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        currentTransportRegId = this.dataset.registrationId;
+        document.getElementById('transportAttendeeName').value = this.dataset.name;
+        document.getElementById('transportResult').style.display = 'none';
+        document.getElementById('confirmTransportBtn').disabled = false;
+        checkDriverAvailability();
+    });
+});
+
+// Check driver availability
+async function checkDriverAvailability() {
+    const info = document.getElementById('availableDriversInfo');
+
+    try {
+        const response = await fetch('{{ url_for("event_assignment.check_available_drivers", event_id=event.id) }}');
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.available_drivers > 0) {
+                let html = `<span class="text-success"><i class="fas fa-check-circle"></i> ${data.available_drivers} drivers available</span>`;
+                if (data.drivers && data.drivers.length > 0) {
+                    html += '<ul class="mt-2 mb-0 small">';
+                    data.drivers.forEach(d => {
+                        html += `<li>Driver #${d.id} - Rating: ${d.rating} - Vehicle: ${d.vehicle}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                info.innerHTML = html;
+            } else {
+                info.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No drivers available in {{ event.city }}</span>';
+            }
+        } else {
+            info.innerHTML = '<span class="text-muted">Unable to check availability</span>';
+        }
+    } catch (error) {
+        info.innerHTML = '<span class="text-muted">Error checking availability</span>';
+        console.error('Error checking drivers:', error);
+    }
+}
+
+// Confirm transport assignment
+document.getElementById('confirmTransportBtn').addEventListener('click', async function() {
+    const pickupTime = document.getElementById('pickupTime').value;
+
+    if (!pickupTime) {
+        alert('Please select a pickup time.');
+        return;
+    }
+
+    const loading = document.getElementById('transportLoading');
+    const result = document.getElementById('transportResult');
+    const btn = this;
+
+    loading.style.display = 'block';
+    btn.disabled = true;
+    result.style.display = 'none';
+
+    try {
+        const response = await fetch('{{ url_for("event_assignment.assign_transport", event_id=event.id) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+            },
+            body: JSON.stringify({
+                attendee_id: currentTransportRegId,
+                pickup_time: pickupTime
+            })
+        });
+
+        const data = await response.json();
+
+        loading.style.display = 'none';
+
+        if (data.success) {
+            result.className = 'alert alert-success';
+            result.innerHTML = `
+                <strong>Success!</strong> Transport assigned.<br>
+                Booking Reference: <code>${data.booking_reference}</code><br>
+                <small>${data.available_drivers} drivers available in the area</small>
+            `;
+            result.style.display = 'block';
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            result.className = 'alert alert-danger';
+            result.innerHTML = `<strong>Error:</strong> ${data.error}`;
+            result.style.display = 'block';
+            btn.disabled = false;
+        }
+    } catch (error) {
+        loading.style.display = 'none';
+        result.className = 'alert alert-danger';
+        result.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        result.style.display = 'block';
+        btn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

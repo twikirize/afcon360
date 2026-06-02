@@ -111,7 +111,7 @@
         <div style="display:grid;gap:8px;font-size:13px;">
           <div style="display:flex;justify-content:space-between;">
             <span style="color:var(--muted);">Account ID:</span>
-            <span class="mono">{{ wallet.id[:12] if wallet else 'N/A' }}...</span>
+            <span class="mono">{{ (wallet.id|string)[:12] if wallet else 'N/A' }}...</span>
           </div>
           <div style="display:flex;justify-content:space-between;">
             <span style="color:var(--muted);">Currency:</span>

@@ -982,23 +982,31 @@ def set_pin():
 @wallet_bp.route('/fx-rates')
 @login_required
 def fx_rates():
-    """View FX rates page"""
+    """View FX rates page with safety indicators."""
     try:
         from app.wallet.services.fx_service import FXService
         fx_service = FXService()
         
-        # Get all available rates
-        rates = fx_service.get_all_rates()
+        account = get_account(current_user.id)
+        base_currency = request.args.get('base') or (account.currency if account else 'USD')
         
-        return render_template('wallet/fx_rates.html', rates=rates, balance=Decimal('0'))
-    except Exception as e:
-        from app.utils.error_handler import log_error_to_audit
-        log_error_to_audit(
-            user_id=current_user.id if current_user.is_authenticated else None,
-            error_type="FX_RATES_ERROR",
-            error_message=str(e),
-            context={"component": "fx_rates"}
+        # Use the dict format method
+        rates = fx_service.get_all_rates_as_dict(base_currency)
+        
+        # Show warning if no rates available
+        if not rates.get('rates'):
+            flash(
+                "Exchange rates are currently being updated. Some features may be temporarily unavailable.",
+                "warning"
+            )
+        
+        return render_template(
+            'wallet/fx_rates.html', 
+            rates=rates,
+            base_currency=base_currency
         )
+    except Exception as e:
+        current_app.logger.error(f"FX rates error: {e}")
         flash('Unable to load FX rates. Please try again later.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
