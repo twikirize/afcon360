@@ -5,7 +5,7 @@ Foreign exchange models for multi-currency support.
 
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, Index, UniqueConstraint, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 
 from app.extensions import db
@@ -19,7 +19,7 @@ class FXRateModel(db.Model):
     """
     __tablename__ = 'fx_rates'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     base_currency = Column(String(3), nullable=False, index=True)  # e.g., USD
     quote_currency = Column(String(3), nullable=False, index=True)  # e.g., UGX
     rate = Column(Numeric(20, 8), nullable=False)  # Exchange rate (1 base = rate quote)
@@ -71,19 +71,19 @@ class FXTransactionModel(db.Model):
     """
     __tablename__ = 'fx_transactions'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     transaction_id = Column(String(64), nullable=False, unique=True, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
     
     # Source currency details
     source_currency = Column(String(3), nullable=False)
     source_amount = Column(Numeric(20, 2), nullable=False)
-    source_account_id = Column(Integer, nullable=False)
+    source_account_id = Column(BigInteger, nullable=False)
     
     # Destination currency details
     dest_currency = Column(String(3), nullable=False)
     dest_amount = Column(Numeric(20, 2), nullable=False)
-    dest_account_id = Column(Integer, nullable=False)
+    dest_account_id = Column(BigInteger, nullable=False)
     
     # FX details
     fx_rate = Column(Numeric(20, 8), nullable=False)

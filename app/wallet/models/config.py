@@ -4,7 +4,7 @@ Stores API keys and settings securely in database with encryption
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger
 from app.extensions import db
 from cryptography.fernet import Fernet
 from flask import current_app
@@ -17,7 +17,7 @@ class PaymentProviderConfig(db.Model):
     """
     __tablename__ = 'payment_provider_configs'
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # Provider identification
     provider_name = Column(String(50), nullable=False, unique=True, index=True)
@@ -45,7 +45,7 @@ class PaymentProviderConfig(db.Model):
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    updated_by = Column(Integer, nullable=True)  # User ID who last updated
+    updated_by = Column(BigInteger, nullable=True)  # User ID who last updated
     
     # Audit
     last_tested_at = Column(DateTime, nullable=True)
@@ -255,7 +255,7 @@ class WalletSystemConfig(db.Model):
     """
     __tablename__ = 'wallet_system_configs'
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # Feature flags
     deposits_enabled = Column(Boolean, default=True, nullable=False)
@@ -285,7 +285,7 @@ class WalletSystemConfig(db.Model):
     
     # Audit
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    updated_by = Column(Integer, nullable=True)
+    updated_by = Column(BigInteger, nullable=True)
     
     @classmethod
     def get_config(cls):

@@ -4,7 +4,7 @@ Configuration for ML-based fraud detection and transaction scoring
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float, Index, BigInteger
 from app.extensions import db
 
 
@@ -18,7 +18,7 @@ class FraudDetectionConfig(db.Model):
         Index('ix_fraud_detection_enabled', 'enabled'),
     )
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # General settings
     enabled = Column(Boolean, default=False, nullable=False, index=True)

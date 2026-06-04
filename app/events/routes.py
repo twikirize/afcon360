@@ -212,9 +212,10 @@ def events_hub():
 
     wallet_balance = 0
     try:
-        wallet = WalletService.get_wallet_by_user_id(current_user.id)
-        if wallet:
-            wallet_balance = wallet.balance
+        wallet_service = WalletService()
+        balance_data = wallet_service.get_balance(current_user.id)
+        if balance_data and balance_data.get('balance'):
+            wallet_balance = float(balance_data.get('balance', 0))
     except Exception:
         pass
 
@@ -241,7 +242,10 @@ def attendee_dashboard():
 
         wallet = None
         try:
-            wallet = WalletService.get_wallet_by_user_id(current_user.id)
+            wallet_service = WalletService()
+            balance_data = wallet_service.get_balance(current_user.id)
+            if balance_data:
+                wallet = type('Wallet', (), {'balance': float(balance_data.get('balance', 0))})()
         except Exception:
             pass
 
@@ -617,31 +621,15 @@ def api_payment_methods(identifier):
 def register(identifier):
     """Register for an event with async processing and payment integration"""
     from app.events.models import Event as EventModel
+    from app.events.view_models import EventRegistrationViewModel
     
     if request.method == 'GET':
-        # Use context builder (no ViewModel needed)
+        # Get both formats following system convention
         context = EventService.build_event_context(identifier, current_user.id)
+        json_context = EventService.build_event_context_json(identifier, current_user.id)
         
-        if not context.get('event_found'):
+        if not json_context.get('event_found'):
             return render_template('events/public/not_found.html', event_slug=identifier), 404
-        
-        # Check if event is in the past
-        from datetime import date
-        event_data = context.get('event', {})
-        event_end_date = event_data.get('end_date')
-        if event_end_date:
-            try:
-                if isinstance(event_end_date, str):
-                    from datetime import datetime
-                    event_end = datetime.fromisoformat(event_end_date).date()
-                else:
-                    event_end = event_end_date
-                
-                if event_end < date.today():
-                    flash('This event has already passed and is no longer accepting registrations.', 'danger')
-                    return redirect(url_for('events.landing', identifier=identifier))
-            except (ValueError, TypeError):
-                pass  # Fail open if date parsing fails
         
         user_data = {
             'full_name': getattr(current_user, 'username', current_user.email),
@@ -649,130 +637,62 @@ def register(identifier):
             'phone': getattr(current_user, 'phone', ''),
             'nationality': getattr(current_user, 'nationality', ''),
         }
-
-        free_ticket_type_id = None
-        if context['event'].ticket_types:
-            active_free_tickets = [
-                tt for tt in context['event'].ticket_types
-                if tt.get('is_active', True) and tt.get('price', 0) == 0
-            ]
-            if len(active_free_tickets) == 1:
-                free_ticket_type_id = active_free_tickets[0]['id']
-
-        return render_template('events/attendee/register.html', 
-                               event=context['event'], 
-                               user_data=user_data,
-                               free_ticket_type_id=free_ticket_type_id)
+        
+        # Pass both: 'event' for template dot notation, 'event_data' for JSON serialization
+        return render_template('events/attendee/register.html',
+                               event=context['event'] if context.get('event_found') else None,
+                               event_data=json_context,
+                               user_data=user_data)
     
-    # POST handling - keep existing logic unchanged
+    # POST handling
     event_model = EventModel.query.filter_by(slug=identifier).first()
     if not event_model:
         return render_template('events/public/not_found.html', event_slug=identifier), 404
     
-    # Validate event is not past its end date (critical time check)
-    from datetime import date
-    if event_model.end_date and event_model.end_date < date.today():
-        logger.warning(f"Registration attempt for past event: {identifier} (ended {event_model.end_date})")
-        return jsonify({
-            'success': False,
-            'error': 'Event registration closed. This event has already ended.'
-        }), 400
-
-    from app.events.view_models import EventRegistrationViewModel
+    # Create view_model for POST handling
     view_model = EventRegistrationViewModel(event_model, current_user)
-
-    logger.info(f"POST data received: {request.form if request.form else request.get_json()}")
-
+    
     try:
         # Handle both JSON and form data
         if request.is_json:
             data = request.get_json()
         else:
-            # Handle form data
             data = request.form.to_dict()
-
-        active_tickets = [
-            tt for tt in event_model.ticket_types
-            if getattr(tt, 'is_active', True)
-        ]
-
-        if data.get('ticket_type_id'):
-            try:
+            # Convert numeric fields only if event has ticket types
+            if 'ticket_type_id' in data and data['ticket_type_id'] and event_model.ticket_types:
                 data['ticket_type_id'] = int(data['ticket_type_id'])
-            except (TypeError, ValueError):
+            elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event_model.ticket_types):
                 data['ticket_type_id'] = None
-
-        if not data.get('ticket_type_id'):
-            if len(active_tickets) == 1:
-                data['ticket_type_id'] = active_tickets[0].id
-                logger.info(f"Auto-selected ticket_type_id={data['ticket_type_id']} for event {identifier}")
-            else:
-                return jsonify({'success': False, 'error': 'Please select a ticket type.'}), 400
-
-        # Ensure the selected ticket type is valid for this event
-        selected_ticket = TicketType.query.filter_by(
-            id=data['ticket_type_id'],
-            event_id=event_model.id,
-            is_active=True
-        ).first()
-        if not selected_ticket:
-            return jsonify({'success': False, 'error': 'Invalid ticket type selected.'}), 400
-
-        is_paid_ticket = bool(selected_ticket.price and selected_ticket.price > 0)
-
-        # Check required registration fields and report missing ones
-        required_fields = ['full_name', 'email']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            logger.error(f"Missing required fields: {missing_fields}, POST data: {data}")
-            return jsonify({'success': False, 'error': f'Missing required fields: {missing_fields}'}), 400
-
-        # Extract group registration data
-        group_attendees = []
-        group_size = int(data.get('group_size', 0))
-        if group_size > 0:
-            for i in range(1, group_size + 1):
-                attendee_data = {
-                    'name': data.get(f'attendee_{i}_name'),
-                    'email': data.get(f'attendee_{i}_email'),
-                    'phone': data.get(f'attendee_{i}_phone'),
-                    'nationality': data.get(f'attendee_{i}_nationality'),
-                    'primary_user_id': current_user.id
-                }
-                if attendee_data['name'] and attendee_data['email']:
-                    group_attendees.append(attendee_data)
-
-        if is_paid_ticket:
-            # Process paid ticket purchase using the selected ticket type
-            from app.events.payment_service import EventPaymentService
+        
+        # Check if this is a paid event using ViewModel
+        is_paid_event = view_model.is_paid_event
+        
+        if is_paid_event and data.get('ticket_type_id'):
+            # Process paid event with payment service
+            from app.events.services.payment_service import EventPaymentService
             payment_service = EventPaymentService()
             
-            # Get payment method from form
             payment_method = data.get('payment_method', 'wallet')
             mobile_money_operator = data.get('mobile_money_operator')
             mobile_money_phone = data.get('mobile_money_phone')
             
-            # Process payment
             payment_result = payment_service.process_ticket_purchase(
                 user_id=current_user.id,
                 event_id=event_model.id,
                 ticket_type_id=data['ticket_type_id'],
-                quantity=len(group_attendees) + 1,  # +1 for primary registrant
+                quantity=1,
                 payment_method=payment_method,
                 mobile_money_operator=mobile_money_operator,
-                mobile_money_phone=mobile_money_phone,
-                group_attendees=group_attendees
+                mobile_money_phone=mobile_money_phone
             )
             
             if not payment_result.get('success'):
                 return jsonify({'success': False, 'error': payment_result.get('error')}), 400
             
-            # Get the first registration for confirmation
             registration_ref = payment_result['registrations'][0]['registration_ref']
-            
         else:
             # Process free event registration
-            registration, _, error = EventService.register_for_event(
+            registration, qr_code, error = EventService.register_for_event(
                 identifier, current_user.id, data
             )
             
@@ -780,30 +700,18 @@ def register(identifier):
                 return jsonify({'success': False, 'error': error}), 400
             
             registration_ref = registration['registration_ref']
-
-        # Store registration data in session for the confirmation page
-        # We need to get the actual registration object to generate QR code
+        
+        # Store registration data in session for confirmation page
         from app.events.models import EventRegistration
         reg_obj = EventRegistration.query.filter_by(registration_ref=registration_ref).first()
         if reg_obj:
-            # Generate QR code
             qr_code = EventService._generate_qr_code(reg_obj.qr_token, reg_obj.registration_ref)
             session['last_registration'] = {
                 'registration': EventService._registration_to_dict(reg_obj),
                 'qr_code': qr_code,
                 'event': view_model.to_dict()
             }
-        else:
-            # Fallback to using the registration dict
-            session['last_registration'] = {
-                'registration': registration,
-                'qr_code': None,
-                'event': view_model.to_dict()
-            }
-
-        # 2. Trigger Background Task (Async Processing)
-        # process_event_registration.delay(registration['id'], identifier)
-
+        
         # Flash email reminder if not configured
         mail_configured = False
         try:
@@ -813,37 +721,25 @@ def register(identifier):
         except Exception:
             pass
         if not mail_configured and not session.get('email_reminder_shown', False):
-            flash(
-                'âš ï¸ Email notifications are not configured. Please set up MAIL_SERVER in .env file to enable email confirmations. This reminder will appear until email is configured.',
-                'warning')
+            flash('⚠️ Email notifications are not configured. Please set up MAIL_SERVER in .env file.', 'warning')
             session['email_reminder_shown'] = True
-
+        
         # Determine if this is an AJAX request
         is_ajax = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-
+        
         if is_ajax:
-            # For AJAX/API requests, return enriched JSON with all registration details
             return jsonify({
                 'success': True,
-                'registration_ref': registration['registration_ref'],
-                'ticket_number': registration.get('ticket_number'),
-                'qr_code': qr_code,
-                'status': registration['status'],
-                'payment_status': registration['payment_status'],
-                'registration_fee': registration['registration_fee'],
-                'ticket_type': registration['ticket_type'],
-                'event': registration.get('event'),
-                'redirect': url_for('events.registration_confirmation', reg_ref=registration['registration_ref']),
-                'message': 'Registration received and is being processed!'
+                'registration_ref': registration_ref,
+                'redirect': url_for('events.registration_confirmation', reg_ref=registration_ref),
+                'message': 'Registration successful!'
             }), 200
         else:
-            # Regular form submission - perform actual HTTP redirect
-            return redirect(url_for('events.registration_confirmation', reg_ref=registration['registration_ref']))
-
+            return redirect(url_for('events.registration_confirmation', reg_ref=registration_ref))
+    
+    except SoldOutException as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        # Check if it's a SoldOutException
-        if "sold out" in str(e).lower():
-            return jsonify({'success': False, 'error': str(e)}), 400
         logger.error(f"Registration route error: {e}")
         return jsonify({'success': False, 'error': "An unexpected error occurred."}), 500
 

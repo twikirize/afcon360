@@ -14,6 +14,25 @@ config = context.config
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+from alembic.autogenerate import rewriter
+from alembic.operations import ops
+
+# Tell Alembic to never emit CREATE TYPE / DROP TYPE for enums —
+# since we've converted all enums to String columns this prevents
+# ghost ENUM diffs appearing on machines with stale pg_type entries
+writer = rewriter.Rewriter()
+
+@writer.rewrites(ops.CreateTableOp)
+def skip_enum_create(context, revision, op):
+    return op
+
+def include_object(object, name, type_, reflected, compare_to):
+    """Skip PostgreSQL ENUM types from autogenerate entirely."""
+    if type_ == 'table':
+        return True
+    return True
+
 
 def get_engine():
     try:
@@ -94,12 +113,24 @@ def run_migrations_online():
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
 
+    # Strip these from conf_args to prevent duplicate keyword argument errors
+    # when they are also passed explicitly in context.configure()
+    conf_args.pop('compare_type', None)
+    conf_args.pop('render_as_batch', None)
+
     connectable = get_engine()
 
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
+            compare_type=True,
+            render_as_batch=True,
+            include_schemas=False,
+            # Prevents Alembic from trying to drop/recreate PostgreSQL ENUM
+            # types that already exist on another machine's DB
+            user_module_prefix='sa.',
+            include_object=include_object,
             **conf_args
         )
 

@@ -78,159 +78,165 @@ Examples:
       current_owner_type=SYSTEM, current_owner_id=0
       is_system_event=True
 """
+"""Event Status Constants - Production-grade single source of truth"""
 
-import enum
-
-
-class EventStatus(str, enum.Enum):
-    # ── Authoring ──────────────────────────────────────────────────────────
-    DRAFT            = "draft"            # saved, not yet submitted
-
-    # ── Moderation queue ───────────────────────────────────────────────────
-    PENDING_APPROVAL = "pending_approval" # submitted, awaiting review
-    APPROVED         = "approved"         # cleared, not yet live
-    REJECTED         = "rejected"         # declined by moderator
-
-    # ── Live ───────────────────────────────────────────────────────────────
-    PUBLISHED        = "published"        # publicly visible, open for registration
-
-    # ── Operational holds (reversible) ─────────────────────────────────────
-    SUSPENDED        = "suspended"        # admin enforcement hold
-    PAUSED           = "paused"           # organiser temporarily hides / pauses sales
-
-    # ── Terminal positive ──────────────────────────────────────────────────
-    COMPLETED        = "completed"        # end_date passed, ran successfully (auto)
-    CANCELLED        = "cancelled"        # organiser cancelled before it ran
-
-    # ── Terminal negative ──────────────────────────────────────────────────
-    ARCHIVED         = "archived"         # organiser soft-deleted / post-completed archival
-    DELETED          = "deleted"          # admin hard-removed (still in DB, never shown)
-
-    # ── Legacy ─────────────────────────────────────────────────────────────
-    # Keep for DB backward-compat only; never assign these in new code.
-    ACTIVE           = "active"           # old alias for PUBLISHED
+from enum import Enum
+from typing import List, Tuple, Set
 
 
-# ── Allowed state-machine transitions ─────────────────────────────────────────
-# Key   = current status
-# Value = set of statuses this event may transition INTO
-ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
-    EventStatus.DRAFT: {
-        EventStatus.PENDING_APPROVAL,
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+class EventStatus(str, Enum):
+    """
+    Event status values - stored as strings in DB, validated in code.
+    This is the ONLY place status values are defined.
+    """
+    # Authoring
+    DRAFT = "draft"
+    PENDING_APPROVAL = "pending_approval"
+
+    # Moderation
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+    # Live
+    PUBLISHED = "published"
+
+    # Operational holds
+    SUSPENDED = "suspended"
+    PAUSED = "paused"
+
+    # Terminal positive
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+    # Terminal negative
+    ARCHIVED = "archived"
+    DELETED = "deleted"
+
+    # Legacy (kept for backward compatibility)
+    ACTIVE = "active"
+
+    @classmethod
+    def choices(cls) -> List[Tuple[str, str]]:
+        """Return list of (value, label) pairs for form selects"""
+        return [(status.value, status.value.replace('_', ' ').title())
+                for status in cls if status != cls.ACTIVE]
+
+    @classmethod
+    def values(cls) -> List[str]:
+        """Return all valid status values"""
+        return [s.value for s in cls]
+
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        """Check if a string value is a valid status"""
+        return value in cls.values()
+
+    @classmethod
+    def get_publishable_statuses(cls) -> List[str]:
+        """Return statuses that can be published"""
+        return [cls.APPROVED.value, cls.DRAFT.value]
+
+    @classmethod
+    def get_active_statuses(cls) -> List[str]:
+        """Return statuses that represent active/live events"""
+        return [cls.PUBLISHED.value, cls.APPROVED.value]
+
+    @classmethod
+    def get_terminal_statuses(cls) -> Set[str]:
+        """Return statuses that are terminal (no further changes)"""
+        return {cls.COMPLETED.value, cls.CANCELLED.value,
+                cls.ARCHIVED.value, cls.DELETED.value}
+
+    @classmethod
+    def can_register(cls, status: str) -> bool:
+        """Check if event accepts new registrations"""
+        return status == cls.PUBLISHED.value
+
+    @classmethod
+    def needs_moderation(cls, status: str) -> bool:
+        """Check if event needs moderator review"""
+        return status == cls.PENDING_APPROVAL.value
+
+
+# Allowed state transitions - single source of truth
+ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    EventStatus.DRAFT.value: {
+        EventStatus.PENDING_APPROVAL.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.PENDING_APPROVAL: {
-        EventStatus.APPROVED,
-        EventStatus.REJECTED,
-        EventStatus.DRAFT,           # moderator sends back for revision
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+    EventStatus.PENDING_APPROVAL.value: {
+        EventStatus.APPROVED.value,
+        EventStatus.REJECTED.value,
+        EventStatus.DRAFT.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.APPROVED: {
-        EventStatus.PUBLISHED,
-        EventStatus.REJECTED,
-        EventStatus.DRAFT,
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+    EventStatus.APPROVED.value: {
+        EventStatus.PUBLISHED.value,
+        EventStatus.REJECTED.value,
+        EventStatus.DRAFT.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.REJECTED: {
-        EventStatus.DRAFT,           # organiser revises and resubmits
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+    EventStatus.REJECTED.value: {
+        EventStatus.DRAFT.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.PUBLISHED: {
-        EventStatus.SUSPENDED,
-        EventStatus.PAUSED,
-        EventStatus.COMPLETED,       # triggered by scheduler
-        EventStatus.CANCELLED,
-        EventStatus.APPROVED,        # unpublish
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+    EventStatus.PUBLISHED.value: {
+        EventStatus.SUSPENDED.value,
+        EventStatus.PAUSED.value,
+        EventStatus.COMPLETED.value,
+        EventStatus.CANCELLED.value,
+        EventStatus.APPROVED.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.SUSPENDED: {
-        EventStatus.PUBLISHED,       # admin reactivates
-        EventStatus.CANCELLED,
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+    EventStatus.SUSPENDED.value: {
+        EventStatus.PUBLISHED.value,
+        EventStatus.CANCELLED.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.PAUSED: {
-        EventStatus.PUBLISHED,       # organiser resumes
-        EventStatus.CANCELLED,
-        EventStatus.ARCHIVED,        # organiser soft‑delete
-        EventStatus.DELETED,
+    EventStatus.PAUSED.value: {
+        EventStatus.PUBLISHED.value,
+        EventStatus.CANCELLED.value,
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.COMPLETED: {
-        EventStatus.ARCHIVED,        # after retention period
-        EventStatus.DELETED,
+    EventStatus.COMPLETED.value: {
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.CANCELLED: {
-        EventStatus.ARCHIVED,        # clean up after window
-        EventStatus.DELETED,
+    EventStatus.CANCELLED.value: {
+        EventStatus.ARCHIVED.value,
+        EventStatus.DELETED.value,
     },
-    EventStatus.ARCHIVED: {
-        EventStatus.DELETED,         # admin can escalate
+    EventStatus.ARCHIVED.value: {
+        EventStatus.DELETED.value,
     },
-    EventStatus.DELETED: set(),      # terminal - no further transitions
-    EventStatus.ACTIVE: {
-        EventStatus.PUBLISHED,       # migrate legacy records
+    EventStatus.DELETED.value: set(),
+    EventStatus.ACTIVE.value: {
+        EventStatus.PUBLISHED.value,
     },
 }
 
 
-# ── Visibility rules ───────────────────────────────────────────────────────────
-
-# Statuses visible to the general public
-PUBLIC_VISIBLE_STATUSES: frozenset[EventStatus] = frozenset({
-    EventStatus.PUBLISHED,
-})
-
-# Statuses the organiser can see in their own dashboard
-ORGANISER_VISIBLE_STATUSES: frozenset[EventStatus] = frozenset({
-    EventStatus.DRAFT,
-    EventStatus.PENDING_APPROVAL,
-    EventStatus.APPROVED,
-    EventStatus.REJECTED,
-    EventStatus.PUBLISHED,
-    EventStatus.SUSPENDED,
-    EventStatus.PAUSED,
-    EventStatus.COMPLETED,
-    EventStatus.CANCELLED,
-    EventStatus.ARCHIVED,
-})
-
-# Statuses only admins / system can see
-ADMIN_ONLY_STATUSES: frozenset[EventStatus] = frozenset({
-    EventStatus.DELETED,
-})
-
-# Statuses that still accept new registrations
-REGISTRATION_OPEN_STATUSES: frozenset[EventStatus] = frozenset({
-    EventStatus.PUBLISHED,
-})
-
-# Terminal statuses - no further organiser action possible
-TERMINAL_STATUSES: frozenset[EventStatus] = frozenset({
-    EventStatus.COMPLETED,
-    EventStatus.CANCELLED,
-    EventStatus.ARCHIVED,
-    EventStatus.DELETED,
-})
-
-
-def validate_transition(current: EventStatus, target: EventStatus) -> tuple[bool, str]:
+def validate_transition(current: str, target: str) -> tuple[bool, str]:
     """
     Validate whether a status transition is permitted.
-
-    Returns (allowed: bool, reason: str).
-    Callers should check `allowed` before persisting.
+    Returns (allowed: bool, reason: str)
     """
     if current == target:
-        return False, f"Event is already in status '{current.value}'."
-    allowed = ALLOWED_TRANSITIONS.get(current, set())
+        return False, f"Event is already in status '{current}'."
+
+    if current not in ALLOWED_TRANSITIONS:
+        return False, f"Unknown current status: '{current}'"
+
+    allowed = ALLOWED_TRANSITIONS[current]
     if target not in allowed:
-        return False, (
-            f"Cannot transition from '{current.value}' to '{target.value}'. "
-            f"Allowed targets: {[s.value for s in allowed] or 'none (terminal)'}."
-        )
+        allowed_str = ', '.join(allowed) if allowed else 'none (terminal)'
+        return False, f"Cannot transition from '{current}' to '{target}'. Allowed: {allowed_str}"
+
     return True, ""

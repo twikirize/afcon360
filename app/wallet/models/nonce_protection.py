@@ -4,7 +4,7 @@ Manages user-specific nonce counters to prevent transaction replay attacks
 """
 
 from datetime import datetime, timedelta
-from sqlalchemy import Column, Integer, String, DateTime, Text, Index, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, Index, Boolean, BigInteger
 from app.extensions import db
 
 
@@ -20,10 +20,10 @@ class UserNonce(db.Model):
         Index('ix_user_nonces_created_at', 'created_at'),
     )
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # User identification
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
     user_type = Column(String(20), default='user')  # user, aggregator, admin
     
     # Nonce information
@@ -72,7 +72,7 @@ class NonceProtectionConfig(db.Model):
     """
     __tablename__ = 'nonce_protection_config'
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # General settings
     enabled = Column(Boolean, default=True)

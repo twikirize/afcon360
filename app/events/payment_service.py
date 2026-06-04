@@ -13,6 +13,7 @@ from app.audit.comprehensive_audit import AuditService, TransactionType, APICall
 from app.events.models import Event, TicketType, EventRegistration
 from app.events.payment_config import PaymentMethodConfig, EventPaymentPreference
 from app.extensions import db
+from app.identity.models.user import User
 import uuid
 import logging
 
@@ -117,13 +118,15 @@ class EventPaymentService:
     ) -> Dict:
         """Process payment using wallet system"""
         try:
-            # Get user's wallet for the currency
-            wallet = self.wallet_service.get_user_wallet(user_id, currency)
-            if not wallet:
+            # Get user's wallet account
+            wallet_service = WalletService()
+            account = wallet_service.account_repo.get_by_user_id(user_id, currency)
+            if not account:
                 return {"success": False, "error": f"No wallet found for {currency}"}
             
-            # Check balance
-            if wallet.balance < amount:
+            # Check balance (derived from ledger)
+            balance = wallet_service.ledger_repo.get_balance(account.id, currency)
+            if balance < amount:
                 return {"success": False, "error": "Insufficient wallet balance"}
             
             # Process wallet payment
@@ -137,7 +140,7 @@ class EventPaymentService:
                 currency=currency,
                 status="pending",
                 from_user_id=user_id,
-                from_balance_before=float(wallet.balance),
+                from_balance_before=float(balance),
                 payment_method="wallet",
                 payment_provider="afcon360_wallet",
                 ip_address=request.remote_addr if request else None,
@@ -148,14 +151,17 @@ class EventPaymentService:
                 }
             )
             
-            # Debit wallet
-            debit_result = self.wallet_service.debit_wallet(
-                user_id, amount, currency, 
-                f"Event ticket purchase - {payment_reference}",
-                metadata={"event_ticket_purchase": True, "reference": payment_reference}
+            # Debit wallet using withdraw (requires account_id UUID)
+            client_request_id = f"EVT-PAY-{audit_transaction_id}-{user_id}"
+            debit_result = wallet_service.withdraw(
+                account_id=str(account.id),
+                amount=amount,
+                currency=currency,
+                client_request_id=client_request_id,
+                metadata={"event_ticket_purchase": True, "reference": payment_reference, "audit_transaction_id": audit_transaction_id}
             )
             
-            if not debit_result.get("success"):
+            if debit_result.get("status") != "success":
                 # Update audit as failed
                 AuditService.financial(
                     transaction_id=audit_transaction_id,
@@ -164,16 +170,17 @@ class EventPaymentService:
                     currency=currency,
                     status="failed",
                     from_user_id=user_id,
-                    from_balance_before=float(wallet.balance),
+                    from_balance_before=float(balance),
                     payment_method="wallet",
                     payment_provider="afcon360_wallet",
                     ip_address=request.remote_addr if request else None,
                     user_agent=request.user_agent.string if request else None,
                     metadata={"error": debit_result.get("error")}
                 )
-                return debit_result
+                return {"success": False, "error": debit_result.get("error")}
             
             # Update audit as completed
+            new_balance = wallet_service.ledger_repo.get_balance(account.id, currency)
             AuditService.financial(
                 transaction_id=audit_transaction_id,
                 transaction_type=TransactionType.PAYMENT,
@@ -181,8 +188,8 @@ class EventPaymentService:
                 currency=currency,
                 status="completed",
                 from_user_id=user_id,
-                from_balance_before=float(wallet.balance),
-                from_balance_after=float(wallet.balance - amount),
+                from_balance_before=float(balance),
+                from_balance_after=float(new_balance),
                 payment_method="wallet",
                 payment_provider="afcon360_wallet",
                 ip_address=request.remote_addr if request else None,
@@ -301,8 +308,18 @@ class EventPaymentService:
             payment_reference=payment_reference
         )
         
-        # Generate references
-        registration.generate_refs()
+        # Generate references - need event slug and sequence
+        event = Event.query.get(event_id)
+        if event:
+            # Get next sequence number
+            reg_count = db.session.query(db.func.count(EventRegistration.id)).filter_by(
+                event_id=event_id
+            ).scalar() or 0
+            sequence = reg_count + 1
+            registration.generate_refs(event.slug, sequence)
+        else:
+            # Fallback - generate without proper refs
+            registration.generate_refs("UNKNOWN", 1)
         
         db.session.add(registration)
         db.session.flush()  # Get the ID
@@ -318,7 +335,7 @@ class EventPaymentService:
         """Get or create user for group attendee"""
         # This is a simplified implementation
         # In production, you'd want proper user creation logic
-        from app.models.user import User
+        from app.identity.models.user import User
         
         email = attendee_data.get("email")
         if email:

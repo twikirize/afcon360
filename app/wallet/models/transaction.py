@@ -8,11 +8,10 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy import (
     Column, String, Numeric, DateTime, ForeignKey,
-    CheckConstraint, Index, Enum as SQLEnum
+    CheckConstraint, Index
 )
-from sqlalchemy.dialects.postgresql import UUID, ENUM, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.extensions import db
-from app.models.base import BaseModel
 import enum
 
 
@@ -34,7 +33,7 @@ class TransactionStatus(str, enum.Enum):
     CANCELLED = 'cancelled'
 
 
-class TransactionModel(BaseModel):
+class TransactionModel(db.Model):
     """
     Immutable transaction record with DB-enforced idempotency.
     
@@ -74,12 +73,12 @@ class TransactionModel(BaseModel):
     
     # Transaction classification
     tx_type = Column(
-        SQLEnum(TransactionType, name='transaction_type_enum', create_type=True),
+        String(20),
         nullable=False
     )
     
     status = Column(
-        SQLEnum(TransactionStatus, name='transaction_status_enum', create_type=True),
+        String(20),
         nullable=False,
         default=TransactionStatus.PENDING
     )

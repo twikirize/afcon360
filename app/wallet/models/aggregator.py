@@ -4,7 +4,7 @@ Manages third-party aggregators for bulk wallet operations
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Index, BigInteger
 from app.extensions import db
 
 
@@ -22,7 +22,7 @@ class Aggregator(db.Model):
         Index('ix_aggregators_status', 'status'),
     )
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # Aggregator details
     name = Column(String(255), nullable=False, unique=True)

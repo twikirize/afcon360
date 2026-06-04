@@ -10,10 +10,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from app.extensions import db
-from app.models.base import BaseModel
 
 
-class AuditLogModel(BaseModel):
+class AuditLogModel(db.Model):
     """
     Immutable audit trail for financial transactions.
     
@@ -136,7 +135,7 @@ class AuditLogModel(BaseModel):
         )
 
 
-class IdempotencyKeyModel(BaseModel):
+class IdempotencyKeyModel(db.Model):
     """
     Persistent storage for idempotency keys.
     

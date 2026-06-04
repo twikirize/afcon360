@@ -127,21 +127,12 @@ def api_accommodation_inventory(slug):
             all_hotel_bookings[b.id] = b
     
     # 2. Community hosts approved for this event
-    # First, check if there's a property_event_association table or event_id on property
-    # For now, query properties with property_type=COMMUNITY_HOST that have event_metadata indicating this event
-    community_hosts = Property.query.filter(
-        Property.property_type == AccommodationPropertyType.COMMUNITY_HOST,
-        Property.is_active == True,
-        Property.status == 'active'
+    from app.events.models import EventHostRegistration
+    approved_registrations = EventHostRegistration.query.filter_by(
+        event_id=event.id,
+        status='approved'
     ).all()
-    
-    # Filter hosts that are associated with this event (via event_metadata JSON)
-    event_hosts = []
-    for host in community_hosts:
-        if host.event_metadata and host.event_metadata.get('event_id') == event.id:
-            event_hosts.append(host)
-        # Also check if host has a relationship - for now, use metadata
-    
+    event_hosts = [reg.property for reg in approved_registrations if reg.property and reg.property.is_active]
     # Get existing assignments to know what's taken
     assignments = EventAssignment.query.filter_by(event_id=event.id).all()
     taken_booking_ids = {a.accommodation_booking_id for a in assignments if a.accommodation_booking_id}

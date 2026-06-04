@@ -3,9 +3,12 @@ version: 0.0.1
 schema: v1
 mcpServers:
   - name: Browser search
-    command: npx
+    command: cmd
     args:
+      - "/c"
+      - "npx"
       - "-y"
       - "@playwright/mcp@latest"
-      - "--browser=chromium"    # ← Add this line
+      - "--browser=chromium"
+    connectionTimeout: 180000
     env: {}

@@ -188,6 +188,20 @@ class Property(BaseModel):
     views_last_24h = Column(Integer, default=0, server_default='0')
 
     # -------------------------------
+    # Event Context (for community hosts)
+    # -------------------------------
+    event_metadata = Column(JSON, nullable=True, default=dict)
+
+    # -------------------------------
+    # Relationships to EventHostRegistration
+    # -------------------------------
+    event_host_registrations = relationship(
+        "EventHostRegistration", 
+        back_populates="property",
+        cascade="all, delete-orphan"
+    )
+
+    # -------------------------------
     # SEO
     # -------------------------------
     meta_title = Column(String(255), nullable=True)

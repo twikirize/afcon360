@@ -4,7 +4,7 @@ Tracks all admin actions for compliance and accountability
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Index, BigInteger
 from app.extensions import db
 
 
@@ -23,10 +23,10 @@ class AdminAuditLog(db.Model):
         Index('ix_admin_audit_created_at', 'created_at'),
     )
     
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     
     # Who performed the action
-    admin_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    admin_id = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
     admin_name = Column(String(255), nullable=False)
     admin_role = Column(String(50), nullable=False)
     

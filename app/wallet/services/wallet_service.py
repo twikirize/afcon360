@@ -273,7 +273,7 @@ class WalletService:
         # Fire-and-forget notification (must not break transaction)
         try:
             from app.wallet.services.wallet_notifications import notify_deposit
-            notify_deposit(user_id, amount, currency, final_balance)
+            notify_deposit(account.user_id, amount, currency, final_balance)
         except Exception:
             current_app.logger.exception('Failed to send deposit notification')
 
@@ -447,7 +447,7 @@ class WalletService:
         # Fire-and-forget notification for withdrawal initiation
         try:
             from app.wallet.services.wallet_notifications import notify_withdrawal_initiated
-            notify_withdrawal_initiated(user_id, amount, currency, reference=str(tx.id))
+            notify_withdrawal_initiated(account.user_id, amount, currency, reference=str(tx.id))
         except Exception:
             current_app.logger.exception('Failed to send withdrawal notification')
 
@@ -727,19 +727,19 @@ class WalletService:
             try:
                 recipient_user = User.get_by_private_id(to_account.user_id)
                 sender_user = User.get_by_private_id(from_account.user_id)
-                recipient_name = getattr(recipient_user, 'username', None) or getattr(recipient_user, 'email', None) or str(to_account_id)
-                sender_name = getattr(sender_user, 'username', None) or getattr(sender_user, 'email', None) or str(from_account_id)
+                recipient_name = getattr(recipient_user, 'username', None) or getattr(recipient_user, 'email', None) or str(to_account.id)
+                sender_name = getattr(sender_user, 'username', None) or getattr(sender_user, 'email', None) or str(from_account.id)
             except Exception:
-                recipient_name = str(to_user_id)
-                sender_name = str(from_user_id)
+                recipient_name = str(to_account.id)
+                sender_name = str(from_account.id)
 
             try:
-                notify_transfer_sent(from_user_id, amount, currency, recipient_name, from_balance, reference=str(tx.id))
+                notify_transfer_sent(from_account.user_id, amount, currency, recipient_name, from_balance, reference=str(tx.id))
             except Exception:
                 current_app.logger.exception('Failed to send transfer-sent notification')
 
             try:
-                notify_transfer_received(to_user_id, amount, currency, sender_name, to_balance)
+                notify_transfer_received(to_account.user_id, amount, currency, sender_name, to_balance)
             except Exception:
                 current_app.logger.exception('Failed to send transfer-received notification')
         except Exception:

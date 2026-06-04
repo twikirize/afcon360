@@ -772,9 +772,8 @@ class EventService:
         if website == "":
             website = None
 
-        # Apply status sanitizer at DB read boundary
-        # This ensures legacy status values are converted to valid EventStatus values
-        status_value = event.status.value if event.status else None
+        # Status is now a string directly (VARCHAR), not an enum
+        status_value = event.status if event.status else None
         sanitized_status = cls.sanitize_status(status_value) if status_value else None
 
         return {
@@ -1227,37 +1226,30 @@ class EventService:
                         return None, None, "Payment service temporarily unavailable. Please try again later."
 
                     try:
-                        # WalletService is a class, we need to instantiate it or call static methods
-                        # Check if it has a static debit method
-                        if hasattr(WalletService, 'debit'):
-                            success, result, error = WalletService.debit(
-                                user_id=user_id,
-                                amount=Decimal(str(fee)),
-                                currency=event.currency,
-                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
-                                description=f"Registration for {event.name}",
-                                metadata={"event_slug": identifier, "event_name": event.name}
-                            )
-                        else:
-                            # Try to instantiate
-                            wallet_service = WalletService()
-                            success, result, error = wallet_service.debit(
-                                user_id=user_id,
-                                amount=Decimal(str(fee)),
-                                currency=event.currency,
-                                reference=f"EVT-REG-{identifier}-{user_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
-                                description=f"Registration for {event.name}",
-                                metadata={"event_slug": identifier, "event_name": event.name}
-                            )
+                        # Get user's wallet account
+                        wallet_service = WalletService()
+                        account = wallet_service.account_repo.get_by_user_id(user_id, event.currency)
+                        if not account:
+                            return None, None, f"No wallet found for {event.currency}"
 
-                        if not success:
+                        # Process payment using withdraw (requires account_id UUID)
+                        client_request_id = f"EVT-REG-{identifier}-{user_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+                        result = wallet_service.withdraw(
+                            account_id=str(account.id),
+                            amount=Decimal(str(fee)),
+                            currency=event.currency,
+                            client_request_id=client_request_id,
+                            metadata={"event_slug": identifier, "event_name": event.name, "purpose": "event_ticket_purchase"}
+                        )
+
+                        if result.get("status") != "success":
+                            error = result.get("error", "Payment failed")
                             logger.error(f"Payment failed for user {user_id}: {error}")
-                            # Check if it's a balance issue
                             if "insufficient" in error.lower() or "balance" in error.lower():
                                 return None, None, "Insufficient funds in your wallet. Please top up and try again."
                             return None, None, f"Payment failed: {error}"
 
-                        payment_txn_id = result.get("transaction_id") if result else None
+                        payment_txn_id = result.get("transaction_id")
                         payment_status = "paid"
 
                         # Log successful payment
@@ -1268,8 +1260,6 @@ class EventService:
                         return None, None, "Payment service configuration error."
                     except Exception as payment_error:
                         logger.error(f"Payment processing error for user {user_id}: {payment_error}", exc_info=True)
-                        # Attempt to refund if transaction was created but registration failed
-                        # This would require a separate refund mechanism
                         return None, None, "Payment processing failed. Please try again or contact support."
 
                 # Create registration

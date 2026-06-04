@@ -19,7 +19,7 @@ class EventRegistrationViewModel:
         self.city = event.city
         self.venue = event.venue or ''
         self.currency = event.currency
-        self.status = event.status.value if event.status else None
+        self.status = event.status
         self.max_capacity = event.max_capacity or 0
         self.contact_email = event.contact_email
         self.contact_phone = event.contact_phone

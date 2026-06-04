@@ -12,11 +12,10 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy import (
     Column, String, Numeric, DateTime, ForeignKey, 
-    CheckConstraint, Index, Enum as SQLEnum
+    CheckConstraint, Index
 )
-from sqlalchemy.dialects.postgresql import UUID, ENUM, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.extensions import db
-from app.models.base import BaseModel
 import enum
 
 
@@ -26,7 +25,7 @@ class EntryType(str, enum.Enum):
     CREDIT = 'CREDIT'
 
 
-class LedgerEntryModel(BaseModel):
+class LedgerEntryModel(db.Model):
     """
     Immutable double-entry ledger record.
     
@@ -71,7 +70,7 @@ class LedgerEntryModel(BaseModel):
     
     # Entry details
     entry_type = Column(
-        SQLEnum(EntryType, name='entry_type_enum', create_type=True),
+        String(10),
         nullable=False
     )
     
@@ -108,7 +107,7 @@ class AccountOwnerType(str, enum.Enum):
     ORGANISATION = 'organisation'
 
 
-class AccountModel(BaseModel):
+class AccountModel(db.Model):
     """
     Financial account for a user or organisation.
     
@@ -132,7 +131,7 @@ class AccountModel(BaseModel):
     
     # Owner type - distinguishes between user and organisation accounts
     owner_type = Column(
-        SQLEnum(AccountOwnerType, name='account_owner_type_enum', create_type=True),
+        String(20),
         nullable=False,
         default=AccountOwnerType.USER
     )

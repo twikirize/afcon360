@@ -29,7 +29,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
-from sqlalchemy import Enum as SAEnum
 
 from app.extensions import db
 from app.models.base import BaseModel
@@ -43,16 +42,6 @@ from app.events.constants import (
 # ============================================================================
 # HELPERS
 # ============================================================================
-
-def _sa_enum(enum_cls, name: str):
-    """Reduce SAEnum column-definition boilerplate."""
-    return SAEnum(
-        enum_cls,
-        values_callable=lambda cls: [e.value for e in cls],
-        name=name,
-        create_constraint=True,
-    )
-
 
 def _deprecated(new_name: str):
     """
@@ -127,8 +116,7 @@ class Event(BaseModel):
         # ── Performance indexes ────────────────────────────────────────────
         Index("idx_event_start_date",       "start_date"),
         Index("idx_event_status_featured",  "status", "featured"),
-        Index("idx_event_is_deleted",       "is_deleted"),
-        Index("idx_event_slug_unique",      "slug", "is_deleted", unique=True),
+        Index("idx_event_slug_unique",      "slug", unique=True),
         Index("idx_event_category",         "category"),
         Index("idx_event_organizer_status", "organizer_id", "status"),
         Index("idx_event_status_start",     "status", "start_date"),
@@ -176,9 +164,10 @@ class Event(BaseModel):
 
     # ── Status ─────────────────────────────────────────────────────────────
     status = Column(
-        _sa_enum(EventStatus, "eventstatus"),
-        default=EventStatus.PENDING_APPROVAL,
+        String(30),
+        default=EventStatus.PENDING_APPROVAL.value,
         nullable=False,
+        index=True
     )
 
     # ── Organiser (the public-facing contact, may differ from creator/owner) ─
@@ -210,12 +199,12 @@ class Event(BaseModel):
 
     # ── Completion (auto-set by scheduler) ────────────────────────────────
     completed_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    published_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # ── Soft delete ────────────────────────────────────────────────────────
     # is_deleted=True + status=ARCHIVED  → organiser soft-deleted
     # is_deleted=True + status=DELETED   → admin removed
-    is_deleted    = Column(Boolean,   default=False, nullable=False, index=True)
-    deleted_at    = Column(DateTime,  nullable=True)
     deleted_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     deletion_reason = Column(Text,    nullable=True)
 
@@ -246,9 +235,9 @@ class Event(BaseModel):
     # ── Creator (immutable after creation) ────────────────────────────────
     # Who pressed the "create" button.  Never changes.
     created_by_type = Column(
-        _sa_enum(CreatorType, "creatortype"),
+        String(20),
         nullable=False,
-        default=CreatorType.INDIVIDUAL,
+        default=CreatorType.INDIVIDUAL.value,
     )
     # For INDIVIDUAL → user id; for ORGANIZATION → org id; for SYSTEM → 0
     created_by_entity_id = Column(BigInteger, nullable=False, default=0)
@@ -256,9 +245,9 @@ class Event(BaseModel):
     # ── Owner (mutable via EventTransferRequest) ───────────────────────────
     # Who currently controls the event.  Can differ from creator.
     current_owner_type = Column(
-        _sa_enum(OwnerType, "ownertype"),
+        String(20),
         nullable=False,
-        default=OwnerType.INDIVIDUAL,
+        default=OwnerType.INDIVIDUAL.value,
     )
     # For INDIVIDUAL → user id; for ORGANIZATION → org id; for SYSTEM → 0
     current_owner_id = Column(BigInteger, nullable=False, index=True)
@@ -298,7 +287,7 @@ class Event(BaseModel):
         self._set_default_owner()
 
     def __repr__(self):
-        return f"<Event {self.id}: {self.name!r} [{self.status.value}]>"
+        return f"<Event {self.id}: {self.name!r} [{self.status}]>"
 
     # ── Internal helpers ───────────────────────────────────────────────────
 
@@ -333,142 +322,111 @@ class Event(BaseModel):
     # ── Status flag properties ─────────────────────────────────────────────
 
     @property
-    def is_published_flag(self) -> bool:
-        return self.status == EventStatus.PUBLISHED
-
-    # Keep "is_active_flag" as alias for is_published_flag for back-compat
-    @property
-    def is_active_flag(self) -> bool:
-        return self.is_published_flag
+    def is_draft(self) -> bool:
+        return self.status == EventStatus.DRAFT.value
 
     @property
-    def is_pending_flag(self) -> bool:
-        return self.status == EventStatus.PENDING_APPROVAL
+    def is_pending(self) -> bool:
+        return self.status == EventStatus.PENDING_APPROVAL.value
 
     @property
-    def is_rejected_flag(self) -> bool:
-        return self.status == EventStatus.REJECTED
+    def is_approved(self) -> bool:
+        return self.status == EventStatus.APPROVED.value
 
     @property
-    def is_draft_flag(self) -> bool:
-        return self.status == EventStatus.DRAFT
+    def is_rejected(self) -> bool:
+        return self.status == EventStatus.REJECTED.value
 
     @property
-    def is_cancelled_flag(self) -> bool:
-        return self.status == EventStatus.CANCELLED
+    def is_published(self) -> bool:
+        return self.status == EventStatus.PUBLISHED.value
 
     @property
-    def is_archived_flag(self) -> bool:
-        return self.status == EventStatus.ARCHIVED
+    def is_suspended(self) -> bool:
+        return self.status == EventStatus.SUSPENDED.value
 
     @property
-    def is_suspended_flag(self) -> bool:
-        return self.status == EventStatus.SUSPENDED
+    def is_paused(self) -> bool:
+        return self.status == EventStatus.PAUSED.value
 
     @property
-    def is_paused_flag(self) -> bool:
-        return self.status == EventStatus.PAUSED
+    def is_cancelled(self) -> bool:
+        return self.status == EventStatus.CANCELLED.value
 
     @property
-    def is_approved_flag(self) -> bool:
-        return self.status == EventStatus.APPROVED
+    def is_completed(self) -> bool:
+        return self.status == EventStatus.COMPLETED.value
 
     @property
-    def is_completed_flag(self) -> bool:
-        return self.status == EventStatus.COMPLETED
+    def is_archived(self) -> bool:
+        return self.status == EventStatus.ARCHIVED.value
 
     @property
-    def is_deleted_status(self) -> bool:
-        return self.status == EventStatus.DELETED
+    def is_deleted_flag(self) -> bool:
+        return self.status == EventStatus.DELETED.value
 
     @property
     def is_terminal(self) -> bool:
-        from app.events.constants import TERMINAL_STATUSES
-        return self.status in TERMINAL_STATUSES
+        """Check if event is in a terminal state"""
+        return self.status in EventStatus.get_terminal_statuses()
 
     @property
     def accepts_registrations(self) -> bool:
-        from app.events.constants import REGISTRATION_OPEN_STATUSES
-        return self.status in REGISTRATION_OPEN_STATUSES
+        """Check if event accepts new registrations"""
+        return EventStatus.can_register(self.status)
 
-    # ── Deprecated back-compat aliases ────────────────────────────────────
-    is_active    = _deprecated("is_active_flag")
-    is_pending   = _deprecated("is_pending_flag")
-    is_rejected  = _deprecated("is_rejected_flag")
-    is_draft     = _deprecated("is_draft_flag")
-    is_cancelled = _deprecated("is_cancelled_flag")
-    is_archived  = _deprecated("is_archived_flag")
-    is_suspended = _deprecated("is_suspended_flag")
-    is_paused    = _deprecated("is_paused_flag")
-    is_approved  = _deprecated("is_approved_flag")
+    @property
+    def needs_moderation(self) -> bool:
+        """Check if event needs moderator review"""
+        return EventStatus.needs_moderation(self.status)
 
     # ── State-machine transition helpers ──────────────────────────────────
 
-    def transition_to(self, new_status: EventStatus, actor_id: int,
+    def transition_to(self, new_status: str, actor_id: int,
                       reason: str = None,
                       ip_address: str = None,
                       user_agent: str = None) -> "EventModerationLog":
         """
-        Validate and apply a status transition, returning an unsaved
-        EventModerationLog entry.  The caller must flush/commit.
-
-        Raises ValueError if the transition is not allowed.
+        Validate and apply a status transition.
+        Returns the moderation log entry (not yet committed).
         """
         allowed, msg = validate_transition(self.status, new_status)
         if not allowed:
             raise ValueError(msg)
 
-        action_map = {
-            EventStatus.APPROVED:         "approve",
-            EventStatus.REJECTED:         "reject",
-            EventStatus.PUBLISHED:        "publish",
-            EventStatus.SUSPENDED:        "suspend",
-            EventStatus.PAUSED:           "pause",
-            EventStatus.CANCELLED:        "cancel",
-            EventStatus.COMPLETED:        "complete",
-            EventStatus.ARCHIVED:         "archive",
-            EventStatus.DELETED:          "delete",
-            EventStatus.DRAFT:            "revert_to_draft",
-            EventStatus.PENDING_APPROVAL: "submit",
-        }
-
+        # Create log entry
         log = EventModerationLog(
-            event_id    = self.id,
-            user_id     = actor_id,
-            action      = action_map.get(new_status, new_status.value),
-            from_status = self.status,
-            to_status   = new_status,
-            reason      = reason,
-            ip_address  = ip_address,
-            user_agent  = user_agent,
+            event_id=self.id,
+            user_id=actor_id,
+            action=f"{self.status}_to_{new_status}",
+            from_status=self.status,
+            to_status=new_status,
+            reason=reason,
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
 
-        # Side-effects per target status
+        # Update timestamps based on target status
         now = datetime.now(timezone.utc)
-        if new_status == EventStatus.APPROVED:
-            self.approved_at    = now
+        if new_status == EventStatus.APPROVED.value:
+            self.approved_at = now
             self.approved_by_id = actor_id
-        elif new_status == EventStatus.REJECTED:
-            self.rejected_at      = now
+        elif new_status == EventStatus.REJECTED.value:
+            self.rejected_at = now
             self.rejection_reason = reason
-        elif new_status == EventStatus.SUSPENDED:
-            self.suspended_at   = now
+        elif new_status == EventStatus.SUSPENDED.value:
+            self.suspended_at = now
             self.suspended_by_id = actor_id
             self.suspension_reason = reason
-        elif new_status == EventStatus.COMPLETED:
+        elif new_status == EventStatus.PUBLISHED.value:
+            self.published_at = now
+            self.published_by_id = actor_id
+        elif new_status == EventStatus.COMPLETED.value:
             self.completed_at = now
-        elif new_status in (EventStatus.ARCHIVED, EventStatus.DELETED):
-            self.is_deleted    = True
-            self.deleted_at    = now
+        elif new_status in (EventStatus.ARCHIVED.value, EventStatus.DELETED.value):
+            self.deleted_at = now
             self.deleted_by_id = actor_id
             self.deletion_reason = reason
-
-        # When moving to APPROVED, record whether auto-publish is requested.
-        # The service layer reads this flag after commit to decide whether
-        # to immediately trigger publish_event().
-        elif new_status == EventStatus.APPROVED:
-            # side-effects already set approved_at / approved_by_id above
-            pass  # auto_publish_on_approval is checked by the service, not here
 
         self.status = new_status
         return log
@@ -480,7 +438,7 @@ class Event(BaseModel):
         Registrations, financial records, and logs are preserved.
         """
         return self.transition_to(
-            EventStatus.ARCHIVED,
+            EventStatus.ARCHIVED.value,
             actor_id=user_id,
             reason=reason or "Organiser deleted",
         )
@@ -491,18 +449,17 @@ class Event(BaseModel):
         Still never physically removed - just excluded from all normal queries.
         """
         return self.transition_to(
-            EventStatus.DELETED,
+            EventStatus.DELETED.value,
             actor_id=admin_id,
             reason=reason,
         )
 
     def restore(self):
         """Undo a soft-delete back to DRAFT for organiser revision."""
-        self.is_deleted     = False
         self.deleted_at     = None
         self.deleted_by_id  = None
         self.deletion_reason = None
-        self.status         = EventStatus.DRAFT
+        self.status         = EventStatus.DRAFT.value
 
     # ── Ownership helpers ─────────────────────────────────────────────────
 
@@ -868,7 +825,7 @@ class DiscountCode(BaseModel):
 
     event_id       = Column(BigInteger,     ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
     code           = Column(String(50),     nullable=False, unique=True, index=True)
-    discount_type  = Column(_sa_enum(DiscountType, "discounttype"), nullable=False)
+    discount_type  = Column(String(20), nullable=False)
     discount_value = Column(Numeric(10, 2), nullable=False)
     currency       = Column(String(3),      default="USD")
     valid_from     = Column(DateTime,       nullable=False, default=datetime.utcnow)
@@ -916,9 +873,9 @@ class EventTransferRequest(BaseModel):
     to_organization_id   = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"),  nullable=True)
     requested_by_id      = Column(BigInteger, ForeignKey("users.id"),        nullable=False)
     status               = Column(
-        _sa_enum(TransferStatus, "transferstatus"),
+        String(20),
         nullable=False,
-        default=TransferStatus.PENDING,
+        default=TransferStatus.PENDING.value,
     )
     reason         = Column(Text,     nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
@@ -958,8 +915,8 @@ class EventModerationLog(BaseModel):
     event_id    = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     user_id     = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     action      = Column(String(50), nullable=False)
-    from_status = Column(_sa_enum(EventStatus, "eventstatus"), nullable=False)
-    to_status   = Column(_sa_enum(EventStatus, "eventstatus"), nullable=False)
+    from_status = Column(String(30), nullable=False)
+    to_status   = Column(String(30), nullable=False)
     reason      = Column(Text,        nullable=True)
     ip_address  = Column(String(64),  nullable=True)
     user_agent  = Column(String(512), nullable=True)
@@ -983,9 +940,9 @@ class EventTransferLog(BaseModel):
     __tablename__ = "event_transfer_logs"
 
     event_id          = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    from_owner_type   = Column(_sa_enum(OwnerType, "ownertype"), nullable=False)
+    from_owner_type   = Column(String(20), nullable=False)
     from_owner_id     = Column(BigInteger, nullable=False)
-    to_owner_type     = Column(_sa_enum(OwnerType, "ownertype"), nullable=False)
+    to_owner_type     = Column(String(20), nullable=False)
     to_owner_id       = Column(BigInteger, nullable=False)
     transferred_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     transferred_at    = Column(DateTime,   default=datetime.utcnow)
@@ -1000,6 +957,51 @@ class EventTransferLog(BaseModel):
             f"{self.from_owner_type.value}:{self.from_owner_id} → "
             f"{self.to_owner_type.value}:{self.to_owner_id}>"
         )
+
+
+# ============================================================================
+# EVENT HOST REGISTRATION MODEL
+# ============================================================================
+
+class EventHostRegistration(BaseModel):
+    """Tracks community host registration for specific events"""
+    __tablename__ = "event_host_registrations"
+    
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
+    host_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    
+    # Registration status
+    status = Column(String(30), default="pending", nullable=False)  # pending, approved, rejected, active
+    
+    # Pricing for this specific event
+    price_per_night = Column(Numeric(10, 2), nullable=True)  # NULL = free
+    currency = Column(String(3), default="USD")
+    is_free = Column(Boolean, default=False)
+    
+    # Event-specific details
+    max_guests = Column(Integer, nullable=True)  # Override property default
+    special_instructions = Column(Text, nullable=True)
+    
+    # Timestamps
+    registered_at = Column(DateTime, default=datetime.utcnow)
+    approved_at = Column(DateTime, nullable=True)
+    approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    
+    # Relationships
+    event = relationship("Event", foreign_keys=[event_id], backref="host_registrations")
+    property = relationship("Property", foreign_keys=[property_id], back_populates="event_host_registrations")
+    host_user = relationship("User", foreign_keys=[host_user_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+    
+    __table_args__ = (
+        UniqueConstraint("event_id", "property_id", name="uq_event_property_host"),
+        Index("idx_host_registration_event", "event_id", "status"),
+        Index("idx_host_registration_host", "host_user_id"),
+        Index("idx_host_registration_status", "status"),
+    )
 
 
 # ============================================================================
