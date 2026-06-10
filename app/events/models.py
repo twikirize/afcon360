@@ -1045,3 +1045,35 @@ class EventAssignment(BaseModel):
     def __repr__(self):
         return f"<EventAssignment {self.id}: event {self.event_id}, attendee {self.attendee_id}>"
 
+
+# ============================================================================
+# ORGANIZER MESSAGE MODEL
+# ============================================================================
+
+class OrganizerMessage(BaseModel):
+    """
+    Messages sent from users to event organizers.
+    Stored for audit trail and read/unread tracking in organizer dashboard.
+    """
+    __tablename__ = 'organizer_messages'
+    __table_args__ = (
+        Index('idx_organizer_message_event', 'event_id'),
+        Index('idx_organizer_message_user', 'user_id'),
+        Index('idx_organizer_message_status', 'status'),
+    )
+
+    # public_id for external API responses
+    public_id = Column(String(64), unique=True, nullable=False,
+                       default=lambda: str(uuid.uuid4()), index=True)
+
+    event_id = Column(BigInteger, ForeignKey('events.id'), nullable=False)
+    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(String(20), default='unread', nullable=False)
+
+    # Relationships
+    event = relationship('Event', backref='organizer_messages')
+    user = relationship('User', backref='sent_organizer_messages')
+
+    def __repr__(self):
+        return f'<OrganizerMessage {self.id}: event {self.event_id}, user {self.user_id}>'

@@ -1,0 +1,95 @@
+{# templates/accommodation/my_accommodation_pane.html #}
+{# Standalone pane version for AJAX dashboard embedding - does NOT extend base.html #}
+<div class="container-fluid py-3">
+    <h2 class="h4 mb-4">My Accommodation</h2>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="accommodationPaneTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="pane-staying-tab" data-bs-toggle="tab" data-bs-target="#pane-staying" type="button" role="tab">
+                <i class="fas fa-bed"></i> Where I'm Staying ({{ guest_stays|length }})
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pane-bookings-tab" data-bs-toggle="tab" data-bs-target="#pane-bookings" type="button" role="tab">
+                <i class="fas fa-credit-card"></i> What I Booked ({{ my_bookings|length }})
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- TAB 1: Where I'm Staying -->
+        <div class="tab-pane fade show active" id="pane-staying" role="tabpanel">
+            {% if guest_stays %}
+                {% for stay in guest_stays %}
+                <div class="card mb-3 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="card-title mb-1">{{ stay.property_name }}</h6>
+                                <p class="text-muted small mb-1">
+                                    <i class="fas fa-map-marker-alt"></i> {{ stay.address or 'Address available at check-in' }}
+                                </p>
+                                <p class="small mb-1">
+                                    📅 {{ stay.check_in.strftime('%b %d') }} – {{ stay.check_out.strftime('%b %d, %Y') }}
+                                    &nbsp;|&nbsp; 👥 {{ stay.guests }} guest{% if stay.guests > 1 %}s{% endif %}
+                                </p>
+                                {% if stay.type == 'booked_for_me' %}
+                                    <p class="small text-muted mb-1">Booked for you by <strong>{{ stay.booked_by_name }}</strong></p>
+                                {% elif stay.type.startswith('event_assigned') %}
+                                    <p class="small text-muted mb-1">🎟️ Event: <strong>{{ stay.event_name }}</strong> &mdash; assigned by {{ stay.booked_by_name }}</p>
+                                {% endif %}
+                            </div>
+                            <span class="badge bg-{{ 'success' if stay.status == 'confirmed' else 'warning' }}">
+                                {{ stay.status|upper }}
+                            </span>
+                        </div>
+                        <a href="{{ url_for('accommodation.my_accommodation') }}" class="btn btn-sm btn-outline-primary mt-2">
+                            View Full Details
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-bed fa-2x text-muted mb-2"></i>
+                    <p class="text-muted mb-2">No upcoming accommodation.</p>
+                    <a href="{{ url_for('accommodation.guest_search') }}" class="btn btn-sm btn-primary">Find a Place to Stay</a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- TAB 2: What I Booked -->
+        <div class="tab-pane fade" id="pane-bookings" role="tabpanel">
+            {% if my_bookings %}
+                {% for booking in my_bookings %}
+                <div class="card mb-3 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="mb-1">{{ booking.property_name }}</h6>
+                                <p class="small text-muted mb-1">{{ booking.check_in.strftime('%b %d') }} – {{ booking.check_out.strftime('%b %d, %Y') }}</p>
+                                {% if booking.type == 'for_other' %}
+                                    <p class="small mb-0">👤 Guest: <strong>{{ booking.guest_name }}</strong></p>
+                                {% endif %}
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' }} d-block mb-1">{{ booking.status|upper }}</span>
+                                <small class="text-muted">{{ booking.currency }} {{ "%.2f"|format(booking.total_amount) }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                <a href="{{ url_for('accommodation.my_accommodation') }}" class="btn btn-sm btn-outline-secondary w-100">
+                    View All Bookings
+                </a>
+            {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-credit-card fa-2x text-muted mb-2"></i>
+                    <p class="text-muted">No bookings yet.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

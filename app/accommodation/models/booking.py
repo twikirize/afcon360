@@ -77,6 +77,10 @@ class AccommodationBooking(BaseModel):
         Index("idx_booking_status_created", "status", "created_at"),
         Index("idx_booking_dates", "check_in", "check_out"),
         Index("idx_booking_context", "context_type", "context_id"),  # ⚠️ This references context_type which is defined later
+        Index("idx_booking_primary_guest", "primary_guest_id", "primary_guest_email"),
+        Index("idx_booking_booked_by", "booked_by_user_id"),
+        Index("idx_booking_group", "group_booking_id"),
+        Index("idx_booking_type", "booking_type"),
         CheckConstraint("check_out > check_in", name="ck_valid_dates"),
         CheckConstraint("num_guests >= 1", name="ck_guests_positive"),
         CheckConstraint("num_nights >= 1", name="ck_nights_positive"),
@@ -95,7 +99,7 @@ class AccommodationBooking(BaseModel):
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False, index=True)
     accommodation_property = relationship("Property", back_populates="bookings")
 
-    guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True)
     guest = relationship("User", foreign_keys=[guest_user_id], backref="accommodation_bookings")
 
     host_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -178,6 +182,29 @@ class AccommodationBooking(BaseModel):
 
     expires_at = Column(DateTime, nullable=True)
 
+    # ==========================================
+    # NEW: Multi-guest / Third-party booking fields
+    # ==========================================
+
+    # Who is the primary guest staying (can be different from booker)
+    primary_guest_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    primary_guest_name = Column(String(255), nullable=True)
+    primary_guest_email = Column(String(255), nullable=True)
+    primary_guest_phone = Column(String(50), nullable=True)
+
+    # Who paid/booked (always the logged-in user who created the booking)
+    booked_by_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+
+    # Booking type classification
+    booking_type = Column(String(30), nullable=False, default='self')  # self, third_party, group, event_assigned
+
+    # Group bookings (multiple rooms for same trip)
+    group_booking_id = Column(String(100), nullable=True, index=True)  # UUID shared across multiple bookings
+    group_size = Column(Integer, nullable=True)  # Total people in group
+    room_number = Column(Integer, nullable=True)  # Which room in group (1,2,3...)
+
+    # Special instructions for the guest
+    guest_instructions = Column(Text, nullable=True)
 
     # -------------------------------
     # Relationships (continued)

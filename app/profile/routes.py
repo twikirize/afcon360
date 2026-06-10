@@ -238,3 +238,76 @@ def old_profile_redirect():
     else:
         flash("Please log in to view your profile.", "warning")
         return redirect(url_for("auth.login"))
+
+
+@profile_bp.route("/settings-pane")
+@login_required
+def settings_pane():
+    """Return settings pane for dashboard (loads in right panel)"""
+    from app.profile.models import get_profile_by_user
+
+    profile = get_profile_by_user(current_user.public_id)
+
+    return render_template(
+        'user/settings_pane.html',
+        profile=profile,
+        current_theme=session.get('theme', 'light'),
+        current_language=session.get('language', 'en'),
+        allow_notifications=session.get('allow_notifications', True),
+        mute_notifications=session.get('mute_notifications', False)
+    )
+
+
+@profile_bp.route("/update-settings", methods=['POST'])
+@login_required
+def update_settings():
+    """Update user settings via AJAX"""
+    from app.profile.models import get_profile_by_user
+    from app.identity.models.user import User
+
+    profile = get_profile_by_user(current_user.public_id)
+    user = User.query.filter_by(public_id=str(current_user.public_id)).first()
+
+    if request.form.get('full_name') and profile:
+        profile.full_name = request.form.get('full_name')
+    if request.form.get('email') and user:
+        user.email = request.form.get('email')
+    if request.form.get('phone_number') and profile:
+        profile.phone_number = request.form.get('phone_number')
+    if request.form.get('location') and profile:
+        parts = request.form.get('location').split(',')
+        profile.city = parts[0].strip() if parts else None
+        profile.country = parts[1].strip() if len(parts) > 1 else None
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Profile updated successfully'})
+
+
+@profile_bp.route("/update-theme", methods=['POST'])
+@login_required
+def update_theme():
+    """Update user's theme preference"""
+    data = request.get_json()
+    session['theme'] = data.get('theme', 'light')
+    return jsonify({'success': True})
+
+
+@profile_bp.route("/update-language", methods=['POST'])
+@login_required
+def update_language():
+    """Update user's language preference"""
+    data = request.get_json()
+    session['language'] = data.get('language', 'en')
+    return jsonify({'success': True})
+
+
+@profile_bp.route("/update-notification-settings", methods=['POST'])
+@login_required
+def update_notification_settings():
+    """Update notification preferences"""
+    data = request.get_json()
+    if 'allow_notifications' in data:
+        session['allow_notifications'] = data['allow_notifications']
+    if 'mute_notifications' in data:
+        session['mute_notifications'] = data['mute_notifications']
+    return jsonify({'success': True})

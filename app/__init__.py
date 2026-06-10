@@ -82,7 +82,7 @@ except ImportError:
 from flask_wtf.csrf import CSRFError
 from typing import Dict
 from app.config import get_config  # layered config with env validation
-from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client
+from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail
 from app.services.module_toggle_service import ModuleToggleService
 
 
@@ -556,6 +556,10 @@ def create_app(config_object=None) -> Flask:
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+
+    # Initialize mail
+    mail.init_app(app)
+    logger.info("✅ Mail extension initialized")
 
     # Module flag DB overrides are loaded on first request (see _run_deferred_startup)
     # This avoids a blocking DB query at startup.

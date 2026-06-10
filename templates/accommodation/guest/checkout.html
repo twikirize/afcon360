@@ -1,16 +1,8 @@
-{# templates/accommodation/guest/checkout.html #}
-{# Check if this is a pane request - if yes, don't extend base #}
-{% if request.args.get('_pane') == '1' %}
-    {% set is_pane = true %}
-{% else %}
-    {% extends "base.html" %}
-    {% set is_pane = false %}
-{% endif %}
+{# templates/accommodation/guest/checkout.html - ADD BOOKING TYPE OPTIONS #}
 
-{% if not is_pane %}
-    {% block title %}Checkout - AFCON360 Accommodation{% endblock %}
+{% extends "base.html" %}
 
-    {% block content %}
+{% block content %}
 <div class="container py-4">
     <div class="row">
         <div class="col-lg-8">
@@ -21,26 +13,118 @@
                 <div class="card-body">
                     <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest_checkout') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <!-- Guest Information -->
-                        <h5 class="mb-3">Guest Details</h5>
-                        <div class="row mb-4">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Full Name *</label>
-                                <input type="text" name="guest_name" class="form-control"
-                                       value="{{ current_user.username or '' }}" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Email *</label>
-                                <input type="email" name="guest_email" class="form-control"
-                                       value="{{ current_user.email }}" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Phone Number</label>
-                                <input type="tel" name="guest_phone" class="form-control">
+                        
+                        <!-- ============================================================ -->
+                        <!-- STEP 1: WHO IS THIS BOOKING FOR? -->
+                        <!-- ============================================================ -->
+                        <h5 class="mb-3">Who is this booking for?</h5>
+                        <div class="mb-4">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="booking-type-card" onclick="selectBookingType('self')">
+                                        <div class="form-check">
+                                            <input type="radio" name="booking_type" value="self" id="bookingSelf" class="form-check-input" checked>
+                                            <label class="form-check-label fw-bold" for="bookingSelf">
+                                                <i class="fas fa-user"></i> Myself
+                                            </label>
+                                        </div>
+                                        <p class="small text-muted mt-2 mb-0">I will be staying at this property</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="booking-type-card" onclick="selectBookingType('third_party')">
+                                        <div class="form-check">
+                                            <input type="radio" name="booking_type" value="third_party" id="bookingThirdParty" class="form-check-input">
+                                            <label class="form-check-label fw-bold" for="bookingThirdParty">
+                                                <i class="fas fa-users"></i> Someone Else
+                                            </label>
+                                        </div>
+                                        <p class="small text-muted mt-2 mb-0">I'm booking for family/friend</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="booking-type-card" onclick="selectBookingType('group')">
+                                        <div class="form-check">
+                                            <input type="radio" name="booking_type" value="group" id="bookingGroup" class="form-check-input">
+                                            <label class="form-check-label fw-bold" for="bookingGroup">
+                                                <i class="fas fa-hotel"></i> Multiple Rooms
+                                            </label>
+                                        </div>
+                                        <p class="small text-muted mt-2 mb-0">Book multiple rooms for a group</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-
-                        <!-- Booking Details -->
+                        
+                        <!-- ============================================================ -->
+                        <!-- STEP 2: GUEST DETAILS (for third-party booking) -->
+                        <!-- ============================================================ -->
+                        <div id="thirdPartySection" style="display: none;">
+                            <h5 class="mb-3 mt-4">Guest Details (Who is staying)</h5>
+                            <div class="row mb-4">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Guest Full Name *</label>
+                                    <input type="text" name="primary_guest_name" class="form-control" placeholder="Full name of person staying">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Guest Email *</label>
+                                    <input type="email" name="primary_guest_email" class="form-control" placeholder="Email for booking confirmation">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Guest Phone</label>
+                                    <input type="tel" name="primary_guest_phone" class="form-control" placeholder="Phone number">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Special Instructions for Guest</label>
+                                    <textarea name="guest_instructions" class="form-control" rows="2" placeholder="Any special instructions for the guest? (e.g., door code, parking instructions)"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ============================================================ -->
+                        <!-- STEP 3: GROUP BOOKING DETAILS -->
+                        <!-- ============================================================ -->
+                        <div id="groupSection" style="display: none;">
+                            <h5 class="mb-3 mt-4">Group Booking Details</h5>
+                            <div class="row mb-4">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Total Rooms Needed</label>
+                                    <input type="number" name="total_rooms" id="totalRooms" class="form-control" min="1" max="20" value="2">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Room Number (this booking)</label>
+                                    <input type="number" name="room_number" id="roomNumber" class="form-control" min="1" value="1" readonly>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Guests in this Room</label>
+                                    <input type="number" name="num_guests" class="form-control" value="{{ booking.num_guests }}" min="1" max="{{ booking.max_guests }}">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ============================================================ -->
+                        <!-- STEP 4: YOUR CONTACT INFO (Booker) -->
+                        <!-- ============================================================ -->
+                        <h5 class="mb-3 mt-4">Your Contact Information</h5>
+                        <div class="row mb-4">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Your Name</label>
+                                <input type="text" class="form-control" value="{{ current_user.username or current_user.email }}" disabled>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Your Email</label>
+                                <input type="email" class="form-control" value="{{ current_user.email }}" disabled>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Your Phone (for booking confirmation)</label>
+                                <input type="tel" name="guest_phone" class="form-control" value="{{ current_user.phone or '' }}">
+                                <small class="text-muted">We'll send booking updates here</small>
+                            </div>
+                        </div>
+                        
+                        <!-- ============================================================ -->
+                        <!-- STEP 5: BOOKING DETAILS (from property) -->
+                        <!-- ============================================================ -->
                         <h5 class="mb-3">Booking Details</h5>
                         <div class="bg-light p-3 rounded mb-4">
                             <div class="row">
@@ -57,18 +141,18 @@
                                     <strong>Check-out:</strong> {{ booking.check_out }}
                                 </div>
                                 <div class="col-md-4 mb-2">
-                                    <strong>Guests:</strong> {{ booking.num_guests }}
+                                    <strong>Guests:</strong> <span id="guestCountDisplay">{{ booking.num_guests }}</span>
                                 </div>
                             </div>
                         </div>
-
+                        
                         <!-- Hidden fields -->
                         <input type="hidden" name="property_id" value="{{ booking.property_id }}">
                         <input type="hidden" name="host_user_id" value="{{ booking.host_user_id }}">
                         <input type="hidden" name="check_in" value="{{ booking.check_in }}">
                         <input type="hidden" name="check_out" value="{{ booking.check_out }}">
-                        <input type="hidden" name="num_guests" value="{{ booking.num_guests }}">
-
+                        <input type="hidden" name="group_booking_id" id="groupBookingId" value="">
+                        
                         <!-- Special Requests -->
                         <h5 class="mb-3">Special Requests</h5>
                         <div class="mb-4">
@@ -76,7 +160,7 @@
                                       placeholder="Any special requests? (e.g., late check-in, dietary requirements)"></textarea>
                             <small class="text-muted">We'll pass these on to the host</small>
                         </div>
-
+                        
                         <!-- Terms -->
                         <div class="form-check mb-4">
                             <input type="checkbox" class="form-check-input" id="terms" required>
@@ -85,7 +169,7 @@
                                 <a href="#" target="_blank">cancellation policy</a>
                             </label>
                         </div>
-
+                        
                         <button type="submit" class="btn btn-primary btn-lg w-100" id="submit-btn">
                             Confirm and Pay
                         </button>
@@ -93,8 +177,8 @@
                 </div>
             </div>
         </div>
-
-        <!-- Price Summary -->
+        
+        <!-- Price Summary (same as before) -->
         <div class="col-lg-4">
             <div class="card shadow-sm sticky-top" style="top: 20px;">
                 <div class="card-header bg-white">
@@ -125,6 +209,60 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/modules/accommodation/checkout.js') }}"></script>
+<script>
+let groupBookingId = null;
+
+function selectBookingType(type) {
+    // Update radio buttons
+    document.getElementById('bookingSelf').checked = (type === 'self');
+    document.getElementById('bookingThirdParty').checked = (type === 'third_party');
+    document.getElementById('bookingGroup').checked = (type === 'group');
+    
+    // Show/hide sections
+    document.getElementById('thirdPartySection').style.display = type === 'third_party' ? 'block' : 'none';
+    document.getElementById('groupSection').style.display = type === 'group' ? 'block' : 'none';
+    
+    // Generate group ID if needed
+    if (type === 'group' && !groupBookingId) {
+        groupBookingId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        document.getElementById('groupBookingId').value = groupBookingId;
+    }
+}
+
+// Update guest count display
+document.querySelector('[name="num_guests"]')?.addEventListener('change', function() {
+    document.getElementById('guestCountDisplay').innerText = this.value;
+});
+
+// Update room number when total rooms changes
+document.getElementById('totalRooms')?.addEventListener('change', function() {
+    let roomNumberInput = document.getElementById('roomNumber');
+    let currentRoom = parseInt(roomNumberInput.value);
+    let totalRooms = parseInt(this.value);
+    
+    if (currentRoom > totalRooms) {
+        roomNumberInput.value = totalRooms;
+    }
+    roomNumberInput.max = totalRooms;
+    roomNumberInput.readOnly = false;
+});
+</script>
+
+<style>
+.booking-type-card {
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.booking-type-card:hover {
+    border-color: #667eea;
+    background-color: #f8f9ff;
+}
+.booking-type-card:has(input:checked) {
+    border-color: #667eea;
+    background-color: #f0f4ff;
+}
+</style>
 {% endblock %}
-{% endif %}

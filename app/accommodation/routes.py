@@ -5,6 +5,7 @@ Consolidated accommodation routes - all routes in one file for optimization
 
 import calendar
 import logging
+import uuid
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 
@@ -17,10 +18,11 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 from flask_login import login_required, current_user
-from sqlalchemy import text
+from sqlalchemy import text, or_, and_
 
 from app import db
 from app.accommodation import accommodation_bp
@@ -33,6 +35,8 @@ from app.accommodation.models.property import (
 )
 from app.accommodation.models.booking import AccommodationBooking
 from app.accommodation.models.review import Review, AccommodationReviewStatus
+from app.identity.models.user import User
+from app.events.models import EventAssignment, Event, EventHostRegistration
 from app.accommodation.services import search_service
 from app.accommodation.services.availability_service import AvailabilityService
 from app.accommodation.services.booking_service import BookingService
@@ -323,9 +327,10 @@ def guest_detail(identifier):
 @accommodation_bp.route("/guest/checkout", methods=['GET', 'POST'], endpoint="guest_checkout")
 @login_required
 def guest_checkout():
-    """Booking checkout page"""
+    """Enhanced checkout supporting self-booking, book-for-others, and multi-room"""
+
     if request.method == 'GET':
-        booking_data = request.session.get('pending_booking')
+        booking_data = session.get('pending_booking')
         if not booking_data:
             flash('No booking in progress', 'warning')
             return redirect(url_for('accommodation.guest_search'))
@@ -337,7 +342,69 @@ def guest_checkout():
 
     try:
         data = request.form
-        required = ['property_id', 'check_in', 'check_out', 'num_guests', 'guest_name', 'guest_email']
+
+        # ============================================================
+        # Parse booking type
+        # ============================================================
+        booking_type = data.get('booking_type', 'self')  # self, third_party, group
+
+        # Initialize group-specific variables upfront to avoid NameError
+        group_booking_id = None
+        room_number = 1
+        total_rooms = 1
+
+        # ============================================================
+        # Determine guest info (who is staying)
+        # ============================================================
+        if booking_type == 'self':
+            # I am staying
+            primary_guest_id = current_user.id
+            primary_guest_name = current_user.username or data.get('guest_name')
+            primary_guest_email = current_user.email
+            primary_guest_phone = data.get('guest_phone')
+            guest_user_id = current_user.id
+
+        elif booking_type == 'third_party':
+            # Booking for someone else
+            primary_guest_name = data.get('primary_guest_name')
+            primary_guest_email = data.get('primary_guest_email')
+            primary_guest_phone = data.get('primary_guest_phone')
+            primary_guest_id = None
+
+            # Try to find if guest already has an account
+            from app.identity.models.user import User
+            guest_user = User.query.filter_by(email=primary_guest_email).first()
+            if guest_user:
+                primary_guest_id = guest_user.id
+                guest_user_id = guest_user.id
+            else:
+                guest_user_id = None  # Guest not registered
+
+        elif booking_type == 'group':
+            # Part of a group booking (multiple rooms)
+            group_booking_id = data.get('group_booking_id') or str(uuid.uuid4())
+            room_number = int(data.get('room_number', 1))
+            total_rooms = int(data.get('total_rooms', 1))
+            # Guest info for this room
+            primary_guest_name = data.get('guest_name')
+            primary_guest_email = data.get('guest_email')
+            primary_guest_phone = data.get('guest_phone')
+            primary_guest_id = None
+
+            guest_user = User.query.filter_by(email=primary_guest_email).first()
+            if guest_user:
+                primary_guest_id = guest_user.id
+                guest_user_id = guest_user.id
+            else:
+                guest_user_id = None
+
+        # ============================================================
+        # Validate required fields
+        # ============================================================
+        required = ['property_id', 'check_in', 'check_out', 'num_guests']
+        if booking_type == 'third_party':
+            required.extend(['primary_guest_name', 'primary_guest_email'])
+
         for field in required:
             if not data.get(field):
                 flash(f'Missing required field: {field}', 'danger')
@@ -346,46 +413,76 @@ def guest_checkout():
         check_in = datetime.strptime(data['check_in'], '%Y-%m-%d').date()
         check_out = datetime.strptime(data['check_out'], '%Y-%m-%d').date()
 
+        # ============================================================
+        # Create booking with enhanced fields
+        # ============================================================
         import hashlib
         import json
+        import uuid
+
         idempotency_data = {
             'user_id': current_user.id,
             'property_id': int(data['property_id']),
             'check_in': data['check_in'],
             'check_out': data['check_out'],
-            'num_guests': int(data['num_guests'])
+            'num_guests': int(data['num_guests']),
+            'booking_type': booking_type,
+            'primary_guest_email': primary_guest_email if booking_type == 'third_party' else current_user.email,
         }
         idempotency_key = hashlib.sha256(
             json.dumps(idempotency_data, sort_keys=True).encode()
         ).hexdigest()
 
+        # Get property to verify owner
+        from app.accommodation.models.property import Property
+        property_obj = Property.query.get(int(data['property_id']))
+        if not property_obj:
+            flash('Property not found', 'danger')
+            return redirect(url_for('accommodation.guest_search'))
+
+        # Determine host_user_id (property owner)
+        host_user_id = property_obj.owner_user_id or property_obj.owner_org_id
+
         booking, error = BookingService.create_booking(
             property_id=int(data['property_id']),
-            guest_user_id=current_user.id,
-            host_user_id=int(data['host_user_id']),
+            guest_user_id=guest_user_id if guest_user_id else current_user.id,
+            host_user_id=host_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=int(data['num_guests']),
-            guest_name=data['guest_name'],
-            guest_email=data['guest_email'],
-            guest_phone=data.get('guest_phone'),
+            guest_name=primary_guest_name,
+            guest_email=primary_guest_email,
+            guest_phone=primary_guest_phone,
             special_requests=data.get('special_requests'),
             idempotency_key=idempotency_key,
             ip_address=request.remote_addr,
             user_agent=request.headers.get('User-Agent'),
             context_type=data.get('context_type'),
             context_id=data.get('context_id'),
-            context_metadata=data.get('context_metadata')
+            context_metadata=data.get('context_metadata'),
+            # NEW FIELDS:
+            booked_by_user_id=current_user.id,
+            primary_guest_id=primary_guest_id,
+            primary_guest_name=primary_guest_name,
+            primary_guest_email=primary_guest_email,
+            primary_guest_phone=primary_guest_phone,
+            booking_type=booking_type,
+            group_booking_id=data.get('group_booking_id') if booking_type == 'group' else None,
+            room_number=int(data.get('room_number', 1)) if booking_type == 'group' else None,
+            guest_instructions=data.get('guest_instructions'),
         )
 
         if error:
             flash(error, 'danger')
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
+        # ============================================================
+        # Process payment
+        # ============================================================
         success, txn_id, payment_error = WalletService.charge_wallet(
             user_id=current_user.id,
             amount=booking.total_amount,
-            description=f"Accommodation booking: {booking.booking_reference}",
+            description=f"Accommodation booking: {booking.booking_reference} - for {primary_guest_name}",
             idempotency_key=idempotency_key
         )
 
@@ -411,8 +508,34 @@ def guest_checkout():
             flash(f'Booking confirmation failed: {confirm_error}', 'danger')
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
-        request.session.pop('pending_booking', None)
-        flash(f'Booking confirmed! Your reference: {booking.booking_reference}', 'success')
+        session.pop('pending_booking', None)
+
+        # ============================================================
+        # Send notifications
+        # ============================================================
+        # Notify the guest (if different from booker)
+        if booking_type == 'third_party' and primary_guest_email != current_user.email:
+            # Send email to guest with booking details
+            logger.info(
+                f"Third-party booking notification: booking={booking.booking_reference}, "
+                f"guest={primary_guest_email}, booker={current_user.email}"
+            )
+
+        # For group bookings, offer to book another room
+        if booking_type == 'group' and room_number < total_rooms:
+            flash(f'Room {room_number} of {total_rooms} booked successfully! Would you like to book another room for your group?', 'info')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id'],
+                                    check_in=data['check_in'], check_out=data['check_out'],
+                                    group_booking_id=group_booking_id, room_number=room_number + 1, total_rooms=total_rooms))
+
+        # Final confirmation
+        if booking_type == 'third_party':
+            flash(f'Booking confirmed for {primary_guest_name}! They will receive an email with details.', 'success')
+        elif booking_type == 'group':
+            flash(f'All {total_rooms} rooms booked successfully for your group!', 'success')
+        else:
+            flash(f'Booking confirmed! Your reference: {booking.booking_reference}', 'success')
+
         return redirect(url_for('accommodation.guest_confirmation', reference=booking.booking_reference))
 
     except Exception as e:
@@ -463,6 +586,290 @@ def guest_my_bookings():
     )
 
 
+@accommodation_bp.route("/my-accommodation", endpoint="my_accommodation")
+@login_required
+def my_accommodation():
+    """
+    Unified accommodation dashboard showing:
+    1. Where I'm staying (guest view) - all sources
+    2. What I booked (booker view) - what I paid for
+    """
+    from app.events.models import EventAssignment, Event, EventHostRegistration
+    from app.accommodation.models.booking import AccommodationBooking, BookingContextType
+    from app.accommodation.models.property import Property
+    from sqlalchemy import or_, and_
+    from datetime import datetime
+
+    current_user_id = current_user.id
+    current_user_email = current_user.email
+
+    # ============================================================
+    # SECTION 1: WHERE I'M STAYING (Guest View)
+    # ============================================================
+
+    guest_stays = []
+
+    # 1A. Self-booked stays (I booked for myself, I am the guest)
+    self_booked = AccommodationBooking.query.filter(
+        AccommodationBooking.guest_user_id == current_user_id,
+        AccommodationBooking.status.in_(['confirmed', 'checked_in']),
+        AccommodationBooking.is_deleted == False
+    ).all()
+
+    for booking in self_booked:
+        guest_stays.append({
+            'type': 'self_booked',
+            'source': 'booking',
+            'booking_id': booking.id,
+            'booking_reference': booking.booking_reference,
+            'property_name': booking.accommodation_property.title if booking.accommodation_property else 'Property',
+            'property_id': booking.property_id,
+            'check_in': booking.check_in,
+            'check_out': booking.check_out,
+            'nights': booking.num_nights,
+            'guests': booking.num_guests,
+            'status': booking.status,
+            'payment_status': booking.payment_status,
+            'total_amount': float(booking.total_amount),
+            'currency': booking.currency,
+            'booked_by': 'Myself',
+            'booked_by_name': current_user.username,
+            'can_cancel': booking.can_cancel()[0] if hasattr(booking, 'can_cancel') else False,
+            'cancellation_policy': booking.accommodation_property.cancellation_policy.value if booking.accommodation_property else None,
+            'host_contact': {
+                'name': booking.accommodation_property.owner_display_name if booking.accommodation_property else None,
+                'phone': booking.accommodation_property.owner_user.phone if booking.accommodation_property and booking.accommodation_property.owner_user else None,
+                'email': booking.accommodation_property.owner_user.email if booking.accommodation_property and booking.accommodation_property.owner_user else None,
+            } if booking.accommodation_property else None,
+            'address': booking.accommodation_property.full_address if booking.accommodation_property else None,
+            'images': booking.accommodation_property.gallery[:3] if booking.accommodation_property and booking.accommodation_property.gallery else [],
+        })
+
+    # 1B. Booked for me by someone else (third-party booking where I am primary guest)
+    third_party_for_me = AccommodationBooking.query.filter(
+        and_(
+            or_(
+                AccommodationBooking.primary_guest_id == current_user_id,
+                AccommodationBooking.primary_guest_email == current_user_email
+            ),
+            AccommodationBooking.booking_type == 'third_party',
+            AccommodationBooking.status.in_(['confirmed', 'checked_in']),
+            AccommodationBooking.is_deleted == False
+        )
+    ).all()
+
+    for booking in third_party_for_me:
+        booker = User.query.get(booking.booked_by_user_id)
+        guest_stays.append({
+            'type': 'booked_for_me',
+            'source': 'booking',
+            'booking_id': booking.id,
+            'booking_reference': booking.booking_reference,
+            'property_name': booking.accommodation_property.title if booking.accommodation_property else 'Property',
+            'property_id': booking.property_id,
+            'check_in': booking.check_in,
+            'check_out': booking.check_out,
+            'nights': booking.num_nights,
+            'guests': booking.num_guests,
+            'status': booking.status,
+            'payment_status': booking.payment_status,
+            'total_amount': float(booking.total_amount),
+            'currency': booking.currency,
+            'booked_by': 'Someone else',
+            'booked_by_name': booker.username if booker else 'Unknown',
+            'can_cancel': False,  # Only the booker can cancel
+            'cancellation_policy': booking.accommodation_property.cancellation_policy.value if booking.accommodation_property else None,
+            'host_contact': {
+                'name': booking.accommodation_property.owner_display_name if booking.accommodation_property else None,
+                'phone': booking.accommodation_property.owner_user.phone if booking.accommodation_property and booking.accommodation_property.owner_user else None,
+                'email': booking.accommodation_property.owner_user.email if booking.accommodation_property and booking.accommodation_property.owner_user else None,
+            } if booking.accommodation_property else None,
+            'address': booking.accommodation_property.full_address if booking.accommodation_property else None,
+            'images': booking.accommodation_property.gallery[:3] if booking.accommodation_property and booking.accommodation_property.gallery else [],
+            'guest_instructions': booking.guest_instructions,
+        })
+
+    # 1C. Assigned to me by event organizer
+    assignments = EventAssignment.query.filter_by(
+        attendee_id=current_user_id,
+        status='active'
+    ).all()
+
+    for assignment in assignments:
+        event = Event.query.get(assignment.event_id)
+        if not event:
+            continue
+
+        # Check if hotel booking
+        if assignment.accommodation_booking_id:
+            booking = AccommodationBooking.query.get(assignment.accommodation_booking_id)
+            if booking and booking.accommodation_property:
+                guest_stays.append({
+                    'type': 'event_assigned_hotel',
+                    'source': 'assignment',
+                    'assignment_id': assignment.id,
+                    'event_id': event.id,
+                    'event_name': event.name,
+                    'event_slug': event.slug,
+                    'event_dates': f"{event.start_date} - {event.end_date}" if event.start_date else None,
+                    'booking_reference': booking.booking_reference,
+                    'property_name': booking.accommodation_property.title,
+                    'property_id': booking.property_id,
+                    'check_in': booking.check_in,
+                    'check_out': booking.check_out,
+                    'nights': booking.num_nights,
+                    'guests': booking.num_guests,
+                    'status': booking.status,
+                    'total_amount': float(booking.total_amount),
+                    'currency': booking.currency,
+                    'booked_by': f"Event Organizer ({event.organizer.username if event.organizer else 'Unknown'})",
+                    'booked_by_name': event.organizer.username if event.organizer else 'Event Organizer',
+                    'can_cancel': False,
+                    'host_contact': {
+                        'name': booking.accommodation_property.owner_display_name,
+                        'phone': booking.accommodation_property.owner_user.phone if booking.accommodation_property.owner_user else None,
+                        'email': booking.accommodation_property.owner_user.email if booking.accommodation_property.owner_user else None,
+                    },
+                    'address': booking.accommodation_property.full_address,
+                    'images': booking.accommodation_property.gallery[:3] if booking.accommodation_property.gallery else [],
+                })
+
+        # Check if community host
+        elif assignment.community_host_id:
+            property_obj = Property.query.get(assignment.community_host_id)
+            host_reg = EventHostRegistration.query.filter_by(
+                event_id=event.id,
+                property_id=assignment.community_host_id
+            ).first()
+
+            if property_obj:
+                guest_stays.append({
+                    'type': 'event_assigned_community',
+                    'source': 'assignment',
+                    'assignment_id': assignment.id,
+                    'event_id': event.id,
+                    'event_name': event.name,
+                    'event_slug': event.slug,
+                    'event_dates': f"{event.start_date} - {event.end_date}" if event.start_date else None,
+                    'property_name': property_obj.title,
+                    'property_id': property_obj.id,
+                    'check_in': event.start_date,  # Use event dates for community hosts
+                    'check_out': event.end_date,
+                    'guests': host_reg.max_guests if host_reg else property_obj.max_guests,
+                    'status': 'confirmed',
+                    'is_free': host_reg.is_free if host_reg else property_obj.base_price_per_night == 0,
+                    'price_per_night': float(host_reg.price_per_night) if host_reg and host_reg.price_per_night else float(property_obj.base_price_per_night),
+                    'currency': host_reg.currency if host_reg else property_obj.currency,
+                    'booked_by': f"Event Organizer ({event.organizer.username if event.organizer else 'Unknown'})",
+                    'can_cancel': False,
+                    'host_contact': {
+                        'name': property_obj.owner_display_name,
+                        'phone': property_obj.owner_user.phone if property_obj.owner_user else None,
+                        'email': property_obj.owner_user.email if property_obj.owner_user else None,
+                    },
+                    'address': property_obj.full_address,
+                    'house_rules': property_obj.house_rules,
+                    'special_instructions': host_reg.special_instructions if host_reg else None,
+                    'images': property_obj.gallery[:3] if property_obj.gallery else [],
+                })
+
+    # ============================================================
+    # SECTION 2: WHAT I BOOKED (Booker View - What I paid for)
+    # ============================================================
+
+    my_bookings = []
+
+    # All bookings I made (as booker)
+    bookings_i_made = AccommodationBooking.query.filter(
+        AccommodationBooking.booked_by_user_id == current_user_id,
+        AccommodationBooking.is_deleted == False
+    ).order_by(AccommodationBooking.created_at.desc()).all()
+
+    for booking in bookings_i_made:
+        # Determine if this is for me or for someone else
+        is_for_me = (booking.guest_user_id == current_user_id)
+
+        # Get guest info
+        if booking.primary_guest_id:
+            guest_user = User.query.get(booking.primary_guest_id)
+            guest_name = guest_user.username if guest_user else booking.primary_guest_name
+            guest_email = guest_user.email if guest_user else booking.primary_guest_email
+        elif booking.guest_user_id:
+            guest_user = User.query.get(booking.guest_user_id)
+            guest_name = guest_user.username if guest_user else booking.guest_name
+            guest_email = guest_user.email if guest_user else booking.guest_email
+        else:
+            guest_name = booking.guest_name
+            guest_email = booking.guest_email
+
+        my_bookings.append({
+            'type': 'for_self' if is_for_me else 'for_other',
+            'booking_id': booking.id,
+            'booking_reference': booking.booking_reference,
+            'property_name': booking.accommodation_property.title if booking.accommodation_property else 'Property',
+            'property_id': booking.property_id,
+            'check_in': booking.check_in,
+            'check_out': booking.check_out,
+            'nights': booking.num_nights,
+            'guests': booking.num_guests,
+            'status': booking.status,
+            'payment_status': booking.payment_status,
+            'total_amount': float(booking.total_amount),
+            'currency': booking.currency,
+            'paid_at': booking.paid_at,
+            'guest_name': guest_name,
+            'guest_email': guest_email,
+            'guest_phone': booking.primary_guest_phone or booking.guest_phone,
+            'is_group_booking': booking.group_booking_id is not None,
+            'group_id': booking.group_booking_id,
+            'room_number': booking.room_number,
+            'can_cancel': booking.can_cancel()[0] if hasattr(booking, 'can_cancel') else False,
+            'property_image': booking.accommodation_property.main_image if booking.accommodation_property else None,
+        })
+
+    # Group bookings summary (for display)
+    group_bookings = {}
+    for booking in my_bookings:
+        if booking.get('group_id'):
+            if booking['group_id'] not in group_bookings:
+                group_bookings[booking['group_id']] = {
+                    'rooms': [],
+                    'total_guests': 0,
+                    'total_amount': 0,
+                    'check_in': booking['check_in'],
+                    'check_out': booking['check_out'],
+                    'property_name': booking['property_name'],
+                }
+            group_bookings[booking['group_id']]['rooms'].append(booking)
+            group_bookings[booking['group_id']]['total_guests'] += booking['guests']
+            group_bookings[booking['group_id']]['total_amount'] += booking['total_amount']
+
+    # Sort guest stays by check-in date (upcoming first)
+    guest_stays.sort(key=lambda x: x.get('check_in') or datetime.max.date())
+
+    # ============================================================
+    # RENDER
+    # ============================================================
+
+    # Check if pane request (for dashboard embedding)
+    if request.args.get('_pane') == '1':
+        return render_template(
+            'accommodation/my_accommodation_pane.html',
+            guest_stays=guest_stays,
+            my_bookings=my_bookings,
+            group_bookings=group_bookings,
+            now=datetime.utcnow()
+        )
+
+    return render_template(
+        'accommodation/my_accommodation.html',
+        guest_stays=guest_stays,
+        my_bookings=my_bookings,
+        group_bookings=group_bookings,
+        now=datetime.utcnow()
+    )
+
+
 @accommodation_bp.route("/guest/booking/<reference>/cancel", methods=['POST'], endpoint="guest_cancel_booking")
 @login_required
 def guest_cancel_booking(reference):
@@ -473,7 +880,10 @@ def guest_cancel_booking(reference):
         flash('Booking not found', 'danger')
         return redirect(url_for('accommodation.guest_my_bookings'))
 
-    if booking.guest_user_id != current_user.id:
+    # Allow cancellation if current user is the guest OR the booker (for third-party bookings)
+    is_guest = booking.guest_user_id == current_user.id
+    is_booker = booking.booked_by_user_id == current_user.id
+    if not is_guest and not is_booker:
         flash('You are not authorized to cancel this booking', 'danger')
         return redirect(url_for('accommodation.guest_my_bookings'))
 
@@ -1150,7 +1560,7 @@ def admin_flag_review(id):
 
 @accommodation_bp.route("/explore", endpoint="explore")
 @login_required
-@require_role('fan', 'admin', 'owner')
+#@require_role('fan', 'admin', 'owner')
 def explore():
     """Explore accommodations with interactive map"""
     return render_template("accommodation/explore.html")

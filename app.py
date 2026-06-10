@@ -3,6 +3,14 @@ import sys
 import time
 import logging
 
+import os
+
+print("APP_ENV =", os.getenv("APP_ENV"))
+print("FLASK_ENV =", os.getenv("FLASK_ENV"))
+#print("DATABASE_URL =", os.getenv("DATABASE_URL"))
+print("REDIS_URL =", os.getenv("REDIS_URL"))
+
+
 # Setup logging to show errors in console
 logging.basicConfig(
     level=logging.INFO,

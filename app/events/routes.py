@@ -1,4 +1,4 @@
-﻿# app/events/routes.py
+# app/events/routes.py
 
 """
 Event routes - Unified entry points for all user roles
@@ -286,27 +286,9 @@ def my_registrations():
     # Get current date for filtering
     from datetime import date
     current_date = date.today().isoformat()
-
-    # Enrich registrations with assignment data
+    
+    # Service now returns fully enriched data - no manual loop needed
     all_registrations = data['upcoming_registrations'] + data['past_registrations']
-    for reg in all_registrations:
-        # Get assignment for this registration
-        try:
-            from app.events.models import EventAssignment, Event
-            # Safely access event slug - event dict is always present now
-            event_slug = reg.get('event', {}).get('slug')
-            if event_slug:
-                event = Event.query.filter_by(slug=event_slug).first()
-                if event:
-                    assignment = EventAssignment.query.filter_by(
-                        event_id=event.id,
-                        attendee_id=current_user.id
-                    ).first()
-                    if assignment:
-                        reg['assignment'] = EventService._assignment_to_dict(assignment)
-        except Exception as e:
-            logger.warning(f"Could not load assignment for registration {reg.get('id')}: {e}")
-
     return render_template('user/my_registrations.html',
                            registrations=all_registrations,
                            wallet_balance=wallet_balance,
@@ -2093,3 +2075,108 @@ def moderate_action(id, action):
     return redirect(url_for('events.moderate'))
 
 
+# ============================================================================
+# CONTACT ORGANIZER ROUTES
+# ============================================================================
+
+@events_bp.route("/<int:event_id>/contact-organizer", methods=['POST'])
+@login_required
+def contact_organizer(event_id):
+    """Send a message to event organizer"""
+    try:
+        from app.events.models import Event, OrganizerMessage
+        from app.identity.models.user import User
+        from flask_mail import Message
+        from app.extensions import mail
+        
+        data = request.get_json()
+        message_text = data.get('message')
+        
+        if not message_text:
+            return jsonify({'success': False, 'error': 'Message is required'}), 400
+        
+        event = Event.query.get(event_id)
+        if not event:
+            return jsonify({'success': False, 'error': 'Event not found'}), 404
+        
+        # Save message to database
+        new_message = OrganizerMessage(
+            event_id=event_id,
+            user_id=current_user.id,
+            message=message_text,
+            status='unread'
+        )
+        db.session.add(new_message)
+        db.session.commit()
+        
+        # Send email to organizer
+        organizer = User.query.get(event.organizer_id) if event.organizer_id else None
+        if organizer and organizer.email:
+            msg = Message(
+                subject=f"[AFCON360] New message about {event.name}",
+                recipients=[organizer.email],
+                reply_to=current_user.email
+            )
+            msg.html = render_template('email/organizer_message.html',
+                event_name=event.name,
+                user_name=current_user.username or current_user.email,
+                user_email=current_user.email,
+                message=message_text
+            )
+            mail.send(msg)
+        
+        # Send confirmation to user
+        confirm_msg = Message(
+            subject=f"[AFCON360] Your message to {event.name} was sent",
+            recipients=[current_user.email]
+        )
+        confirm_msg.html = render_template('email/message_confirmation.html',
+            event_name=event.name,
+            user_name=current_user.username or current_user.email
+        )
+        mail.send(confirm_msg)
+        
+        return jsonify({'success': True, 'message': 'Message sent to organizer'})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error contacting organizer: {e}")
+        return jsonify({'success': False, 'error': 'Failed to send message'}), 500
+
+
+@events_bp.route("/messages/<int:message_id>/read", methods=['POST'])
+@login_required
+def mark_message_read(message_id):
+    """Mark a message as read (organizer only)"""
+    try:
+        from app.events.models import OrganizerMessage
+        
+        message = OrganizerMessage.query.get(message_id)
+        if not message:
+            return jsonify({'success': False, 'error': 'Message not found'}), 404
+        
+        # Verify user is the event organizer
+        if message.event.organizer_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        message.status = 'read'
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@events_bp.route("/organizer/messages")
+@login_required
+def organizer_messages():
+    """View messages from attendees (organizer only)"""
+    from app.events.models import OrganizerMessage, Event
+    
+    messages = OrganizerMessage.query.join(Event)\
+        .filter(Event.organizer_id == current_user.id)\
+        .order_by(OrganizerMessage.created_at.desc())\
+        .all()
+    
+    return render_template('events/organizer/messages.html', messages=messages)

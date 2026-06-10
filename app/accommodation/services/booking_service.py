@@ -78,6 +78,16 @@ class BookingService:
         context_type: 'BookingContextType' = None,  # Will import at top
         context_id: str = None,
         context_metadata: dict = None,
+        # NEW PARAMETERS
+        booked_by_user_id: int = None,
+        primary_guest_id: int = None,
+        primary_guest_name: str = None,
+        primary_guest_email: str = None,
+        primary_guest_phone: str = None,
+        booking_type: str = 'self',
+        group_booking_id: str = None,
+        room_number: int = None,
+        guest_instructions: str = None,
     ) -> Tuple[Optional[AccommodationBooking], Optional[str]]:
 
 
@@ -169,13 +179,23 @@ class BookingService:
                 guest_email=guest_email,
                 guest_phone=guest_phone,
                 special_requests=special_requests,
-                context_type=context_type or BookingContextType.NONE,
+                context_type=enum_value(context_type) if context_type else BookingContextType.NONE.value,
                 context_id=context_id,
                 context_metadata=context_metadata or {},
                 idempotency_key=idempotency_key,
                 status=AccommodationBookingStatus.PENDING.value,
                 payment_status=AccommodationPaymentStatus.PENDING.value,
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15)  # 15 min hold
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),  # 15 min hold
+                # NEW FIELDS
+                booked_by_user_id=booked_by_user_id or guest_user_id,  # Default to guest if not specified
+                primary_guest_id=primary_guest_id,
+                primary_guest_name=primary_guest_name or guest_name,
+                primary_guest_email=primary_guest_email or guest_email,
+                primary_guest_phone=primary_guest_phone or guest_phone,
+                booking_type=booking_type,
+                group_booking_id=group_booking_id,
+                room_number=room_number,
+                guest_instructions=guest_instructions,
             )
 
             booking.generate_reference()
@@ -230,7 +250,7 @@ class BookingService:
             return False, "Booking already paid and confirmed"
 
         if booking.status != AccommodationBookingStatus.PENDING.value:
-            return False, f"Cannot confirm booking in {booking.status.value} state"
+            return False, f"Cannot confirm booking in {booking.status!r} state"
 
         if booking.expires_at and booking.expires_at < datetime.now(timezone.utc):
             return False, "Booking has expired. Please create a new booking."
@@ -256,7 +276,7 @@ class BookingService:
             )
 
             # 3. UPDATE PAYMENT STATUS
-            booking.payment_status = AccommodationPaymentStatus.PAID
+            booking.payment_status = AccommodationPaymentStatus.PAID.value
             booking.wallet_txn_id = wallet_transaction_id
             booking.paid_at = datetime.now(timezone.utc)
 
@@ -335,7 +355,7 @@ class BookingService:
             # 3. PROCESS REFUND IF APPLICABLE
             if refund and refund > 0:
                 booking.refund_amount = refund
-                booking.payment_status = AccommodationPaymentStatus.REFUNDED
+                booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
                 booking.refunded_at = datetime.now(timezone.utc)
                 BookingStateMachine.transition(
                     booking,
@@ -458,9 +478,9 @@ class BookingService:
                 logger.warning(f"Invalid context_type: {context_type}")
                 return []
 
-        # Build and execute query
+        # Build and execute query (DB stores string values, not enum objects)
         query = AccommodationBooking.query.filter_by(
-            context_type=context_type
+            context_type=context_type.value
         ).order_by(AccommodationBooking.created_at.desc())
 
         if context_id:

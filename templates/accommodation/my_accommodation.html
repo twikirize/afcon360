@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}My Accommodation - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="h2 mb-4">My Accommodation</h1>
+    
+    <!-- Tabs for Guest View vs Booker View -->
+    <ul class="nav nav-tabs mb-4" id="accommodationTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="staying-tab" data-bs-toggle="tab" data-bs-target="#staying" type="button" role="tab">
+                <i class="fas fa-bed"></i> Where I'm Staying ({{ guest_stays|length }})
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bookings-tab" data-bs-toggle="tab" data-bs-target="#bookings" type="button" role="tab">
+                <i class="fas fa-credit-card"></i> What I Booked ({{ my_bookings|length }})
+            </button>
+        </li>
+    </ul>
+    
+    <div class="tab-content">
+        <!-- TAB 1: Where I'm Staying -->
+        <div class="tab-pane fade show active" id="staying" role="tabpanel">
+            {% if guest_stays %}
+                {% for stay in guest_stays %}
+                <div class="card mb-4 shadow-sm">
+                    <div class="row g-0">
+                        <div class="col-md-3">
+                            {% if stay.images and stay.images[0] %}
+                                <img src="{{ stay.images[0] }}" class="img-fluid rounded-start" style="height: 200px; width: 100%; object-fit: cover;" alt="{{ stay.property_name }}">
+                            {% else %}
+                                <div class="bg-light rounded-start d-flex align-items-center justify-content-center" style="height: 200px;">
+                                    <i class="fas fa-hotel fa-3x text-muted"></i>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-9">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h5 class="card-title">{{ stay.property_name }}</h5>
+                                        <p class="text-muted small">
+                                            <i class="fas fa-map-marker-alt"></i> {{ stay.address or 'Address available at check-in' }}
+                                        </p>
+                                    </div>
+                                    <span class="badge bg-{{ 'success' if stay.status == 'confirmed' else 'warning' }} px-3 py-2">
+                                        {{ stay.status|upper }}
+                                    </span>
+                                </div>
+                                
+                                <!-- Stay Details -->
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <p class="mb-1"><strong>📅 Dates:</strong> {{ stay.check_in.strftime('%b %d, %Y') }} - {{ stay.check_out.strftime('%b %d, %Y') }}</p>
+                                        <p class="mb-1"><strong>👥 Guests:</strong> {{ stay.guests }} guest{% if stay.guests > 1 %}s{% endif %}</p>
+                                        {% if stay.nights %}<p class="mb-1"><strong>🏷️ Nights:</strong> {{ stay.nights }}</p>{% endif %}
+                                    </div>
+                                    <div class="col-md-6">
+                                        {% if stay.type == 'self_booked' %}
+                                            <p class="mb-1"><strong>👤 Booked by:</strong> {{ stay.booked_by_name }} (me)</p>
+                                            <p class="mb-1"><strong>💰 Total paid:</strong> {{ stay.currency }} {{ "%.2f"|format(stay.total_amount) }}</p>
+                                            {% if stay.can_cancel %}
+                                                <form method="POST" action="{{ url_for('accommodation.guest_cancel_booking', reference=stay.booking_reference) }}" class="d-inline" onsubmit="return confirm('Cancel this booking? Refund will depend on cancellation policy.')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger mt-2">
+                                                        <i class="fas fa-times"></i> Cancel Booking
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                        {% elif stay.type == 'booked_for_me' %}
+                                            <p class="mb-1"><strong>👤 Booked by:</strong> {{ stay.booked_by_name }} (for me)</p>
+                                            <p class="mb-1 text-muted"><i class="fas fa-info-circle"></i> This booking was made for you</p>
+                                        {% elif stay.type.startswith('event_assigned') %}
+                                            <p class="mb-1"><strong>🎟️ Event:</strong> {{ stay.event_name }}</p>
+                                            <p class="mb-1"><strong>👤 Assigned by:</strong> {{ stay.booked_by_name }}</p>
+                                            {% if stay.type == 'event_assigned_community' %}
+                                                <p class="mb-1"><strong>🏠 Host:</strong> {{ stay.host_contact.name if stay.host_contact else 'Community Host' }}</p>
+                                                {% if stay.is_free %}
+                                                    <span class="badge bg-success">Free Stay</span>
+                                                {% else %}
+                                                    <p class="mb-1"><strong>💰 Rate:</strong> {{ stay.currency }} {{ "%.2f"|format(stay.price_per_night) }}/night</p>
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <!-- Host Contact (if available) -->
+                                {% if stay.host_contact and stay.host_contact.name %}
+                                <hr>
+                                <div class="row">
+                                    <div class="col-12">
+                                        <p class="mb-1"><strong>🏠 Host Information:</strong></p>
+                                        <p class="mb-1 small">Name: {{ stay.host_contact.name }}</p>
+                                        {% if stay.host_contact.phone %}
+                                            <p class="mb-1 small">Phone: <a href="tel:{{ stay.host_contact.phone }}">{{ stay.host_contact.phone }}</a></p>
+                                        {% endif %}
+                                        {% if stay.host_contact.email %}
+                                            <p class="mb-1 small">Email: <a href="mailto:{{ stay.host_contact.email }}">{{ stay.host_contact.email }}</a></p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                                
+                                <!-- House Rules / Special Instructions -->
+                                {% if stay.house_rules %}
+                                <hr>
+                                <p class="mb-1"><strong>📋 House Rules:</strong></p>
+                                <p class="small text-muted">{{ stay.house_rules }}</p>
+                                {% endif %}
+                                
+                                {% if stay.guest_instructions %}
+                                <div class="alert alert-info mt-2">
+                                    <i class="fas fa-info-circle"></i> <strong>Guest Instructions:</strong> {{ stay.guest_instructions }}
+                                </div>
+                                {% endif %}
+                                
+                                <!-- Action Buttons -->
+                                <div class="mt-3">
+                                    <a href="{{ url_for('accommodation.guest_detail', identifier=stay.property_id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-info-circle"></i> View Property
+                                    </a>
+                                    {% if stay.type == 'event_assigned_community' and stay.host_contact and stay.host_contact.email %}
+                                        <a href="mailto:{{ stay.host_contact.email }}" class="btn btn-sm btn-outline-success">
+                                            <i class="fas fa-envelope"></i> Contact Host
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-bed fa-3x text-muted mb-3"></i>
+                    <h3>No Upcoming Stays</h3>
+                    <p class="text-muted">You don't have any upcoming accommodation.</p>
+                    <a href="{{ url_for('accommodation.guest_search') }}" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Find a Place to Stay
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- TAB 2: What I Booked -->
+        <div class="tab-pane fade" id="bookings" role="tabpanel">
+            {% if my_bookings %}
+                <!-- Group Bookings Summary -->
+                {% if group_bookings %}
+                <div class="alert alert-info mb-4">
+                    <i class="fas fa-hotel"></i> <strong>Group Booking:</strong> You have booked 
+                    {% for group_id, group in group_bookings.items() %}
+                        {{ group.rooms|length }} room{% if group.rooms|length > 1 %}s{% endif %} for your group
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                {% for booking in my_bookings %}
+                <div class="card mb-3 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h5 class="card-title">{{ booking.property_name }}</h5>
+                                <p class="text-muted small">
+                                    <i class="fas fa-calendar-alt"></i> {{ booking.check_in.strftime('%b %d, %Y') }} - {{ booking.check_out.strftime('%b %d, %Y') }}
+                                </p>
+                            </div>
+                            <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' }}">
+                                {{ booking.status|upper }}
+                            </span>
+                        </div>
+                        
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>👥 Guests:</strong> {{ booking.guests }}</p>
+                                <p class="mb-1"><strong>💰 Total:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.total_amount) }}</p>
+                                {% if booking.paid_at %}
+                                    <p class="mb-1"><small>Paid on {{ booking.paid_at.strftime('%b %d, %Y') }}</small></p>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                {% if booking.type == 'for_other' %}
+                                    <p class="mb-1"><strong>👤 Guest:</strong> {{ booking.guest_name }}</p>
+                                    <p class="mb-1"><strong>📧 Guest Email:</strong> {{ booking.guest_email }}</p>
+                                    {% if booking.guest_phone %}
+                                        <p class="mb-1"><strong>📞 Guest Phone:</strong> {{ booking.guest_phone }}</p>
+                                    {% endif %}
+                                {% else %}
+                                    <p class="mb-1 text-muted"><i class="fas fa-check-circle text-success"></i> Booking for myself</p>
+                                {% endif %}
+                                
+                                {% if booking.is_group_booking %}
+                                    <p class="mb-1"><strong>🏨 Room {{ booking.room_number }} of group</strong></p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <a href="{{ url_for('accommodation.guest_detail', identifier=booking.property_id) }}" class="btn btn-sm btn-outline-primary">
+                                View Property
+                            </a>
+                            <a href="{{ url_for('accommodation.guest_confirmation', reference=booking.booking_reference) }}" class="btn btn-sm btn-outline-secondary">
+                                View Details
+                            </a>
+                            {% if booking.can_cancel %}
+                                <form method="POST" action="{{ url_for('accommodation.guest_cancel_booking', reference=booking.booking_reference) }}" class="d-inline" onsubmit="return confirm('Cancel this booking? Refund will depend on cancellation policy.')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Cancel Booking</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-credit-card fa-3x text-muted mb-3"></i>
+                    <h3>No Bookings Yet</h3>
+                    <p class="text-muted">You haven't made any accommodation bookings.</p>
+                    <a href="{{ url_for('accommodation.guest_search') }}" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Find a Place to Stay
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

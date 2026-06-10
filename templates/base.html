@@ -356,6 +356,11 @@
                 <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
                   <i class="bi bi-person-circle me-2"></i>My Profile</a></li>
                 <li><hr class="drop-divider"></li>
+                <li><a class="drop-item" href="{{ safe_url('accommodation.my_accommodation') }}">
+                  <i class="fas fa-bed me-2"></i>My Accommodation</a></li>
+                <li><a class="drop-item" href="{{ safe_url('accommodation.guest_my_bookings') }}">
+                  <i class="fas fa-calendar-alt me-2"></i>My Bookings</a></li>
+                <li><hr class="drop-divider"></li>
                 <li>
                   <form method="POST" action="{{ url_for('auth.logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
@@ -543,6 +548,14 @@
       <a class="drawer-link{% if not modules.get('accommodation') %} disabled{% endif %}"
          href="{% if modules.get('accommodation') %}{{ safe_url('accommodation.home') }}{% else %}#{% endif %}"
          {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled.', 'warning');"{% endif %}>🏨 Accommodation</a>
+      {% if current_user.is_authenticated %}
+      <a class="drawer-link" href="{{ safe_url('accommodation.my_accommodation') }}">
+        <i class="fas fa-bed me-2"></i>My Accommodation
+      </a>
+      <a class="drawer-link" href="{{ safe_url('accommodation.guest_my_bookings') }}">
+        <i class="fas fa-calendar-alt me-2"></i>My Bookings
+      </a>
+      {% endif %}
 
       <div class="drawer-divider"></div>
 

@@ -526,11 +526,39 @@ function closeContactModal() {
 function sendContactMessage(event) {
     event.preventDefault();
     const message = document.getElementById('contactMessage').value;
+    const eventId = currentEventId;
     
-    // Here you would typically send the message to the server
-    // For now, we'll just show a success message
-    alert('Message sent to event organizer!');
-    closeContactModal();
+    // Show sending indicator
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    submitBtn.disabled = true;
+    
+    fetch(`/events/${eventId}/contact-organizer`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value || ''
+        },
+        body: JSON.stringify({ message: message })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✓ Message sent to organizer!');
+            closeContactModal();
+        } else {
+            alert('✗ Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('✗ Failed to send message. Please try again.');
+    })
+    .finally(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
 }
 
 // Cancel Registration

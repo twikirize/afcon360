@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Messages - Organizer Dashboard{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Messages from Attendees</h1>
+        <a href="{{ url_for('events.my_events') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+    
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="card mb-3 {% if msg.status == 'unread' %}border-primary{% endif %}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>{{ msg.user.username or msg.user.email }}</strong>
+                        <span class="text-muted mx-2">•</span>
+                        <small class="text-muted">{{ msg.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                    </div>
+                    {% if msg.status == 'unread' %}
+                    <span class="badge bg-primary">Unread</span>
+                    {% endif %}
+                </div>
+                <div class="mt-2">
+                    <strong>Event:</strong> {{ msg.event.name }}
+                </div>
+                <div class="mt-3 p-3 bg-light rounded">
+                    {{ msg.message }}
+                </div>
+                <div class="mt-3">
+                    <a href="mailto:{{ msg.user.email }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-reply"></i> Reply by Email
+                    </a>
+                    {% if msg.status == 'unread' %}
+                    <button onclick="markAsRead({{ msg.id }})" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-check"></i> Mark as Read
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <p class="text-muted">No messages yet.</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function markAsRead(messageId) {
+    fetch(`/events/messages/${messageId}/read`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]')?.value || ''
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %}

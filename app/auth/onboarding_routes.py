@@ -7,6 +7,7 @@ from __future__ import annotations
 import uuid
 import secrets
 from typing import Optional, Dict, Any
+from functools import wraps
 from datetime import datetime, date
 from decimal import Decimal
 
@@ -21,6 +22,21 @@ from app.utils.transactions import db_transaction
 
 onboarding_bp = Blueprint("onboarding", __name__, url_prefix="/onboarding")
 
+# ---------------------------------------------------------------------------
+# Decorator: require completed onboarding
+# ---------------------------------------------------------------------------
+
+def onboarding_completed(f):
+    """Decorator to ensure user has completed the onboarding process."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        from app.profile.models import get_profile_by_user
+        # Assumes @login_required is used before this decorator
+        profile = get_profile_by_user(current_user.public_id)
+        if not profile or not profile.profile_completed:
+            return redirect(url_for("onboarding.choose"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ---------------------------------------------------------------------------
 # Helper: get or create profile

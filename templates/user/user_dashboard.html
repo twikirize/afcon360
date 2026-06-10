@@ -1,98 +1,237 @@
 {% extends "user/base_user_dashboard.html" %}
 
 {% block content_section %}
-<!-- Dashboard Section -->
-<div id="dashboard" class="content-section active">
-    <div class="content-header">
-        <h1 class="content-title">User Dashboard</h1>
-        <p class="content-subtitle">Welcome back! Here's your activity overview</p>
+<div class="dashboard-content">
+
+    <!-- Welcome Banner -->
+    <div class="welcome-banner">
+        <h2>Welcome back, {{ current_user.username or 'Fan' }}!</h2>
+        <p>Your AFCON 2025 journey at a glance</p>
     </div>
 
-    <!-- Stats Cards -->
-    <div class="stats-grid">
+    <!-- Stats Row - Only shows if user has data -->
+    <div class="stats-row">
+        {% if activity.upcoming_events %}
         <div class="stat-card">
-            <div class="stat-icon" style="background: #bee3f8; color: #2b6cb0;">
-                <i class="fas fa-ticket-alt"></i>
-            </div>
-            <div class="stat-value">{{ registrations|length if registrations else 0 }}</div>
-            <div class="stat-label">Event Registrations</div>
-            <div class="stat-change positive">
-                <i class="fas fa-arrow-up"></i> Active events
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon" style="background: #c6f6d5; color: #22543d;">
-                <i class="fas fa-dollar-sign"></i>
-            </div>
-            <div class="stat-value">${{ "%.2f"|format(wallet_balance) }}</div>
-            <div class="stat-label">Wallet Balance</div>
-            <div class="stat-change positive">
-                <i class="fas fa-arrow-up"></i> Available funds
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon" style="background: #faf5ff; color: #6b46c1;">
-                <i class="fas fa-calendar-check"></i>
-            </div>
-            <div class="stat-value">{{ registrations|selectattr('event.start_date')|selectattr('event.start_date', 'ge', current_date)|list|length if registrations else 0 }}</div>
+            <div class="stat-icon">🎫</div>
+            <div class="stat-value">{{ activity.upcoming_events|length }}</div>
             <div class="stat-label">Upcoming Events</div>
-            <div class="stat-change">
-                <i class="fas fa-clock"></i> To attend
+        </div>
+        {% endif %}
+
+        {% if wallet_balance > 0 %}
+        <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value">
+                {% if wallet_currency == 'UGX' %}
+                    UGX {{ "{:,.0f}".format(wallet_balance) }}
+                {% else %}
+                    ${{ "%.2f"|format(wallet_balance) }}
+                {% endif %}
             </div>
+            <div class="stat-label">Wallet Balance</div>
+        </div>
+        {% endif %}
+
+        {% if activity.upcoming_stays %}
+        <div class="stat-card">
+            <div class="stat-icon">🏨</div>
+            <div class="stat-value">{{ activity.upcoming_stays|length }}</div>
+            <div class="stat-label">Upcoming Stays</div>
+        </div>
+        {% endif %}
+
+        {% if activity.upcoming_trips %}
+        <div class="stat-card">
+            <div class="stat-icon">🚗</div>
+            <div class="stat-value">{{ activity.upcoming_trips|length }}</div>
+            <div class="stat-label">Upcoming Trips</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Upcoming Events Section -->
+    {% if activity.upcoming_events %}
+    <div class="dashboard-section">
+        <div class="section-header">
+            <h3><i class="fas fa-calendar-alt"></i> Your Upcoming Events</h3>
+            <a href="{{ url_for('events.my_registrations') }}" class="view-all">View All →</a>
+        </div>
+        <div class="events-list">
+            {% for reg in activity.upcoming_events[:3] %}
+            <div class="event-card">
+                <div class="event-info">
+                    <h4>{{ reg.event.name }}</h4>
+                    <div class="event-meta">
+                        <span><i class="fas fa-calendar"></i> {{ reg.event.start_date }}</span>
+                        <span><i class="fas fa-map-marker-alt"></i> {{ reg.event.city }}</span>
+                    </div>
+                </div>
+                <div class="event-actions">
+                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn-sm">View Ticket</a>
+                </div>
+            </div>
+            {% endfor %}
         </div>
     </div>
+    {% endif %}
 
     <!-- Quick Actions -->
-    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 2rem;">
-        <h3 style="color: var(--dark); margin-bottom: 1rem;">Quick Actions</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-            {% set events_url = links.events_list %}
-            <a href="#" class="action-card{% if events_url == '#' %} disabled{% endif %}"
-               {% if events_url != '#' %}data-pane-url="{{ events_url }}"{% else %}data-module-disabled="Events module is currently unavailable." data-module-level="warning"{% endif %}
-               style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;"
-               onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';"
-               onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
-                <i class="fas fa-search" style="font-size: 1.5rem;"></i>
-                <span>Browse Events</span>
-            </a>
-            {% set wallet_url = links.wallet_dashboard %}
-            <a href="#" class="action-card{% if not modules.get('wallet') or wallet_url == '#' %} disabled{% endif %}"
-               {% if modules.get('wallet') and wallet_url != '#' %}data-pane-url="{{ wallet_url }}"{% elif modules.get('wallet') %}data-module-disabled="Wallet is enabled — server restart needed to activate." data-module-level="info"{% else %}data-module-disabled="Wallet module is currently disabled." data-module-level="warning"{% endif %}
-               style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;"
-               onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';"
-               onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
-                <i class="fas fa-wallet" style="font-size: 1.5rem;"></i>
-                <span>Manage Wallet</span>
-            </a>
-            {% set transport_url = links.transport_home %}
-            <a href="#" class="action-card{% if not modules.get('transport') or transport_url == '#' %} disabled{% endif %}"
-               {% if modules.get('transport') and transport_url != '#' %}data-pane-url="{{ transport_url }}"{% elif modules.get('transport') %}data-module-disabled="Transport is enabled — server restart needed to activate." data-module-level="info"{% else %}data-module-disabled="Transport module is currently disabled." data-module-level="warning"{% endif %}
-               style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;"
-               onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';"
-               onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
-                <i class="fas fa-bus" style="font-size: 1.5rem;"></i>
-                <span>Book Transport</span>
-            </a>
-            {% set accommodation_url = links.accommodation_index %}
-            <a href="#" class="action-card{% if not modules.get('accommodation') or accommodation_url == '#' %} disabled{% endif %}"
-               {% if modules.get('accommodation') and accommodation_url != '#' %}data-pane-url="{{ accommodation_url }}"{% elif modules.get('accommodation') %}data-module-disabled="Accommodation is enabled — server restart needed to activate." data-module-level="info"{% else %}data-module-disabled="Accommodation module is currently disabled." data-module-level="warning"{% endif %}
-               style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border); background: white; color: var(--dark); text-decoration: none; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;"
-               onmouseover="this.style.background='var(--light)'; this.style.borderColor='var(--primary)'; this.style.color='var(--primary)';"
-               onmouseout="this.style.background='white'; this.style.borderColor='var(--border)'; this.style.color='var(--dark)';">
-                <i class="fas fa-bed" style="font-size: 1.5rem;"></i>
-                <span>Find Stays</span>
-            </a>
+    <div class="dashboard-section">
+        <div class="section-header">
+            <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+        </div>
+        <div class="actions-grid">
+            <a href="{{ url_for('events.list') }}" class="action-btn">🎫 Browse Events</a>
+            <a href="{{ url_for('wallet.wallet_dashboard') }}" class="action-btn">💰 Wallet</a>
+            <a href="{{ url_for('accommodation.guest_search') }}" class="action-btn">🏨 Find Stay</a>
+            <a href="{{ url_for('transport.home') }}" class="action-btn">🚗 Book Transport</a>
         </div>
     </div>
 
-    <!-- Recent Activity -->
-    <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border);">
-        <h3 style="color: var(--dark); margin-bottom: 1rem;">Recent Activity</h3>
-        <div style="text-align: center; padding: 2rem; color: #718096;">
-            <i class="fas fa-chart-line" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-            <h4 style="margin-bottom: 0.5rem; color: var(--dark);">Your Activity Timeline</h4>
-            <p>View your recent events, transactions, and bookings in the dedicated sections.</p>
-        </div>
-    </div>
 </div>
+
+<style>
+.dashboard-content {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.welcome-banner {
+    background: linear-gradient(135deg, #10b981, #059669);
+    border-radius: 20px;
+    padding: 1.5rem;
+    color: white;
+    margin-bottom: 1.5rem;
+}
+
+.welcome-banner h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.5rem;
+}
+
+.welcome-banner p {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: var(--bg-surface, white);
+    border-radius: 16px;
+    padding: 1rem;
+    text-align: center;
+    border: 1px solid var(--border-light, #e2e8f0);
+}
+
+.stat-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+.dashboard-section {
+    background: var(--bg-surface, white);
+    border-radius: 20px;
+    border: 1px solid var(--border-light, #e2e8f0);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.section-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-light, #e2e8f0);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.section-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.view-all {
+    font-size: 0.75rem;
+    color: #10b981;
+    text-decoration: none;
+}
+
+.events-list {
+    padding: 1rem 1.5rem;
+}
+
+.event-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-light, #e2e8f0);
+}
+
+.event-card:last-child {
+    border-bottom: none;
+}
+
+.event-info h4 {
+    margin: 0 0 0.25rem;
+    font-size: 0.9rem;
+}
+
+.event-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.7rem;
+    color: #64748b;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.75rem;
+    background: #10b981;
+    color: white;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 0.7rem;
+}
+
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+}
+
+.action-btn {
+    padding: 0.75rem;
+    background: var(--bg-surface-alt, #f8fafc);
+    border-radius: 12px;
+    text-decoration: none;
+    color: var(--text-primary, #1e293b);
+    text-align: center;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: #10b981;
+    color: white;
+}
+</style>
 {% endblock %}
