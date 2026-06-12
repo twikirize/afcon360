@@ -1,6 +1,24 @@
 {
   "$schema": "https://app.kilo.ai/config.json",
   "indexing": {
-    "enabled": true
+    "enabled": true,
+    "provider": "gemini",
+    "model": "gemini-embedding-001",
+    "vectorStore": "lancedb",
+    "lancedb": {
+      "path": ".kilocode/index"
+    },
+    "fileFilters": {
+      "exclude": [
+        "**/migrations/**",
+        "**/__pycache__/**",
+        "**/.git/**",
+        "**/*.pyc",
+        "**/.env",
+        "**/static/**",
+        "**/instance/**",
+        "**/*.log"
+      ]
+    }
   }
 }

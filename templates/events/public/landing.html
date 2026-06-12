@@ -1537,7 +1537,7 @@
                                     {% for property in properties[:3] %}
                                     <div class="property-item-modern">
                                         <div class="property-info">
-                                            <h5 class="property-name">{{ property.name|truncate(30) }}</h5>
+                                            <h5 class="property-name">{{ property.name|default('')|truncate(30) }}</h5>
                                             <p class="property-location">
                                                 <i class="fas fa-map-marker-alt"></i>
                                                 {{ property.city }}

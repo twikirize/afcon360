@@ -145,7 +145,7 @@ class Event(BaseModel):
 
     # ── Core fields ────────────────────────────────────────────────────────
     name                  = Column(String(255), nullable=False)
-    description           = Column(Text)
+    description           = Column(Text, default='', server_default='')
     category              = Column(String(50),  nullable=False, default="general")
     city                  = Column(String(100), nullable=False)
     country               = Column(String(100), default="Uganda")
@@ -577,6 +577,12 @@ class EventRegistration(BaseModel):
         UniqueConstraint("registration_ref", name="uq_reg_ref"),
         UniqueConstraint("ticket_number",    name="uq_ticket_number"),
         UniqueConstraint("qr_token",         name="uq_qr_token"),
+        # DB-enforced duplicate protection (source of truth):
+        # - One registration per (event,user)
+        # - One registration per (event,email)
+        #   (Postgres unique constraints allow multiple NULLs; non-users use email)
+        UniqueConstraint("event_id", "user_id",  name="uq_reg_event_user"),
+        UniqueConstraint("event_id", "email",    name="uq_reg_event_email"),
         Index("idx_reg_event_user",      "event_id", "user_id"),
         Index("idx_reg_event_status",    "event_id", "status"),
         Index("idx_reg_event_payment",   "event_id", "payment_status"),
@@ -680,11 +686,21 @@ class EventRegistration(BaseModel):
     registered_by    = Column(String(30),    default="self")
     notes            = Column(Text,          nullable=True)
 
+    # NEW: Third-party registration tracking
+    booked_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    booking_type = Column(String(30), default="self", nullable=False, index=True)
+    group_booking_id = Column(String(100), nullable=True, index=True)
+    attendee_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Optional display ordering within a group booking (1..N)
+    group_index     = Column(Integer, nullable=True)
+
     # ── Relationships ──────────────────────────────────────────────────────
     event          = relationship("Event",      back_populates="registrations")
     ticket_type_rel = relationship("TicketType", back_populates="registrations")
     user           = relationship("User",        foreign_keys=[user_id])
     checked_in_by  = relationship("User",        foreign_keys=[checked_in_by_id])
+    booked_by      = relationship("User", foreign_keys=[booked_by_user_id], backref="booked_registrations")
+    attendee_user = relationship("User", foreign_keys=[attendee_user_id], backref="attending_registrations")
 
     # ── Ref generation ─────────────────────────────────────────────────────
 

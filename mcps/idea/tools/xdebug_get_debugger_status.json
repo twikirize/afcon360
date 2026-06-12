@@ -1,0 +1,14 @@
+{
+  "name": "xdebug_get_debugger_status",
+  "description": "Returns the current status of the debugger including all active debug sessions.\nUse this tool to get an overview of all running debug sessions and their states.\n\nPreconditions:\n- None.\n\nReturns explicit `sessions[]` and `activeSessionId`.\n\nNext call:\n- If no sessions are running, call `xdebug_start_debugger_session`.\n- If multiple sessions are active, use returned `id` as `sessionId` in subsequent calls.",
+  "inputSchema": {
+    "properties": {
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [],
+    "type": "object"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "xdebug_set_variable",
+  "description": "Mutates a variable value by path in the selected stack frame.\nUse this tool to change state during debugging.\n\nPreconditions:\n- Session must be suspended.\n- Value must be modifiable.\n- `path` should come from the current paused `xdebug_get_frame_values` / `xdebug_get_value_by_path` output.\n\nPath format is the same as in `xdebug_get_value_by_path`.\n`newValue` must be a raw expression in the language of the current frame, and it must be assignable to the target value by the debugger/evaluator.\nDo not pass JSON-escaped payloads or literal escape sequences such as `\\\\\"text\\\\\"`.\n\nResult:\n- Returns oldValue/newValue/applied.\n- Unsupported mutation returns an error with a textual message.\n\nNext call:\n- Re-read value via `xdebug_get_value_by_path` or `xdebug_get_frame_values` to confirm.",
+  "inputSchema": {
+    "properties": {
+      "sessionId": {
+        "type": "string",
+        "description": "Debug session ID. Use the current ID returned by `xdebug_get_debugger_status` or `xdebug_start_debugger_session`. If a session has stopped, timed out, or disappeared, refresh the session list before reusing an old ID. Format: uses session name as ID by default; if multiple sessions share the same name, ID is `<sessionName>#<executionId>`. If null and exactly one active session exists, it is selected automatically. If multiple sessions are active and sessionId is omitted, the call fails. Default: null."
+      },
+      "frameIndex": {
+        "type": "integer",
+        "description": "Stack frame index as integer (0 = top frame). Obtain this from the current paused `xdebug_get_stack` result; do not reuse a cached frame index after `RESUME`, `STEP_*`, `xdebug_run_to_line`, or any change in paused location. If null, uses the top frame. Default: null."
+      },
+      "path": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Path to target value, same format as `xdebug_get_value_by_path`. Use exact node names from the current paused `xdebug_get_frame_values` / `xdebug_get_value_by_path` output and refresh stale path tokens after the paused location changes."
+      },
+      "newValue": {
+        "type": "string",
+        "description": "New value expression to assign. Pass raw expression text in the language of the current frame; it must be assignable to the target value by the debugger/evaluator. Do not pass JSON-escaped payloads or literal backslash-escaped quoted text."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [
+      "path",
+      "newValue"
+    ],
+    "type": "object"
+  }
+}

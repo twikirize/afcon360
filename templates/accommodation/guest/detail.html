@@ -51,7 +51,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/detail.css') }}">
 {% endblock %}
 
-{% if not is_pane %}
     {% block content %}
 <div class="container py-4">
     <!-- Breadcrumb -->
@@ -84,45 +83,45 @@
                 {% endif %}
             </div>
 
-            <!-- ADD/REPLACE image display section in detail.html -->
-{% if property.images and property.images|length > 0 %}
-<div class="detail-gallery">
-    <div class="gallery-main">
-        <img id="galleryHero"
-             src="{{ property.images[0] }}"
-             alt="{{ property.name }}"
-             loading="eager"
-             fetchpriority="high"
-             class="gallery-hero-img" />
-        <button class="gallery-all-btn" onclick="openAllPhotos()" aria-label="View all photos">
-            ⊞ Show all {{ property.images|length }} photos
-        </button>
-    </div>
-    {% if property.images|length > 1 %}
-    <div class="gallery-thumbs-grid">
-        {% for image in property.images[1:5] %}
-        <img src="{{ image }}"
-             alt="{{ property.name }} photo {{ loop.index + 1 }}"
-             loading="lazy"
-             onclick="document.getElementById('galleryHero').src='{{ image }}'"
-             class="gallery-thumb {% if loop.index == 4 and property.images|length > 5 %}gallery-thumb-more{% endif %}"
-             {% if loop.index == 4 and property.images|length > 5 %}
-             data-more="+{{ property.images|length - 5 }}"
-             {% endif %}
-        />
-        {% endfor %}
-    </div>
-    {% endif %}
-</div>
-{% else %}
-<div class="detail-gallery">
-    <div class="gallery-main">
-        <div class="gallery-hero-img gallery-hero-img--empty">
-            <span>No photos yet</span>
-        </div>
-    </div>
-</div>
-{% endif %}
+            <!-- Image gallery -->
+            {% if property.images and property.images|length > 0 %}
+            <div class="detail-gallery">
+                <div class="gallery-main">
+                    <img id="galleryHero"
+                         src="{{ property.images[0] }}"
+                         alt="{{ property.name }}"
+                         loading="eager"
+                         fetchpriority="high"
+                         class="gallery-hero-img" />
+                    <button class="gallery-all-btn" onclick="openAllPhotos()" aria-label="View all photos">
+                        ⊞ Show all {{ property.images|length }} photos
+                    </button>
+                </div>
+                {% if property.images|length > 1 %}
+                <div class="gallery-thumbs-grid">
+                    {% for image in property.images[1:5] %}
+                    <img src="{{ image }}"
+                         alt="{{ property.name }} photo {{ loop.index + 1 }}"
+                         loading="lazy"
+                         onclick="document.getElementById('galleryHero').src='{{ image }}'"
+                         class="gallery-thumb {% if loop.index == 4 and property.images|length > 5 %}gallery-thumb-more{% endif %}"
+                         {% if loop.index == 4 and property.images|length > 5 %}
+                         data-more="+{{ property.images|length - 5 }}"
+                         {% endif %}
+                    />
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="detail-gallery">
+                <div class="gallery-main">
+                    <div class="gallery-hero-img gallery-hero-img--empty">
+                        <span>No photos yet</span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Description -->
             <div class="card mb-4">
@@ -240,9 +239,9 @@
                                 </div>
                             </div>
 
-                            <!-- Booking Form - POST to checkout -->
-                            <form method="POST" action="{{ safe_url('accommodation.guest_checkout') }}">
-                                <!-- Add these hidden fields inside the booking form -->
+                            <!-- Booking Form -->
+                            <form id="booking-form" method="POST" action="{{ safe_url('accommodation.guest_checkout') }}">
+                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="context_type" value="{{ request.args.get('context_type', 'none') }}">
                                 <input type="hidden" name="context_id" value="{{ request.args.get('context_id', '') }}">
                                 <input type="hidden" name="context_metadata" value="{{ request.args.get('context_metadata', '{}') }}">
@@ -298,7 +297,7 @@
     </div>
 </div>
 
-<!-- ADD just before </body> in detail.html -->
+<!-- Sticky booking bar -->
 <div class="sticky-book-bar" id="stickyBar">
     <div class="sbb-price">
         <span class="sbb-amount">{{ property.currency_symbol | default('$') }}{{ property.price | int }}</span>
@@ -315,7 +314,7 @@
     </a>
 </div>
 
-<!-- Urgency signals (inject from route via urgency dict) -->
+<!-- Urgency signals -->
 {% if urgency is defined %}
     {% if urgency.get('high_demand') %}
     <div class="urgency-bar urgency-demand">

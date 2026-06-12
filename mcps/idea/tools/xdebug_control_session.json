@@ -1,0 +1,46 @@
+{
+  "name": "xdebug_control_session",
+  "description": "Controls the execution of a debug session.\nUse this tool to step through code, resume execution, pause, or stop the debug session.\n\nPreconditions:\n- A debug session must exist.\n- `STEP_*` and `RESUME` require a suspended session.\n\nActions:\n- STEP_INTO: Step into the next method call\n- STEP_OVER: Step over the current line\n- STEP_OUT: Step out of the current method\n- RESUME: Resume program execution until the next breakpoint\n- PAUSE: Pause program execution\n- STOP: Stop the debug session\n- WAIT_FOR_PAUSE: Wait until the session pauses (breakpoint hit or paused manually)\n- DRAIN_EVENTS: Drain tracepoint outputs for the session (breakpoint errors are drained for all actions)\n\nImportant notes:\n- If the program is running, use WAIT_FOR_PAUSE or PAUSE before STEP_* / RESUME.\n- Use a current `sessionId` from `xdebug_get_debugger_status` or `xdebug_start_debugger_session`. If a session stops, times out, or disappears, refresh the session list before the next session-scoped call.\n- RESUME does NOT set breakpoints. If there are no enabled breakpoints (or none will be hit next), the program may run to completion and the session may stop without pausing.\n- After RESUME, call WAIT_FOR_PAUSE to confirm the next suspension. If WAIT_FOR_PAUSE times out, consider PAUSE and re-check breakpoints.\n- `DRAIN_EVENTS` also requires an existing session; do not reuse a stale `sessionId` after the session has terminated.\n\nNext call:\n- After `RESUME`, call `xdebug_control_session(action=WAIT_FOR_PAUSE)`.\n- After a paused result, call `xdebug_get_stack` / `xdebug_get_frame_values` / `xdebug_evaluate_expression`.\n\nStatus values in the result:\n- running: Program is executing\n- paused: Execution is suspended (breakpoint, step, or manual pause); paused results also include `frameValues`, a current-frame snapshot in `xdebug_get_frame_values(depth=0)` format when available\n- stopped: Debug session has terminated\n- `breakpointErrorsTail` is returned for any action\n- `tracepointOutputsTail` is returned only for `DRAIN_EVENTS`\n\nEvent support scope:\n- Breakpoint error and tracepoint output events are currently reported only by JVM-based debuggers (Java, Kotlin, etc.).\n- On other debugger backends these event tails can be empty even when breakpoints/logging are configured.",
+  "inputSchema": {
+    "properties": {
+      "sessionId": {
+        "type": "string",
+        "description": "Debug session ID. Use the current ID returned by `xdebug_get_debugger_status` or `xdebug_start_debugger_session`. If a session has stopped, timed out, or disappeared, refresh the session list before reusing an old ID. Format: uses session name as ID by default; if multiple sessions share the same name, ID is `<sessionName>#<executionId>`. If null and exactly one active session exists, it is selected automatically. If multiple sessions are active and sessionId is omitted, the call fails. Default: null."
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "STEP_INTO",
+          "STEP_OVER",
+          "STEP_OUT",
+          "RESUME",
+          "PAUSE",
+          "STOP",
+          "WAIT_FOR_PAUSE",
+          "DRAIN_EVENTS"
+        ],
+        "description": "Action to perform: STEP_INTO, STEP_OVER, STEP_OUT, RESUME, PAUSE, STOP, WAIT_FOR_PAUSE, DRAIN_EVENTS. Event draining is currently populated only by JVM-based debuggers (Java, Kotlin, etc.)."
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "Timeout in milliseconds to wait for action completion. Guidance: STEP_* / PAUSE usually 5000-15000; WAIT_FOR_PAUSE usually 30000-120000 depending on workload and breakpoints. Default: 30000."
+      },
+      "eventsLimit": {
+        "type": "integer",
+        "description": "Maximum number of latest events to drain per event list. For DRAIN_EVENTS this limit is applied independently to breakpointErrorsTail and tracepointOutputsTail. Default: 100."
+      },
+      "clearEventsAfterRead": {
+        "type": "boolean",
+        "description": "Compatibility flag. Returned events are always removed from internal buffers, regardless of this value."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "type": "object"
+  }
+}

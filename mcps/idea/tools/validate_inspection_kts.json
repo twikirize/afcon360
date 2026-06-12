@@ -1,0 +1,25 @@
+{
+  "name": "validate_inspection_kts",
+  "description": "    Validates an inspection.kts script against specification examples.\n    Compiles the inspection and runs it against positive/negative examples.\n    Returns compilation status and detailed verification results.\n    \n    Positive examples should trigger the inspection (problems expected).\n    Negative examples should NOT trigger the inspection (no problems expected on forbidden lines).\n    \n    Returns overall success, per-example results, and aggregation statistics.",
+  "inputSchema": {
+    "properties": {
+      "inspectionKtsCode": {
+        "type": "string",
+        "description": "The inspection.kts script content to compile and validate"
+      },
+      "pathToSpecification": {
+        "type": "string",
+        "description": "Path to specification with examples to validate against."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [
+      "inspectionKtsCode",
+      "pathToSpecification"
+    ],
+    "type": "object"
+  }
+}

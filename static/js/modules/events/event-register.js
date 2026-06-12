@@ -5,8 +5,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const ticketSelect = document.getElementById('ticket-type-select');
     const ticketInfo = document.getElementById('ticket-info');
     const totalPriceDisplay = document.getElementById('total-price-display');
-    const ticketTypes = window.ticketTypes || [];
-    const currency = window.currency || '';
+    // Prefer JSON-injected data to avoid inline JS Jinja parsing issues
+    const ticketTypesEl = document.getElementById('ticket-types-json');
+    const currencyEl = document.getElementById('event-currency-json');
+    const ticketTypes = ticketTypesEl ? JSON.parse(ticketTypesEl.textContent || '[]') : (window.ticketTypes || []);
+    const currency = currencyEl ? JSON.parse(currencyEl.textContent || '""') : (window.currency || '');
 
     // Check if this is a free event (no paid tickets)
     const hasPaidTickets = ticketTypes.some(tt => tt.price > 0);
@@ -88,7 +91,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!selectedTicket) return;
         
         const groupSize = parseInt(groupSizeSelect?.value) || 0;
-        const totalTickets = groupSize + 1; // +1 for the primary registrant
+        // For paid group flows we charge for attendees only (not the payer)
+        const totalTickets = (groupToggle && groupToggle.checked) ? groupSize : 1;
         const totalPrice = selectedTicket.price * totalTickets;
         
         if (totalPriceDisplay) {
@@ -131,6 +135,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     } else {
         updatePaymentSection(null);
+    }
+    
+    // If the current user is already registered for this event, default to registering others
+    const ctxEl = document.getElementById('event-context');
+    const userRegistered = ctxEl && ctxEl.dataset && ctxEl.dataset.userRegistered === 'true';
+    const bookingTypeSelect = document.getElementById('booking_type');
+    const thirdPartyFields = document.getElementById('third_party_fields');
+    const attendeeName = document.getElementById('attendee_name');
+    const attendeeEmail = document.getElementById('attendee_email');
+    if (userRegistered && bookingTypeSelect) {
+        bookingTypeSelect.value = 'third_party';
+        if (thirdPartyFields) thirdPartyFields.style.display = 'block';
+        if (attendeeName) attendeeName.required = true;
+        if (attendeeEmail) attendeeEmail.required = true;
     }
 
     // Form submission handler

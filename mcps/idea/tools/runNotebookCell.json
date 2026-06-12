@@ -1,0 +1,24 @@
+{
+  "name": "runNotebookCell",
+  "description": "      Execute one or all cells of a Jupyter notebook.\n      Parameters:\n      - file_path: absolute path to a .ipynb file.\n      - cell_id (optional): Jupyter cell ID hash (string). If omitted, the entire notebook will be executed.\n      Notes:\n      - This action runs inside the IDE on the file specified by file_path.\n      - If the file cannot be found, the action returns an error.\n      Examples:\n      - {\"file_path\": \"/abs/path/demo.ipynb\", \"cell_id\": \"13c5cec416369e19\"}\n      - {\"file_path\": \"/abs/path/demo.ipynb\"}",
+  "inputSchema": {
+    "properties": {
+      "file_path": {
+        "type": "string",
+        "description": "Absolute path to the .ipynb notebook"
+      },
+      "cell_id": {
+        "type": "string",
+        "description": "Optional Jupyter cell ID. If omitted, all cells are executed."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [
+      "file_path"
+    ],
+    "type": "object"
+  }
+}

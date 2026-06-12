@@ -869,6 +869,45 @@
                     </div>
                 </div>
 
+                {% if group_registrations %}
+                <div class="group-registrations-section" style="margin-top: 2rem; padding: 1.5rem; background: rgba(118, 75, 162, 0.05); border-radius: 16px; border: 1px dashed rgba(118, 75, 162, 0.2); text-align: left;">
+                    <h4 style="color: #764ba2; font-weight: 700; margin-top: 0; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-users"></i> Group Members Registered
+                    </h4>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid rgba(118, 75, 162, 0.1); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: #764ba2; text-align: left;">
+                                    <th style="padding-bottom: 0.5rem; width: 40%;">Name</th>
+                                    <th style="padding-bottom: 0.5rem; width: 35%;">Email</th>
+                                    <th style="padding-bottom: 0.5rem; text-align: right; width: 25%;">Ticket Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for group_reg in group_registrations %}
+                                <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.05); font-size: 0.95rem;">
+                                    <td style="padding: 0.75rem 0; font-weight: 600; color: #2d3748;">{{ group_reg.full_name }}</td>
+                                    <td style="padding: 0.75rem 0; color: #718096;">{{ group_reg.email }}</td>
+                                    <td style="padding: 0.75rem 0; text-align: right; font-family: monospace; font-weight: 700; color: #4a5568;">{{ group_reg.ticket_number }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if errors %}
+                    <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem; border-radius: 8px; margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404;">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        <strong>Some attendees could not be registered:</strong>
+                        <ul style="margin: 5px 0 0 20px; padding: 0;">
+                            {% for err in errors %}
+                            <li>{{ err }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 <!-- Action Buttons -->
                 <div class="action-buttons">
                     <button onclick="window.print()" class="btn-action btn-secondary-action">
@@ -883,6 +922,20 @@
                         <i class="fas fa-calendar-alt"></i>
                         <span>Event Page</span>
                     </a>
+                    {% if registration.booking_type == 'self' or registration.registered_by == 'self' %}
+                    <a href="{{ safe_url('events.register', identifier=event.slug) }}?booking_type=third_party" 
+                       class="btn-action btn-outline-action">
+                        <i class="fas fa-user-plus"></i>
+                        <span>Register Another Person</span>
+                    </a>
+                    {% endif %}
+                    {% if registration.booking_type in ['third_party', 'group'] or registration.registered_by in ['third_party', 'group'] %}
+                    <a href="{{ safe_url('events.register', identifier=event.slug) }}?booking_type=third_party" 
+                       class="btn-action btn-outline-action">
+                        <i class="fas fa-users"></i>
+                        <span>Register More People</span>
+                    </a>
+                    {% endif %}
                     {% if registration.status not in ['cancelled', 'checked_in'] %}
                     <button onclick="cancelRegistration()" class="btn-action btn-danger-action">
                         <i class="fas fa-times"></i>

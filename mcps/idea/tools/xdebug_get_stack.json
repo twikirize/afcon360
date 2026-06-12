@@ -1,0 +1,30 @@
+{
+  "name": "xdebug_get_stack",
+  "description": "Returns the call stack for a thread in the debug session.\nUse this tool to see the sequence of method calls that led to the current execution point.\n\nPreconditions:\n- Session must be suspended.\n\nBehavior:\n- `threadId` should come from `xdebug_get_threads` and matches the debugger thread display name (defaults to active thread).\n- Includes frames even when source position is missing (file/line may be null).\n\nPagination:\n- `offset`/`limit` are applied after collecting the full stack.\n\nFrame fields include: index, file, line, isCurrent, presentation.\n`file` is reported as provided by the debugger (no path normalization).\n\nNext call:\n- Use frame index from the current paused result in `xdebug_get_frame_values`, `xdebug_get_value_by_path`, or `xdebug_evaluate_expression`.\n- Do not reuse a cached `frameIndex` after `RESUME`, `STEP_*`, `xdebug_run_to_line`, or any change in paused location.",
+  "inputSchema": {
+    "properties": {
+      "sessionId": {
+        "type": "string",
+        "description": "Debug session ID. Use the current ID returned by `xdebug_get_debugger_status` or `xdebug_start_debugger_session`. If a session has stopped, timed out, or disappeared, refresh the session list before reusing an old ID. Format: uses session name as ID by default; if multiple sessions share the same name, ID is `<sessionName>#<executionId>`. If null and exactly one active session exists, it is selected automatically. If multiple sessions are active and sessionId is omitted, the call fails. Default: null."
+      },
+      "threadId": {
+        "type": "string",
+        "description": "Thread ID to get stack for. This value should come from `xdebug_get_threads` and matches the debugger thread display name, not an opaque numeric ID. If not specified, uses the current/active thread. Default: null."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Max frames to return. Default: 200."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Page offset. Default: 0."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [],
+    "type": "object"
+  }
+}

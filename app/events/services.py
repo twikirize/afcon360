@@ -37,41 +37,6 @@ from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
-
-def sanitize_status(status_value):
-    """Safely convert any status value to a valid EventStatus string."""
-    from app.events.constants import EventStatus
-
-    if status_value is None:
-        return EventStatus.DRAFT.value
-    if isinstance(status_value, EventStatus):
-        return status_value.value
-
-    status_str = str(status_value).strip()
-
-    if status_str.startswith("EventStatus."):
-        enum_name = status_str.split(".", 1)[1]
-        logger.error(f"sanitize_status received a Python enum repr '{status_str}'. Attempting recovery.")
-        try:
-            return EventStatus[enum_name].value
-        except KeyError:
-            logger.error(f"Recovery failed - unknown enum name '{enum_name}', defaulting to DRAFT")
-            return EventStatus.DRAFT.value
-
-    try:
-        return EventStatus(status_str).value
-    except ValueError:
-        pass
-
-    try:
-        return EventStatus[status_str.upper()].value
-    except KeyError:
-        pass
-
-    logger.warning(f"Legacy status value encountered: '{status_str}', defaulting to DRAFT")
-    return EventStatus.DRAFT.value
-
-
 # Service provider data will be fetched via signals or separate services
 Property = None
 Vehicle = None
@@ -175,6 +140,40 @@ class EventService:
     def _get_assignment_class():
         from app.events.models import EventAssignment
         return EventAssignment
+
+    @staticmethod
+    def sanitize_status(status_value):
+        """Safely convert any status value to a valid EventStatus string."""
+        from app.events.constants import EventStatus
+
+        if status_value is None:
+            return EventStatus.DRAFT.value
+        if isinstance(status_value, EventStatus):
+            return status_value.value
+
+        status_str = str(status_value).strip()
+
+        if status_str.startswith("EventStatus."):
+            enum_name = status_str.split(".", 1)[1]
+            logger.error(f"sanitize_status received a Python enum repr '{status_str}'. Attempting recovery.")
+            try:
+                return EventStatus[enum_name].value
+            except KeyError:
+                logger.error(f"Recovery failed - unknown enum name '{enum_name}', defaulting to DRAFT")
+                return EventStatus.DRAFT.value
+
+        try:
+            return EventStatus(status_str).value
+        except ValueError:
+            pass
+
+        try:
+            return EventStatus[status_str.upper()].value
+        except KeyError:
+            pass
+
+        logger.warning(f"Legacy status value encountered: '{status_str}', defaulting to DRAFT")
+        return EventStatus.DRAFT.value
 
     @classmethod
     def get_all_events(cls, status: str = None) -> List[Dict]:
@@ -584,7 +583,7 @@ class EventService:
         sanitized_status = cls.sanitize_status(status_value) if status_value else None
         return {
             "id": event.public_id, "slug": event.slug, "event_ref": event.event_ref,
-            "name": event.name, "description": event.description, "category": event.category,
+            "name": event.name, "description": event.description or '', "category": event.category,
             "city": event.city, "country": event.country, "venue": event.venue,
             "start_date": event.start_date.isoformat() if event.start_date else None,
             "end_date": event.end_date.isoformat() if event.end_date else None,
@@ -652,7 +651,10 @@ class EventService:
     @classmethod
     @with_transaction(isolation_level="REPEATABLE_READ")
     def register_for_event_optimistic(cls, identifier: str, user_id: int, data: Dict,
-                                      idempotency_key: str = None, max_retries: int = 3) -> Tuple[
+                                      idempotency_key: str = None, max_retries: int = 3,
+                                      booking_type: str = "self",
+                                      attendee_user_id: int = None,
+                                      group_booking_id: str = None) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
         from sqlalchemy import func, and_
         from decimal import Decimal
@@ -664,7 +666,9 @@ class EventService:
                 Registration = cls._get_registration_class()
                 event = Event.query.filter_by(slug=identifier).first()
                 if event:
-                    existing_reg = Registration.query.filter_by(event_id=event.id, user_id=user_id).first()
+                    # Check for existing registration for THIS attendee
+                    check_user_id = attendee_user_id or user_id
+                    existing_reg = Registration.query.filter_by(event_id=event.id, user_id=check_user_id).first()
                 else:
                     existing_reg = None
                 if existing_reg:
@@ -733,21 +737,47 @@ class EventService:
                     if event_count >= event.max_capacity:
                         raise SoldOutException("The event has reached full capacity")
 
-                existing = Registration.query.filter_by(event_id=event.id, user_id=user_id).first()
-                if existing:
-                    return None, None, "You are already registered for this event"
+                # Determine who we're checking for
+                actual_attendee_id = attendee_user_id or user_id
+                check_user_id = user_id  # default to booker/attendee
+
+                if booking_type == "third_party":
+                    # For third-party, check if the ATTENDEE is already registered
+                    check_user_id = attendee_user_id if attendee_user_id else user_id
+                elif booking_type == "group":
+                    # For group, we'll check each attendee separately in the caller
+                    check_user_id = None  # Skip check here, handle in caller
+
+                if check_user_id:
+                    existing = Registration.query.filter_by(
+                        event_id=event.id,
+                        user_id=check_user_id
+                    ).first()
+                    if existing:
+                        if booking_type == "third_party":
+                            attendee_email = data.get("email")
+                            attendee_name = data.get("full_name")
+                            return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
+                        else:
+                            return None, None, "You are already registered for this event"
 
                 reg_count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar() or 0
                 sequence = reg_count + 1
 
                 registration = Registration(
-                    event_id=event.id, user_id=user_id, ticket_type_id=ticket_type.id,
+                    event_id=event.id, user_id=actual_attendee_id, ticket_type_id=ticket_type.id,
                     full_name=data.get("full_name", "").strip(), email=data.get("email", "").strip().lower(),
                     phone=data.get("phone", "").strip(), nationality=data.get("nationality", "").strip(),
                     id_number=data.get("id_number", "").strip(), id_type=data.get("id_type", "national_id"),
                     ticket_type=ticket_type.name, registration_fee=float(ticket_type.price),
                     payment_status="free" if ticket_type.price == 0 else "pending",
-                    registered_by="self", status="confirmed" if ticket_type.price == 0 else "pending_payment"
+                    registered_by=booking_type, 
+                    status="confirmed" if ticket_type.price == 0 else "pending_payment",
+                    # NEW: Third-party registration tracking
+                    booked_by_user_id=user_id,
+                    booking_type=booking_type,
+                    group_booking_id=group_booking_id,
+                    attendee_user_id=actual_attendee_id if booking_type != "self" else None
                 )
 
                 registration.generate_refs(event.slug, sequence)
@@ -756,7 +786,7 @@ class EventService:
 
                 qr_code = cls._generate_qr_code(registration.qr_token, registration.registration_ref)
 
-                logger.info(f"User {user_id} registered: {registration.registration_ref} (sequence {sequence})")
+                logger.info(f"User {user_id} registered attendee {actual_attendee_id}: {registration.registration_ref} (sequence {sequence})")
                 db.session.commit()
 
                 return cls._registration_to_dict(registration), qr_code, None
@@ -1043,6 +1073,9 @@ class EventService:
             "registration_fee": float(registration.registration_fee),
             "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
             "created_at": registration.created_at.isoformat() if registration.created_at else None,
+            "booking_type": registration.booking_type,
+            "registered_by": registration.registered_by,
+            "group_booking_id": registration.group_booking_id,
             "event": event_dict,
         }
 
@@ -1293,15 +1326,117 @@ class EventService:
         return dashboard_data
 
     @classmethod
-    def register_for_event(cls, identifier: str, user_id: int, data: Dict) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
-        use_optimistic = True
-        if use_optimistic:
-            return cls.register_for_event_optimistic(identifier, user_id, data)
-        else:
-            return cls._register_for_event_pessimistic(identifier, user_id, data)
+    def find_or_create_attendee_user(cls, email: str, name: str, phone: str = None) -> Tuple[Optional[int], Optional[str]]:
+        """Find existing user by email or create a new one for the attendee.
+        Returns: (user_id, error_message)
+        """
+        from app.identity.models.user import User
+        from app.auth.services import register_user
+        from app.profile.models import get_profile_by_user
+        import secrets
+        
+        if not email:
+            return None, "Email is required for third-party registration"
+        
+        email = email.strip().lower()
+        name = name.strip() if name else None
+        
+        # Try to find existing user
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            return existing_user.id, None
+        
+        # Create new user with temporary credentials
+        temp_username = f"guest_{secrets.token_hex(8)}"
+        temp_password = secrets.token_urlsafe(16)
+        
+        try:
+            # Note: Using register_user from app.auth.services
+            user = register_user(
+                username=temp_username,
+                password=temp_password,
+                email=email,
+                full_name=name
+            )
+            
+            # Note: register_user might not set is_verified=False, is_active=True explicitly 
+            # or it might depend on the model defaults. 
+            # If we need to override them:
+            user.is_verified = False
+            user.is_active = True
+            
+            db.session.commit()
+            logger.info(f"Created guest account for {email}")
+            
+            # Update profile with provided info
+            profile = get_profile_by_user(user.public_id)
+            if profile:
+                if name:
+                    profile.full_name = name
+                    profile.display_name = name
+                if phone:
+                    profile.phone_number = phone
+            
+            db.session.commit()
+            logger.info(f"Created guest account for {email}")
+            return user.id, None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to create attendee user: {e}")
+            return None, f"Could not create attendee account: {str(e)}"
 
     @classmethod
-    def _register_for_event_pessimistic(cls, identifier: str, user_id: int, data: Dict) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
+    def register_for_event(cls, identifier: str, user_id: int, data: Dict,
+                           booking_type: str = "self",
+                           attendee_email: str = None,
+                           attendee_name: str = None,
+                           attendee_phone: str = None,
+                           group_booking_id: str = None,
+                           group_index: Optional[int] = None) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
+        
+        # Determine attendee ID based on booking type
+        attendee_user_id = user_id  # default to booker (self)
+        
+        if booking_type == "third_party":
+            # Create or find attendee user
+            attendee_user_id, error = cls.find_or_create_attendee_user(
+                email=attendee_email,
+                name=attendee_name,
+                phone=attendee_phone
+            )
+            if error:
+                return None, None, error
+        
+        # For group bookings, generate ID if not provided
+        if booking_type == "group" and not group_booking_id:
+            import uuid
+            group_booking_id = str(uuid.uuid4())
+
+        use_optimistic = True
+        if use_optimistic:
+            return cls.register_for_event_optimistic(
+                identifier, user_id, data, 
+                booking_type=booking_type,
+                attendee_user_id=attendee_user_id,
+                group_booking_id=group_booking_id,
+                group_index=group_index
+            )
+        else:
+            return cls._register_for_event_pessimistic(
+                identifier, user_id, data,
+                booking_type=booking_type,
+                attendee_user_id=attendee_user_id,
+                group_booking_id=group_booking_id,
+                group_index=group_index
+            )
+
+    @classmethod
+    def _register_for_event_pessimistic(cls, identifier: str, user_id: int, data: Dict,
+                                       booking_type: str = "self",
+                                       attendee_user_id: int = None,
+                                       group_booking_id: str = None,
+                                       group_index: Optional[int] = None) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
         from sqlalchemy import func
         try:
             with db.session.begin_nested():
@@ -1328,32 +1463,77 @@ class EventService:
                     if ticket_type.available_seats <= 0:
                         raise SoldOutException(f"Ticket tier '{ticket_type.name}' is sold out")
                     ticket_type.available_seats -= 1
-                existing = Registration.query.filter_by(event_id=event.id, user_id=user_id).first()
-                if existing:
-                    return None, None, "You are already registered for this event"
+                
+                # Determine who we're checking for
+                actual_attendee_id = attendee_user_id or user_id
+                check_user_id = user_id  # default to booker/attendee
+
+                if booking_type == "third_party":
+                    # For third-party, check if the ATTENDEE is already registered
+                    check_user_id = attendee_user_id if attendee_user_id else user_id
+                elif booking_type == "group":
+                    # For group, we'll check each attendee separately in the caller
+                    check_user_id = None  # Skip check here, handle in caller
+
+                # Prevent duplicates: DB has uniques on (event_id,user_id) and (event_id,email)
+                # We pre-check here to return friendly messages
+                if check_user_id:
+                    existing = Registration.query.filter_by(
+                        event_id=event.id,
+                        user_id=check_user_id
+                    ).first()
+                    if existing:
+                        if booking_type == "third_party":
+                            attendee_email = data.get("email")
+                            attendee_name = data.get("full_name")
+                            return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
+                        else:
+                            return None, None, "You are already registered for this event"
+
+                # Also check by email for third_party/non-user flows
+                email_val = (data.get("email") or "").strip().lower()
+                if email_val:
+                    existing_email = Registration.query.filter_by(
+                        event_id=event.id,
+                        email=email_val
+                    ).first()
+                    if existing_email:
+                        if booking_type == "third_party":
+                            attendee_name = data.get("full_name")
+                            return None, None, f"The attendee ({attendee_name or email_val}) is already registered for this event"
+                        else:
+                            return None, None, "You are already registered for this event"
+
                 count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar()
                 sequence = (count if count else 0) + 1
                 registration = Registration(
-                    event_id=event.id, user_id=user_id, ticket_type_id=ticket_type.id,
+                    event_id=event.id, user_id=actual_attendee_id, ticket_type_id=ticket_type.id,
                     full_name=data.get("full_name", "").strip(), email=data.get("email", "").strip().lower(),
                     phone=data.get("phone", "").strip(), nationality=data.get("nationality", "").strip(),
                     id_number=data.get("id_number", "").strip(), id_type=data.get("id_type", "national_id"),
                     ticket_type=ticket_type.name, registration_fee=float(ticket_type.price),
                     payment_status="free" if ticket_type.price == 0 else "pending",
-                    registered_by="self", status="confirmed" if ticket_type.price == 0 else "pending_payment"
+                    registered_by=booking_type, 
+                    status="confirmed" if ticket_type.price == 0 else "pending_payment",
+                    # NEW: Third-party registration tracking
+                    booked_by_user_id=user_id,
+                    booking_type=booking_type,
+                    group_booking_id=group_booking_id,
+                    attendee_user_id=actual_attendee_id if booking_type != "self" else None,
+                    group_index=group_index
                 )
                 registration.generate_refs(event.slug, sequence)
                 db.session.add(registration)
                 db.session.flush()
                 qr_code = cls._generate_qr_code(registration.qr_token, registration.registration_ref)
-                logger.info(f"User {user_id} registered: {registration.registration_ref}")
+                logger.info(f"User {user_id} registered attendee {actual_attendee_id}: {registration.registration_ref}")
                 if SIGNALS_AVAILABLE:
                     try:
                         from flask import current_app
                         from app.events.signal_handlers import event_registered, offer_services_after_registration
-                        event_registered.send(current_app._get_current_object(), user_id=user_id, event_id=event.id,
+                        event_registered.send(current_app._get_current_object(), user_id=actual_attendee_id, event_id=event.id,
                                              registration_id=registration.id, ticket_type=ticket_type.name)
-                        offer_services_after_registration.send(current_app._get_current_object(), user_id=user_id,
+                        offer_services_after_registration.send(current_app._get_current_object(), user_id=actual_attendee_id,
                                                               event_id=event.id, event_slug=event.slug,
                                                               event_name=event.name, event_city=event.city,
                                                               event_start_date=event.start_date.isoformat() if event.start_date else None,
@@ -1622,13 +1802,13 @@ class EventService:
             'event_city': event.city, 'event_country': event.country, 'event_venue': event.venue or '',
             'event_start_date': event.start_date.isoformat() if event.start_date else None,
             'event_end_date': event.end_date.isoformat() if event.end_date else None,
-            'event_currency': event.currency, 'event_status': event.status.value if event.status else None,
+            'event_currency': event.currency, 'event_status': event.status if event.status else None,
             'event_featured': event.featured, 'event_metadata': event.event_metadata or {},
             'contact_email': event.contact_email, 'contact_phone': event.contact_phone, 'website': event.website,
             'max_capacity': event.max_capacity or 0, 'total_registrations': total_regs,
             'remaining_capacity': remaining, 'is_sold_out': is_sold_out,
             'user_registered': user_registered, 'user_registration_ref': user_registration_ref,
-            'can_register': event.status == EventStatus.PUBLISHED and not is_sold_out,
+            'can_register': event.status == EventStatus.PUBLISHED.value and not is_sold_out,
             'ticket_types': ticket_types, 'is_free_event': is_free_event, 'min_price': min_price,
         }
 

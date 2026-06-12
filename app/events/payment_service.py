@@ -35,7 +35,9 @@ class EventPaymentService:
         payment_method: str = "wallet",
         mobile_money_operator: Optional[str] = None,
         mobile_money_phone: Optional[str] = None,
-        group_attendees: Optional[List[Dict]] = None
+        group_attendees: Optional[List[Dict]] = None,
+        create_primary_for_payer: bool = True,
+        group_booking_id: Optional[str] = None
     ) -> Dict:
         """
         Process ticket purchase with payment integration
@@ -85,8 +87,14 @@ class EventPaymentService:
             
             # Create registrations
             registrations = self._create_registrations(
-                user_id, event_id, ticket_type_id, quantity, 
-                payment_result.get("payment_reference"), group_attendees
+                user_id=user_id,
+                event_id=event_id,
+                ticket_type_id=ticket_type_id,
+                quantity=quantity,
+                payment_reference=payment_result.get("payment_reference"),
+                group_attendees=group_attendees,
+                create_primary_for_payer=create_primary_for_payer,
+                group_booking_id=group_booking_id
             )
             
             # Update ticket type capacity
@@ -260,28 +268,47 @@ class EventPaymentService:
         ticket_type_id: int,
         quantity: int,
         payment_reference: str,
-        group_attendees: Optional[List[Dict]] = None
+        group_attendees: Optional[List[Dict]] = None,
+        create_primary_for_payer: bool = True,
+        group_booking_id: Optional[str] = None
     ) -> List[Dict]:
         """Create event registrations"""
         registrations = []
         
-        # Primary registrant
-        primary_registration = self._create_single_registration(
-            user_id, event_id, ticket_type_id, payment_reference
-        )
-        registrations.append(primary_registration)
+        # Primary registrant (payer) if requested (self-registration use case)
+        if create_primary_for_payer:
+            primary_registration = self._create_single_registration(
+                user_id=user_id,
+                event_id=event_id,
+                ticket_type_id=ticket_type_id,
+                payment_reference=payment_reference,
+                attendee_data=None,  # will be filled from User record
+                booked_by_user_id=user_id,
+                booking_type="self",
+                group_booking_id=group_booking_id,
+                group_index=None
+            )
+            registrations.append(primary_registration)
         
         # Group attendees
         if group_attendees:
+            idx = 1
             for attendee_data in group_attendees:
                 # Create or find user for attendee
                 attendee_user_id = self._get_or_create_attendee_user(attendee_data)
-                
                 registration = self._create_single_registration(
-                    attendee_user_id, event_id, ticket_type_id, payment_reference,
-                    attendee_data
+                    user_id=attendee_user_id,
+                    event_id=event_id,
+                    ticket_type_id=ticket_type_id,
+                    payment_reference=payment_reference,
+                    attendee_data=attendee_data,
+                    booked_by_user_id=user_id,
+                    booking_type="third_party",
+                    group_booking_id=group_booking_id,
+                    group_index=idx
                 )
                 registrations.append(registration)
+                idx += 1
         
         return registrations
     
@@ -291,21 +318,48 @@ class EventPaymentService:
         event_id: int,
         ticket_type_id: int,
         payment_reference: str,
-        attendee_data: Optional[Dict] = None
+        attendee_data: Optional[Dict] = None,
+        booked_by_user_id: Optional[int] = None,
+        booking_type: str = "self",
+        group_booking_id: Optional[str] = None,
+        group_index: Optional[int] = None
     ) -> Dict:
         """Create a single event registration"""
+        # Ensure we have attendee details if attendee_data not provided (self case)
+        full_name = None
+        email = None
+        phone = None
+        nationality = None
+        if attendee_data:
+            full_name = attendee_data.get("name")
+            email = attendee_data.get("email")
+            phone = attendee_data.get("phone")
+            nationality = attendee_data.get("nationality")
+        else:
+            # Load from User
+            user = User.query.get(user_id)
+            if user:
+                full_name = getattr(user, "username", None) or getattr(user, "full_name", None) or user.email
+                email = user.email
+                phone = getattr(user, "phone", None)
+
         registration = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type_id,
             user_id=user_id,
-            full_name=attendee_data.get("name") if attendee_data else None,
-            email=attendee_data.get("email") if attendee_data else None,
-            phone=attendee_data.get("phone") if attendee_data else None,
-            nationality=attendee_data.get("nationality") if attendee_data else None,
+            full_name=full_name or "",
+            email=(email or "").lower(),
+            phone=phone,
+            nationality=nationality,
             payment_status="paid",
             status="confirmed",
-            registration_fee=0, # Handled by ticket type price
-            payment_reference=payment_reference
+            registered_by=booking_type,
+            booked_by_user_id=booked_by_user_id,
+            booking_type=booking_type,
+            group_booking_id=group_booking_id,
+            attendee_user_id=user_id if booking_type != "self" else None,
+            group_index=group_index,
+            wallet_txn_id=payment_reference
         )
         
         # Generate references - need event slug and sequence

@@ -1,237 +1,315 @@
-{% extends "user/base_user_dashboard.html" %}
+{% extends "user/base_user_dashboard.html" if not request.args.get('_pane') else "user/_pane_base.html" %}
 
 {% block content_section %}
-<div class="dashboard-content">
 
-    <!-- Welcome Banner -->
-    <div class="welcome-banner">
-        <h2>Welcome back, {{ current_user.username or 'Fan' }}!</h2>
-        <p>Your AFCON 2025 journey at a glance</p>
+{# ── SECTION: Dashboard overview ──────────────────────────────────────────── #}
+<div id="dashboard" class="content-section active">
+
+    {# Hero greeting #}
+    <div style="margin-bottom:1.75rem;">
+        <h1 style="font-size:1.6rem;font-weight:800;color:#1a202c;margin:0 0 0.25rem;">
+            Welcome back, {{ current_user.username }} 👋
+        </h1>
+        <p style="color:#718096;margin:0;">Here's what's happening with your AFCON360 account.</p>
     </div>
 
-    <!-- Stats Row - Only shows if user has data -->
-    <div class="stats-row">
-        {% if activity.upcoming_events %}
-        <div class="stat-card">
-            <div class="stat-icon">🎫</div>
-            <div class="stat-value">{{ activity.upcoming_events|length }}</div>
-            <div class="stat-label">Upcoming Events</div>
-        </div>
-        {% endif %}
+    {# Stats strip #}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;margin-bottom:1.75rem;">
 
-        {% if wallet_balance > 0 %}
-        <div class="stat-card">
-            <div class="stat-icon">💰</div>
-            <div class="stat-value">
-                {% if wallet_currency == 'UGX' %}
-                    UGX {{ "{:,.0f}".format(wallet_balance) }}
-                {% else %}
-                    ${{ "%.2f"|format(wallet_balance) }}
-                {% endif %}
+        <div style="background:white;border-radius:14px;padding:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="width:44px;height:44px;border-radius:10px;background:#ebf4ff;display:flex;align-items:center;justify-content:center;color:#4299e1;font-size:1.2rem;">
+                    <i class="fas fa-ticket-alt"></i>
+                </div>
+                <div>
+                    <div style="font-size:1.6rem;font-weight:800;color:#1a202c;line-height:1;">{{ registrations|length }}</div>
+                    <div style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Registrations</div>
+                </div>
             </div>
-            <div class="stat-label">Wallet Balance</div>
         </div>
-        {% endif %}
 
-        {% if activity.upcoming_stays %}
-        <div class="stat-card">
-            <div class="stat-icon">🏨</div>
-            <div class="stat-value">{{ activity.upcoming_stays|length }}</div>
-            <div class="stat-label">Upcoming Stays</div>
+        <div style="background:white;border-radius:14px;padding:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="width:44px;height:44px;border-radius:10px;background:#e6fffa;display:flex;align-items:center;justify-content:center;color:#00b87d;font-size:1.2rem;">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+                <div>
+                    <div style="font-size:1.6rem;font-weight:800;color:#1a202c;line-height:1;">{{ upcoming_count|default(0) }}</div>
+                    <div style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Upcoming</div>
+                </div>
+            </div>
         </div>
-        {% endif %}
 
-        {% if activity.upcoming_trips %}
-        <div class="stat-card">
-            <div class="stat-icon">🚗</div>
-            <div class="stat-value">{{ activity.upcoming_trips|length }}</div>
-            <div class="stat-label">Upcoming Trips</div>
+        <div style="background:white;border-radius:14px;padding:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="width:44px;height:44px;border-radius:10px;background:#faf5ff;display:flex;align-items:center;justify-content:center;color:#6b46c1;font-size:1.2rem;">
+                    <i class="fas fa-check-double"></i>
+                </div>
+                <div>
+                    <div style="font-size:1.6rem;font-weight:800;color:#1a202c;line-height:1;">{{ attended_count|default(0) }}</div>
+                    <div style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Attended</div>
+                </div>
+            </div>
         </div>
-        {% endif %}
-    </div>
 
-    <!-- Upcoming Events Section -->
-    {% if activity.upcoming_events %}
-    <div class="dashboard-section">
-        <div class="section-header">
-            <h3><i class="fas fa-calendar-alt"></i> Your Upcoming Events</h3>
-            <a href="{{ url_for('events.my_registrations') }}" class="view-all">View All →</a>
-        </div>
-        <div class="events-list">
-            {% for reg in activity.upcoming_events[:3] %}
-            <div class="event-card">
-                <div class="event-info">
-                    <h4>{{ reg.event.name }}</h4>
-                    <div class="event-meta">
-                        <span><i class="fas fa-calendar"></i> {{ reg.event.start_date }}</span>
-                        <span><i class="fas fa-map-marker-alt"></i> {{ reg.event.city }}</span>
+        <div style="background:white;border-radius:14px;padding:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="width:44px;height:44px;border-radius:10px;background:#c6f6d5;display:flex;align-items:center;justify-content:center;color:#22543d;font-size:1.2rem;">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <div>
+                    <div style="font-size:1.6rem;font-weight:800;color:#1a202c;line-height:1;">
+                        {% if wallet %}${{ "%.0f"|format(wallet.balance) }}{% else %}—{% endif %}
                     </div>
-                </div>
-                <div class="event-actions">
-                    <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn-sm">View Ticket</a>
+                    <div style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Wallet</div>
                 </div>
             </div>
-            {% endfor %}
+        </div>
+
+    </div>
+
+    {# Quick Actions #}
+    <div style="background:white;border-radius:14px;padding:1.5rem;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;margin-bottom:1.75rem;">
+        <h3 style="font-size:0.95rem;font-weight:700;color:#1a202c;margin:0 0 1rem;text-transform:uppercase;letter-spacing:0.04em;">Quick Actions</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.75rem;">
+
+            <a href="#" data-pane-url="{{ safe_url('events.list') }}"
+               style="padding:1rem;border-radius:10px;border:1.5px solid #e2e8f0;background:white;color:#2d3748;text-decoration:none;text-align:center;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;"
+               onmouseover="this.style.borderColor='#667eea';this.style.color='#667eea';this.style.background='#f0f4ff';"
+               onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#2d3748';this.style.background='white';">
+                <i class="fas fa-search" style="font-size:1.3rem;"></i> Browse Events
+            </a>
+
+            {% if modules.get('wallet', {}).get('enabled') %}
+            <a href="#" data-pane-url="{{ safe_url('wallet.wallet_home') }}"
+               style="padding:1rem;border-radius:10px;border:1.5px solid #e2e8f0;background:white;color:#2d3748;text-decoration:none;text-align:center;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;"
+               onmouseover="this.style.borderColor='#00b87d';this.style.color='#00b87d';this.style.background='#f0fff4';"
+               onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#2d3748';this.style.background='white';">
+                <i class="fas fa-wallet" style="font-size:1.3rem;"></i> Wallet
+            </a>
+            {% endif %}
+
+            {% if modules.get('transport', {}).get('enabled') %}
+            <a href="#" data-pane-url="{{ safe_url('transport.home') }}"
+               style="padding:1rem;border-radius:10px;border:1.5px solid #e2e8f0;background:white;color:#2d3748;text-decoration:none;text-align:center;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;"
+               onmouseover="this.style.borderColor='#4299e1';this.style.color='#4299e1';this.style.background='#ebf8ff';"
+               onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#2d3748';this.style.background='white';">
+                <i class="fas fa-bus" style="font-size:1.3rem;"></i> Transport
+            </a>
+            {% endif %}
+
+            {% if modules.get('accommodation', {}).get('enabled') %}
+            <a href="#" data-pane-url="{{ safe_url('accommodation.guest.search') }}"
+               style="padding:1rem;border-radius:10px;border:1.5px solid #e2e8f0;background:white;color:#2d3748;text-decoration:none;text-align:center;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;"
+               onmouseover="this.style.borderColor='#f6ad55';this.style.color='#c05621';this.style.background='#fffbeb';"
+               onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#2d3748';this.style.background='white';">
+                <i class="fas fa-bed" style="font-size:1.3rem;"></i> Stays
+            </a>
+            {% endif %}
+
         </div>
     </div>
-    {% endif %}
 
-    <!-- Quick Actions -->
-    <div class="dashboard-section">
-        <div class="section-header">
-            <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+    {# Upcoming events preview #}
+    <div style="background:white;border-radius:14px;padding:1.5rem;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+            <h3 style="font-size:0.95rem;font-weight:700;color:#1a202c;margin:0;text-transform:uppercase;letter-spacing:0.04em;">
+                Upcoming Events
+            </h3>
+            <a href="#" data-section="events"
+               style="font-size:0.8rem;color:#667eea;font-weight:600;text-decoration:none;">
+                View all →
+            </a>
         </div>
-        <div class="actions-grid">
-            <a href="{{ url_for('events.list') }}" class="action-btn">🎫 Browse Events</a>
-            <a href="{{ url_for('wallet.wallet_dashboard') }}" class="action-btn">💰 Wallet</a>
-            <a href="{{ url_for('accommodation.guest_search') }}" class="action-btn">🏨 Find Stay</a>
-            <a href="{{ url_for('transport.home') }}" class="action-btn">🚗 Book Transport</a>
+
+        {% set shown = namespace(n=0) %}
+        {% for reg in upcoming_registrations|default([]) %}
+        {% if shown.n < 3 %}
+        {% set shown.n = shown.n + 1 %}
+        <div style="display:flex;align-items:center;gap:0.75rem;padding:0.75rem 0;border-bottom:1px solid #f0f4f8;">
+            <div style="width:40px;height:40px;border-radius:8px;background:#f0f4ff;display:flex;align-items:center;justify-content:center;color:#667eea;flex-shrink:0;">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:#1a202c;font-size:0.875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    {{ reg.event.name|default('Event') }}
+                </div>
+                <div style="font-size:0.75rem;color:#718096;">
+                    {% if reg.event.start_date %}{{ reg.event.start_date[:10] }}{% endif %}
+                    {% if reg.event.city %} · {{ reg.event.city }}{% endif %}
+                </div>
+            </div>
+            {% set st = reg.status|default('confirmed') %}
+            <span style="padding:0.2rem 0.6rem;border-radius:20px;font-size:0.7rem;font-weight:600;
+                {% if st == 'confirmed' %}background:#c6f6d5;color:#22543d;
+                {% elif st == 'checked_in' %}background:#bee3f8;color:#2a4365;
+                {% elif st == 'pending' %}background:#fefcbf;color:#744210;
+                {% else %}background:#fed7d7;color:#742a2a;{% endif %}">
+                {{ st|title }}
+            </span>
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        {% if upcoming_registrations|default([])|length == 0 %}
+        <div style="text-align:center;padding:2rem;color:#a0aec0;">
+            <i class="fas fa-calendar-plus" style="font-size:2rem;margin-bottom:0.75rem;display:block;"></i>
+            <p style="margin:0;font-size:0.875rem;">No upcoming events. <a href="{{ safe_url('events.list') }}" style="color:#667eea;">Browse events →</a></p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+{# ── SECTION: My Events (inline, no AJAX needed) ──────────────────────────── #}
+<div id="events" class="content-section">
+
+    {# Tab controls #}
+    <div style="display:flex;gap:0.5rem;border-bottom:2px solid #e2e8f0;margin-bottom:1.5rem;">
+        <button class="ev-tab active" data-evtab="upcoming"
+                style="padding:0.55rem 1.2rem;font-weight:600;font-size:0.875rem;color:#718096;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all 0.2s;">
+            Upcoming <span class="ev-count" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:0.65rem;font-weight:700;margin-left:0.35rem;background:#f0f4f8;color:#718096;">{{ upcoming_registrations|default([])|length }}</span>
+        </button>
+        <button class="ev-tab" data-evtab="past"
+                style="padding:0.55rem 1.2rem;font-weight:600;font-size:0.875rem;color:#718096;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all 0.2s;">
+            Past <span class="ev-count" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:0.65rem;font-weight:700;margin-left:0.35rem;background:#f0f4f8;color:#718096;">{{ past_registrations|default([])|length }}</span>
+        </button>
+        <button class="ev-tab" data-evtab="all"
+                style="padding:0.55rem 1.2rem;font-weight:600;font-size:0.875rem;color:#718096;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all 0.2s;">
+            All <span class="ev-count" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:0.65rem;font-weight:700;margin-left:0.35rem;background:#f0f4f8;color:#718096;">{{ registrations|default([])|length }}</span>
+        </button>
+    </div>
+
+    {# Upcoming tab #}
+    <div id="evtab-upcoming" class="ev-panel">
+        {% if upcoming_registrations|default([])|length > 0 %}
+            {% for reg in upcoming_registrations %}
+            {% include 'user/_reg_card.html' %}
+            {% endfor %}
+        {% else %}
+        <div style="text-align:center;padding:3.5rem 1rem;color:#718096;">
+            <div style="width:70px;height:70px;border-radius:50%;background:#f7fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.8rem;color:#cbd5e0;margin-bottom:1.25rem;">
+                <i class="fas fa-calendar-plus"></i>
+            </div>
+            <h5 style="color:#2d3748;font-weight:700;">No Upcoming Events</h5>
+            <p style="font-size:0.875rem;">You haven't registered for any upcoming events yet.</p>
+            <a href="{{ safe_url('events.list') }}" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.65rem 1.5rem;border-radius:10px;background:#667eea;color:white;font-weight:600;text-decoration:none;margin-top:0.5rem;">
+                <i class="fas fa-search"></i> Browse Events
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Past tab #}
+    <div id="evtab-past" class="ev-panel" style="display:none;">
+        {% if past_registrations|default([])|length > 0 %}
+            {% for reg in past_registrations %}
+            {% include 'user/_reg_card.html' %}
+            {% endfor %}
+        {% else %}
+        <div style="text-align:center;padding:3.5rem 1rem;color:#718096;">
+            <div style="width:70px;height:70px;border-radius:50%;background:#f7fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.8rem;color:#cbd5e0;margin-bottom:1.25rem;">
+                <i class="fas fa-history"></i>
+            </div>
+            <h5 style="color:#2d3748;font-weight:700;">No Past Events</h5>
+            <p style="font-size:0.875rem;">Your attended events will appear here.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# All tab #}
+    <div id="evtab-all" class="ev-panel" style="display:none;">
+        {% if registrations|default([])|length > 0 %}
+            {% for reg in registrations %}
+            {% include 'user/_reg_card.html' %}
+            {% endfor %}
+        {% else %}
+        <div style="text-align:center;padding:3.5rem 1rem;color:#718096;">
+            <h5 style="color:#2d3748;font-weight:700;">No Registrations Yet</h5>
+            <a href="{{ safe_url('events.list') }}" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.65rem 1.5rem;border-radius:10px;background:#667eea;color:white;font-weight:600;text-decoration:none;margin-top:0.5rem;">
+                <i class="fas fa-search"></i> Browse Events
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Cancel modal #}
+    <div id="cancelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:white;border-radius:16px;padding:2rem;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">
+            <div style="font-size:2.5rem;color:#fc8181;margin-bottom:1rem;"><i class="fas fa-exclamation-circle"></i></div>
+            <h5 style="font-weight:700;margin-bottom:0.5rem;">Cancel Registration?</h5>
+            <p id="cancelModalText" style="color:#718096;font-size:0.9rem;margin-bottom:1.5rem;"></p>
+            <div style="display:flex;gap:0.75rem;justify-content:center;">
+                <button onclick="closeCancelModal()" style="padding:0.6rem 1.5rem;border-radius:8px;border:1.5px solid #e2e8f0;background:white;font-weight:600;cursor:pointer;">Keep It</button>
+                <button id="confirmCancelBtn" style="padding:0.6rem 1.5rem;border-radius:8px;border:none;background:#fc8181;color:white;font-weight:600;cursor:pointer;">Yes, Cancel</button>
+            </div>
         </div>
     </div>
 
 </div>
 
 <style>
-.dashboard-content {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 1rem;
-}
-
-.welcome-banner {
-    background: linear-gradient(135deg, #10b981, #059669);
-    border-radius: 20px;
-    padding: 1.5rem;
-    color: white;
-    margin-bottom: 1.5rem;
-}
-
-.welcome-banner h2 {
-    margin: 0 0 0.5rem;
-    font-size: 1.5rem;
-}
-
-.welcome-banner p {
-    margin: 0;
-    opacity: 0.9;
-}
-
-.stats-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.stat-card {
-    background: var(--bg-surface, white);
-    border-radius: 16px;
-    padding: 1rem;
-    text-align: center;
-    border: 1px solid var(--border-light, #e2e8f0);
-}
-
-.stat-icon {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-}
-
-.stat-label {
-    font-size: 0.7rem;
-    color: #64748b;
-    text-transform: uppercase;
-}
-
-.dashboard-section {
-    background: var(--bg-surface, white);
-    border-radius: 20px;
-    border: 1px solid var(--border-light, #e2e8f0);
-    margin-bottom: 1.5rem;
-    overflow: hidden;
-}
-
-.section-header {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--border-light, #e2e8f0);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.section-header h3 {
-    margin: 0;
-    font-size: 1rem;
-}
-
-.view-all {
-    font-size: 0.75rem;
-    color: #10b981;
-    text-decoration: none;
-}
-
-.events-list {
-    padding: 1rem 1.5rem;
-}
-
-.event-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border-light, #e2e8f0);
-}
-
-.event-card:last-child {
-    border-bottom: none;
-}
-
-.event-info h4 {
-    margin: 0 0 0.25rem;
-    font-size: 0.9rem;
-}
-
-.event-meta {
-    display: flex;
-    gap: 1rem;
-    font-size: 0.7rem;
-    color: #64748b;
-}
-
-.btn-sm {
-    padding: 0.25rem 0.75rem;
-    background: #10b981;
-    color: white;
-    border-radius: 20px;
-    text-decoration: none;
-    font-size: 0.7rem;
-}
-
-.actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.75rem;
-    padding: 1rem 1.5rem;
-}
-
-.action-btn {
-    padding: 0.75rem;
-    background: var(--bg-surface-alt, #f8fafc);
-    border-radius: 12px;
-    text-decoration: none;
-    color: var(--text-primary, #1e293b);
-    text-align: center;
-    font-size: 0.8rem;
-    transition: all 0.2s;
-}
-
-.action-btn:hover {
-    background: #10b981;
-    color: white;
-}
+.ev-tab.active { color: #667eea !important; border-bottom-color: #667eea !important; }
+.ev-tab:hover:not(.active) { color: #2d3748 !important; }
+.ev-tab.active .ev-count { background: #667eea !important; color: white !important; }
+/* "View all →" link in the dashboard section triggers section switch */
+a[data-section] { cursor: pointer; }
 </style>
+
+<script>
+// ── Event tabs ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.ev-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+        document.querySelectorAll('.ev-tab').forEach(function (t) { t.classList.remove('active'); });
+        document.querySelectorAll('.ev-panel').forEach(function (p) { p.style.display = 'none'; });
+        this.classList.add('active');
+        document.getElementById('evtab-' + this.dataset.evtab).style.display = 'block';
+    });
+});
+
+// "View all →" link in dashboard section wires to section nav
+document.querySelectorAll('a[data-section]').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+        e.preventDefault();
+        var sectionId = this.dataset.section;
+        // Trigger the left-panel nav item to keep active state in sync
+        var navItem = document.querySelector('.nav-item[data-section="' + sectionId + '"]');
+        if (navItem) navItem.click();
+    });
+});
+
+// ── Cancel registration ──────────────────────────────────────────────────────
+var _cancelRef = null;
+function confirmCancel(ref, name) {
+    _cancelRef = ref;
+    document.getElementById('cancelModalText').textContent =
+        'Are you sure you want to cancel your registration for "' + name + '"? This cannot be undone.';
+    document.getElementById('cancelModal').style.display = 'flex';
+}
+function closeCancelModal() {
+    document.getElementById('cancelModal').style.display = 'none';
+    _cancelRef = null;
+}
+document.getElementById('confirmCancelBtn').addEventListener('click', function () {
+    if (!_cancelRef) return;
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Cancelling…';
+    fetch('/user/cancel-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (document.querySelector('meta[name=csrf-token]') || {}).content || '' },
+        body: JSON.stringify({ reg_ref: _cancelRef })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (d.success) { window.location.reload(); }
+        else { alert('Could not cancel: ' + (d.error || 'Unknown error')); btn.disabled = false; btn.textContent = 'Yes, Cancel'; }
+    })
+    .catch(function () { alert('Network error.'); btn.disabled = false; btn.textContent = 'Yes, Cancel'; })
+    .finally(function () { closeCancelModal(); });
+});
+document.getElementById('cancelModal').addEventListener('click', function (e) {
+    if (e.target === this) closeCancelModal();
+});
+</script>
+
 {% endblock %}

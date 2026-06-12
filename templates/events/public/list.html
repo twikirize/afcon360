@@ -799,7 +799,7 @@ body {
                             </div>
                         </div>
                         
-                        <p class="event-description">{{ event.description|truncate(200) }}</p>
+                        <p class="event-description">{{ event.description|default('')|truncate(200) }}</p>
                     </div>
                     
                     <div class="event-footer">

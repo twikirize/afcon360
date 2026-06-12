@@ -1,0 +1,143 @@
+﻿# Ignore python virtual environments
+venv/
+.venv/
+env/
+
+# Ignore local environment secrets
+.env
+.env.*
+
+# Ignore database migrations history if too bulky
+instance/
+*.db
+*.sqlite
+
+# Ignore caching structures
+__pycache__/
+*.pyc
+.pytest_cache/
+.celery/
+
+
+# Environments & Dependencies
+.venv/
+venv/
+node_modules/
+
+# IDE & OS
+.idea/
+.vscode/
+.git/
+.DS_Store
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.bak
+*.bak_consolidate
+
+# Build & dist
+dist/
+build/
+*.egg-info/
+
+# Logs & secrets
+*.log
+.env
+.flaskenv
+
+# Migrations
+migrations/versions/
+
+# Tests (exclude when doing app work)
+tests/
+scripts/
+
+# Backups & docs (aider doesn't need these)
+backups_today/
+model_backups/
+Documentation/
+Readme's/
+reports/
+docs/
+
+# Flask internals
+flask_session/
+instance/
+
+# Static backups
+static/*.bak_consolidate
+static/transport/
+static/css/generated/
+
+-------------------------
+# Python
+# -------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# -------------------------
+# Secrets / environment
+# -------------------------
+.env
+.env.*
+
+# -------------------------
+# Flask runtime
+# -------------------------
+instance/
+flask_session/
+
+# -------------------------
+# Database
+# -------------------------
+*.sqlite3
+*.db
+
+# -------------------------
+# IDE
+# -------------------------
+.idea/
+.vscode/
+
+# -------------------------
+# Logs
+# -------------------------
+*.log
+
+# -------------------------
+# MCP Server
+# -------------------------
+mcp_server.py
+
+# -------------------------
+# OS files
+# -------------------------
+
+.DS_Store
+Thumbs.db
+
+.continue/agents/
+
+# -------------------------
+# Backups
+# -------------------------
+backups_today/
+.aider*
+.continue/
+PROFILE_ACCOUNT_ROUTES_SPEC.md
+dockerignore
+
+
+# AI tooling
+.kilo/
+.kilocode/
+rules/

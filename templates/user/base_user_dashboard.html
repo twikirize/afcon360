@@ -3,7 +3,6 @@
 {% block title %}User Dashboard - AFCON360{% endblock %}
 
 {% block content %}
-<a href="#mainContent" class="skip-link">Skip to main content</a>
 <style>
 :root {
     --primary: #667eea;
@@ -16,45 +15,20 @@
     --dark: #2d3748;
     --light: #f7fafc;
     --border: #e2e8f0;
-    --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-
-    /* Stat icon color tokens */
-    --stat-events-bg: #bee3f8;
-    --stat-events-color: #2b6cb0;
-    --stat-wallet-bg: #c6f6d5;
-    --stat-wallet-color: #22543d;
-    --stat-calendar-bg: #faf5ff;
-    --stat-calendar-color: #6b46c1;
-    --stat-accommodation-bg: #fef3c7;
-    --stat-accommodation-color: #92400e;
+    --shadow: 0 4px 6px rgba(0,0,0,0.1);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
 }
 
-.skip-link {
-    position: absolute;
-    top: -40px;
-    left: 0;
-    background: var(--primary);
-    color: white;
-    padding: 8px 16px;
-    z-index: 10000;
-    text-decoration: none;
-    border-radius: 0 0 4px 0;
-}
-
-.skip-link:focus {
-    top: 0;
-}
-
+/* ── Layout ─────────────────────────────────── */
 .dashboard-container {
     display: flex;
     height: calc(100vh - 70px);
     background: var(--light);
 }
 
-/* Left Panel */
+/* ── Left Panel ──────────────────────────────── */
 .left-panel {
-    width: 280px;
+    width: 260px;
     background: white;
     border-right: 1px solid var(--border);
     box-shadow: var(--shadow);
@@ -65,716 +39,328 @@
 }
 
 .user-profile-section {
-    padding: 2rem 1.5rem;
+    padding: 1.75rem 1.5rem 1.25rem;
     background: linear-gradient(135deg, var(--primary), var(--secondary));
     color: white;
     text-align: center;
 }
 
 .user-avatar {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    font-weight: bold;
-    margin: 0 auto 1rem;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; font-weight: 700;
+    margin: 0 auto 0.75rem;
 }
 
-.user-name {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+.user-name  { font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem; }
+.user-email { font-size: 0.8rem; opacity: 0.85; word-break: break-all; }
+
+.org-badge {
+    margin-top: 0.75rem; padding: 0.4rem 0.75rem;
+    background: rgba(255,255,255,0.12);
+    border-radius: 20px; font-size: 0.75rem; display: inline-block;
 }
 
-.user-email {
-    font-size: 0.9rem;
-    opacity: 0.9;
-    word-break: break-all;
+/* ── Context Switcher ────────────────────────── */
+.context-switcher {
+    margin: 0.75rem; padding: 0.75rem;
+    background: #f8fafc; border-radius: 8px; border: 1px solid var(--border);
 }
-
-.organization-context {
-    margin-top: 1rem;
-    padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    font-size: 0.8rem;
+.context-switcher h4 { font-size: 0.8rem; color: #718096; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.context-btn {
+    width: 100%; padding: 0.45rem 0.75rem; margin-bottom: 0.4rem;
+    border: 1px solid var(--primary); background: white; color: var(--primary);
+    border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 0.5rem;
 }
+.context-btn:hover, .context-btn.active { background: var(--primary); color: white; }
 
-.nav-menu {
-    flex: 1;
-    padding: 1rem 0;
+/* ── Nav Menu ────────────────────────────────── */
+.nav-menu { flex: 1; padding: 0.5rem 0; }
+
+.nav-section-label {
+    padding: 0.75rem 1.25rem 0.25rem;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #a0aec0; font-weight: 600;
 }
 
 .nav-item {
-    display: block;
-    padding: 0.75rem 1.5rem;
-    color: var(--dark);
-    text-decoration: none;
-    transition: all 0.3s ease;
-    border-left: 3px solid transparent;
-    cursor: pointer;
+    display: flex; align-items: center;
+    padding: 0.6rem 1.25rem;
+    color: var(--dark); text-decoration: none;
+    transition: all 0.2s; border-left: 3px solid transparent;
+    cursor: pointer; font-size: 0.875rem; gap: 0.6rem;
 }
-
-.nav-item:hover {
-    background: var(--light);
-    color: var(--primary);
-    border-left-color: var(--primary);
-}
-
+.nav-item:hover { background: var(--light); color: var(--primary); border-left-color: var(--primary); }
 .nav-item.active {
-    background: linear-gradient(90deg, rgba(102, 126, 234, 0.1), transparent);
-    color: var(--primary);
-    border-left-color: var(--primary);
-    font-weight: 600;
+    background: linear-gradient(90deg, rgba(102,126,234,0.1), transparent);
+    color: var(--primary); border-left-color: var(--primary); font-weight: 600;
 }
-
-.nav-item i {
-    width: 20px;
-    margin-right: 0.75rem;
-}
-
-/* Action Cards */
-.action-card {
-    padding: 1rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: white;
-    color: var(--dark);
-    text-decoration: none;
-    text-align: center;
-    transition: all 0.3s ease;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.action-card:hover {
-    background: var(--light);
-    border-color: var(--primary);
-    color: var(--primary);
-}
-
-.action-card.disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
-/* Quick Links */
-.quick-link {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    background: var(--light);
-    border-radius: 8px;
-    text-decoration: none;
-    color: var(--dark);
-    transition: all 0.3s ease;
-}
-
-.quick-link:hover {
-    background: #edf2f7;
-    color: var(--primary);
-}
-
+.nav-item i { width: 18px; text-align: center; flex-shrink: 0; }
 .nav-badge {
-    float: right;
-    background: var(--danger);
-    color: white;
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 10px;
-    margin-top: 2px;
+    margin-left: auto;
+    background: var(--danger); color: white;
+    font-size: 0.65rem; padding: 2px 6px; border-radius: 10px;
 }
 
-/* Context Switcher */
-.context-switcher {
-    margin: 1rem;
-    padding: 1rem;
-    background: #f8fafc;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-}
+/* ── Right Panel ─────────────────────────────── */
+.right-panel { flex: 1; overflow-y: auto; padding: 2rem; }
 
-.context-switcher h4 {
-    font-size: 0.9rem;
-    color: var(--dark);
-    margin-bottom: 0.5rem;
-}
+/* ── Content sections ────────────────────────── */
+.content-section { display: none; }
+.content-section.active { display: block; }
 
-.context-btn {
-    width: 100%;
-    padding: 0.5rem;
-    margin-bottom: 0.5rem;
-    border: 1px solid var(--primary);
-    background: white;
-    color: var(--primary);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.context-btn:hover {
-    background: var(--primary);
-    color: white;
-}
-
-.context-btn.active {
-    background: var(--primary);
-    color: white;
-}
-
-/* Right Panel */
-.right-panel {
-    flex: 1;
-    overflow-y: auto;
-    padding: 2rem;
-}
-
-/* Pane loading styles */
+/* ── Loading / Error ─────────────────────────── */
 .pane-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem;
-    min-height: 300px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 4rem; min-height: 300px; color: #718096;
 }
-
-.pane-loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--border);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+.pane-spinner {
+    width: 38px; height: 38px;
+    border: 3px solid var(--border); border-top-color: var(--primary);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
     margin-bottom: 1rem;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.pane-error {
-    text-align: center;
-    padding: 3rem;
-    color: var(--danger);
-}
-
-.pane-error i {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-}
-
-.pane-error .retry-btn {
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-}
-
-.pane-error .retry-btn:hover {
-    background: var(--primary-dark);
-}
-
-/* Mobile Navigation */
+/* ── Mobile ──────────────────────────────────── */
 .mobile-hamburger {
-    display: none;
-    position: fixed;
-    top: 1rem;
-    left: 1rem;
-    z-index: 1000;
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    width: 44px;
-    height: 44px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    display: none; position: fixed; top: 80px; left: 1rem; z-index: 1000;
+    background: var(--primary); color: white; border: none;
+    border-radius: 8px; width: 42px; height: 42px;
+    font-size: 1.1rem; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
-
-.mobile-pane-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 999;
+.mobile-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 999;
 }
-
-.mobile-pane-overlay.active {
-    display: block;
-}
+.mobile-overlay.active { display: block; }
 
 @media (max-width: 768px) {
     .left-panel {
-        position: fixed;
-        top: 0;
-        left: 0;
-        height: 100vh;
-        width: 280px;
-        z-index: 1000;
-        transform: translateX(-100%);
+        position: fixed; top: 0; left: 0; height: 100vh;
+        z-index: 1000; transform: translateX(-100%);
         transition: transform 0.3s ease;
-        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
     }
-    .left-panel.mobile-open {
-        transform: translateX(0);
-    }
-    .mobile-hamburger {
-        display: block;
-    }
-    .right-panel {
-        padding: 1rem;
-        padding-left: 4rem;
-        height: 100vh;
-        overflow-y: auto;
-    }
-}
-
-.loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid #e4e6eb;
-    border-top-color: #1877f2;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 16px;
-}
-
-.disabled-badge {
-    float: right;
-    background: #dc3545;
-    color: white;
-    font-size: 0.6rem;
-    padding: 2px 6px;
-    border-radius: 10px;
-    margin-top: 2px;
-}
-
-.nav-item.disabled,
-.nav-item--disabled,
-.action-card.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.nav-item.disabled:hover,
-.nav-item--disabled:hover,
-.action-card.disabled:hover {
-    background: transparent !important;
-    color: var(--dark) !important;
-    border-left-color: transparent !important;
-}
-
-/* Dashboard section cards */
-.section-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border);
-}
-
-.section-title {
-    color: var(--dark);
-    margin-bottom: 1rem;
-}
-
-.section-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-}
-
-.section-links-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1rem;
-}
-
-/* Stat icon color variants */
-.stat-icon--events {
-    background: #bee3f8;
-    color: #2b6cb0;
-}
-
-.stat-icon--wallet {
-    background: #c6f6d5;
-    color: #22543d;
-}
-
-.stat-icon--calendar {
-    background: #faf5ff;
-    color: #6b46c1;
-}
-
-.stat-icon--accommodation {
-    background: #fef3c7;
-    color: #92400e;
-}
-
-/* Action card icons */
-.action-icon {
-    font-size: 1.5rem;
-}
-
-/* Quick link icons */
-.quick-link-icon {
-    color: var(--primary);
-    width: 20px;
-    text-align: center;
+    .left-panel.open { transform: translateX(0); }
+    .mobile-hamburger { display: flex; align-items: center; justify-content: center; }
+    .right-panel { padding: 1rem 1rem 1rem 3.5rem; }
 }
 </style>
 
-<div id="mobileOverlay" class="mobile-pane-overlay" onclick="toggleMobileNav()" aria-hidden="true"></div>
-<button class="mobile-hamburger" onclick="toggleMobileNav()" aria-label="Open menu" aria-expanded="false" aria-controls="leftPanel">
+<div id="mobileOverlay" class="mobile-overlay" onclick="toggleMobileNav()"></div>
+<button class="mobile-hamburger" onclick="toggleMobileNav()" aria-label="Open menu">
     <i class="fas fa-bars"></i>
 </button>
 
-<div class="dashboard-container" id="mainContent">
-    <!-- Left Panel -->
-    <div class="left-panel" id="leftPanel" role="navigation" aria-label="Main navigation">
+<div class="dashboard-container">
+
+    {# ── Left Panel ───────────────────────────── #}
+    <div class="left-panel" id="leftPanel">
+
         <div class="user-profile-section">
             <div class="user-avatar">
                 {{ current_user.username[0]|upper if current_user.username else '?' }}
             </div>
             <div class="user-name">{{ current_user.username }}</div>
             <div class="user-email">{{ current_user.email }}</div>
-
-            {% set has_orgs = user_organisations|default([])|length > 0 %}
-
-            {% if has_orgs %}
-            <div class="organization-context">
-                <i class="fas fa-building"></i>
-                <span>Organization Member</span>
-            </div>
+            {% if user_organisations|default([])|length > 0 %}
+            <span class="org-badge"><i class="fas fa-building me-1"></i>Organisation Member</span>
             {% endif %}
         </div>
 
-        <!-- Context Switcher for Org Members -->
-        {% if has_orgs %}
+        {% if user_organisations|default([])|length > 0 %}
         <div class="context-switcher">
-            <h4>Switch Context</h4>
+            <h4>Context</h4>
             <button class="context-btn active" onclick="switchToPersonal()">
-                <i class="fas fa-user"></i> Personal View
+                <i class="fas fa-user"></i> Personal
             </button>
-            {% for org_member in user_organisations|default([]) %}
-            <button class="context-btn" onclick="switchToOrg('{{ org_member.organisation.id }}')">
-                <i class="fas fa-building"></i> {{ org_member.organisation.name }}
+            {% for m in user_organisations %}
+            <button class="context-btn" onclick="switchToOrg('{{ m.organisation.id }}')">
+                <i class="fas fa-building"></i> {{ m.organisation.name }}
             </button>
             {% endfor %}
         </div>
         {% endif %}
 
         <nav class="nav-menu">
-            <!-- Inline sections (already in the page) -->
+            <div class="nav-section-label">Overview</div>
             <a href="#" class="nav-item active" data-section="dashboard">
-                <i class="fas fa-tachometer-alt"></i>
-                <span>Dashboard</span>
+                <i class="fas fa-tachometer-alt"></i> Dashboard
             </a>
             <a href="#" class="nav-item" data-section="events">
-                <i class="fas fa-ticket-alt"></i>
-                <span>My Events</span>
-                {% if registrations|length > 0 %}
+                <i class="fas fa-ticket-alt"></i> My Events
+                {% if registrations|default([])|length > 0 %}
                 <span class="nav-badge">{{ registrations|length }}</span>
                 {% endif %}
             </a>
 
-            <!-- Pane sections (load via AJAX) -->
-            {% set wallet_enabled = modules.get('wallet') %}
-            {% set wallet_url = links.wallet_dashboard %}
-            <a href="#" class="nav-item{% if not wallet_enabled or wallet_url == '#' %} nav-item--disabled{% endif %}"
-               {% if wallet_enabled and wallet_url != '#' %}
-                   data-pane-url="{{ wallet_url }}"
-               {% else %}
-                   data-module-disabled="{{ 'Wallet is enabled — server restart needed to activate.' if wallet_enabled else 'Wallet module is currently disabled.' }}"
-                   data-module-level="{{ 'info' if wallet_enabled else 'warning' }}"
-               {% endif %}>
-                <i class="fas fa-wallet"></i>
-                <span>Wallet</span>
+            <div class="nav-section-label">Services</div>
+            {% if modules.get('wallet', {}).get('enabled') %}
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('wallet.wallet_dashboard') }}">
+                <i class="fas fa-wallet"></i> Wallet
             </a>
-            
-            {% set transport_enabled = modules.get('transport') %}
-            {% set transport_url = links.transport_home %}
-            <a href="#" class="nav-item{% if not transport_enabled or transport_url == '#' %} nav-item--disabled{% endif %}"
-               {% if transport_enabled and transport_url != '#' %}
-                   data-pane-url="{{ transport_url }}"
-               {% else %}
-                   data-module-disabled="{{ 'Transport is enabled — server restart needed to activate.' if transport_enabled else 'Transport module is currently disabled.' }}"
-                   data-module-level="{{ 'info' if transport_enabled else 'warning' }}"
-               {% endif %}>
-                <i class="fas fa-bus"></i>
-                <span>Transport</span>
+            {% endif %}
+            {% if modules.get('transport', {}).get('enabled') %}
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('transport.home') }}">
+                <i class="fas fa-bus"></i> Transport
             </a>
-            
-            {% set accommodation_enabled = modules.get('accommodation') %}
-            {% set accommodation_url = links.accommodation_index %}
-            <a href="#" class="nav-item{% if not accommodation_enabled or accommodation_url == '#' %} nav-item--disabled{% endif %}"
-               {% if accommodation_enabled and accommodation_url != '#' %}
-                   data-pane-url="{{ accommodation_url }}"
-               {% else %}
-                   data-module-disabled="{{ 'Accommodation is enabled — server restart needed to activate.' if accommodation_enabled else 'Accommodation module is currently disabled.' }}"
-                   data-module-level="{{ 'info' if accommodation_enabled else 'warning' }}"
-               {% endif %}>
-                <i class="fas fa-bed"></i>
-                <span>Accommodation</span>
+            {% endif %}
+            {% if modules.get('accommodation', {}).get('enabled') %}
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('accommodation.guest.search') }}">
+                <i class="fas fa-bed"></i> Accommodation
             </a>
+            {% endif %}
+            {% if modules.get('tourism', {}).get('enabled') %}
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('tourism.home') }}">
+                <i class="fas fa-map-marked-alt"></i> Tourism
+            </a>
+            {% endif %}
+            {% if modules.get('tournament', {}).get('enabled') %}
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('tournament.home') }}">
+                <i class="fas fa-trophy"></i> Tournament
+            </a>
+            {% endif %}
 
-            <a href="#" class="nav-item" data-pane-url="{{ safe_url('accommodation.my_accommodation') }}">
-                <i class="fas fa-bed"></i>
-                <span>My Accommodation</span>
+            <div class="nav-section-label">Account</div>
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('kyc.index') }}">
+                <i class="fas fa-id-card"></i> Verification
             </a>
-
-            <a href="#" class="nav-item" data-pane-url="{{ safe_url('accommodation.guest_my_bookings') }}">
-                <i class="fas fa-calendar-alt"></i>
-                <span>My Bookings</span>
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.my_public_profile') }}">
+                <i class="fas fa-user-circle"></i> Profile
             </a>
-            
-            {% set tourism_enabled = modules.get('tourism') %}
-            {% set tourism_url = links.tourism_home %}
-            <a href="#" class="nav-item{% if not tourism_enabled or tourism_url == '#' %} nav-item--disabled{% endif %}"
-               {% if tourism_enabled and tourism_url != '#' %}
-                   data-pane-url="{{ tourism_url }}"
-               {% else %}
-                   data-module-disabled="{{ 'Tourism is enabled but needs a server restart to activate.' if tourism_enabled else 'Tourism module is currently disabled.' }}"
-                   data-module-level="{{ 'info' if tourism_enabled else 'warning' }}"
-               {% endif %}>
-                <i class="fas fa-map-marked-alt"></i>
-                <span>Tourism</span>
-            </a>
-            
-            {% set tournament_enabled = modules.get('tournament') %}
-            {% set tournament_url = links.tournament_home %}
-            <a href="#" class="nav-item{% if not tournament_enabled or tournament_url == '#' %} nav-item--disabled{% endif %}"
-               {% if tournament_enabled and tournament_url != '#' %}
-                   data-pane-url="{{ tournament_url }}"
-               {% else %}
-                   data-module-disabled="{{ 'Tournament is enabled — server restart needed to activate.' if tournament_enabled else 'Tournament module is currently disabled.' }}"
-                   data-module-level="{{ 'info' if tournament_enabled else 'warning' }}"
-               {% endif %}>
-                <i class="fas fa-trophy"></i>
-                <span>Tournament</span>
-            </a>
-            
-            {% set kyc_url = links.kyc_index %}
-            <a href="#" class="nav-item{% if kyc_url == '#' %} nav-item--disabled{% endif %}"
-               {% if kyc_url != '#' %}
-                   data-pane-url="{{ kyc_url }}"
-               {% else %}
-                   data-module-disabled="Verification service is currently unavailable."
-                   data-module-level="warning"
-               {% endif %}>
-                <i class="fas fa-id-card"></i>
-                <span>Verification</span>
-            </a>
-            
-            {% set profile_url = links.profile_public %}
-            <a href="#" class="nav-item{% if profile_url == '#' %} nav-item--disabled{% endif %}"
-               {% if profile_url != '#' %}
-                   data-pane-url="{{ profile_url }}"
-               {% else %}
-                   data-module-disabled="Profile module is currently unavailable."
-                   data-module-level="warning"
-               {% endif %}>
-                <i class="fas fa-user"></i>
-                <span>Profile</span>
-            </a>
-            
-            {% set account_url = links.profile_account %}
-            <a href="#" class="nav-item{% if account_url == '#' %} nav-item--disabled{% endif %}"
-               {% if account_url != '#' %}
-                   data-pane-url="{{ account_url }}"
-               {% else %}
-                   data-module-disabled="Account Settings are currently unavailable."
-                   data-module-level="warning"
-               {% endif %}>
-                <i class="fas fa-cog"></i>
-                <span>Account Settings</span>
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.account_overview') }}">
+                <i class="fas fa-cog"></i> Settings
             </a>
         </nav>
     </div>
 
-    <!-- Right Panel -->
+    {# ── Right Panel ──────────────────────────── #}
     <div class="right-panel" id="rightPanel">
-        {% block content_section %}
-        <!-- Content will be injected by child templates -->
-        {% endblock %}
+        {% block content_section %}{% endblock %}
     </div>
 </div>
 
 <script>
-// Simple Gmail-style pane loader
-document.addEventListener('DOMContentLoaded', function() {
-    const rightPanel = document.getElementById('rightPanel');
-    const navItems = document.querySelectorAll('.nav-item');
-    const contentSections = document.querySelectorAll('.content-section');
-    
-    // Function to show inline section
-    function showSection(sectionId) {
-        // Update active nav
-        navItems.forEach(nav => nav.classList.remove('active'));
-        const activeNav = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
-        if (activeNav) activeNav.classList.add('active');
-        
-        // Show section, hide others
-        contentSections.forEach(section => section.classList.remove('active'));
-        const target = document.getElementById(sectionId);
+// ── Mobile nav ───────────────────────────────────────────────────────────────
+function toggleMobileNav() {
+    var panel  = document.getElementById('leftPanel');
+    var overlay = document.getElementById('mobileOverlay');
+    panel.classList.toggle('open');
+    overlay.classList.toggle('active');
+}
+
+// ── Section / pane router ────────────────────────────────────────────────────
+(function () {
+    var rightPanel    = document.getElementById('rightPanel');
+    var navItems      = document.querySelectorAll('.nav-item');
+    var contentSections = document.querySelectorAll('.content-section');
+
+    function setActiveNav(selector, value) {
+        navItems.forEach(function (n) { n.classList.remove('active'); });
+        var match = document.querySelector('.nav-item[' + selector + '="' + value + '"]');
+        if (match) match.classList.add('active');
+    }
+
+    function showSection(id) {
+        setActiveNav('data-section', id);
+        contentSections.forEach(function (s) { s.classList.remove('active'); });
+        var target = document.getElementById(id);
         if (target) target.classList.add('active');
-        
-        // Update URL
-        window.location.hash = sectionId;
+        history.replaceState(null, '', window.location.pathname + '#' + id);
     }
-    
-    let currentController = null;
 
-    // Function to load pane via AJAX
     function loadPane(paneUrl) {
-        if (!paneUrl || paneUrl === '#') {
-            flash('This module is not available right now.', 'warning');
-            return;
-        }
+        setActiveNav('data-pane-url', paneUrl);
+        contentSections.forEach(function (s) { s.classList.remove('active'); });
 
-        if (currentController) {
-            currentController.abort();
-        }
-        currentController = new AbortController();
+        rightPanel.innerHTML = '<div class="pane-loading"><div class="pane-spinner"></div><p>Loading…</p></div>';
 
-        // Update active nav
-        navItems.forEach(nav => nav.classList.remove('active'));
-        const activeNav = document.querySelector(`.nav-item[data-pane-url="${paneUrl}"]`);
-        if (activeNav) activeNav.classList.add('active');
-        
-        // Hide inline sections
-        contentSections.forEach(section => section.classList.remove('active'));
-        
-        // Show loading
-        rightPanel.innerHTML = '<div style="text-align:center;padding:50px"><div class="loading-spinner"></div><p>Loading...</p></div>';
-        
-        // Add _pane=1 to URL and fetch
-        const separator = paneUrl.includes('?') ? '&' : '?';
-        const requestUrl = paneUrl + separator + '_pane=1';
-        fetch(requestUrl, {
+        var sep = paneUrl.includes('?') ? '&' : '?';
+        fetch(paneUrl + sep + '_pane=1', {
             credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            signal: currentController.signal
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
-        .then(response => {
-            if (response.status === 401) {
-                window.location.href = '/auth/login';
-                return null;
-            }
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.text();
+        .then(function (res) {
+            if (res.status === 401) { window.location.href = '/auth/login'; return null; }
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.text();
         })
-        .then(html => {
-            if (html) {
-                // Extract just the <main> content block from full-page responses
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const paneRoot = doc.querySelector('[data-pane-root]')
-                    || doc.getElementById('main')
-                    || doc.querySelector('main')
-                    || doc.querySelector('#content')
-                    || null;
-                rightPanel.innerHTML = paneRoot ? paneRoot.innerHTML : doc.body.innerHTML;
-                // Focus management for accessibility
-                rightPanel.setAttribute('tabindex', '-1');
-                rightPanel.focus();
-                // Update URL without reload
-                const url = new URL(window.location);
-                url.searchParams.set('view', paneUrl);
-                window.history.pushState({}, '', url);
-            }
+        .then(function (html) {
+            if (!html) return;
+            rightPanel.innerHTML = html;
+            // Re-run any inline scripts in the loaded fragment
+            rightPanel.querySelectorAll('script').forEach(function (old) {
+                var s = document.createElement('script');
+                s.textContent = old.textContent;
+                old.parentNode.replaceChild(s, old);
+            });
+            var url = new URL(window.location.href);
+            url.searchParams.set('view', paneUrl);
+            history.pushState({ pane: paneUrl }, '', url.toString());
         })
-        .catch(error => {
-            if (error.name === 'AbortError') {
-                return;
-            }
-            rightPanel.innerHTML = `<div class="pane-error">
-                <i class="fas fa-exclamation-triangle"></i>
-                <h4>Failed to load content</h4>
-                <p>${error.message || 'An unexpected error occurred.'}</p>
-                <button class="retry-btn" onclick="loadPane('${paneUrl}')">Retry</button>
-            </div>`;
+        .catch(function (err) {
+            rightPanel.innerHTML =
+                '<div class="pane-loading" style="color:#fc8181">' +
+                '<i class="fas fa-exclamation-triangle" style="font-size:2.5rem;margin-bottom:1rem;"></i>' +
+                '<p>' + err.message + '</p>' +
+                '<button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;">Retry</button>' +
+                '</div>';
         });
     }
-    
-    // Handle navigation clicks
-    document.querySelectorAll('.nav-item[data-section]').forEach(item => {
-        item.addEventListener('click', (e) => {
+
+    // Event delegation for section nav
+    navItems.forEach(function (item) {
+        item.addEventListener('click', function (e) {
             e.preventDefault();
-            showSection(item.dataset.section);
-        });
-    });
-    
-    document.querySelectorAll('.nav-item[data-pane-url]').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            loadPane(item.dataset.paneUrl);
-        });
-    });
-    
-    document.querySelectorAll('.nav-item[data-module-disabled]').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            const message = item.dataset.moduleDisabled || 'This module is currently disabled.';
-            const level = item.dataset.moduleLevel || 'warning';
-            flash(message, level);
-        });
-    });
-    
-    // Handle action card clicks
-    document.querySelectorAll('.action-card[data-pane-url]').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            loadPane(item.dataset.paneUrl);
+            var section = this.dataset.section;
+            var pane    = this.dataset.paneUrl;
+            if (section) showSection(section);
+            else if (pane) loadPane(pane);
         });
     });
 
-    document.querySelectorAll('.action-card[data-module-disabled]').forEach(item => {
-        item.addEventListener('click', (e) => {
+    // Action cards inside the right panel (delegated — works after pane load too)
+    rightPanel.addEventListener('click', function (e) {
+        var card = e.target.closest('[data-pane-url]');
+        if (card && !card.classList.contains('nav-item')) {
             e.preventDefault();
-            const message = item.dataset.moduleDisabled || 'This module is currently disabled.';
-            const level = item.dataset.moduleLevel || 'warning';
-            flash(message, level);
-        });
+            loadPane(card.dataset.paneUrl);
+        }
     });
-    
-    // Handle initial state
-    const urlParams = new URLSearchParams(window.location.search);
-    const viewUrl = urlParams.get('view');
-    const hash = window.location.hash.substring(1);
-    
+
+    // Initial routing
+    var params  = new URLSearchParams(window.location.search);
+    var viewUrl = params.get('view');
+    var hash    = window.location.hash.slice(1);
+
     if (viewUrl) {
         loadPane(viewUrl);
-    } else if (hash && (hash === 'dashboard' || hash === 'events')) {
+    } else if (hash && document.getElementById(hash)) {
         showSection(hash);
     } else {
         showSection('dashboard');
     }
-    
-    // Handle browser back/forward
-    window.addEventListener('popstate', () => {
-        const newView = new URLSearchParams(window.location.search).get('view');
-        if (newView) {
-            loadPane(newView);
-        } else {
-            showSection(window.location.hash.substring(1) || 'dashboard');
-        }
+
+    // Browser back / forward
+    window.addEventListener('popstate', function (e) {
+        var p = new URLSearchParams(window.location.search).get('view');
+        if (p) loadPane(p);
+        else showSection(window.location.hash.slice(1) || 'dashboard');
     });
-});
+
+    // Org context switcher (stub — extend as needed)
+    window.switchToPersonal = function () {
+        document.querySelectorAll('.context-btn').forEach(function (b) { b.classList.remove('active'); });
+        event.currentTarget.classList.add('active');
+    };
+    window.switchToOrg = function (orgId) {
+        document.querySelectorAll('.context-btn').forEach(function (b) { b.classList.remove('active'); });
+        event.currentTarget.classList.add('active');
+    };
+}());
 </script>
 {% endblock %}

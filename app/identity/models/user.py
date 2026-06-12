@@ -105,7 +105,7 @@ class User(UserMixin, ProtectedModel):
     # ---------------------------
     profile = relationship(
         "UserProfile",
-        primaryjoin="foreign(UserProfile.user_id) == User.id",
+        primaryjoin="foreign(UserProfile.user_id) == User.public_id",
         back_populates="user",
         uselist=False
     )

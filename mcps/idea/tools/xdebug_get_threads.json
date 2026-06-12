@@ -1,0 +1,26 @@
+{
+  "name": "xdebug_get_threads",
+  "description": "Returns the list of threads in the debug session.\nUse this tool to see all threads and their current status.\n\nPreconditions:\n- Session must be suspended.\n\nNext call:\n- Use `xdebug_get_stack` for the selected thread.\n\nPagination:\n- `offset`/`limit` are applied after collecting all stacks.\n\nOrdering:\n- Active thread first.\n- Remaining threads are sorted by descending stack depth.\n\nSchema fields: id, name, state, isCurrent, additionalInfo, additionalInfoTooltip, frameCount.\n`additionalInfo`/`additionalInfoTooltip` use additional display info when available.",
+  "inputSchema": {
+    "properties": {
+      "sessionId": {
+        "type": "string",
+        "description": "Debug session ID. Use the current ID returned by `xdebug_get_debugger_status` or `xdebug_start_debugger_session`. If a session has stopped, timed out, or disappeared, refresh the session list before reusing an old ID. Format: uses session name as ID by default; if multiple sessions share the same name, ID is `<sessionName>#<executionId>`. If null and exactly one active session exists, it is selected automatically. If multiple sessions are active and sessionId is omitted, the call fails. Default: null."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Page size. Default: 50, max: 200."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Page offset. Default: 0."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [],
+    "type": "object"
+  }
+}

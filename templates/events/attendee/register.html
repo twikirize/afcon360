@@ -788,6 +788,46 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
                         </div>
                     </div>
 
+                    <!-- Booking Type Selector -->
+                    <div class="form-section">
+                        <h2 class="form-section-title">
+                            <div class="form-section-icon">
+                                <i class="fas fa-user-friends"></i>
+                            </div>
+                            Registration Type
+                        </h2>
+                        <div class="form-group-modern">
+                            <label class="form-label-modern">Who is this registration for?</label>
+                            <select name="booking_type" id="booking_type" class="form-control-modern">
+                                <option value="self" selected>👤 Myself</option>
+                                <option value="third_party">👥 Someone else</option>
+                            </select>
+                        </div>
+
+                        <!-- Third Party Fields (hidden by default) -->
+                        <div id="third_party_fields" style="display: none; background: #f8fafc; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border: 2px solid #e2e8f0;">
+                            <h5 style="margin-top: 0; margin-bottom: 1rem; color: #2d3748;">Attendee Information</h5>
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Full Name <span class="required">*</span></label>
+                                <input type="text" name="attendee_name" id="attendee_name" class="form-control-modern" placeholder="Enter attendee's full name">
+                            </div>
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Email Address <span class="required">*</span></label>
+                                <input type="email" name="attendee_email" id="attendee_email" class="form-control-modern" placeholder="Enter attendee's email">
+                            </div>
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Phone Number (Optional)</label>
+                                <input type="tel" name="attendee_phone" id="attendee_phone" class="form-control-modern" placeholder="Optional">
+                            </div>
+                            <div class="info-alert-modern" style="margin-top: 1rem; padding: 1rem;">
+                                <div class="info-alert-icon"><i class="fas fa-info-circle"></i></div>
+                                <div class="info-alert-content" style="font-size: 0.875rem;">
+                                    The attendee will receive an email with their ticket. If they don't have an account, one will be created automatically.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Event Status & Ticket Selection -->
                     {% set has_ticket_types = event.ticket_types and event.ticket_types|length > 0 %}
                     {% set has_paid_tickets = has_ticket_types and event.ticket_types|selectattr('price')|selectattr('price', 'greaterthan', 0)|list|length > 0 %}
@@ -914,6 +954,7 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
                             </div>
                             
                             <div id="additional-attendees-container"></div>
+                            <input type="hidden" name="group_attendees_data" id="group_attendees_data">
                         </div>
                     </div>
                     {% endif %}
@@ -980,10 +1021,84 @@ input[name="payment_method"]:checked + .payment-method-card .payment-method-icon
     </div>
 </div>
 
-<script>
-// Pass data to external JavaScript file
-window.ticketTypes = {{ event.ticket_types|tojson|safe if event.ticket_types else '[]' }};
-window.currency = "{{ event.currency }}";
-</script>
+<div id="event-context" data-user-registered="{{ 'true' if event_data.user_registered else 'false' }}" style="display:none"></div>
+<script type="application/json" id="ticket-types-json">{{ (event.ticket_types or []) | tojson | safe }}</script>
+<script type="application/json" id="event-currency-json">{{ (event.currency or '') | tojson | safe }}</script>
 <script src="{{ url_for('static', filename='js/modules/events/event-register.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const bookingTypeSelect = document.getElementById('booking_type');
+    const thirdPartyFields = document.getElementById('third_party_fields');
+    const attendeeName = document.getElementById('attendee_name');
+    const attendeeEmail = document.getElementById('attendee_email');
+    const groupToggle = document.getElementById('group-registration-toggle');
+
+    if (bookingTypeSelect) {
+        bookingTypeSelect.addEventListener('change', function() {
+            if (this.value === 'third_party') {
+                thirdPartyFields.style.display = 'block';
+                attendeeName.required = true;
+                attendeeEmail.required = true;
+                
+                // If third party is selected, we might want to disable group registration
+                if (groupToggle && groupToggle.checked) {
+                    groupToggle.click(); // Uncheck group toggle if it was checked
+                }
+            } else {
+                thirdPartyFields.style.display = 'none';
+                attendeeName.required = false;
+                attendeeEmail.required = false;
+            }
+        });
+    }
+    
+    // Also handle the reverse: if group toggle is checked, reset booking type to 'self'
+    if (groupToggle) {
+        groupToggle.addEventListener('change', function() {
+            if (this.checked && bookingTypeSelect && bookingTypeSelect.value === 'third_party') {
+                bookingTypeSelect.value = 'self';
+                bookingTypeSelect.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+    // Intercept form submit to serialize group attendees data before AJAX submission
+    const registrationForm = document.getElementById('registration-form');
+    if (registrationForm) {
+        registrationForm.addEventListener('submit', function(e) {
+            const groupToggle = document.getElementById('group-registration-toggle');
+            if (groupToggle && groupToggle.checked) {
+                // 1. Temporarily add 'group' option to select if not exists, and select it
+                if (bookingTypeSelect) {
+                    let groupOption = bookingTypeSelect.querySelector('option[value="group"]');
+                    if (!groupOption) {
+                        groupOption = document.createElement('option');
+                        groupOption.value = 'group';
+                        groupOption.textContent = 'Group';
+                        bookingTypeSelect.appendChild(groupOption);
+                    }
+                    bookingTypeSelect.value = 'group';
+                }
+                
+                // 2. Collect attendees and set to hidden input
+                const attendees = [];
+                const groupSize = parseInt(document.getElementById('group-size-select')?.value) || 0;
+                for (let i = 1; i <= groupSize; i++) {
+                    const nameInput = document.querySelector(`[name="attendee_${i}_name"]`);
+                    const emailInput = document.querySelector(`[name="attendee_${i}_email"]`);
+                    const phoneInput = document.querySelector(`[name="attendee_${i}_phone"]`);
+                    if (nameInput && emailInput) {
+                        const name = nameInput.value.trim();
+                        const email = emailInput.value.trim();
+                        const phone = phoneInput ? phoneInput.value.trim() : '';
+                        if (name && email) {
+                            attendees.push({ name, email, phone });
+                        }
+                    }
+                }
+                document.getElementById('group_attendees_data').value = JSON.stringify(attendees);
+            }
+        }, true); // Use capturing listener to run before external script submit handler
+    }
+});
+</script>
 {% endblock %}

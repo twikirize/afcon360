@@ -1,0 +1,102 @@
+{# templates/user/_reg_card.html — reg is a dict from EventService #}
+{% set status = reg.status|default('confirmed') %}
+<div style="background:white;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.06);margin-bottom:1rem;overflow:hidden;transition:box-shadow 0.2s;"
+     onmouseover="this.style.boxShadow='0 6px 24px rgba(0,0,0,0.12)'"
+     onmouseout="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.06)'">
+    <div style="display:flex;">
+
+        {# Accent bar #}
+        <div style="width:5px;flex-shrink:0;
+            {% if status == 'confirmed' %}background:linear-gradient(180deg,#48bb78,#2f855a);
+            {% elif status == 'checked_in' %}background:linear-gradient(180deg,#4299e1,#2b6cb0);
+            {% elif status == 'pending' %}background:linear-gradient(180deg,#f6ad55,#c05621);
+            {% elif status == 'cancelled' %}background:linear-gradient(180deg,#fc8181,#c53030);
+            {% else %}background:#e2e8f0;{% endif %}">
+        </div>
+
+        <div style="flex:1;padding:1.1rem 1.25rem;display:flex;align-items:center;flex-wrap:wrap;gap:0.75rem;">
+
+            {# Icon #}
+            <div style="width:46px;height:46px;border-radius:10px;background:#f7fafc;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">
+                {% set cat = reg.event.category|default('')|lower %}
+                {% if 'sport' in cat or 'football' in cat or 'soccer' in cat %}
+                    <i class="fas fa-futbol" style="color:#00b87d"></i>
+                {% elif 'music' in cat or 'concert' in cat %}
+                    <i class="fas fa-music" style="color:#667eea"></i>
+                {% elif 'conference' in cat or 'summit' in cat %}
+                    <i class="fas fa-users" style="color:#4299e1"></i>
+                {% else %}
+                    <i class="fas fa-ticket-alt" style="color:#f6ad55"></i>
+                {% endif %}
+            </div>
+
+            {# Info #}
+            <div style="flex:1;min-width:160px;">
+                <div style="font-weight:700;color:#1a202c;font-size:0.925rem;margin-bottom:0.3rem;">
+                    {{ reg.event.name|default('Event') }}
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:0.4rem 0.9rem;font-size:0.78rem;color:#718096;">
+                    {% if reg.event.start_date %}
+                    <span><i class="fas fa-calendar-alt me-1"></i>{{ reg.event.start_date[:10] }}</span>
+                    {% endif %}
+                    {% if reg.event.venue or reg.event.city %}
+                    <span><i class="fas fa-map-marker-alt me-1"></i>{{ reg.event.venue or reg.event.city }}</span>
+                    {% endif %}
+                    <span><i class="fas fa-ticket-alt me-1"></i>{{ reg.ticket_type|default('General Admission') }}</span>
+                    {% if reg.registration_fee and reg.registration_fee > 0 %}
+                    <span><i class="fas fa-dollar-sign me-1"></i>{{ "%.2f"|format(reg.registration_fee) }}</span>
+                    {% else %}
+                    <span><i class="fas fa-gift me-1"></i>Free</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# Status badge + ref #}
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;min-width:100px;">
+                <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.25rem 0.7rem;border-radius:20px;font-size:0.72rem;font-weight:700;
+                    {% if status == 'confirmed' %}background:#c6f6d5;color:#22543d;
+                    {% elif status == 'checked_in' %}background:#bee3f8;color:#2a4365;
+                    {% elif status == 'pending' %}background:#fefcbf;color:#744210;
+                    {% elif status == 'cancelled' %}background:#fed7d7;color:#742a2a;
+                    {% else %}background:#e2e8f0;color:#4a5568;{% endif %}">
+                    {% if status == 'confirmed' %}<i class="fas fa-check-circle"></i> Confirmed
+                    {% elif status == 'checked_in' %}<i class="fas fa-door-open"></i> Checked In
+                    {% elif status == 'pending' %}<i class="fas fa-clock"></i> Pending
+                    {% elif status == 'cancelled' %}<i class="fas fa-times-circle"></i> Cancelled
+                    {% else %}{{ status|title }}{% endif %}
+                </span>
+                <span style="font-size:0.68rem;color:#a0aec0;font-family:monospace;">{{ reg.registration_ref }}</span>
+            </div>
+
+            {# Actions #}
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;justify-content:flex-end;min-width:200px;">
+                {% if status != 'cancelled' %}
+                <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}"
+                   style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.4rem 0.85rem;border-radius:8px;font-size:0.78rem;font-weight:600;background:#667eea;color:white;text-decoration:none;transition:background 0.2s;"
+                   onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
+                    <i class="fas fa-qrcode"></i> Ticket
+                </a>
+                {% if modules is defined and modules.get('transport', {}).get('enabled') %}
+                <a href="{{ safe_url('transport.home') }}"
+                   style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.4rem 0.85rem;border-radius:8px;font-size:0.78rem;font-weight:600;background:white;color:#2d3748;border:1.5px solid #e2e8f0;text-decoration:none;transition:all 0.2s;"
+                   onmouseover="this.style.borderColor='#667eea';this.style.color='#667eea'" onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#2d3748'">
+                    <i class="fas fa-bus"></i> Transport
+                </a>
+                {% endif %}
+                {% if status not in ['cancelled', 'checked_in'] %}
+                <button onclick="confirmCancel('{{ reg.registration_ref }}', '{{ reg.event.name|default('this event')|replace("'", "\\'") }}')"
+                        style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.4rem 0.85rem;border-radius:8px;font-size:0.78rem;font-weight:600;background:#fff5f5;color:#c53030;border:1.5px solid #fed7d7;cursor:pointer;transition:all 0.2s;"
+                        onmouseover="this.style.background='#fc8181';this.style.color='white'" onmouseout="this.style.background='#fff5f5';this.style.color='#c53030'">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                {% endif %}
+                {% else %}
+                <span style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.4rem 0.85rem;border-radius:8px;font-size:0.78rem;font-weight:600;background:#f7fafc;color:#a0aec0;">
+                    <i class="fas fa-ban"></i> Cancelled
+                </span>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+</div>

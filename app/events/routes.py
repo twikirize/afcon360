@@ -271,28 +271,59 @@ def attendee_dashboard():
 @login_required
 def my_registrations():
     """Attendee Dashboard - Detailed view of user's event registrations"""
-    data = EventService.get_attendee_dashboard_data(current_user.id)
-
-    # Get wallet balance
-    from app.wallet.services.wallet_service import WalletService
-    wallet_balance = 0
     try:
-        wallet = WalletService.get_wallet_by_user_id(current_user.id)
-        if wallet:
-            wallet_balance = wallet.balance
-    except Exception:
-        pass
+        from app.user.routes import _enrich_registrations, _split_registrations, _get_wallet
+        
+        data = EventService.get_attendee_dashboard_data(current_user.id)
+        all_regs = data['upcoming_registrations'] + data['past_registrations']
+        _enrich_registrations(all_regs)
+        upcoming_regs, past_regs = _split_registrations(all_regs)
 
-    # Get current date for filtering
-    from datetime import date
-    current_date = date.today().isoformat()
-    
-    # Service now returns fully enriched data - no manual loop needed
-    all_registrations = data['upcoming_registrations'] + data['past_registrations']
-    return render_template('user/my_registrations.html',
-                           registrations=all_registrations,
-                           wallet_balance=wallet_balance,
-                           current_date=current_date)
+        # Registrations managed by the user (booked for others)
+        from app.events.models import EventRegistration as RegModel
+        managed_q = RegModel.query.filter(
+            RegModel.booked_by_user_id == current_user.id
+        ).order_by(RegModel.created_at.desc()).all()
+        managed_regs = []
+        for r in managed_q:
+            # Skip pure self-registrations to avoid duplication
+            if r.user_id == current_user.id and (r.booking_type == 'self' or r.registered_by == 'self'):
+                continue
+            try:
+                managed_regs.append(EventService._registration_to_dict(r))
+            except Exception:
+                pass
+
+        wallet = _get_wallet()
+        from datetime import date
+        today = date.today().isoformat()
+
+        return render_template(
+            'user/my_registrations.html',
+            registrations=all_regs,
+            upcoming_registrations=upcoming_regs,
+            past_registrations=past_regs,
+            managed_registrations=managed_regs,
+            upcoming_count=len(upcoming_regs),
+            attended_count=sum(1 for r in past_regs if r.get('status') == 'checked_in'),
+            total_spent="%.2f" % sum(
+                (r.get('registration_fee') or 0) for r in all_regs
+                if r.get('status') != 'cancelled'
+            ),
+            wallet=wallet,
+            wallet_balance=wallet.balance if wallet else 0.0,
+            current_date=today,
+        )
+    except Exception as exc:
+        logger.error("Error loading my registrations (events bp): %s", exc)
+        from datetime import date
+        return render_template(
+            'user/my_registrations.html',
+            registrations=[], upcoming_registrations=[], past_registrations=[],
+            upcoming_count=0, attended_count=0, total_spent="0.00",
+            wallet=None, wallet_balance=0,
+            current_date=date.today().isoformat(),
+        )
 
 
 @events_bp.route("/organizer/dashboard/<identifier>")
@@ -646,27 +677,234 @@ def register(identifier):
             elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event_model.ticket_types):
                 data['ticket_type_id'] = None
         
+        # NEW: Get booking type and attendee info
+        booking_type = data.get('booking_type', 'self')
+
+        if booking_type == "group":
+            import json
+            import uuid
+            from app.events.models import EventRegistration
+            
+            group_attendees_data = data.get('group_attendees_data', '[]')
+            try:
+                group_attendees = json.loads(group_attendees_data)
+            except Exception:
+                group_attendees = []
+            
+            group_booking_id = str(uuid.uuid4())
+            registrations_created = []
+            errors = []
+            
+            # 1. Register or find primary registrant
+            existing_primary = EventRegistration.query.filter_by(
+                event_id=event_model.id,
+                user_id=current_user.id
+            ).first()
+            
+            primary_ref = None
+            if not existing_primary:
+                # Register the primary registrant (yourself)
+                primary_reg, primary_qr, primary_err = EventService.register_for_event(
+                    identifier, current_user.id, data,
+                    booking_type="group",
+                    group_booking_id=group_booking_id
+                )
+                if primary_err:
+                    return jsonify({'success': False, 'error': f"Failed to register yourself: {primary_err}"}), 400
+                primary_ref = primary_reg['registration_ref']
+                registrations_created.append(primary_reg)
+            else:
+                primary_ref = existing_primary.registration_ref
+                
+            # 2. Register additional attendees
+            for attendee in group_attendees:
+                attendee_email = attendee.get('email', '').strip().lower()
+                attendee_name = attendee.get('name', '').strip()
+                attendee_phone = attendee.get('phone', '').strip()
+                
+                if not attendee_email or not attendee_name:
+                    continue
+                
+                # Check if this attendee is already registered (by email)
+                existing = EventRegistration.query.filter_by(
+                    event_id=event_model.id,
+                    email=attendee_email
+                ).first()
+                
+                if existing:
+                    errors.append(f"{attendee_name} ({attendee_email}) is already registered")
+                    continue
+                
+                # Register attendee
+                reg, qr, err = EventService.register_for_event(
+                    identifier, 
+                    current_user.id, 
+                    {
+                        'ticket_type_id': data.get('ticket_type_id'),
+                        'full_name': attendee_name,
+                        'email': attendee_email,
+                        'phone': attendee_phone
+                    },
+                    booking_type="third_party",
+                    attendee_email=attendee_email,
+                    attendee_name=attendee_name,
+                    attendee_phone=attendee_phone,
+                    group_booking_id=group_booking_id
+                )
+                
+                if err:
+                    errors.append(f"{attendee_name}: {err}")
+                else:
+                    registrations_created.append(reg)
+            
+            if registrations_created:
+                # Redirect to the FIRST attendee's confirmation (not the booker's), but keep group summary
+                first_attendee_ref = registrations_created[0]['registration_ref']
+                first_obj = EventRegistration.query.filter_by(registration_ref=first_attendee_ref).first()
+                if first_obj:
+                    qr_code = EventService._generate_qr_code(first_obj.qr_token, first_obj.registration_ref)
+                    session['last_registration'] = {
+                        'registration': EventService._registration_to_dict(first_obj),
+                        'qr_code': qr_code,
+                        'event': view_model.to_dict(),
+                        'group_registrations': registrations_created,
+                        'errors': errors
+                    }
+
+                is_ajax = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+                if is_ajax:
+                    return jsonify({
+                        'success': True,
+                        'registration_ref': first_attendee_ref,
+                        'redirect': url_for('events.registration_confirmation', reg_ref=first_attendee_ref),
+                        'errors': errors
+                    })
+                else:
+                    return redirect(url_for('events.registration_confirmation', reg_ref=first_attendee_ref))
+            else:
+                return jsonify({'success': False, 'error': f"Failed to register any attendees: {', '.join(errors)}"}), 400
+
+        attendee_email = data.get('attendee_email', '').strip()
+        attendee_name = data.get('attendee_name', '').strip()
+        attendee_phone = data.get('attendee_phone', '').strip()
+        group_booking_id = data.get('group_booking_id')
+
         # Check if this is a paid event using ViewModel
         is_paid_event = view_model.is_paid_event
         
+        # Handle GROUP booking for paid events (attendees-only, do not re-register payer)
+        if booking_type == "group" and view_model.is_paid_event and data.get('ticket_type_id'):
+            import json, uuid
+            from app.events.models import EventRegistration
+            group_attendees_data = data.get('group_attendees_data', '[]')
+            try:
+                group_attendees = json.loads(group_attendees_data) or []
+            except Exception:
+                group_attendees = []
+
+            # Pre-check duplicates by email
+            errors = []
+            new_attendees = []
+            from app.events.models import EventRegistration as RegModel
+            for i, attendee in enumerate(group_attendees, start=1):
+                email = (attendee.get('email') or '').strip().lower()
+                name = (attendee.get('name') or '').strip()
+                phone = (attendee.get('phone') or '').strip()
+                if not email or not name:
+                    continue
+                exists = RegModel.query.filter_by(event_id=event_model.id, email=email).first()
+                if exists:
+                    errors.append(f"{name} ({email}) is already registered")
+                else:
+                    attendee['group_index'] = i
+                    new_attendees.append(attendee)
+
+            if not new_attendees:
+                return jsonify({'success': False, 'error': 'No new attendees to register', 'errors': errors}), 400
+
+            # Process payment and create registrations for attendees only
+            from app.events.payment_service import EventPaymentService
+            payment_service = EventPaymentService()
+            from uuid import uuid4
+            group_booking_id = str(uuid4())
+            pay_result = payment_service.process_ticket_purchase(
+                user_id=current_user.id,
+                event_id=event_model.id,
+                ticket_type_id=data['ticket_type_id'],
+                quantity=len(new_attendees),
+                payment_method=data.get('payment_method', 'wallet'),
+                mobile_money_operator=data.get('mobile_money_operator'),
+                mobile_money_phone=data.get('mobile_money_phone'),
+                group_attendees=new_attendees,
+                create_primary_for_payer=False,
+                group_booking_id=group_booking_id
+            )
+            if not pay_result.get('success'):
+                return jsonify({'success': False, 'error': pay_result.get('error')}), 400
+
+            regs = pay_result.get('registrations') or []
+            # Build display-friendly group list from DB
+            group_display = []
+            first_ref = regs[0]['registration_ref']
+            for r in regs:
+                robj = EventRegistration.query.filter_by(registration_ref=r['registration_ref']).first()
+                if robj:
+                    group_display.append(EventService._registration_to_dict(robj))
+            # Store first attendee registration in session for confirmation
+            reg_obj = EventRegistration.query.filter_by(registration_ref=first_ref).first()
+            if reg_obj:
+                qr_code = EventService._generate_qr_code(reg_obj.qr_token, reg_obj.registration_ref)
+                session['last_registration'] = {
+                    'registration': EventService._registration_to_dict(reg_obj),
+                    'qr_code': qr_code,
+                    'event': view_model.to_dict(),
+                    'group_registrations': group_display,
+                    'errors': errors
+                }
+
+            is_ajax = request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            if is_ajax:
+                return jsonify({'success': True, 'registration_ref': first_ref, 'redirect': url_for('events.registration_confirmation', reg_ref=first_ref), 'errors': errors})
+            else:
+                return redirect(url_for('events.registration_confirmation', reg_ref=first_ref))
+
         if is_paid_event and data.get('ticket_type_id'):
             # Process paid event with payment service
-            from app.events.services.payment_service import EventPaymentService
+            from app.events.payment_service import EventPaymentService
             payment_service = EventPaymentService()
             
             payment_method = data.get('payment_method', 'wallet')
             mobile_money_operator = data.get('mobile_money_operator')
             mobile_money_phone = data.get('mobile_money_phone')
             
-            payment_result = payment_service.process_ticket_purchase(
-                user_id=current_user.id,
-                event_id=event_model.id,
-                ticket_type_id=data['ticket_type_id'],
-                quantity=1,
-                payment_method=payment_method,
-                mobile_money_operator=mobile_money_operator,
-                mobile_money_phone=mobile_money_phone
-            )
+            # Support third-party paid: create attendee registration, not payer
+            if booking_type == 'third_party':
+                attendee_payload = [{
+                    'name': attendee_name or data.get('full_name'),
+                    'email': attendee_email or data.get('email'),
+                    'phone': attendee_phone or data.get('phone')
+                }]
+                payment_result = payment_service.process_ticket_purchase(
+                    user_id=current_user.id,
+                    event_id=event_model.id,
+                    ticket_type_id=data['ticket_type_id'],
+                    quantity=1,
+                    payment_method=payment_method,
+                    mobile_money_operator=mobile_money_operator,
+                    mobile_money_phone=mobile_money_phone,
+                    group_attendees=attendee_payload,
+                    create_primary_for_payer=False
+                )
+            else:
+                payment_result = payment_service.process_ticket_purchase(
+                    user_id=current_user.id,
+                    event_id=event_model.id,
+                    ticket_type_id=data['ticket_type_id'],
+                    quantity=1,
+                    payment_method=payment_method,
+                    mobile_money_operator=mobile_money_operator,
+                    mobile_money_phone=mobile_money_phone
+                )
             
             if not payment_result.get('success'):
                 return jsonify({'success': False, 'error': payment_result.get('error')}), 400
@@ -675,7 +913,12 @@ def register(identifier):
         else:
             # Process free event registration
             registration, qr_code, error = EventService.register_for_event(
-                identifier, current_user.id, data
+                identifier, current_user.id, data,
+                booking_type=booking_type,
+                attendee_email=attendee_email,
+                attendee_name=attendee_name,
+                attendee_phone=attendee_phone,
+                group_booking_id=group_booking_id
             )
             
             if error:
@@ -1669,7 +1912,6 @@ def add_ticket_type(identifier):
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
         # Call service to add ticket type
-        from app.events.services import EventService
         ticket_type, error = EventService.add_ticket_type(identifier, data, current_user.id)
 
         if error:

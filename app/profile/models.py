@@ -63,7 +63,7 @@ class UserProfile(BaseModel):
     # CRITICAL FIX: ForeignKey now points to users.public_id (the UUID string)
     user_id = Column(String(64), ForeignKey("users.public_id", ondelete="CASCADE"), nullable=False, unique=True,
                      index=True)
-    user = relationship("User", back_populates="profile", uselist=False)
+    user = relationship("User", foreign_keys=[user_id], primaryjoin="UserProfile.user_id == User.public_id", back_populates="profile", uselist=False)
 
     # Personal info
     full_name = Column(String(128), nullable=False)

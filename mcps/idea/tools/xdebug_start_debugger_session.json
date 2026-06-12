@@ -1,0 +1,49 @@
+{
+  "name": "xdebug_start_debugger_session",
+  "description": "Start a debugger session for either an existing run configuration by name or a code location\n(`filePath` + `line`) in the current project.\nUse this tool to start a debugger session.\nUse this tool with either an existing run configuration name, or with `filePath` + `line`.\nWhen using `filePath` + `line`, a line with a runnable method such as `main`, a test, or another executable\nentry point will almost always work. If you are unsure which line to use, `get_run_configurations`\ncan help discover runnable locations in the file.\nThe session will be started and you can then use other debugger tools to control execution.\n\nPreconditions:\n- When using `configurationName`, pass the exact existing run configuration name; do not pass a test method name or other derived target identifier.\n- When using `filePath` + `line`, point at a runnable code location such as `main`, a test, or another executable entry point.\n- Set at least one breakpoint first; otherwise the program may run to completion without pausing.\n- Pass either `configurationName`, or `filePath` together with `line`. These modes are mutually exclusive.\n\nBehavior:\n- Waits for session creation up to `timeout`.\n- Applies a grace wait (`graceWaitMs`) after the session starts and returns refreshed state.\n- Optional launch overrides (`programArguments`, `workingDirectory`, `envs`) are applied only for this debug launch and are not persisted.\n- `get_run_configurations` is the source of truth for override support: only pass launch overrides when the selected run configuration reports `supportsDynamicLaunchOverrides=true`.\n- Do not pass these override parameters unless you explicitly need to change the configured launch values for this debug launch.\n- Missing/null override parameters keep existing run configuration values unchanged.\n- For string overrides (`programArguments`, `workingDirectory`), missing/null or empty string (`\"\"`) keeps the existing value unchanged.\n- Pass a whitespace-only string such as `\" \"` to clear an existing value for this debug launch.\n\nNext call:\n- `xdebug_control_session(action=WAIT_FOR_PAUSE)` to wait for first suspension.\n- After pause, call `xdebug_get_stack` and `xdebug_get_frame_values` (or `xdebug_evaluate_expression`) for runtime evidence.\n\nReturns a flat result with debugger session metadata plus the execution snapshot fields from the launch:\n- `sessionId`, `name`, `status`, and optional `runConfigurationName`\n- `output` preview and optional `fullOutputPath`\n- optional `exitCode` when process termination is already known",
+  "inputSchema": {
+    "properties": {
+      "configurationName": {
+        "type": "string",
+        "description": "Name of the existing run configuration to debug."
+      },
+      "filePath": {
+        "type": "string",
+        "description": "File path relative to the project root. Provide together with `line` to start debugging from a code location."
+      },
+      "line": {
+        "type": "integer",
+        "description": "1-based line number for `filePath`. Provide together with `filePath` and do not combine with `configurationName`."
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "Timeout in milliseconds to wait for the debug session to start. Default: 60000."
+      },
+      "graceWaitMs": {
+        "type": "integer",
+        "description": "Grace wait in milliseconds after session starts to refresh state. Default: 2000."
+      },
+      "programArguments": {
+        "type": "string",
+        "description": "Optional program arguments override for this launch only. Pass this only when the selected run configuration reports `supportsDynamicLaunchOverrides=true` in `get_run_configurations`. Missing/null or empty string keeps the existing value; whitespace-only string clears it."
+      },
+      "workingDirectory": {
+        "type": "string",
+        "description": "Optional working directory override for this launch only. Pass this only when the selected run configuration reports `supportsDynamicLaunchOverrides=true` in `get_run_configurations`. Missing/null or empty string keeps the existing value; whitespace-only string clears it."
+      },
+      "envs": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Optional environment variable overrides for this launch only. Pass this only when the selected run configuration reports `supportsDynamicLaunchOverrides=true` in `get_run_configurations`. Missing/null keeps existing env unchanged; when provided, values are merged over existing env."
+      },
+      "projectPath": {
+        "type": "string",
+        "description": " The project path. Pass this value ALWAYS if you are aware of it. It reduces numbers of ambiguous calls. \n In the case you know only the current working directory you can use it as the project path.\n If you're not aware about the project path you can ask user about it."
+      }
+    },
+    "required": [],
+    "type": "object"
+  }
+}
