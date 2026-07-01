@@ -4,9 +4,11 @@ Events Module - top-level blueprint for AFCON360.
 Peer to: accommodation, transport, wallet, tourism.
 """
 from flask import Blueprint, current_app
+from app.events.bulk_upload import bulk_bp
 
 # Create single blueprint
 events_bp = Blueprint('events', __name__, url_prefix='/events')
+events_bp.register_blueprint(bulk_bp)
 
 # STEP 1: Register settings routes FIRST (before importing routes)
 from app.events.settings_routes import register_settings_routes
@@ -18,6 +20,8 @@ from app.events import routes
 from app.events import routes_community_hosts
 from app.events.settings_model import EventSettings  # noqa: F401
 
+# IMPORTANT: Force Alembic to see these models so it doesn't drop the tables
+from app.events import payment_config  # noqa: F401
 
 # Expose service for easier imports
 from app.events.services import EventService
@@ -49,4 +53,3 @@ try:
                    module_name='Events', icon='fa-calendar')
 except Exception:
     pass
-

@@ -31,7 +31,7 @@
 <!-- Filters -->
 <div class="card animate-up" style="margin-bottom: 20px;">
   <div class="card-body">
-    <form method="GET" action="{{ url_for('compliance.licences') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+    <form method="GET" action="{{ url_for('admin.compliance.licences') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
         <label class="form-label">Status</label>
         <select name="status" class="form-control">
@@ -47,7 +47,7 @@
         <input type="text" name="search" class="form-control" placeholder="Organisation or licence number..." value="{{ request.args.get('search', '') }}">
       </div>
       <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
-      <a href="{{ url_for('compliance.licences') }}" class="btn btn-secondary">Clear</a>
+      <a href="{{ url_for('admin.compliance.licences') }}" class="btn btn-secondary">Clear</a>
     </form>
   </div>
 </div>
@@ -79,7 +79,7 @@
             <td>#{{ licence.id }}</td>
             <td>
               {% if licence.organisation %}
-                <a href="{{ url_for('compliance.view_org', org_id=licence.organisation.id) }}">{{ licence.organisation.name }}</a>
+                <a href="{{ url_for('admin.compliance.view_org', org_id=licence.organisation.id) }}">{{ licence.organisation.name }}</a>
               {% else %}
                 <span class="muted">Unknown</span>
               {% endif %}
@@ -109,7 +109,7 @@
               {% endif %}
             </td>
             <td>
-              <a href="{{ url_for('compliance.view_licence', licence_id=licence.id) }}" class="btn btn-sm btn-primary">View</a>
+              <a href="{{ url_for('admin.compliance.view_licence', licence_id=licence.id) }}" class="btn btn-sm btn-primary">View</a>
             </td>
           </tr>
           {% endfor %}

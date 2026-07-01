@@ -1,0 +1,36 @@
+{# Reusable Media Gallery Component #}
+{# Usage: {% include 'components/media_gallery.html' %} #}
+
+<div class="media-gallery"
+     data-module="{{ module|default('accommodation') }}"
+     data-entity-id="{{ entity_id|default('') }}">
+
+    {# Gallery Grid #}
+    <div class="media-grid" id="mediaGrid">
+        {% if media_items %}
+            {% for media in media_items %}
+                <div class="media-item" data-index="{{ loop.index0 }}">
+                    {% if media.media_type == 'video' %}
+                        <video src="{{ media.url }}" muted preload="metadata"></video>
+                    {% else %}
+                        <img src="{{ media.thumbnail_url or media.url }}" alt="{{ media.file_name }}" loading="lazy">
+                    {% endif %}
+                    {% if media.is_cover %}
+                        <span class="media-cover-badge">Cover</span>
+                    {% endif %}
+                    <div class="media-item-overlay">
+                        <div class="media-item-actions">
+                            <button class="media-item-btn primary" data-action="view" data-media-id="{{ media.id }}">View</button>
+                            {% if not media.is_cover %}
+                                <button class="media-item-btn primary" data-action="set-cover" data-media-id="{{ media.id }}">Cover</button>
+                            {% endif %}
+                            <button class="media-item-btn danger" data-action="delete" data-media-id="{{ media.id }}">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted">No media uploaded yet.</p>
+        {% endif %}
+    </div>
+</div>

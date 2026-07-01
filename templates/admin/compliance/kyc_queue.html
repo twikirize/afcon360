@@ -7,7 +7,7 @@
 <!-- Filters & Actions -->
 <div class="card animate-up" style="margin-bottom: 20px;">
   <div class="card-body">
-    <form method="GET" action="{{ url_for('compliance.kyc_queue') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+    <form method="GET" action="{{ url_for('admin.compliance.kyc_queue') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
       <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
         <label class="form-label">Status</label>
         <select name="status" class="form-control">
@@ -35,7 +35,7 @@
       <button type="submit" class="btn btn-primary">
         <i class="fas fa-filter"></i> Filter
       </button>
-      <a href="{{ url_for('compliance.kyc_queue') }}" class="btn btn-secondary">Clear</a>
+      <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="btn btn-secondary">Clear</a>
     </form>
   </div>
 </div>
@@ -65,7 +65,7 @@
         <tbody>
           {% for item in items %}
           <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
-            <td><a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
+            <td><a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
             <td>
               <div class="user-cell">
                 <div class="av">{{ item.user.username[0] if item.user else '?' }}</div>
@@ -76,7 +76,7 @@
               </div>
             </td>
             <td>{{ item.verification_type or 'Standard' }}</td>
-            <td class="mono">{{ item.submitted_at.strftime('%Y-%m-%d %H:%M') if item.submitted_at else '-' }}</td>
+            <td class="mono">{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '-' }}</td>
             <td>
               {% if item.priority == 'critical' %}
                 <span class="badge badge-red">Critical</span>
@@ -110,9 +110,9 @@
             </td>
             <td>
               <div class="action-group">
-                <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% if item.status == 'pending' %}
-                <form method="POST" action="{{ url_for('compliance.kyc_action', kyc_id=item.id) }}" style="display: inline;">
+                <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=item.id) }}" style="display: inline;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="action" value="assign_to_me">
                   <button type="submit" class="btn btn-sm btn-secondary">Assign</button>
@@ -130,7 +130,7 @@
     {% if pagination and pagination.pages > 1 %}
     <div class="pagination">
       {% if pagination.has_prev %}
-        <a href="{{ url_for('compliance.kyc_queue', page=pagination.prev_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+        <a href="{{ url_for('admin.compliance.kyc_queue', page=pagination.prev_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
       {% else %}
         <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
       {% endif %}
@@ -140,7 +140,7 @@
           {% if page_num == pagination.page %}
             <span class="pg-btn active">{{ page_num }}</span>
           {% else %}
-            <a href="{{ url_for('compliance.kyc_queue', page=page_num, **request.args) }}" class="pg-btn">{{ page_num }}</a>
+            <a href="{{ url_for('admin.compliance.kyc_queue', page=page_num, **request.args) }}" class="pg-btn">{{ page_num }}</a>
           {% endif %}
         {% else %}
           <span class="pg-btn disabled">...</span>
@@ -148,7 +148,7 @@
       {% endfor %}
       
       {% if pagination.has_next %}
-        <a href="{{ url_for('compliance.kyc_queue', page=pagination.next_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+        <a href="{{ url_for('admin.compliance.kyc_queue', page=pagination.next_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
       {% else %}
         <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
       {% endif %}

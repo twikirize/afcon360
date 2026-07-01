@@ -32,6 +32,12 @@ def register_all_models():
     except ImportError:
         pass
 
+    # Events payment config
+    try:
+        from app.events.payment_config import PaymentMethodConfig, EventPaymentPreference
+    except ImportError:
+        pass
+
     # Transport domain
     try:
         from app.transport.models import Transport
@@ -66,5 +72,23 @@ def register_all_models():
     # KYC domain
     try:
         from app.kyc.models import KycRecord
+    except ImportError:
+        pass
+
+    # Fan domain
+    try:
+        from app.fan.models import FanProfile, UserDashboardContext
+    except ImportError:
+        pass
+
+    # Media domain
+    try:
+        from app.media.models import Media, MediaProcessingJob, MediaSettings
+    except ImportError:
+        pass
+
+    # Payment provider config (for admin payment method configuration)
+    try:
+        from app.wallet.models.config import PaymentProviderConfig, WalletSystemConfig
     except ImportError:
         pass

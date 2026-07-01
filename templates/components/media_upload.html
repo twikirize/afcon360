@@ -1,0 +1,45 @@
+{# Reusable Media Upload Component #}
+{# Usage: {% include 'components/media_upload.html' %} #}
+
+<div class="media-uploader"
+     data-module="{{ module|default('accommodation') }}"
+     data-entity-id="{{ entity_id|default('') }}"
+     data-max-files="{{ max_files|default(20) }}"
+     data-max-size="{{ max_size|default(20971520) }}"
+     data-accepted-types="{{ accepted_types|default('image/jpeg,image/png,image/webp,image/heic') }}"
+     data-allow-video="{{ allow_video|default('false') }}">
+
+    {# Upload Drop Zone #}
+    <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-content">
+            <i class="bi bi-cloud-upload"></i>
+            <h5>Drop files here</h5>
+            <p>or click to browse</p>
+            <button type="button" class="btn btn-primary btn-sm">Choose Files</button>
+        </div>
+        <input type="file"
+               id="fileInput"
+               multiple
+               accept="{{ accepted_types|default('image/jpeg,image/png,image/webp,image/heic') }}">
+    </div>
+
+    {# Upload Queue #}
+    <div class="upload-queue" id="uploadQueue"></div>
+
+    {# Progress Bar #}
+    <div class="upload-progress" id="uploadProgress" style="display: none;">
+        <div class="progress-bar" style="width: 0%"></div>
+    </div>
+
+    {# Gallery Grid #}
+    <div class="media-grid" id="mediaGrid">
+        {# Existing media displayed here by MediaManager JS #}
+    </div>
+</div>
+
+{# Lightbox Modal #}
+<div class="media-lightbox" id="mediaLightbox">
+    <div class="media-lightbox-content">
+        {# Content injected by JS #}
+    </div>
+</div>

@@ -67,3 +67,39 @@ dockerignore
 .kilo/
 .kilocode/
 rules/
+
+# -------------------------
+# Backups & Temp files
+# -------------------------
+backups_today/
+model_backups/
+templates_backup/
+backup_*.json
+*.backup
+*.bak
+*.bak2
+*.tmp
+*.temp
+
+# -------------------------
+# Testing & Coverage
+# -------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# -------------------------
+# Node / Frontend
+# -------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.parcel-cache
+.cache/
+dist/
+build/

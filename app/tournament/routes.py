@@ -14,7 +14,10 @@ def _get_service():
 
 def register_routes(bp):
     """Register routes on the provided blueprint object."""
+    from app.utils.module_guard import require_module_enabled
+
     @bp.route("/", endpoint="home")
+    @require_module_enabled("tournament")
     def home():
         svc = _get_service()
         data = {"name": current_app.config.get("TOURNAMENT_NAME", "AFCON 2025"),

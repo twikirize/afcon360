@@ -59,9 +59,9 @@
               {% if item.type == 'flag' %}
                 <a href="{{ url_for('admin.moderator.view_flag', flag_id=item.id) }}">#{{ item.id }}</a>
               {% elif item.type == 'kyc' %}
-                <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a>
+                <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a>
               {% elif item.type == 'case' %}
-                <a href="{{ url_for('compliance.view_case', case_id=item.id) }}">#{{ item.id }}</a>
+                <a href="{{ url_for('admin.compliance.view_case', case_id=item.id) }}">#{{ item.id }}</a>
               {% else %}
                 #{{ item.id }}
               {% endif %}
@@ -115,14 +115,14 @@
                 {% if item.type == 'flag' %}
                   <a href="{{ url_for('admin.moderator.view_flag', flag_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% elif item.type == 'kyc' %}
-                  <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% elif item.type == 'payout' %}
-                  <a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% elif item.type == 'case' %}
-                  <a href="{{ url_for('compliance.view_case', case_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_case', case_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% endif %}
 
-                <form method="POST" action="{{ url_for('compliance.create_case_from_escalation') }}" style="display: inline;">
+                <form method="POST" action="{{ url_for('admin.compliance.create_case_from_escalation') }}" style="display: inline;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="escalation_id" value="{{ item.id }}">
                   <input type="hidden" name="entity_type" value="{{ item.type }}">
@@ -141,7 +141,7 @@
     {% if pagination and pagination.pages > 1 %}
     <div class="pagination">
       {% if pagination.has_prev %}
-        <a href="{{ url_for('compliance.escalations', page=pagination.prev_num) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+        <a href="{{ url_for('admin.compliance.escalations', page=pagination.prev_num) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
       {% else %}
         <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
       {% endif %}
@@ -151,7 +151,7 @@
           {% if page_num == pagination.page %}
             <span class="pg-btn active">{{ page_num }}</span>
           {% else %}
-            <a href="{{ url_for('compliance.escalations', page=page_num) }}" class="pg-btn">{{ page_num }}</a>
+            <a href="{{ url_for('admin.compliance.escalations', page=page_num) }}" class="pg-btn">{{ page_num }}</a>
           {% endif %}
         {% else %}
           <span class="pg-btn disabled">...</span>
@@ -159,7 +159,7 @@
       {% endfor %}
       
       {% if pagination.has_next %}
-        <a href="{{ url_for('compliance.escalations', page=pagination.next_num) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+        <a href="{{ url_for('admin.compliance.escalations', page=pagination.next_num) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
       {% else %}
         <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
       {% endif %}

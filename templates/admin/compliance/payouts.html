@@ -7,7 +7,7 @@
 <!-- Filters & Actions -->
 <div class="card animate-up" style="margin-bottom: 20px;">
   <div class="card-body">
-    <form method="GET" action="{{ url_for('compliance.payouts') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+    <form method="GET" action="{{ url_for('admin.compliance.payouts') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
         <label class="form-label">Status</label>
         <select name="status" class="form-control">
@@ -38,7 +38,7 @@
       <button type="submit" class="btn btn-primary">
         <i class="fas fa-filter"></i> Filter
       </button>
-      <a href="{{ url_for('compliance.payouts') }}" class="btn btn-secondary">Clear</a>
+      <a href="{{ url_for('admin.compliance.payouts') }}" class="btn btn-secondary">Clear</a>
     </form>
   </div>
 </div>
@@ -92,7 +92,7 @@
         <tbody>
           {% for item in items %}
           <tr class="{{ 'row-critical' if item.risk_level == 'high' else ('row-high' if item.risk_level == 'medium' else '') }}">
-            <td><a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}">#{{ item.id }}</a></td>
+            <td><a href="{{ url_for('admin.compliance.view_payout', payout_id=item.id) }}">#{{ item.id }}</a></td>
             <td>
               <div class="user-cell">
                 <div class="av">{{ item.wallet.user.username[0] if item.wallet and item.wallet.user else '?' }}</div>
@@ -126,7 +126,7 @@
               {% endif %}
             </td>
             <td>
-              <a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+              <a href="{{ url_for('admin.compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
             </td>
           </tr>
           {% endfor %}
@@ -138,7 +138,7 @@
     {% if pagination and pagination.pages > 1 %}
     <div class="pagination">
       {% if pagination.has_prev %}
-        <a href="{{ url_for('compliance.payouts', page=pagination.prev_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
+        <a href="{{ url_for('admin.compliance.payouts', page=pagination.prev_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-left"></i></a>
       {% else %}
         <span class="pg-btn disabled"><i class="fas fa-chevron-left"></i></span>
       {% endif %}
@@ -148,7 +148,7 @@
           {% if page_num == pagination.page %}
             <span class="pg-btn active">{{ page_num }}</span>
           {% else %}
-            <a href="{{ url_for('compliance.payouts', page=page_num, **request.args) }}" class="pg-btn">{{ page_num }}</a>
+            <a href="{{ url_for('admin.compliance.payouts', page=page_num, **request.args) }}" class="pg-btn">{{ page_num }}</a>
           {% endif %}
         {% else %}
           <span class="pg-btn disabled">...</span>
@@ -156,7 +156,7 @@
       {% endfor %}
       
       {% if pagination.has_next %}
-        <a href="{{ url_for('compliance.payouts', page=pagination.next_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
+        <a href="{{ url_for('admin.compliance.payouts', page=pagination.next_num, **request.args) }}" class="pg-btn"><i class="fas fa-chevron-right"></i></a>
       {% else %}
         <span class="pg-btn disabled"><i class="fas fa-chevron-right"></i></span>
       {% endif %}

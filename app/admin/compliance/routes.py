@@ -33,7 +33,7 @@ def dashboard():
     
     # Get pending KYC verifications
     pending_kyc = KycRecord.query.filter_by(status='pending').order_by(
-        KycRecord.submitted_at.desc()
+        KycRecord.created_at.desc()
     ).limit(10).all()
     
     # Get pending payout requests
@@ -56,7 +56,19 @@ def dashboard():
     # Get pending data subject requests
     pending_dsr = DataSubjectRequestService.get_requests_by_status(DataSubjectRequestStatus.PENDING)
     
+    # Build stats dict for sidebar badges
+    stats = {
+        'kyc_pending': len(pending_kyc),
+        'orgs_pending': len(pending_orgs),
+        'payouts_pending': len(pending_payouts),
+        'aml_alerts': 0,
+        'open_cases': case_stats.get('open', 0),
+        'escalations': 0,
+        'data_requests': len(pending_dsr) if hasattr(pending_dsr, '__len__') else 0,
+    }
+    
     return render_template('admin/compliance/dashboard.html',
+                          stats=stats,
                           case_stats=case_stats,
                           pending_kyc=pending_kyc,
                           pending_payouts=pending_payouts,
@@ -82,7 +94,7 @@ def kyc_queue():
         query = query.filter_by(status=status)
     
     kyc_records = query.order_by(
-        KycRecord.submitted_at.desc()
+        KycRecord.created_at.desc()
     ).paginate(page=page, per_page=per_page, error_out=False)
     
     return render_template('admin/compliance/kyc_queue.html',
@@ -131,7 +143,7 @@ def kyc_action(kyc_id):
     else:
         flash('Invalid action.', 'danger')
     
-    return redirect(url_for('compliance.kyc_queue'))
+    return redirect(url_for('admin.compliance.kyc_queue'))
 
 
 @compliance_bp.route('/payouts')
@@ -141,7 +153,7 @@ def payouts():
     """Payout compliance queue"""
     # DISABLED - PayoutRequest model deleted during architecture rebuild
     flash('Payout module temporarily unavailable during architecture rebuild', 'warning')
-    return redirect(url_for('compliance.dashboard'))
+    return redirect(url_for('admin.compliance.dashboard'))
 
 
 @compliance_bp.route('/payout/<int:payout_id>')
@@ -151,7 +163,7 @@ def view_payout(payout_id):
     """View payout request details"""
     # DISABLED - PayoutRequest model deleted during architecture rebuild
     flash('Payout module temporarily unavailable during architecture rebuild', 'warning')
-    return redirect(url_for('compliance.dashboard'))
+    return redirect(url_for('admin.compliance.dashboard'))
 
 
 @compliance_bp.route('/payout/<int:payout_id>/action', methods=['POST'])
@@ -161,7 +173,7 @@ def payout_action(payout_id):
     """Handle payout compliance actions"""
     # DISABLED - PayoutRequest model deleted during architecture rebuild
     flash('Payout module temporarily unavailable during architecture rebuild', 'warning')
-    return redirect(url_for('compliance.dashboard'))
+    return redirect(url_for('admin.compliance.dashboard'))
 
 
 @compliance_bp.route('/aml-queue')
@@ -287,7 +299,7 @@ def org_action(org_id):
         flash('Invalid action.', 'danger')
     
     db.session.commit()
-    return redirect(url_for('compliance.organisations'))
+    return redirect(url_for('admin.compliance.organisations'))
 
 
 @compliance_bp.route('/licences')
@@ -373,7 +385,7 @@ def data_request_action(request_id):
     else:
         flash('Invalid action.', 'danger')
     
-    return redirect(url_for('compliance.data_requests'))
+    return redirect(url_for('admin.compliance.data_requests'))
 
 
 @compliance_bp.route('/reports')
@@ -413,7 +425,7 @@ def generate_report():
         )
         
         flash(f'Report {report.report_number} generated successfully.', 'success')
-        return redirect(url_for('compliance.reports'))
+        return redirect(url_for('admin.compliance.reports'))
     
     return render_template('admin/compliance/generate_report.html',
                           report_types=ComplianceReportType,
@@ -460,7 +472,7 @@ def case_action(case_id):
     else:
         flash('Invalid action.', 'danger')
     
-    return redirect(url_for('compliance.dashboard'))
+    return redirect(url_for('admin.compliance.dashboard'))
 
 
 @compliance_bp.route('/cases')

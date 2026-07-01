@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Switch Active Role - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-gradient-primary text-white py-4 border-0">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle bg-white bg-opacity-25 p-3">
+                            <i class="fas fa-user-shield fa-2x"></i>
+                        </div>
+                        <div>
+                            <h2 class="h4 mb-1 fw-bold">Switch Active Role</h2>
+                            <p class="mb-0 opacity-75 small">Choose which persona you want to act as for this session.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body p-4 p-lg-5">
+                    {% if roles|length > 1 or active_role %}
+                        <div class="mb-4">
+                            <h5 class="fw-bold mb-3">Available Personal Roles</h5>
+                            <p class="text-muted small mb-4">You have multiple global roles assigned to your account. Switching to a specific role will temporarily restrict your permissions to only that role's capabilities.</p>
+                            
+                            <div class="row g-3">
+                                <!-- Reset Option -->
+                                <div class="col-md-6">
+                                    <div class="role-card h-100 border rounded-3 p-3 transition-all {% if not active_role %}border-primary bg-light-primary{% endif %}">
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div class="rounded-3 p-2 bg-secondary bg-opacity-10 text-secondary">
+                                                <i class="fas fa-users-cog fa-lg"></i>
+                                            </div>
+                                            {% if not active_role %}
+                                                <span class="badge bg-primary rounded-pill">Active</span>
+                                            {% endif %}
+                                        </div>
+                                        <h6 class="fw-bold mb-1">Default (All Roles)</h6>
+                                        <p class="text-muted small mb-3">Use all assigned global roles simultaneously. This is the default system behavior.</p>
+                                        
+                                        {% if active_role %}
+                                            <form action="{{ url_for('auth.switch_role') }}" method="POST">
+                                                <input type="hidden" name="role_name" value="reset">
+                                                <button type="submit" class="btn btn-sm btn-outline-primary w-100 rounded-pill">
+                                                    Reset Context
+                                                </button>
+                                            </form>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-secondary w-100 rounded-pill" disabled>
+                                                Currently Active
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <!-- Specific Roles -->
+                                {% for role in roles %}
+                                <div class="col-md-6">
+                                    <div class="role-card h-100 border rounded-3 p-3 transition-all {% if active_role == role.name %}border-primary bg-light-primary{% endif %}">
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div class="rounded-3 p-2 bg-primary bg-opacity-10 text-primary">
+                                                {% if role.name == 'owner' %}
+                                                    <i class="fas fa-crown fa-lg"></i>
+                                                {% elif role.name == 'admin' or role.name == 'super_admin' %}
+                                                    <i class="fas fa-user-shield fa-lg"></i>
+                                                {% elif role.name == 'moderator' %}
+                                                    <i class="fas fa-gavel fa-lg"></i>
+                                                {% elif role.name == 'support' %}
+                                                    <i class="fas fa-headset fa-lg"></i>
+                                                {% else %}
+                                                    <i class="fas fa-user fa-lg"></i>
+                                                {% endif %}
+                                            </div>
+                                            {% if active_role == role.name %}
+                                                <span class="badge bg-primary rounded-pill">Active</span>
+                                            {% endif %}
+                                        </div>
+                                        <h6 class="fw-bold mb-1">{{ role.name|title|replace('_', ' ') }}</h6>
+                                        <p class="text-muted small mb-3">{{ role.description or 'No description provided.' }}</p>
+                                        
+                                        {% if active_role != role.name %}
+                                            <form action="{{ url_for('auth.switch_role') }}" method="POST">
+                                                <input type="hidden" name="role_name" value="{{ role.name }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-primary w-100 rounded-pill">
+                                                    Act as {{ role.name|title }}
+                                                </button>
+                                            </form>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-secondary w-100 rounded-pill" disabled>
+                                                Currently Active
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <div class="mb-3 text-muted">
+                                <i class="fas fa-info-circle fa-3x"></i>
+                            </div>
+                            <h5 class="fw-bold">No Alternate Roles</h5>
+                            <p class="text-muted">You only have one global role assigned to your account. Role switching is only available for accounts with multiple privilege levels.</p>
+                            <a href="{{ url_for('user.dashboard') }}" class="btn btn-primary rounded-pill px-4">Return to Dashboard</a>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="card-footer bg-light p-4 border-0">
+                    <div class="d-flex align-items-center gap-2 text-info small">
+                        <i class="fas fa-lightbulb"></i>
+                        <span><strong>Tip:</strong> You can switch back to "Default" at any time to restore all your administrative powers.</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 text-center">
+                <a href="{{ url_for('user.dashboard') }}" class="text-decoration-none text-muted small">
+                    <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    }
+    .bg-light-primary {
+        background-color: rgba(78, 115, 223, 0.03);
+    }
+    .role-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .role-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+    .transition-all {
+        transition: all 0.2s ease-in-out;
+    }
+</style>
+{% endblock %}

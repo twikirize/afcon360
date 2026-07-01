@@ -100,6 +100,17 @@ except Exception as e:
     logger.error(f"❌ Trust settings module error: {e}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
 
+# 7. Role-based admin dashboards
+try:
+    from app.admin import route_modules  # noqa: F401
+    logger.info("✅ Registered role-based admin route modules")
+except ImportError as e:
+    logger.error(f"❌ Role-based admin modules import failed: {e}")
+    logger.error(f"Full traceback: {traceback.format_exc()}")
+except Exception as e:
+    logger.error(f"❌ Role-based admin modules error: {e}")
+    logger.error(f"Full traceback: {traceback.format_exc()}")
+
 # ============================================
 # IMPORT MODELS FOR ALEMBIC
 # ============================================

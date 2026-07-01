@@ -46,7 +46,7 @@
         <div style="background:var(--blue-lt);color:var(--blue);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;">
             Level {{ current_moderator_level if current_moderator_level else '1' }} Access
         </div>
-        <a href="{{ url_for('user.user_dashboard') }}" class="btn-consumer-switch">
+        <a href="{{ url_for('user.dashboard') }}" class="btn-consumer-switch">
             <i class="bi bi-person"></i>
             Consumer View
             <i class="bi bi-arrow-right"></i>

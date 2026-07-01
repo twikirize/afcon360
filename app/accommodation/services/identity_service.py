@@ -37,6 +37,10 @@ class AccommodationIdentityService:
         if not user.is_active or user.is_deleted:
             return False, "Account is inactive or deleted"
 
+        # Owner and super_admin bypass KYC/profile gates — they test all features
+        if user.is_app_owner() or user.is_super_admin():
+            return True, "OK"
+
         # Check KYC verification (using your existing method)
         if not user.is_fully_verified():
             return False, "Account not fully verified. Please complete KYC verification."

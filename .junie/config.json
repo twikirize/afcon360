@@ -1,0 +1,7 @@
+{
+  "model": "sonnet",
+  "brave": false,
+  "auto-update": true,
+  "guidelines-location": "./.junie/AGENTS.md",
+  "time-limit": 3600
+}

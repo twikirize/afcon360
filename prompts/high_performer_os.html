@@ -1,0 +1,260 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); }
+.os-root { padding: 1.5rem 0; }
+.nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.nav-btn { background: transparent; border: 0.5px solid var(--border-strong); border-radius: var(--radius); padding: 6px 14px; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all .15s; }
+.nav-btn:hover { background: var(--surface-1); color: var(--text-primary); }
+.nav-btn.active { background: var(--surface-1); color: var(--text-primary); border-color: var(--border-stronger); font-weight: 500; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* Schedule */
+.schedule { display: flex; flex-direction: column; gap: 4px; }
+.time-block { display: flex; gap: 12px; align-items: stretch; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+.time-label { min-width: 64px; font-size: 12px; color: var(--text-muted); padding-top: 2px; }
+.block-bar { width: 4px; border-radius: 4px; min-height: 36px; flex-shrink: 0; }
+.block-content { flex: 1; }
+.block-title { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.block-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.5; }
+.tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-top: 4px; }
+
+/* Principles */
+.principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.principle-card { background: var(--surface-1); border-radius: 12px; border: 0.5px solid var(--border); padding: 1rem 1.25rem; }
+.p-icon { font-size: 20px; margin-bottom: 8px; }
+.p-title { font-size: 14px; font-weight: 500; color: var(--text-primary); margin-bottom: 6px; }
+.p-body { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+/* Myth buster */
+.myths { display: flex; flex-direction: column; gap: 10px; }
+.myth-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.myth-box { border-radius: 12px; padding: 1rem; }
+.myth-box.wrong { background: var(--bg-danger); border: 0.5px solid var(--border-danger); }
+.myth-box.right { background: var(--bg-success); border: 0.5px solid var(--border-success); }
+.myth-label { font-size: 11px; font-weight: 500; letter-spacing: .04em; margin-bottom: 6px; }
+.myth-box.wrong .myth-label { color: var(--text-danger); }
+.myth-box.right .myth-label { color: var(--text-success); }
+.myth-text { font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+
+/* Energy map */
+.energy-map { display: flex; flex-direction: column; gap: 8px; }
+.energy-row { display: flex; gap: 10px; align-items: center; }
+.e-label { min-width: 100px; font-size: 13px; color: var(--text-secondary); }
+.e-bar-wrap { flex: 1; background: var(--surface-1); border-radius: 4px; height: 20px; overflow: hidden; }
+.e-bar { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: #fff; font-weight: 500; transition: width 1s ease; }
+.e-note { font-size: 12px; color: var(--text-muted); min-width: 120px; text-align: right; }
+
+/* Action */
+.actions { display: flex; flex-direction: column; gap: 8px; }
+.action-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--surface-1); border-radius: var(--radius); border: 0.5px solid var(--border); cursor: pointer; transition: border-color .15s; }
+.action-item:hover { border-color: var(--border-stronger); }
+.a-num { font-size: 20px; font-weight: 500; color: var(--text-muted); min-width: 28px; }
+.a-content { flex: 1; }
+.a-title { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.a-desc { font-size: 13px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
+
+.section-title { font-size: 16px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px; }
+.section-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.5; }
+.toggle-row { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+.toggle-btn { font-size: 12px; padding: 4px 12px; border-radius: 99px; border: 0.5px solid var(--border-strong); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.toggle-btn.on { background: var(--surface-2); color: var(--text-primary); border-color: var(--border-stronger); }
+</style>
+
+<div class="os-root">
+<h2 class="sr-only">Elite performer operating system — daily habits, principles, myths and action plan</h2>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="show('schedule')">Daily schedule</button>
+  <button class="nav-btn" onclick="show('principles')">How they think</button>
+  <button class="nav-btn" onclick="show('myths')">Myth vs reality</button>
+  <button class="nav-btn" onclick="show('energy')">Energy map</button>
+  <button class="nav-btn" onclick="show('actions')">Your action plan</button>
+</div>
+
+<!-- SCHEDULE -->
+<div class="section active" id="sec-schedule">
+  <p class="section-title">What a world-class day looks like</p>
+  <p class="section-sub">Composite of Bezos, Musk, Xi model, Kagame, Indra Nooyi, Satya Nadella, Tim Cook patterns. Times are approximate — the structure matters more than the clock.</p>
+  <div class="toggle-row">
+    <button class="toggle-btn on" onclick="filterSchedule('all', this)">All</button>
+    <button class="toggle-btn" onclick="filterSchedule('self', this)">Self/mind</button>
+    <button class="toggle-btn" onclick="filterSchedule('deep', this)">Deep work</button>
+    <button class="toggle-btn" onclick="filterSchedule('people', this)">People</button>
+    <button class="toggle-btn" onclick="filterSchedule('close', this)">Close-out</button>
+  </div>
+  <div class="schedule" id="schedule-list"></div>
+</div>
+
+<!-- PRINCIPLES -->
+<div class="section" id="sec-principles">
+  <p class="section-title">How elite performers actually think</p>
+  <p class="section-sub">These are the real operating principles — not motivational quotes. Study each one and ask: where am I doing the opposite?</p>
+  <div class="principles" id="principles-grid"></div>
+</div>
+
+<!-- MYTHS -->
+<div class="section" id="sec-myths">
+  <p class="section-title">What people believe vs what they actually do</p>
+  <p class="section-sub">The biggest gap between high performers and everyone else is not talent — it's what they refuse to waste time on.</p>
+  <div class="myths" id="myths-list"></div>
+</div>
+
+<!-- ENERGY -->
+<div class="section" id="sec-energy">
+  <p class="section-title">How they allocate their mental energy</p>
+  <p class="section-sub">Elite performers are ruthless about where their brain goes. This is roughly how they spend their cognitive budget per day.</p>
+  <div class="energy-map" id="energy-chart"></div>
+  <div style="margin-top:1.5rem; padding:1rem; background:var(--surface-1); border-radius:var(--radius); border:0.5px solid var(--border);">
+    <p style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
+      <strong style="color:var(--text-primary); font-weight:500;">The rule no one tells you:</strong> They don't try to be smart about everything. They protect a large block of cognitive capacity for their highest-leverage activity (strategy + decisions) and outsource or ignore everything else. Social media, office gossip, meetings with no agenda — these don't exist in their world.
+    </p>
+  </div>
+</div>
+
+<!-- ACTIONS -->
+<div class="section" id="sec-actions">
+  <p class="section-title">Start here — your first 30 days</p>
+  <p class="section-sub">You don't need a new title to operate like this. Start at your current job. Each step is a direct translation of what these leaders do.</p>
+  <div class="actions" id="actions-list"></div>
+</div>
+</div>
+
+<script>
+const scheduleData = [
+  { time: "4:30–5:30", cat: "self", color: "#0F6E56", title: "Wake — no phone, no news", sub: "Bezos sleeps 8 hrs and wakes naturally. Musk is 6am. Tim Cook 3:45am. The exact time doesn't matter — the principle is: first hour belongs to YOU, not to other people's priorities.", tag: "Protected start" },
+  { time: "5:30–7:00", cat: "self", color: "#0F6E56", title: "Move your body + read", sub: "Physical exercise (30–45 min) then reading — news briefings, industry reports, or books. NOT social media scrolling. They consume information deliberately, not reactively.", tag: "Input ritual" },
+  { time: "7:00–8:00", cat: "people", color: "#185FA5", title: "Family time / no-agenda connection", sub: "Bezos famously has slow mornings with family before meetings. This isn't wasted time — it's what recharges the human operating system. Most PMs and CEOs protect this.", tag: "Human recharge" },
+  { time: "8:00–8:30", cat: "deep", color: "#853F0B", title: "Pre-work: set the 3 things", sub: "Before anything else — write 3 outcomes you MUST achieve today. Not a to-do list. Three outcomes. This is how Nadella, Kagame, and most top leaders start. Everything else is secondary.", tag: "Daily intent" },
+  { time: "8:30–12:00", cat: "deep", color: "#853F0B", title: "Deep work block — zero interruptions", sub: "This is the engine. Strategy, writing, thinking, building, deciding. NO meetings in this block if possible. Bezos pushes all meetings to 10am+. The first 2 hours of peak mental energy go to your hardest work.", tag: "Peak performance" },
+  { time: "12:00–13:00", cat: "people", color: "#185FA5", title: "Lunch — often a working session", sub: "Leaders eat lunch with purpose: a 1-on-1 with a key person, a walkabout (management by walking around), or a team lunch to read the culture. They are always gathering signal.", tag: "Intelligence gathering" },
+  { time: "13:00–15:30", cat: "people", color: "#185FA5", title: "Meetings — only the right ones", sub: "Meetings that require a decision, alignment, or cannot be an email. Bezos bans PowerPoint — you write a memo, everyone reads in silence first. They ask: what decision does this meeting produce? No answer = no meeting.", tag: "High-leverage meetings" },
+  { time: "15:30–17:00", cat: "deep", color: "#853F0B", title: "Second deep work block", sub: "Operational reviews, reading reports, responding to the most important messages. NOT clearing the inbox — that's a trap. They respond to what moves the mission.", tag: "Operational" },
+  { time: "17:00–18:00", cat: "close", color: "#534AB7", title: "Shutdown ritual + daily review", sub: "Review: did I hit my 3 things? What do I carry to tomorrow? What do I drop? Cal Newport's shutdown ritual — 'Shutdown complete.' This protects your evening brain.", tag: "Close the loop" },
+  { time: "18:00–22:00", cat: "self", color: "#0F6E56", title: "Evening — protect this time", sub: "Family, dinner, reading (physical books — Bezos, Gates, Obama are voracious readers), light thinking. NO work email after hours unless there's a genuine crisis. This is recovery — which IS the work.", tag: "Recovery" },
+  { time: "22:00–22:30", cat: "self", color: "#0F6E56", title: "Wind down — no screens", sub: "Bezos reads fiction before bed. Sleep is not negotiable. Leaders who brag about 4-hour sleep are performing for an audience, not performing at their best.", tag: "Sleep prep" },
+];
+
+const principlesData = [
+  { icon: "ti-zoom-question", title: "They ask better questions than everyone else", body: "Not 'how do I do X?' but 'should we even be doing X?' Bezos's question: 'Will this matter in 10 years?' If no — it gets less energy. If yes — it gets obsessive focus." },
+  { icon: "ti-focus-2", title: "Ruthless prioritisation, not time management", body: "They don't manage time. They eliminate what doesn't belong. A PM who does 20 things is less effective than one who does 3 things completely. Say no more than you say yes." },
+  { icon: "ti-users", title: "They hire people smarter than them and get out of the way", body: "A Chinese Premier doesn't do everything — they build a system of excellent people. Your job at any level is to find the best person for each task and let them run." },
+  { icon: "ti-chart-line", title: "Long-term thinking as a competitive advantage", body: "Bezos called Amazon a 'permanent startup' because he was always thinking 7 years ahead while competitors thought 18 months ahead. Ask: what am I building that will compound?" },
+  { icon: "ti-message-circle", title: "They are obsessive listeners and signal readers", body: "Management by walking around. Skip-level conversations. Unscheduled check-ins. They are constantly reading the room — what's morale? What are people not saying? Where is the friction?" },
+  { icon: "ti-refresh", title: "They treat failure as data, not identity", body: "Musk exploded 3 rockets before SpaceX succeeded. Bezos launched FirePhone (disaster). They document what failed and why, then move. They don't carry it emotionally." },
+  { icon: "ti-writing", title: "They write to think, not to communicate", body: "Bezos writes 6-page memos. Kagame writes to himself. Writing forces clarity — if you can't write it simply, you don't understand it. Start writing your thinking, not just talking it." },
+  { icon: "ti-shield-check", title: "They protect their energy like it's their most valuable asset", body: "Because it is. Sleep, exercise, diet, solitude — these aren't luxuries. They are performance infrastructure. A tired CEO makes terrible decisions that cost millions." },
+];
+
+const mythsData = [
+  { wrong: "They reply to every message and stay connected 24/7", right: "They batch communication. Bezos barely uses email. They respond to what requires their specific input — everything else is delegated." },
+  { wrong: "They watch the news all day to stay informed", right: "They get curated briefings (from staff or trusted sources) each morning. They read books, not Twitter. Signal over noise." },
+  { wrong: "They are always in meetings — that's how they lead", right: "They protect large blocks of uninterrupted time. Meetings are for decisions, not discussion. They would rather have fewer, better meetings." },
+  { wrong: "They hustle 18 hours a day and sleep 4 hours", right: "Bezos: 8 hours. Gates: 7 hours. Nadella: 7–8 hours. Sleep is when the brain consolidates strategy and clears toxins. The hustle narrative is largely myth." },
+  { wrong: "They are always on LinkedIn, posting and building their brand", right: "Their brand is built through results, not posts. They are very deliberate about public communication — everything said publicly is intentional, not reactive." },
+  { wrong: "They micromanage every detail to maintain control", right: "They set the direction (the 'what' and 'why') then delegate the execution (the 'how'). They trust systems, not individual heroics." },
+];
+
+const energyData = [
+  { label: "Strategy & vision", pct: 35, color: "#853F0B", note: "Highest value thinking" },
+  { label: "Key decisions", pct: 25, color: "#185FA5", note: "Only they can decide" },
+  { label: "People & culture", pct: 20, color: "#0F6E56", note: "Multiplies everything" },
+  { label: "Learning", pct: 12, color: "#534AB7", note: "Books, reports, walks" },
+  { label: "Admin/ops", pct: 8, color: "#5F5E5A", note: "Minimised, delegated" },
+];
+
+const actionsData = [
+  { title: "Set 3 outcomes before you start work tomorrow", desc: "Not a task list. Three outcomes. Write them on paper before you open your computer. At end of day, score yourself. Do this every day for 30 days." },
+  { title: "Block 2 hours of no-interruption work every morning", desc: "Close WhatsApp. Close email. Put your phone in another room. Tell your team 'I'm unavailable 8–10am.' This single change produces more than most other habits combined." },
+  { title: "Before every meeting, write: what decision will this produce?", desc: "If you can't answer, cancel it or convert it to an email. This one habit will cut your meeting time by 40% and make the remaining meetings actually work." },
+  { title: "Read for 30 minutes every day — not news, actual books", desc: "One book per month on strategy, history, biography, or your industry. In one year that's 12 books. In 5 years you've read things most people in your field never will." },
+  { title: "Start a weekly written review — one page, every Friday", desc: "Three questions: What did I build this week? What failed and what did I learn? What's the one thing that matters most next week? This is your leadership journal." },
+  { title: "Find one person you can mentor and one who can mentor you", desc: "Elite leaders always have both. The mentee sharpens your thinking (teaching forces clarity). The mentor accelerates your learning by decades. Start both relationships now." },
+  { title: "Stop doing one thing that isn't your highest value work", desc: "Pick one task you do regularly that someone else could do. Delegate it completely. Use the freed time for your most important work. Then repeat next month." },
+];
+
+function renderSchedule(filter) {
+  const list = document.getElementById('schedule-list');
+  const filtered = filter === 'all' ? scheduleData : scheduleData.filter(d => d.cat === filter);
+  list.innerHTML = filtered.map(d => `
+    <div class="time-block">
+      <div class="time-label">${d.time}</div>
+      <div class="block-bar" style="background:${d.color}"></div>
+      <div class="block-content">
+        <div class="block-title">${d.title}</div>
+        <div class="block-sub">${d.sub}</div>
+        <span class="tag" style="background:${d.color}18; color:${d.color}; border: 0.5px solid ${d.color}44">${d.tag}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterSchedule(cat, btn) {
+  document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderSchedule(cat);
+}
+
+function renderPrinciples() {
+  document.getElementById('principles-grid').innerHTML = principlesData.map(p => `
+    <div class="principle-card">
+      <div class="p-icon"><i class="ti ${p.icon}" style="font-size:22px; color:var(--text-accent)" aria-hidden="true"></i></div>
+      <div class="p-title">${p.title}</div>
+      <div class="p-body">${p.body}</div>
+    </div>
+  `).join('');
+}
+
+function renderMyths() {
+  document.getElementById('myths-list').innerHTML = mythsData.map(m => `
+    <div class="myth-row">
+      <div class="myth-box wrong">
+        <div class="myth-label">MYTH — what people think</div>
+        <div class="myth-text">${m.wrong}</div>
+      </div>
+      <div class="myth-box right">
+        <div class="myth-label">REALITY — what they actually do</div>
+        <div class="myth-text">${m.right}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderEnergy() {
+  document.getElementById('energy-chart').innerHTML = energyData.map(e => `
+    <div class="energy-row">
+      <div class="e-label">${e.label}</div>
+      <div class="e-bar-wrap">
+        <div class="e-bar" style="width:${e.pct}%; background:${e.color}">${e.pct}%</div>
+      </div>
+      <div class="e-note">${e.note}</div>
+    </div>
+  `).join('');
+}
+
+function renderActions() {
+  document.getElementById('actions-list').innerHTML = actionsData.map((a, i) => `
+    <div class="action-item" onclick="sendPrompt('Tell me more about action ${i+1}: ${a.title}')">
+      <div class="a-num">${i+1}</div>
+      <div class="a-content">
+        <div class="a-title">${a.title}</div>
+        <div class="a-desc">${a.desc}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function show(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sec-'+section).classList.add('active');
+  event.target.classList.add('active');
+}
+
+renderSchedule('all');
+renderPrinciples();
+renderMyths();
+renderEnergy();
+renderActions();
+</script>

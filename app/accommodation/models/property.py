@@ -374,3 +374,80 @@ class PropertyRule(BaseModel):
 
     def __repr__(self):
         return f"<PropertyRule {self.property_id}: {self.rule_text[:50]}>"
+
+
+# ==========================================
+# RoomType Model (for multi-unit properties)
+# ==========================================
+
+class RoomType(BaseModel):
+    """Room type - the actual sellable SKU for hotels with multiple room types"""
+    __tablename__ = "accommodation_room_types"
+    __table_args__ = (
+        Index("idx_roomtype_property", "property_id"),
+        Index("idx_roomtype_active", "is_active"),
+    )
+
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    listing = relationship("Property", back_populates="room_types")
+
+    # Room type identity
+    name = Column(String(100), nullable=False)  # "Deluxe King", "Standard Twin"
+    description = Column(Text, nullable=True)
+
+    # Capacity
+    max_guests = Column(Integer, nullable=False, default=2)
+    bedrooms = Column(Integer, default=1)
+    beds = Column(Integer, default=1)
+    bathrooms = Column(Float, default=1.0)
+
+    # Pricing
+    base_price_per_night = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String(3), default="USD")
+    cleaning_fee = Column(Numeric(10, 2), default=0)
+    service_fee_pct = Column(Numeric(5, 2), default=10.0)
+
+    # Inventory - total units of this room type
+    total_units = Column(Integer, nullable=False, default=1)
+
+    # Status
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+
+    def __repr__(self):
+        return f"<RoomType {self.property_id}: {self.name} ({self.total_units} units)>"
+
+
+# ==========================================
+# InventoryBlock Model (sparse availability)
+# ==========================================
+
+class InventoryBlockReason(enum.Enum):
+    """Reason for blocking inventory"""
+    MAINTENANCE = "maintenance"
+    RENOVATION = "renovation"
+    SEASONAL_CLOSE = "seasonal_close"
+    OWNER_BLOCK = "owner_block"
+
+
+class InventoryBlock(BaseModel):
+    """Sparse table for inventory blocks - only rows for dates that are NOT default-available"""
+    __tablename__ = "accommodation_inventory_blocks"
+    __table_args__ = (
+        Index("idx_inv_block_range", "room_type_id", "date_range_start", "date_range_end"),
+    )
+
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    room_type = relationship("RoomType", back_populates="inventory_blocks")
+
+    date_range_start = Column(Date, nullable=False)
+    date_range_end = Column(Date, nullable=False)  # half-open range, not one row per day
+    units_blocked = Column(Integer, nullable=False, default=0)
+    reason = Column(String(30), nullable=False)  # maintenance, renovation, seasonal_close, owner_block
+
+    def __repr__(self):
+        return f"<InventoryBlock {self.room_type_id}: {self.date_range_start} to {self.date_range_end} ({self.units_blocked} units)>"
+
+
+# Add relationship to Property
+Property.room_types = relationship("RoomType", back_populates="listing", cascade="all, delete-orphan")
+RoomType.inventory_blocks = relationship("InventoryBlock", back_populates="room_type", cascade="all, delete-orphan")

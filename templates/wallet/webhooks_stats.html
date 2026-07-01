@@ -17,25 +17,23 @@
 
 <div class="panel">
   <div class="panel-header">
-    <div class="panel-title">
-      <i class="fas fa-chart-bar panel-title-icon purple"></i>
-      Queue Stats
-    </div>
+    <div class="panel-title"><i class="fas fa-chart-bar"></i> Queue Stats</div>
   </div>
   <div class="panel-body" style="padding:24px;">
-    <pre id="stats" style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:16px;border-radius:var(--radius);overflow-x:auto;">Loading...</pre>
+    <pre id="stats-display" style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:16px;border-radius:var(--radius);overflow-x:auto;min-height:200px;">Loading...</pre>
   </div>
 </div>
 
 <script>
-async function loadStats(){
-    const res = await fetch('/api/admin/wallet/webhooks/stats');
-    if(!res.ok){
-        document.getElementById('stats').innerText = 'Failed to load stats';
-        return;
+async function loadStats() {
+    try {
+        const res = await fetch('/api/admin/wallet/webhooks/stats');
+        if (!res.ok) throw new Error('Failed to load stats');
+        const data = await res.json();
+        document.getElementById('stats-display').textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+        document.getElementById('stats-display').textContent = 'Failed to load stats: ' + e.message;
     }
-    const d = await res.json();
-    document.getElementById('stats').innerHTML = JSON.stringify(d, null, 2);
 }
 
 document.addEventListener('DOMContentLoaded', loadStats);

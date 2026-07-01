@@ -20,7 +20,7 @@ from flask_login import login_required, current_user
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
 from app.auth.decorators import require_profile_completion, require_kyc_tier, require_moderator
 from app.transport import transport_bp, transport_admin_bp
-from app.utils.module_switch import check_module_enabled
+from app.utils.module_guard import module_enabled as check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
@@ -479,6 +479,35 @@ def driver_dashboard():
         "transport/driver_dashboard.html",
         driver_profile=profile,
         bookings=bookings,
+    )
+
+
+@transport_bp.route("/driver/dashboard")
+@module_enabled_required("transport")
+@login_required
+@role_required("driver")
+def driver_dashboard_slash():
+    """Driver dashboard - manage vehicles, availability, trips."""
+    from datetime import date
+
+    from app.transport.models import Vehicle, Trip, DriverAvailability
+
+    vehicles = Vehicle.query.filter_by(driver_id=current_user.id).all()
+    upcoming_trips = (
+        Trip.query.filter_by(driver_id=current_user.id, status="scheduled")
+        .order_by(Trip.pickup_time.asc())
+        .limit(10)
+        .all()
+    )
+    today_availability = DriverAvailability.query.filter_by(
+        driver_id=current_user.id, date=date.today()
+    ).first()
+
+    return render_template(
+        "transport/driver_dashboard.html",
+        vehicles=vehicles,
+        upcoming_trips=upcoming_trips,
+        today_availability=today_availability,
     )
 
 

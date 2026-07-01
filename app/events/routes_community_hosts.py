@@ -11,8 +11,15 @@ from app.events.services import EventService
 from app.events.models import Event, EventHostRegistration
 from app.accommodation.models.property import Property, AccommodationPropertyType, AccommodationPropertyStatus
 from app.extensions import db
-from slugify import slugify
 import logging
+
+# Make slugify optional to prevent import errors
+try:
+    from slugify import slugify
+except ImportError:
+    def slugify(text):
+        """Fallback slugify function if python-slugify is not installed"""
+        return text.lower().replace(' ', '-').replace('_', '-')
 
 logger = logging.getLogger(__name__)
 

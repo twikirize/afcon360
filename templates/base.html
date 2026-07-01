@@ -22,8 +22,12 @@
   <!-- 1. Global Theme (Foundation) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="global-theme-css">
   
-  <!-- 2. User Theme (Personal Overrides) -->
-  <link rel="stylesheet" href="{{ url_for('theme.serve_user_theme_css') }}" id="user-theme-css">
+  <!-- 2. User Theme (Personal Overrides) — served as a static file, no DB hit -->
+  {% if current_user.is_authenticated %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/user-' ~ current_user.id ~ '.css') }}" id="user-theme-css" onerror="this.remove()">
+  {% else %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="user-theme-css">
+  {% endif %}
   
   <!-- 3. Event Theme (Contextual Overrides - Only on event pages) -->
   {% if event_id %}
@@ -36,13 +40,18 @@
   <!-- Dashboard CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 
-  <!-- Module-specific CSS (e.g., wallet, transport, events) -->
+  <!-- Module-specific CSS (e.g., wallet, transport, events, accommodation) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/deposit.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/wallet.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/send.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/home.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/detail.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
 
   {% block module_styles %}{% endblock %} {# For specific module pages #}
   {% block styles %}{% endblock %} {# For page-specific styles #}
@@ -284,22 +293,31 @@
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
-          <a href="{{ safe_url('events.list') }}">
-            Events
-          </a>
+          <a href="{{ safe_url('events.list') }}">Events</a>
           <ul class="drop-menu" role="menu">
             <li><a class="drop-item" href="{{ safe_url('events.list') }}">📅 All Events</a></li>
             <li><hr class="drop-divider"></li>
-            <li><span class="drop-header">✨ Upcoming Events</span></li>
+            <li><span class="drop-header">✨ Featured Events</span></li>
             <li><a class="drop-item" href="{{ safe_url('events.landing', identifier='afcon-2027') }}">🏆 AFCON 2027</a></li>
             <li><a class="drop-item" href="{{ safe_url('events.landing', identifier='crusade-2026') }}">✝️ Great Crusade 2026</a></li>
             <li><a class="drop-item" href="{{ safe_url('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a></li>
+            
             {% if current_user.is_authenticated %}
             <li><hr class="drop-divider"></li>
-            <li><a class="drop-item" href="{{ safe_url('events.create_event') }}">➕ Create Event</a></li>
-            <li><a class="drop-item" href="{{ safe_url('events.my_events') }}">📋 My Events</a></li>
-            <li><a class="drop-item" href="{{ safe_url('events.my_registrations') }}">🎟️ My Registrations</a></li>
-            <li><a class="drop-item" href="{{ safe_url('events.events_hub') }}">🚀 Events Hub</a></li>
+            <li><span class="drop-header"><i class="fas fa-ticket-alt me-1"></i> My Event Activity</span></li>
+            <li><a class="drop-item" href="{{ safe_url('events.attendee_dashboard') }}">
+                <i class="fas fa-tachometer-alt me-2"></i>📊 Attendee Dashboard</a></li>
+            
+            {# Only show organizer tools if user has organizer role #}
+            {% set is_organizer = current_user.has_global_role('organizer') or current_user.has_global_role('event_manager') or current_user.is_app_owner() %}
+            {% if is_organizer %}
+            <li><hr class="drop-divider"></li>
+            <li><span class="drop-header"><i class="fas fa-calendar-plus me-1"></i> Organizer Tools</span></li>
+            <li><a class="drop-item" href="{{ safe_url('events.create_event') }}">
+                <i class="fas fa-plus-circle me-2"></i>➕ Create Event</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.my_events') }}">
+                <i class="fas fa-calendar-alt me-2"></i>📋 My Events</a></li>
+            {% endif %}
             {% endif %}
           </ul>
         </li>
@@ -433,12 +451,15 @@
                        {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
                        {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
                        {% elif current_user.has_global_role('event_manager') %}{{ safe_url('events.admin_dashboard') }}
+                       {% elif current_user.has_global_role('organizer') %}{{ safe_url('events.my_events') }}
                        {% elif current_user.has_global_role('transport_admin') %}{{ safe_url('transport_admin.dashboard') }}
+                       {% elif current_user.has_global_role('driver') %}{{ safe_url('transport.driver_dashboard') }}
+                       {% elif current_user.has_global_role('host') %}{{ safe_url('accommodation.host.dashboard') }}
                        {% elif current_user.has_global_role('wallet_admin') %}{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
                        {% elif current_user.has_global_role('accommodation_admin') %}{% if module_enabled('accommodation') %}{{ safe_url('accommodation.admin.dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
                       {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
                        {% else %}{{ safe_url('events.attendee_dashboard') }}{% endif %}"
-                 class="nav-dashboard-link">
+                  class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
             </li>
@@ -464,10 +485,20 @@
                 <i class="bi bi-chevron-down" style="font-size:10px;"></i>
               </button>
               <ul class="drop-menu drop-menu--right" role="menu">
-                {% if current_user.is_app_owner() or current_user.is_super_admin() or current_user.has_global_role('admin', 'moderator', 'support', 'auditor', 'compliance_officer', 'event_manager', 'transport_admin', 'wallet_admin', 'accommodation_admin', 'tourism_admin') %}
-                <li><span class="drop-header">👑 Admin Mode</span></li>
-                <li><a class="drop-item" href="{{ url_for('user.user_dashboard') }}">
-                  <i class="fas fa-user me-2"></i>Switch to Consumer View</a></li>
+                {# ── Global Role Switching ── #}
+                {% set user_roles = current_user.roles|list %}
+                {% if user_roles|length > 1 or active_global_role %}
+                <li><span class="drop-header">👑 Global Persona</span></li>
+                <li>
+                  <a class="drop-item" href="{{ url_for('auth.switch_role') }}" style="color: var(--brand-primary); font-weight: 500;">
+                    <i class="fas fa-exchange-alt me-2"></i>
+                    {% if active_global_role %}
+                      <span class="badge bg-primary me-1">{{ active_global_role|title }}</span> Mode
+                    {% else %}
+                      Switch Active Role
+                    {% endif %}
+                  </a>
+                </li>
                 <li><hr class="drop-divider"></li>
                 {% endif %}
                 <li><a class="drop-item" href="{{ url_for('profile.account_overview') }}">
@@ -524,15 +555,22 @@
         </div>
         <div class="drawer-accordion-body">
           <a class="drawer-sub-link" href="{{ safe_url('events.list') }}">All Events</a>
-          <span class="drawer-sub-label">✨ Upcoming</span>
+          <span class="drawer-sub-label">✨ Featured</span>
           <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='afcon-2027') }}">🏆 AFCON 2027</a>
           <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='crusade-2026') }}">✝️ Great Crusade 2026</a>
           <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a>
+          
           {% if current_user.is_authenticated %}
-          <a class="drawer-sub-link" href="{{ safe_url('events.create_event') }}">➕ Create Event</a>
-          <a class="drawer-sub-link" href="{{ safe_url('events.my_events') }}">📋 My Events</a>
-          <a class="drawer-sub-link" href="{{ safe_url('events.my_registrations') }}">🎟️ My Registrations</a>
-          <a class="drawer-sub-link" href="{{ safe_url('events.events_hub') }}">🚀 Events Hub</a>
+          <span class="drawer-sub-label">🎟️ My Event Activity</span>
+          <a class="drawer-sub-link" href="{{ safe_url('events.attendee_dashboard') }}">
+              <i class="fas fa-tachometer-alt me-2"></i>Attendee Dashboard</a>
+          
+          {% set is_organizer = current_user.has_global_role('organizer') or current_user.has_global_role('event_manager') or current_user.is_app_owner() %}
+          {% if is_organizer %}
+          <span class="drawer-sub-label">📋 Organizer Tools</span>
+          <a class="drawer-sub-link" href="{{ safe_url('events.create_event') }}">Create Event</a>
+          <a class="drawer-sub-link" href="{{ safe_url('events.my_events') }}">My Events</a>
+          {% endif %}
           {% endif %}
         </div>
       </div>
@@ -590,7 +628,7 @@
           <a class="drawer-link" href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
             {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
             {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
-            {% else %}{{ url_for('fan.dashboard') }}{% endif %}">
+            {% else %}{{ url_for('user.dashboard') }}{% endif %}">
             <i class="bi bi-speedometer2 me-2"></i>Dashboard
           </a>
         {% endif %}
@@ -667,13 +705,6 @@
 
   <!-- Theme Manager -->
   <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
-  <script nonce="{{ csp_nonce }}">
-      document.addEventListener('DOMContentLoaded', function() {
-          if (typeof ThemeManager !== 'undefined') {
-              window.themeManager = new ThemeManager();
-          }
-      });
-  </script>
 
   {% block module_scripts %}{% endblock %} {# For specific module pages #}
   {% block scripts %}{% endblock %} {# For page-specific scripts #}

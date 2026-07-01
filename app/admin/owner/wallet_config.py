@@ -174,6 +174,7 @@ def system_config():
         config.withdrawals_enabled = request.form.get('withdrawals_enabled') == 'on'
         config.transfers_enabled = request.form.get('transfers_enabled') == 'on'
         config.fx_enabled = request.form.get('fx_enabled') == 'on'
+        config.agents_enabled = request.form.get('agents_enabled') == 'on'
         
         # Update limits
         try:
@@ -318,7 +319,7 @@ def api_system_config():
     
     # Update fields
     for field in ['deposits_enabled', 'withdrawals_enabled', 'transfers_enabled', 
-                  'fx_enabled', 'require_kyc_for_deposits', 'require_kyc_for_withdrawals',
+                  'fx_enabled', 'agents_enabled', 'require_kyc_for_deposits', 'require_kyc_for_withdrawals',
                   'require_kyc_for_transfers', 'notify_large_transactions']:
         if field in data:
             setattr(config, field, data[field])
@@ -436,9 +437,3 @@ def init_wallet_config(app):
 
 
 __all__ = ['wallet_config_bp', 'init_wallet_config']
-</CodeContent>
-<parameter=EmptyFile>false</parameter>
-</function>
-
-<function=write_to_file>
-<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\templates\owner\wallet_config\index.html

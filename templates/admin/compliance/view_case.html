@@ -88,14 +88,14 @@
   <div class="card-footer">
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
       {% if not case.assigned_to or case.assigned_to != current_user.id %}
-      <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}" style="display: inline;">
+      <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="assign_to_me">
         <button type="submit" class="btn btn-primary">Assign to Me</button>
       </form>
       {% endif %}
       
-      <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}" style="display: inline;">
+      <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="escalate">
         <button type="submit" class="btn btn-warning">Escalate</button>
@@ -143,7 +143,7 @@
         
         <!-- Add Note Form -->
         <div id="notes" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
-          <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}">
+          <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="add_note">
             <div class="form-group">
@@ -172,13 +172,13 @@
             <div style="font-size: 11px; color: var(--muted);">{{ case.user.email }}</div>
           </div>
         </div>
-        <a href="{{ url_for('compliance.user_audit', user_id=case.user.public_id) }}" class="btn btn-sm btn-secondary w-100">View User Profile</a>
+        <a href="{{ url_for('admin.compliance.user_audit', user_id=case.user.public_id) }}" class="btn btn-sm btn-secondary w-100">View User Profile</a>
         {% elif case.organisation %}
         <div style="margin-bottom: 12px;">
           <div style="font-weight: 600;">{{ case.organisation.name }}</div>
           <div style="font-size: 11px; color: var(--muted);">{{ case.organisation.registration_number or 'No reg. number' }}</div>
         </div>
-        <a href="{{ url_for('compliance.view_org', org_id=case.organisation.id) }}" class="btn btn-sm btn-secondary w-100">View Organisation</a>
+        <a href="{{ url_for('admin.compliance.view_org', org_id=case.organisation.id) }}" class="btn btn-sm btn-secondary w-100">View Organisation</a>
         {% else %}
         <p style="color: var(--muted);">No user or organisation linked to this case.</p>
         {% endif %}
@@ -193,12 +193,12 @@
       <div class="card-body">
         <div style="display: flex; flex-direction: column; gap: 8px;">
           {% if case.kyc_id %}
-          <a href="{{ url_for('compliance.view_kyc', kyc_id=case.kyc_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
+          <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=case.kyc_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
             <i class="fas fa-id-card"></i> KYC #{{ case.kyc_id }}
           </a>
           {% endif %}
           {% if case.payout_id %}
-          <a href="{{ url_for('compliance.view_payout', payout_id=case.payout_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
+          <a href="{{ url_for('admin.compliance.view_payout', payout_id=case.payout_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
             <i class="fas fa-money-bill"></i> Payout #{{ case.payout_id }}
           </a>
           {% endif %}
@@ -243,7 +243,7 @@
 <div id="resolveModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
   <div style="background: var(--surface); border-radius: var(--radius-lg); padding: 24px; width: 90%; max-width: 500px; box-shadow: var(--shadow-lg);">
     <h3 style="margin: 0 0 16px; font-family: var(--font-display);">Resolve Case</h3>
-    <form method="POST" action="{{ url_for('compliance.case_action', case_id=case.id) }}">
+    <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="resolve">
       <div class="form-group">

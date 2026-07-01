@@ -23,10 +23,10 @@ def preferences_page():
 
 @theme_bp.route('/api/preferences', methods=['GET'])
 def get_user_preferences():
+    from flask import make_response
     # Check if user is authenticated
     if not current_user.is_authenticated:
-        # Return default preferences for guests
-        return jsonify({
+        resp = make_response(jsonify({
             "font_scale": 1.0,
             "high_contrast": "off",
             "dyslexic_font": False,
@@ -35,12 +35,12 @@ def get_user_preferences():
             "reduced_motion": False,
             "reading_width": "full",
             "compact_mode": False
-        })
+        }))
+        resp.headers['Cache-Control'] = 'public, max-age=300'
+        return resp
 
     pref = UserThemePreference.query.get(current_user.id)
-    if pref:
-        return jsonify(pref.settings)
-    return jsonify({
+    data = pref.settings if pref else {
         "font_scale": 1.0,
         "high_contrast": "off",
         "dyslexic_font": False,
@@ -49,7 +49,11 @@ def get_user_preferences():
         "reduced_motion": False,
         "reading_width": "full",
         "compact_mode": False
-    })
+    }
+    resp = make_response(jsonify(data))
+    # Private 60s cache — browser won't re-fetch on every navigation
+    resp.headers['Cache-Control'] = 'private, max-age=60'
+    return resp
 
 @theme_bp.route('/preferences/save', methods=['POST'])
 @login_required

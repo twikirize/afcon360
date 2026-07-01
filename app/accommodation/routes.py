@@ -61,7 +61,10 @@ logger = logging.getLogger(__name__)
 # MAIN ACCOMMODATION ROUTES
 # ============================================================================
 
+from app.utils.module_guard import require_module_enabled
+
 @accommodation_bp.route("/", endpoint="home")
+@require_module_enabled("accommodation")
 def home():
     """Accommodation home page - Public access, no login required"""
     # Fetch featured properties
@@ -979,9 +982,66 @@ def host_dashboard():
         host_info=host_info,
         listings=dashboard_data["properties"],
         bookings=dashboard_data["upcoming_bookings"],
+        recent_bookings=dashboard_data.get("recent_bookings", []),
         stats=dashboard_data["stats"],
         revenue_summary=dashboard_data["revenue_summary"],
+        monthly_revenue=dashboard_data.get("monthly_revenue", []),
+        total_bookings_count=dashboard_data.get("total_bookings_count", 0),
+        total_revenue=dashboard_data.get("total_revenue", 0),
+        avg_rating=dashboard_data.get("avg_rating", 0),
+        total_reviews=dashboard_data.get("total_reviews", 0),
+        avg_response_rate=dashboard_data.get("avg_response_rate"),
+        total_views=dashboard_data.get("total_views", 0),
+        conversion_rate=dashboard_data.get("conversion_rate", 0),
+        insights=dashboard_data.get("insights", []),
     )
+
+
+@accommodation_bp.route("/host/dashboard/data", endpoint="host_dashboard_data")
+@login_required
+def host_dashboard_data():
+    host_info = _ensure_host_identity()
+    if not host_info:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    dashboard_data = HostService.get_dashboard_data(
+        owner_user_id=host_info["id"] if host_info["type"] == "individual" else None,
+        owner_org_id=host_info["id"] if host_info["type"] == "organisation" else None,
+    )
+
+    return jsonify({
+        "total_listings": dashboard_data["stats"].get("total_listings", 0),
+        "active_listings": dashboard_data["stats"].get("active_listings", 0),
+        "pending_review": dashboard_data["stats"].get("pending_review", 0),
+        "draft_listings": dashboard_data["stats"].get("draft_listings", 0),
+        "total_bookings": dashboard_data.get("total_bookings_count", 0),
+        "total_revenue": dashboard_data.get("total_revenue", 0.0),
+        "avg_rating": dashboard_data.get("avg_rating", 0.0),
+        "total_reviews": dashboard_data.get("total_reviews", 0),
+        "avg_response_rate": dashboard_data.get("avg_response_rate", 0),
+        "total_views": dashboard_data.get("total_views", 0),
+        "conversion_rate": dashboard_data.get("conversion_rate", 0.0),
+        "monthly_revenue": dashboard_data.get("monthly_revenue", []),
+        "occupancy_rate": dashboard_data["stats"].get("occupancy_rate", 0.0),
+    })
+
+
+@accommodation_bp.route("/host/api/track", methods=['POST'], endpoint="host_api_track")
+@login_required
+def host_api_track():
+    try:
+        data = request.get_json(silent=True) or {}
+        event_name = data.get('event', 'unknown')
+        properties = data.get('properties', {})
+
+        from app.utils.monitoring import track_booking_funnel_event
+        track_booking_funnel_event(
+            f"host_{event_name}",
+            properties
+        )
+        return jsonify({'ok': True}), 200
+    except Exception:
+        return jsonify({'ok': False}), 200
 
 
 @accommodation_bp.route("/host/listings/create", methods=["GET", "POST"], endpoint="host_create_listing")
@@ -1024,6 +1084,37 @@ def host_create_listing():
         "accommodation/host/create_listing.html",
         form=form,
         host_info=host_info,
+    )
+
+
+@accommodation_bp.route("/host/bulk-template", endpoint="host_bulk_template")
+@login_required
+def host_bulk_template():
+    """Download CSV template for bulk property import (organisation hosts only)
+    
+    Per architecture §8.2: Creates 1 Property + N RoomTypes with total_units count.
+    NOT 1000 individual Property rows.
+    """
+    host_info = _ensure_host_identity()
+    if not host_info:
+        return redirect(url_for("index"))
+
+    if host_info["type"] != "organisation":
+        flash("Bulk import is only available for organisation hosts.", "warning")
+        return redirect(url_for("accommodation.host_dashboard"))
+
+    # CSV template with headers - per architecture §8.2
+    # Creates: 1 Property + N RoomTypes with total_units count
+    csv_content = "location_name,city,country,room_type_name,total_units,base_price_per_night,max_guests,description\n"
+    csv_content += "Grand Hotel,Kampala,UG,Deluxe King,50,120,2,Luxury room with king bed\n"
+    csv_content += "Grand Hotel,Kampala,UG,Standard Twin,100,85,2,Comfortable twin room\n"
+    csv_content += "Grand Hotel,Kampala,UG,Suite,20,200,4,Spacious suite with living area\n"
+
+    from flask import Response
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=afcon360_bulk_properties_template.csv"}
     )
 
 

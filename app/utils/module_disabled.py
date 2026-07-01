@@ -11,7 +11,7 @@ def module_disabled_page(module_name):
     Show a user-friendly page when a disabled module is accessed.
     """
     # Validate module name
-    valid_modules = ['wallet', 'tourism', 'transport', 'accommodation', 'events', 'tournament', 'agents']
+    valid_modules = ['wallet', 'tourism', 'transport', 'accommodation', 'events', 'tournament']
     
     if module_name not in valid_modules:
         abort(404)
@@ -33,10 +33,8 @@ def module_disabled_page(module_name):
                 return redirect(url_for('wallet.dashboard'))
             elif module_name == 'tournament':
                 return redirect(url_for('tournament.home'))
-            elif module_name == 'agents':
-                return redirect(url_for('agents.home'))
         except:
             # If redirect fails, just show the page anyway
             pass
     
-    return render_template('module_disabled.html', module_name=module_name)
+    return render_template('module_disabled.html', module=module_name)

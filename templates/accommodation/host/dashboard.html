@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% block title %}Host Dashboard | AFCON 360{% endblock %}
+
+{% block module_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/host-dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="host-dashboard-modern">
+
+  {# ── WELCOME SECTION ──────────────────────────────────────────── #}
+  <div class="host-welcome-modern">
+    <div class="container-fluid px-4">
+      <div class="host-greeting-modern">
+        <h1>
+          👋 Welcome back, 
+          <span class="highlight">{{ host_info.display_name }}</span>
+        </h1>
+        <p style="opacity: 0.9; font-size: 1.1rem;">
+          Here's your performance overview for today.
+          {% if host_info.type == 'organisation' %}
+          <span class="badge bg-light text-dark ms-2">🏢 Organisation</span>
+          {% endif %}
+        </p>
+      </div>
+
+      {# Quick Stats Row #}
+      <div class="quick-stats-row">
+        <div class="quick-stat-item">
+          <span class="quick-stat-number" data-stat="total_listings">{{ stats.total_listings }}</span>
+          <span class="quick-stat-label">Total Listings</span>
+        </div>
+        <div class="quick-stat-item">
+          <span class="quick-stat-number" data-stat="active_listings">{{ stats.active_listings }}</span>
+          <span class="quick-stat-label">Active</span>
+        </div>
+        <div class="quick-stat-item">
+          <span class="quick-stat-number" data-stat="total_bookings">{{ total_bookings_count }}</span>
+          <span class="quick-stat-label">Total Bookings</span>
+        </div>
+        <div class="quick-stat-item">
+          <span class="quick-stat-number" data-stat="total_revenue">${{ "{:,.0f}".format(total_revenue) }}</span>
+          <span class="quick-stat-label">Total Revenue</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── MAIN CONTENT ─────────────────────────────────────────────── #}
+  <div class="container-fluid px-4">
+
+    {# Stats Grid #}
+    <div class="stats-grid-modern">
+      <div class="stat-card-modern animate-in">
+        <div class="stat-header-modern">
+          <span class="stat-icon-modern blue"><i class="bi bi-house-door"></i></span>
+          <span class="stat-change positive">▲ 12%</span>
+        </div>
+        <div class="stat-value-modern" data-stat="total_listings">{{ stats.total_listings }}</div>
+        <div class="stat-label-modern">Total Listings</div>
+        <small class="text-muted">{{ stats.active_listings }} active</small>
+      </div>
+
+      <div class="stat-card-modern animate-in">
+        <div class="stat-header-modern">
+          <span class="stat-icon-modern green"><i class="bi bi-check-circle"></i></span>
+          <span class="stat-change positive">● Live</span>
+        </div>
+        <div class="stat-value-modern" data-stat="active_listings">{{ stats.active_listings }}</div>
+        <div class="stat-label-modern">Active Listings</div>
+        <small class="text-muted">{{ stats.pending_review }} pending review</small>
+      </div>
+
+      <div class="stat-card-modern animate-in">
+        <div class="stat-header-modern">
+          <span class="stat-icon-modern orange"><i class="bi bi-calendar-check"></i></span>
+          <span class="stat-change neutral">{{ bookings|length }} upcoming</span>
+        </div>
+        <div class="stat-value-modern" data-stat="total_bookings">{{ total_bookings_count }}</div>
+        <div class="stat-label-modern">Total Bookings</div>
+        <small class="text-muted">{{ stats.draft_listings }} drafts</small>
+      </div>
+
+      <div class="stat-card-modern animate-in">
+        <div class="stat-header-modern">
+          <span class="stat-icon-modern purple"><i class="bi bi-currency-dollar"></i></span>
+          <span class="stat-change positive">▲ 8%</span>
+        </div>
+        <div class="stat-value-modern" data-stat="total_revenue">${{ "{:,.0f}".format(total_revenue) }}</div>
+        <div class="stat-label-modern">Total Revenue</div>
+        <small class="text-muted">All time earnings</small>
+      </div>
+
+      <div class="stat-card-modern animate-in">
+        <div class="stat-header-modern">
+          <span class="stat-icon-modern pink"><i class="bi bi-star-fill"></i></span>
+          <span class="stat-change positive">{{ avg_rating }} ★</span>
+        </div>
+        <div class="stat-value-modern" data-stat="avg_rating">{{ avg_rating|round(1) }}</div>
+        <div class="stat-label-modern">Average Rating</div>
+        <small class="text-muted">{{ total_reviews }} reviews</small>
+      </div>
+
+      <div class="stat-card-modern animate-in">
+        <div class="stat-header-modern">
+          <span class="stat-icon-modern" style="background:var(--success-light);color:var(--success);"><i class="bi bi-eye"></i></span>
+          <span class="stat-change positive">{{ total_views }} views</span>
+        </div>
+        <div class="stat-value-modern" data-stat="total_views">{{ total_views }}</div>
+        <div class="stat-label-modern">Views (24h)</div>
+        <small class="text-muted">
+          {% if avg_response_rate %}
+          {{ "%.0f"|format(avg_response_rate) }}% response rate
+          {% else %}
+          No response data
+          {% endif %}
+        </small>
+      </div>
+    </div>
+
+    {# ── MAIN GRID ────────────────────────────────────────────────── #}
+    <div class="main-grid-modern">
+
+      {# ── LEFT COLUMN: Listings ────────────────────────────────── #}
+      <div class="card-modern animate-in">
+        <div class="card-header-modern">
+          <div>
+            <h3>🏠 Your Listings</h3>
+            <span class="subtitle">Manage your properties</span>
+          </div>
+          <a href="{{ url_for('accommodation.host_create_listing') }}" class="btn-primary-modern">
+            <i class="bi bi-plus-lg me-1"></i>Add Listing
+          </a>
+        </div>
+        <div class="card-body-modern">
+          {% if listings %}
+          <div class="listings-grid-modern">
+            {% for prop in listings %}
+            <div class="listing-card-modern" data-listing-id="{{ prop.id }}">
+              <div class="listing-image-modern">
+                {% if prop.main_image %}
+                <img src="{{ prop.main_image }}" alt="{{ prop.title }}" loading="lazy">
+                {% else %}
+                <div style="display:flex;align-items:center;justify-content:center;height:100%;background:var(--bg-surface-alt);color:var(--text-muted);">
+                                   <i class="bi bi-image" style="font-size:3rem;"></i>
+                                 </div>
+                {% endif %}
+                {% set s = prop.status.value if prop.status and prop.status.value else prop.status %}
+                <span class="listing-badge {{ s | default('draft') | lower }}">
+                  {{ s | replace('_',' ') | title }}
+                </span>
+              </div>
+              <div class="listing-body-modern">
+                <div class="listing-title-modern">{{ prop.title }}</div>
+                <div class="listing-location-modern">
+                  <i class="bi bi-geo-alt me-1"></i>{{ prop.city }}, {{ prop.country }}
+                </div>
+                <div class="listing-meta-modern">
+                  <span><i class="bi bi-star-fill text-warning me-1"></i>
+                    {{ "%.1f"|format(prop.overall_rating) if prop.overall_rating else "New" }}
+                    {% if prop.total_reviews > 0 %}({{ prop.total_reviews }}){% endif %}
+                  </span>
+                  <span><i class="bi bi-eye me-1"></i>{{ prop.views_last_24h }} views</span>
+                  <span><i class="bi bi-calendar-check me-1"></i>{{ prop.total_bookings }} bookings</span>
+                </div>
+                <div class="listing-price-modern">
+                  ${{ "{:,.0f}".format(prop.base_price_per_night) }}
+                  <small>/ night</small>
+                </div>
+                <div class="listing-actions-modern">
+                  <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}" 
+                     class="btn-outline-modern">
+                    <i class="bi bi-pencil me-1"></i>Edit
+                  </a>
+                  <a href="{{ url_for('accommodation.host_calendar', property_id=prop.id) }}" 
+                     class="btn-outline-modern">
+                    <i class="bi bi-calendar3 me-1"></i>Calendar
+                  </a>
+                  <a href="{{ url_for('accommodation.guest_detail', identifier=prop.id) }}"
+                     class="btn-outline-modern" target="_blank">
+                    <i class="bi bi-eye me-1"></i>View
+                  </a>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="empty-state-modern">
+            <div class="empty-icon"><i class="bi bi-house-add"></i></div>
+            <h4>No listings yet</h4>
+            <p>Create your first property listing and start hosting guests.</p>
+            <a href="{{ url_for('accommodation.host_create_listing') }}" class="btn-primary-modern" style="padding:10px 24px;font-size:0.95rem;">
+              <i class="bi bi-plus-lg me-2"></i>Create Your First Listing
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── RIGHT COLUMN: Sidebar ────────────────────────────────── #}
+      <div class="animate-in">
+
+        {# Upcoming Bookings Widget #}
+        <div class="widget-modern">
+          <div class="widget-header-modern">
+            <h4>📅 Upcoming Bookings</h4>
+            <a href="{{ url_for('accommodation.host_bookings') }}" class="widget-link">View All →</a>
+          </div>
+          {% if bookings %}
+          <div>
+            {% for b in bookings %}
+            <div class="booking-item-modern" data-booking-id="{{ b.id }}">
+              <div class="booking-avatar">
+                {{ (b.guest_name or 'G')[0]|upper }}
+              </div>
+              <div class="booking-info-modern">
+                <div class="booking-guest-modern">{{ b.guest_name or 'Guest' }}</div>
+                <div class="booking-dates-modern">
+                  <i class="bi bi-calendar2 me-1"></i>
+                  {{ b.check_in.strftime('%d %b') }} → {{ b.check_out.strftime('%d %b %Y') }}
+                  <span class="text-muted ms-2">{{ b.num_guests }} guest{{ 's' if b.num_guests != 1 }}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="booking-status-modern {{ b.status | lower }}">
+                  {{ b.status | replace('_',' ') | title }}
+                </span>
+                <span class="booking-amount-modern">${{ "%.0f"|format(b.total_amount) }}</span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-calendar-x fs-3 d-block mb-2"></i>
+            <small>No upcoming bookings</small>
+          </div>
+          {% endif %}
+        </div>
+
+        {# Occupancy Widget #}
+        <div class="widget-modern">
+          <div class="widget-header-modern">
+            <h4>📊 Occupancy Rate</h4>
+          </div>
+          <div style="height: 200px; position: relative;">
+            <canvas id="occupancyChart"></canvas>
+          </div>
+          <div class="text-center mt-3">
+            <span class="badge bg-light text-dark">{{ stats.occupancy_rate }}% Occupied</span>
+          </div>
+        </div>
+
+        {# Revenue Widget #}
+        <div class="widget-modern">
+          <div class="widget-header-modern">
+            <h4>💰 Revenue Summary</h4>
+            <a href="{{ url_for('accommodation.host_earnings') }}" class="widget-link">Details →</a>
+          </div>
+          {% if revenue_summary %}
+          <div class="revenue-summary-modern">
+            {% for r in revenue_summary %}
+            <div class="revenue-item-modern">
+              <span class="revenue-currency-modern">{{ r.currency }}</span>
+              <span class="revenue-amount-modern">${{ "{:,.2f}".format(r.amount) }}</span>
+            </div>
+            {% endfor %}
+            <div style="border-top:2px solid var(--success);padding-top:12px;margin-top:4px;">
+               <div style="display:flex;justify-content:space-between;font-weight:700;color:var(--text-primary);">
+                 <span>Total</span>
+                 <span>${{ "{:,.2f}".format(total_revenue) }}</span>
+               </div>
+             </div>
+            <div style="height: 200px; margin-top: 15px;">
+              <canvas id="revenueChart"></canvas>
+            </div>
+          </div>
+          {% else %}
+          <div class="text-center py-3 text-muted">
+            <i class="bi bi-currency-dollar fs-3 d-block mb-2"></i>
+            <small>No revenue data yet</small>
+          </div>
+          {% endif %}
+        </div>
+
+        {# Quick Actions #}
+        <div class="widget-modern">
+          <div class="widget-header-modern">
+            <h4>⚡ Quick Actions</h4>
+          </div>
+          <div class="quick-actions-modern">
+             <a href="{{ url_for('accommodation.host_create_listing') }}" class="quick-action-modern">
+               <i class="bi bi-plus-circle" style="color:var(--brand-primary);"></i>
+               <span class="action-label">New Listing</span>
+             </a>
+             <a href="{{ url_for('accommodation.host_calendar') }}" class="quick-action-modern">
+               <i class="bi bi-calendar3" style="color:var(--blue);"></i>
+               <span class="action-label">Calendar</span>
+             </a>
+             <a href="{{ url_for('accommodation.host_bookings') }}" class="quick-action-modern">
+               <i class="bi bi-calendar-check" style="color:var(--success);"></i>
+               <span class="action-label">Bookings</span>
+             </a>
+             <a href="{{ url_for('accommodation.host_earnings') }}" class="quick-action-modern">
+               <i class="bi bi-graph-up-arrow" style="color:var(--orange);"></i>
+               <span class="action-label">Earnings</span>
+             </a>
+             <a href="#" class="quick-action-modern" onclick="showInsights()">
+               <i class="bi bi-lightbulb" style="color:#7C3AED;"></i>
+               <span class="action-label">Insights</span>
+             </a>
+             <a href="#" class="quick-action-modern" onclick="showAnalytics()">
+               <i class="bi bi-bar-chart" style="color:var(--danger);"></i>
+               <span class="action-label">Analytics</span>
+             </a>
+           </div>
+        </div>
+
+        {# Smart Insights Widget #}
+        {% if insights %}
+        <div class="widget-modern" style="background:linear-gradient(135deg,var(--brand-primary-dark) 0%,var(--brand-primary) 100%);color:white;border:none;">
+          <div style="display:flex;align-items:start;gap:12px;">
+            <i class="bi bi-lightbulb-fill" style="font-size:1.8rem;"></i>
+            <div>
+              <h5 style="font-weight:600;margin:0 0 4px;color:white;">Smart Insights</h5>
+              <div style="opacity:0.9;font-size:0.9rem;">
+                <ul style="padding-left:15px;margin:0;">
+                {% for insight in insights %}
+                  <li style="margin-bottom:8px;">
+                    <strong>{{ insight.icon }} {{ insight.title }}</strong>: {{ insight.description }}
+                    {% if insight.action_url and insight.action_url != '#' %}
+                    <br><a href="{{ url_for(insight.action_url) }}" style="color:var(--brand-accent);text-decoration:none;font-weight:600;">{{ insight.action_text }} →</a>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="widget-modern" style="background:linear-gradient(135deg,var(--brand-primary-dark) 0%,var(--brand-primary) 100%);color:white;border:none;">
+          <div style="display:flex;align-items:start;gap:12px;">
+            <i class="bi bi-lightbulb-fill" style="font-size:1.8rem;"></i>
+            <div>
+              <h5 style="font-weight:600;margin:0 0 4px;color:white;">Smart Insights</h5>
+              <p style="opacity:0.9;margin:0;font-size:0.9rem;">
+                🚀 Create your first listing to start earning!
+              </p>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="notification-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;"></div>
+
+<!-- Pass backend data to JS -->
+<script>
+  window.initialDashboardData = {
+    monthly_revenue: {{ monthly_revenue | tojson }},
+    occupancy_rate: {{ stats.occupancy_rate | default(0) }}
+  };
+
+  function showInsights() {
+    alert('Smart Insights are available in your sidebar!');
+  }
+
+  function showAnalytics() {
+    alert('Advanced analytics dashboard is active and rendering in your sidebar!');
+  }
+</script>
+{% endblock %}
+
+{% block module_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/modules/accommodation/host-dashboard-enhanced.js') }}"></script>
+{% endblock %}

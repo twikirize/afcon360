@@ -110,13 +110,21 @@ def require_fresh_user(f):
 def get_highest_role(user) -> str:
     """
     Return the user's highest role based on hierarchy.
+    Respects active role context from session if set.
 
     Role hierarchy:
-    owner > super_admin > admin > org_admin > moderator > support > fan
+    owner > super_admin > admin > org_admin > moderator > support > user
     """
     if not user or not user.is_authenticated:
         return None
 
+    # Priority 1: Respect active persona if selected
+    from app.auth.helpers import get_active_role_name
+    active_role = get_active_role_name()
+    if active_role:
+        return active_role
+
+    # Priority 2: Fall back to actual highest assigned role
     # Ensure user is attached to the session before accessing relationships
     if user not in db.session:
         try:

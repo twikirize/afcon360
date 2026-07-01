@@ -36,6 +36,7 @@ from app.events.constants import (
     EventStatus,
     ALLOWED_TRANSITIONS,
     validate_transition,
+    BookingType,
 )
 
 
@@ -688,9 +689,18 @@ class EventRegistration(BaseModel):
 
     # NEW: Third-party registration tracking
     booked_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    booking_type = Column(String(30), default="self", nullable=False, index=True)
+    booking_type = Column(String(30), default=BookingType.SELF.value, nullable=False, index=True)
     group_booking_id = Column(String(100), nullable=True, index=True)
+    group_label = Column(String(150), nullable=True, index=True)
     attendee_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    """
+    REDUNDANT FIELD: Currently always equals user_id for third_party/group bookings,
+    NULL for self bookings. Reserved for future "transfer ticket" feature where
+    a registration can be reassigned to a different attendee without changing
+    the original user_id (which remains for audit trail).
+
+    Do not use this field for current business logic - use user_id and booking_type.
+    """
     # Optional display ordering within a group booking (1..N)
     group_index     = Column(Integer, nullable=True)
 
@@ -748,6 +758,17 @@ class EventRegistration(BaseModel):
         return self.status == self.STATUS_CANCELLED
 
     is_checked_in = _deprecated("is_checked_in_flag")
+
+    @property
+    def registered_by_display(self) -> str:
+        """Deprecated - use booking_type instead. Maintained for backward compatibility."""
+        import warnings
+        warnings.warn(
+            "registered_by is deprecated, use booking_type",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.booking_type
 
     def __repr__(self):
         return f"<EventRegistration {self.registration_ref}: {self.full_name!r}>"

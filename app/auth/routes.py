@@ -241,7 +241,7 @@ def _dashboard_for_user(user) -> str:
 
     # STEP 9: Default fan dashboard
     try:
-        return url_for("fan.dashboard")
+        return url_for("user.dashboard")
     except:
         return url_for("index")
 
@@ -586,7 +586,8 @@ def is_safe_url(target):
     return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
 
 @auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
-@limiter.limit("100 per minute")
+@limiter.limit("5 per minute", methods=["POST"])
+@limiter.limit("30 per minute", methods=["GET"])
 def login():
     from app.auth.services import authenticate_user, AuthResult
 
@@ -659,6 +660,9 @@ def login():
                 
                 # Proceed with login
                 login_user(user, remember="remember" in request.form)
+                current_app.logger.warning(
+                    f"LOGIN_USER session_id={user.get_id()}"
+                )
 
                 # Set up session for owner
                 require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
@@ -716,6 +720,9 @@ def login():
                 return redirect(url_for("auth.login"))
 
             login_user(user, remember="remember" in request.form)
+            current_app.logger.warning(
+                f"LOGIN_USER session_id={user.get_id()}"
+            )
 
             # Calculate KYC tier and limits
             from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits
@@ -991,15 +998,15 @@ def switch_context(context):
         session["current_context"] = "individual"
         session.pop("current_org_id", None)
         session.pop("current_org_name", None)
-        # Redirect to personal dashboard
-        return redirect(url_for("fan.dashboard"))
+        # Redirect to universal dashboard
+        return redirect(url_for("user.dashboard"))
 
     elif context == "organization":
         # org_id must be provided as query param or form field
         org_id = request.args.get("org_id") or request.form.get("org_id")
         if not org_id:
             flash("No organisation specified.", "warning")
-            return redirect(url_for("fan.dashboard"))
+            return redirect(url_for("user.dashboard"))
 
         # Verify user is a member of this org
         from app.identity.models.organisation import Organisation
@@ -1013,7 +1020,7 @@ def switch_context(context):
         org = Organisation.query.filter_by(org_id=org_id).first()
         if not org:
             flash("Organisation not found.", "danger")
-            return redirect(url_for("fan.dashboard"))
+            return redirect(url_for("user.dashboard"))
 
         member = OrganisationMember.query.filter_by(
             user_id=db_user.id,
@@ -1024,16 +1031,63 @@ def switch_context(context):
 
         if not member:
             flash("You are not a member of this organisation.", "danger")
-            return redirect(url_for("fan.dashboard"))
+            return redirect(url_for("user.dashboard"))
 
         session["current_context"] = "organization"
         session["current_org_id"] = org.org_id   # UUID - not BIGINT
         session["current_org_name"] = org.legal_name
 
-        return redirect(url_for("org.dashboard", org_id=org.org_id))
+        return redirect(url_for("user.dashboard"))
 
     else:
-        return redirect(url_for("fan.dashboard"))
+        return redirect(url_for("user.dashboard"))
+
+
+# ---------------------------------------------------------------------------
+# Global Role Switching
+# ---------------------------------------------------------------------------
+
+@auth_bp.route("/switch-role", methods=["GET", "POST"])
+@login_required
+def switch_role():
+    """
+    UI and handler for switching between multiple global roles.
+    Allows a user to 'act as' a lower privilege role for testing or focused work.
+    """
+    from app.auth.helpers import switch_global_role, get_active_role_name
+    from app.identity.models.roles_permission import Role
+
+    # GET: Render the role selection page
+    if request.method == "GET":
+        # Get all global roles assigned to this user
+        # user.roles is joined-loaded and contains UserRole objects
+        available_roles = [ur.role for ur in current_user.roles if ur.role and ur.role.is_global]
+        
+        # Sort by level (owner=1, super_admin=2, etc.)
+        available_roles.sort(key=lambda r: r.level or 999)
+
+        return render_template(
+            "auth/switch_role.html",
+            roles=available_roles,
+            active_role=get_active_role_name()
+        )
+
+    # POST: Process the switch request
+    role_name = request.form.get("role_name")
+    
+    # Handle the 'Reset' case explicitly if provided
+    if not role_name or role_name.lower() in ['all', 'reset', 'default']:
+        role_name = None
+
+    success, message = switch_global_role(role_name)
+    
+    if success:
+        flash(message, "success")
+        # Redirect to dashboard or previous page
+        return redirect(url_for("user.dashboard"))
+    else:
+        flash(message, "danger")
+        return redirect(url_for("auth.switch_role"))
 
 # ---------------------------------------------------------------------------
 # Organization Selection
@@ -1107,7 +1161,7 @@ def complete_profile():
         # Clear the incomplete flag
         session.pop("profile_incomplete", None)
         flash("Profile completed successfully! You've been upgraded to KYC Tier 2 and can now access booking features.", "success")
-        return redirect(url_for("fan.dashboard"))
+        return redirect(url_for("user.dashboard"))
 
     return render_template("kyc/complete_profile.html")
 

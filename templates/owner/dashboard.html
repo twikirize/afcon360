@@ -166,7 +166,7 @@
       <a href="{{ safe_url('admin.owner.wallet_capabilities') }}" class="nav-link">
         <i class="bi bi-wallet2"></i> Wallet Capabilities
       </a>
-      <a href="{{ url_for('user.user_dashboard') }}" class="btn-switch btn-consumer-switch">
+      <a href="{{ url_for('user.dashboard') }}" class="btn-switch btn-consumer-switch">
         <i class="bi bi-person"></i>
         Consumer View
         <i class="bi bi-arrow-right"></i>
@@ -207,18 +207,23 @@
         </div>
 
         <div class="nav-section">
+          <div class="nav-title">PLATFORM</div>
+          <a href="{{ url_for('admin.owner.module_settings') }}" class="nav-item">
+            <i class="fas fa-toggle-on"></i>
+            <span>Module Settings</span>
+          </a>
           <div class="nav-title">MODULES</div>
           <a href="{{ safe_url('events.admin_dashboard') }}" class="nav-item">
             <i class="bi bi-calendar-event"></i> Events
           </a>
           <a href="{{ safe_url('transport_admin.dashboard') }}" class="nav-item">
             <i class="bi bi-bus-front"></i> Transport
+          <a href="{{ safe_url('tourism.home') }}" class="nav-item {% if not module_enabled('tourism') %}disabled{% endif %}" {% if not module_enabled('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
+            <i class="fas fa-map-marked-alt"></i>
+            <span>Tourism</span>
+            {% if not module_enabled('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
           </a>
-          <a href="{{ safe_url('tourism.home') }}" class="nav-item {% if not modules.get('tourism') %}disabled{% endif %}" {% if not modules.get('tourism') %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
-            <i class="bi bi-tree"></i> Tourism
-            {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
-          </a>
-          <a href="{{ safe_url('accommodation.admin.dashboard') }}" class="nav-item">
+          <a href="{{ safe_url('accommodation.admin_dashboard') }}" class="nav-item">
             <i class="bi bi-hotel"></i> Accommodation
           </a>
           <a href="{{ safe_url('wallet.wallet_dashboard') }}" class="nav-item">

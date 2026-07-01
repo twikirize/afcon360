@@ -10,8 +10,10 @@ from flask import current_app, request
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.payments.mobile_money import MobileMoneyService
 from app.audit.comprehensive_audit import AuditService, TransactionType, APICallStatus, AuditSeverity
+from app.events.constants import BookingType
 from app.events.models import Event, TicketType, EventRegistration
 from app.events.payment_config import PaymentMethodConfig, EventPaymentPreference
+from app.events.attendee_accounts import find_or_create_attendee_user
 from app.extensions import db
 from app.identity.models.user import User
 import uuid
@@ -37,7 +39,9 @@ class EventPaymentService:
         mobile_money_phone: Optional[str] = None,
         group_attendees: Optional[List[Dict]] = None,
         create_primary_for_payer: bool = True,
-        group_booking_id: Optional[str] = None
+        group_booking_id: Optional[str] = None,
+        group_label: Optional[str] = None,
+        unit_price_override: Optional[Decimal] = None
     ) -> Dict:
         """
         Process ticket purchase with payment integration
@@ -54,7 +58,8 @@ class EventPaymentService:
                 return {"success": False, "error": "Ticket type doesn't belong to this event"}
             
             # Calculate total price
-            unit_price = Decimal(str(ticket_type.price))
+            # Discount applies per-seat - see REFACTOR_PLAN.md 4.3
+            unit_price = unit_price_override if unit_price_override is not None else Decimal(str(ticket_type.price))
             total_price = unit_price * quantity
             
             # Create audit transaction ID
@@ -85,43 +90,125 @@ class EventPaymentService:
             if not payment_result.get("success"):
                 return payment_result
             
-            # Create registrations
-            registrations = self._create_registrations(
-                user_id=user_id,
-                event_id=event_id,
-                ticket_type_id=ticket_type_id,
-                quantity=quantity,
-                payment_reference=payment_result.get("payment_reference"),
-                group_attendees=group_attendees,
-                create_primary_for_payer=create_primary_for_payer,
-                group_booking_id=group_booking_id
-            )
-            
-            # Update ticket type capacity
-            if ticket_type.capacity and ticket_type.capacity > 0:
-                for _ in range(quantity):
-                    ticket_type.reserve_seat()
-            
-            db.session.commit()
-            
-            return {
-                "success": True,
-                "registrations": registrations,
-                "payment_reference": payment_result.get("payment_reference"),
-                "total_paid": float(total_price),
-                "audit_transaction_id": audit_transaction_id
-            }
+            # Order invariant: capacity check -> payment -> registration creation
+            # On registration failure, refund is attempted (compensating refund)
+            try:
+                # Create registrations
+                registrations = self._create_registrations(
+                    user_id=user_id,
+                    event_id=event_id,
+                    ticket_type_id=ticket_type_id,
+                    quantity=quantity,
+                    payment_reference=payment_result.get("payment_reference"),
+                    group_attendees=group_attendees,
+                    create_primary_for_payer=create_primary_for_payer,
+                    group_booking_id=group_booking_id,
+                    group_label=group_label,
+                    unit_price_override=unit_price_override
+                )
+                
+                # Update ticket type capacity
+                if ticket_type.capacity and ticket_type.capacity > 0:
+                    for _ in range(quantity):
+                        ticket_type.reserve_seat()
+                
+                db.session.commit()
+                
+                return {
+                    "success": True,
+                    "registrations": registrations,
+                    "payment_reference": payment_result.get("payment_reference"),
+                    "total_paid": float(total_price),
+                    "audit_transaction_id": audit_transaction_id
+                }
+            except Exception as reg_exc:
+                db.session.rollback()
+                logger.error(f"Error creating registrations or reserving seats: {reg_exc}")
+                
+                # Compensating refund for wallet payment
+                refund_result = None
+                if payment_method == "wallet":
+                    refund_result = self._refund_payment(
+                        user_id=user_id,
+                        amount=total_price,
+                        currency=event.currency,
+                        original_payment_ref=payment_result.get("payment_reference"),
+                        reason=f"Registration failed: {str(reg_exc)}",
+                        audit_transaction_id=audit_transaction_id
+                    )
+
+                if refund_result and refund_result.get("success"):
+                    return {"success": False, "error": f"Payment was refunded due to a registration error. Please try again. Details: {str(reg_exc)}"}
+
+                if refund_result:
+                    logger.critical("REFUND FAILED for user %s: %s", user_id, refund_result.get("error"))
+                    return {
+                        "success": False,
+                        "error": "Critical error: Payment processed but registration failed. Support notified."
+                    }
+
+                return {"success": False, "error": "Payment processed but registration failed. Support notified."}
             
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error processing ticket purchase: {e}")
             return {"success": False, "error": str(e)}
-    
+
+    def _refund_payment(
+        self,
+        user_id: int,
+        amount: Decimal,
+        currency: str,
+        original_payment_ref: str,
+        reason: str,
+        audit_transaction_id: str
+    ) -> Dict:
+        """Refund a failed ticket purchase with a compensating wallet deposit."""
+        try:
+            import time
+
+            wallet_service = WalletService()
+            account = wallet_service.account_repo.get_by_user_id(user_id, currency)
+            if not account:
+                return {"success": False, "error": "Wallet account not found"}
+
+            client_request_id = f"EVT-PAY-REFUND-{audit_transaction_id}-{user_id}-{int(time.time())}"
+            wallet_service.deposit(
+                account_id=str(account.id),
+                amount=amount,
+                currency=currency,
+                client_request_id=client_request_id,
+                metadata={
+                    "event_ticket_refund": True,
+                    "reference": original_payment_ref,
+                    "audit_transaction_id": audit_transaction_id
+                }
+            )
+
+            AuditService.financial(
+                transaction_id=audit_transaction_id,
+                transaction_type=TransactionType.REFUND,
+                amount=amount,
+                currency=currency,
+                status="reversed",
+                from_user_id=user_id,
+                payment_method="wallet",
+                payment_provider="afcon360_wallet",
+                metadata={"reason": reason}
+            )
+
+            logger.info("Refunded %s %s to user %s", amount, currency, user_id)
+            return {"success": True, "refund_reference": client_request_id}
+
+        except Exception as e:
+            logger.error("Refund error for user %s: %s", user_id, e)
+            return {"success": False, "error": str(e)}
+
     def _process_wallet_payment(
-        self, 
-        user_id: int, 
-        amount: Decimal, 
-        currency: str, 
+        self,
+        user_id: int,
+        amount: Decimal,
+        currency: str,
         audit_transaction_id: str
     ) -> Dict:
         """Process payment using wallet system"""
@@ -270,13 +357,17 @@ class EventPaymentService:
         payment_reference: str,
         group_attendees: Optional[List[Dict]] = None,
         create_primary_for_payer: bool = True,
-        group_booking_id: Optional[str] = None
+        group_booking_id: Optional[str] = None,
+        group_label: Optional[str] = None,
+        unit_price_override: Optional[Decimal] = None
     ) -> List[Dict]:
         """Create event registrations"""
         registrations = []
         
         # Primary registrant (payer) if requested (self-registration use case)
         if create_primary_for_payer:
+            # Payer row is index 0 in the group if group booking is active
+            primary_index = 0 if group_booking_id else None
             primary_registration = self._create_single_registration(
                 user_id=user_id,
                 event_id=event_id,
@@ -284,18 +375,36 @@ class EventPaymentService:
                 payment_reference=payment_reference,
                 attendee_data=None,  # will be filled from User record
                 booked_by_user_id=user_id,
-                booking_type="self",
+                booking_type=BookingType.SELF.value if not group_booking_id else BookingType.GROUP.value,
                 group_booking_id=group_booking_id,
-                group_index=None
+                group_index=primary_index,
+                group_label=group_label,
+                unit_price_override=unit_price_override
             )
             registrations.append(primary_registration)
         
         # Group attendees
         if group_attendees:
-            idx = 1
-            for attendee_data in group_attendees:
-                # Create or find user for attendee
-                attendee_user_id = self._get_or_create_attendee_user(attendee_data)
+            errors = []
+            for idx, attendee_data in enumerate(group_attendees, start=1):
+                email = attendee_data.get("email") or ""
+                name = attendee_data.get("name") or attendee_data.get("full_name") or ""
+                phone = attendee_data.get("phone") or ""
+
+                if not email.strip() or not name.strip():
+                    errors.append(f"Missing name or email for attendee #{idx}")
+                    continue
+
+                attendee_user_id, error = find_or_create_attendee_user(
+                    email=email,
+                    name=name,
+                    phone=phone
+                )
+                if error:
+                    errors.append(f"{name}: {error}")
+                    continue
+
+                g_idx = attendee_data.get("group_index", idx)
                 registration = self._create_single_registration(
                     user_id=attendee_user_id,
                     event_id=event_id,
@@ -303,13 +412,17 @@ class EventPaymentService:
                     payment_reference=payment_reference,
                     attendee_data=attendee_data,
                     booked_by_user_id=user_id,
-                    booking_type="third_party",
+                    booking_type=BookingType.THIRD_PARTY.value,
                     group_booking_id=group_booking_id,
-                    group_index=idx
+                    group_index=g_idx,
+                    group_label=group_label,
+                    unit_price_override=unit_price_override
                 )
                 registrations.append(registration)
-                idx += 1
-        
+
+            if errors:
+                raise ValueError(f"Failed to create registrations: {'; '.join(errors)}")
+
         return registrations
     
     def _create_single_registration(
@@ -320,9 +433,11 @@ class EventPaymentService:
         payment_reference: str,
         attendee_data: Optional[Dict] = None,
         booked_by_user_id: Optional[int] = None,
-        booking_type: str = "self",
+        booking_type: str = BookingType.SELF.value,
         group_booking_id: Optional[str] = None,
-        group_index: Optional[int] = None
+        group_index: Optional[int] = None,
+        group_label: Optional[str] = None,
+        unit_price_override: Optional[Decimal] = None
     ) -> Dict:
         """Create a single event registration"""
         # Ensure we have attendee details if attendee_data not provided (self case)
@@ -331,7 +446,7 @@ class EventPaymentService:
         phone = None
         nationality = None
         if attendee_data:
-            full_name = attendee_data.get("name")
+            full_name = attendee_data.get("name") or attendee_data.get("full_name")
             email = attendee_data.get("email")
             phone = attendee_data.get("phone")
             nationality = attendee_data.get("nationality")
@@ -342,7 +457,9 @@ class EventPaymentService:
                 full_name = getattr(user, "username", None) or getattr(user, "full_name", None) or user.email
                 email = user.email
                 phone = getattr(user, "phone", None)
+                nationality = getattr(user, "nationality", None)
 
+        price = unit_price_override if unit_price_override is not None else Decimal(str(ticket_type.price))
         registration = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type_id,
@@ -357,9 +474,11 @@ class EventPaymentService:
             booked_by_user_id=booked_by_user_id,
             booking_type=booking_type,
             group_booking_id=group_booking_id,
-            attendee_user_id=user_id if booking_type != "self" else None,
+            group_label=group_label,
+            attendee_user_id=user_id if booking_type != BookingType.SELF.value else None,
             group_index=group_index,
-            wallet_txn_id=payment_reference
+            wallet_txn_id=payment_reference,
+            registration_fee=float(price)
         )
         
         # Generate references - need event slug and sequence
@@ -384,22 +503,6 @@ class EventPaymentService:
             "ticket_number": registration.ticket_number,
             "qr_token": registration.qr_token
         }
-    
-    def _get_or_create_attendee_user(self, attendee_data: Dict) -> int:
-        """Get or create user for group attendee"""
-        # This is a simplified implementation
-        # In production, you'd want proper user creation logic
-        from app.identity.models.user import User
-        
-        email = attendee_data.get("email")
-        if email:
-            user = User.query.filter_by(email=email).first()
-            if user:
-                return user.id
-        
-        # Create a temporary user record or use the primary user's ID
-        # For now, return the primary user's ID (this needs proper implementation)
-        return attendee_data.get("primary_user_id", 1)
     
     def get_available_payment_methods(self, event_currency: str, event_id: Optional[int] = None) -> List[Dict]:
         """Get available payment methods for an event based on admin configuration"""

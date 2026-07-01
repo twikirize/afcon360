@@ -148,7 +148,7 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
        class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
       <i class="fas fa-edit"></i>&nbsp; Edit profile
     </a>
-    <a href="{{ url_for('user.user_dashboard') }}" class="subnav-link">
+    <a href="{{ url_for('user.dashboard') }}" class="subnav-link">
       <i class="fas fa-tachometer-alt"></i>&nbsp; Dashboard
     </a>
   </nav>
@@ -389,7 +389,7 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
             <span class="chip-warn" style="margin-left:auto;"><i class="fas fa-clock"></i></span>
           {% endif %}
         </a>
-        <a href="{{ url_for('user.user_dashboard') }}"
+        <a href="{{ url_for('user.dashboard') }}"
            style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;">
           <i class="fas fa-tachometer-alt" style="color:var(--gold);width:16px;text-align:center;"></i> Dashboard
         </a>

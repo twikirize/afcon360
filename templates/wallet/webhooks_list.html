@@ -1,143 +1,293 @@
 ﻿{% extends "wallet/base_wallet.html" %}
 
-{% block title %}Webhook Events — AFCON360{% endblock %}
+{% block title %}Webhook Queue — AFCON360{% endblock %}
 
-{% block topbar_title %}Webhook Events{% endblock %}
+{% block topbar_title %}Webhook Queue{% endblock %}
 
 {% block content %}
 <div class="heading-row">
   <div>
-    <h1 class="page-heading">Webhook Events</h1>
-    <p class="page-subheading">Dead letter and failed webhook events</p>
+    <h1 class="page-heading">Webhook Queue</h1>
+    <p class="page-subheading">Monitor incoming payment webhooks from aggregators</p>
   </div>
 </div>
 
+<!-- Statistics -->
+<div id="stats-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px;">
+  <div class="panel" style="padding:16px;text-align:center;">
+    <div style="font-size:24px;font-weight:700;color:var(--text-primary);" id="stat-total">0</div>
+    <div style="font-size:12px;color:var(--text-muted);">Total</div>
+  </div>
+  <div class="panel" style="padding:16px;text-align:center;">
+    <div style="font-size:24px;font-weight:700;color:var(--warning);" id="stat-queued">0</div>
+    <div style="font-size:12px;color:var(--text-muted);">Queued</div>
+  </div>
+  <div class="panel" style="padding:16px;text-align:center;">
+    <div style="font-size:24px;font-weight:700;color:var(--success);" id="stat-processed">0</div>
+    <div style="font-size:12px;color:var(--text-muted);">Processed</div>
+  </div>
+  <div class="panel" style="padding:16px;text-align:center;">
+    <div style="font-size:24px;font-weight:700;color:var(--danger);" id="stat-failed">0</div>
+    <div style="font-size:12px;color:var(--text-muted);">Failed</div>
+  </div>
+  <div class="panel" style="padding:16px;text-align:center;">
+    <div style="font-size:24px;font-weight:700;color:var(--accent);" id="stat-success-rate">0%</div>
+    <div style="font-size:12px;color:var(--text-muted);">Success Rate</div>
+  </div>
+</div>
+
+<!-- Filters -->
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-body" style="padding:16px 20px;">
     <form id="filters" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
       <div>
         <label for="status" class="form-label">Status</label>
-        <select id="status" class="form-control">
-          <option value="dead_letter">Dead Letter</option>
-          <option value="failed">Failed</option>
+        <select id="status" class="form-control" style="min-width:120px;">
+          <option value="all">All</option>
           <option value="queued">Queued</option>
-          <option value="processing">Processing</option>
+          <option value="processed">Processed</option>
+          <option value="failed">Failed</option>
         </select>
       </div>
       <div>
         <label for="provider" class="form-label">Provider</label>
-        <input id="provider" class="form-control" placeholder="provider name" />
+        <select id="provider" class="form-control" style="min-width:120px;">
+          <option value="all">All</option>
+          <option value="flutterwave">Flutterwave</option>
+          <option value="paystack">Paystack</option>
+          <option value="mtn_momo">MTN Mobile Money</option>
+          <option value="airtel_money">Airtel Money</option>
+        </select>
+      </div>
+      <div>
+        <label for="search" class="form-label">Search</label>
+        <input id="search" class="form-control" placeholder="Event type or error..." style="min-width:180px;" />
       </div>
       <button id="apply-filters" class="btn btn-primary">Apply</button>
+      <button id="reset-filters" class="btn btn-ghost">Reset</button>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-muted);" id="results-count">0 events</span>
     </form>
   </div>
 </div>
 
+<!-- Webhook Table -->
 <div class="panel">
-  <table id="events-table" class="data-table">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Provider</th>
-        <th>Type</th>
-        <th>Status</th>
-        <th>Retries</th>
-        <th>Created</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div class="panel-body" style="padding:0;overflow-x:auto;">
+    <table class="data-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="width:30px;">
+            <input type="checkbox" id="select-all" />
+          </th>
+          <th>ID</th>
+          <th>Provider</th>
+          <th>Event</th>
+          <th>Status</th>
+          <th>Retries</th>
+          <th>Created</th>
+          <th style="width:180px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="events-tbody">
+        <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">Loading webhooks...</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<nav>
-  <ul class="pagination" id="pagination"></ul>
-</nav>
-
-<div id="loading" style="display:none;text-align:center;padding:20px;">Loading...</div>
+<!-- Pagination -->
+<nav id="pagination-container" style="margin-top:16px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;"></nav>
 
 <script>
 let currentPage = 1;
 let perPage = 20;
+let totalPages = 1;
+let stats = null;
 
-async function loadEvents(page = 1){
+async function loadStats() {
+    try {
+        const res = await fetch('/api/admin/wallet/webhooks/stats');
+        if (res.ok) {
+            const data = await res.json();
+            stats = data.stats || data;
+            document.getElementById('stat-total').textContent = stats.total || 0;
+            document.getElementById('stat-queued').textContent = stats.queued || 0;
+            document.getElementById('stat-processed').textContent = stats.processed || 0;
+            document.getElementById('stat-failed').textContent = stats.failed || 0;
+            document.getElementById('stat-success-rate').textContent = (stats.success_rate || 0) + '%';
+        }
+    } catch (e) {
+        console.error('Stats load error:', e);
+    }
+}
+
+async function loadEvents(page = 1) {
     currentPage = page;
-    document.getElementById('loading').style.display='block';
-    const status = document.getElementById('status').value || 'dead_letter';
-    const provider = document.getElementById('provider').value || '';
-    const params = new URLSearchParams({status, page, per_page: perPage});
-    if(provider) params.set('provider', provider);
+    const status = document.getElementById('status').value;
+    const provider = document.getElementById('provider').value;
+    const search = document.getElementById('search').value;
 
-    const res = await fetch('/api/admin/wallet/webhooks/failed?'+params.toString(), {credentials: 'same-origin'});
-    document.getElementById('loading').style.display='none';
-    if(!res.ok){
-        alert('Failed to load events');
-        return;
-    }
-    const data = await res.json();
-    const tbody = document.querySelector('#events-table tbody');
-    tbody.innerHTML = '';
-    for(const e of data.events || []){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td class="mono">${e.id}</td>
-            <td>${e.provider || ''}</td>
-            <td>${e.event_type || ''}</td>
-            <td><span class="badge badge-${e.status === 'dead_letter' ? 'rejected' : e.status === 'failed' ? 'rejected' : e.status === 'queued' ? 'pending' : 'active'}">${e.status || ''}</span></td>
-            <td>${e.retry_count || 0}</td>
-            <td class="mono">${e.created_at || ''}</td>
-            <td>
-                <div class="action-group">
-                    <a href="/admin/wallet/webhooks/${e.id}" class="btn btn-ghost btn-xs">View</a>
-                    <button class="btn btn-warning btn-xs" onclick="retryEvent('${e.id}')">Retry</button>
-                </div>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    }
-
-    const pagination = document.getElementById('pagination');
-    pagination.innerHTML = '';
-    const totalPages = data.pagination && data.pagination.pages ? data.pagination.pages : 1;
-    for(let p=1;p<=Math.max(1,totalPages);p++){
-        const li = document.createElement('li');
-        li.innerHTML = `<a class="pg-btn ${p===currentPage? 'active':''}" href="#" data-page="${p}">${p}</a>`;
-        pagination.appendChild(li);
-    }
-}
-
-async function retryEvent(id){
-    if(!confirm('Retry event '+id+'?')) return;
-    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    const res = await fetch(`/api/admin/wallet/webhooks/${id}/retry`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrf
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify({csrf_token: csrf})
+    const params = new URLSearchParams({
+        page: page,
+        per_page: perPage,
+        status: status,
+        provider: provider,
+        search: search
     });
-    if(res.ok){
-        alert('Retry queued');
-        loadEvents();
-    } else {
-        const body = await res.json().catch(()=>({}));
-        alert('Error: '+(body.error||res.statusText));
+
+    try {
+        const res = await fetch('/api/admin/wallet/webhooks?' + params.toString());
+        if (!res.ok) throw new Error('Failed to load events');
+        const data = await res.json();
+
+        const events = data.events || data.items || [];
+        totalPages = data.pages || data.total_pages || 1;
+        document.getElementById('results-count').textContent = (data.total || events.length) + ' events';
+
+        const tbody = document.getElementById('events-tbody');
+        if (events.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">No webhook events found</td></tr>';
+        } else {
+            tbody.innerHTML = events.map(e => `
+                <tr>
+                    <td><input type="checkbox" class="event-checkbox" value="${e.id}" /></td>
+                    <td class="mono">#${e.id}</td>
+                    <td><span class="badge badge-${e.provider}">${e.provider || 'unknown'}</span></td>
+                    <td><span style="font-family:var(--font-mono);font-size:12px;">${e.event_type || 'N/A'}</span></td>
+                    <td><span class="status-badge status-${e.status}">${e.status || 'unknown'}</span></td>
+                    <td>${e.retry_count || 0}</td>
+                    <td class="mono">${e.created_at ? new Date(e.created_at).toLocaleString() : 'N/A'}</td>
+                    <td>
+                        <div style="display:flex;gap:4px;">
+                            <a href="/admin/wallet/webhooks/${e.id}" class="btn btn-ghost btn-xs">View</a>
+                            ${e.status === 'failed' ? `<button onclick="retryEvent(${e.id})" class="btn btn-warning btn-xs">Retry</button>` : ''}
+                            <button onclick="deleteEvent(${e.id})" class="btn btn-danger btn-xs">×</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Pagination
+        const pagContainer = document.getElementById('pagination-container');
+        if (totalPages <= 1) {
+            pagContainer.innerHTML = '';
+        } else {
+            let html = '';
+            if (page > 1) html += `<button class="btn btn-ghost btn-sm" onclick="loadEvents(${page - 1})">‹</button>`;
+            for (let p = 1; p <= Math.min(totalPages, 10); p++) {
+                html += `<button class="btn ${p === page ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="loadEvents(${p})">${p}</button>`;
+            }
+            if (page < totalPages) html += `<button class="btn btn-ghost btn-sm" onclick="loadEvents(${page + 1})">›</button>`;
+            pagContainer.innerHTML = html;
+        }
+
+    } catch (e) {
+        console.error('Events load error:', e);
+        document.getElementById('events-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--danger);">Failed to load events</td></tr>';
     }
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{
+async function retryEvent(id) {
+    if (!confirm('Retry webhook #' + id + '?')) return;
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    try {
+        const res = await fetch('/api/admin/wallet/webhooks/' + id + '/retry', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ csrf_token: csrf })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert('Webhook requeued for processing');
+            loadEvents(currentPage);
+            loadStats();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Network error');
+    }
+}
+
+async function deleteEvent(id) {
+    if (!confirm('Delete webhook #' + id + '?')) return;
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    try {
+        const res = await fetch('/api/admin/wallet/webhooks/' + id + '/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ csrf_token: csrf })
+        });
+        const data = await res.json();
+        if (data.success) {
+            loadEvents(currentPage);
+            loadStats();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Network error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
     loadEvents();
-    document.getElementById('apply-filters').addEventListener('click', function(e){
+
+    document.getElementById('apply-filters').addEventListener('click', function(e) {
         e.preventDefault();
         loadEvents(1);
     });
-    document.getElementById('pagination').addEventListener('click', function(e){
+
+    document.getElementById('reset-filters').addEventListener('click', function(e) {
         e.preventDefault();
-        const a = e.target.closest('a[data-page]');
-        if(a){ loadEvents(parseInt(a.getAttribute('data-page')); }
+        document.getElementById('status').value = 'all';
+        document.getElementById('provider').value = 'all';
+        document.getElementById('search').value = '';
+        loadEvents(1);
     });
+
+    document.getElementById('select-all').addEventListener('change', function() {
+        document.querySelectorAll('.event-checkbox').forEach(cb => cb.checked = this.checked);
+    });
+
+    // Auto-refresh every 30 seconds if there are queued/failed events
+    setInterval(function() {
+        const failed = parseInt(document.getElementById('stat-failed').textContent) || 0;
+        const queued = parseInt(document.getElementById('stat-queued').textContent) || 0;
+        if (failed > 0 || queued > 0) {
+            loadStats();
+            loadEvents(currentPage);
+        }
+    }, 30000);
 });
 </script>
+
+<style>
+.status-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.status-badge.status-queued { background: #fef3c7; color: #92400e; }
+.status-badge.status-processed { background: #d1fae5; color: #065f46; }
+.status-badge.status-failed { background: #fee2e2; color: #991b1b; }
+.status-badge.status-unknown { background: #f3f4f6; color: #6b7280; }
+.badge-flutterwave { background: #f0e6ff; color: #6b2fa0; }
+.badge-paystack { background: #e6f7ff; color: #0066cc; }
+.badge-mtn_momo { background: #e6f7e6; color: #006600; }
+.badge-airtel_money { background: #fff3e6; color: #cc5500; }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+</style>
 {% endblock %}

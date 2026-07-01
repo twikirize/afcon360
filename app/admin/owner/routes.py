@@ -953,44 +953,35 @@ def toggle_super_admin_module_access():
     return redirect(url_for('admin.owner.settings'))
 
 
+@owner_bp.route('/module-settings')
+@owner_login_required
+@audit_owner_action('viewed_module_settings', 'modules')
+def module_settings():
+    """Module management control panel."""
+    modules = ModuleToggleService.get_flags()
+    return render_template('owner/module_settings.html', modules=modules)
+
 @owner_bp.route('/modules/<string:module>/toggle', methods=['POST'])
 @owner_login_required
 @audit_owner_action('toggled_module', 'modules')
 def owner_toggle_module(module):
-    """Owner-facing module toggle (DB-backed)."""
+    """Owner-facing module toggle."""
     module_key = (module or '').strip().lower()
     flags = ModuleToggleService.get_flags()
 
     if module_key not in flags:
         flash(f"Unknown module '{module_key}'.", "warning")
-        return redirect(url_for('admin.owner.dashboard'))
+        return redirect(url_for('admin.owner.module_settings'))
 
-    desired_state_raw = request.form.get('state')
-    if desired_state_raw is None:
-        desired_state = not bool(flags.get(module_key))
-    else:
-        desired_state = desired_state_raw.lower() in {'1', 'true', 'on', 'enable', 'enabled', 'yes'}
-
-    ModuleToggleService.set_flag(module_key, desired_state, updated_by=getattr(current_user, 'id', None))
-
-    log_owner_action(
-        action='toggled_module',
-        category='modules',
-        details={'module': module_key, 'enabled': desired_state}
-    )
-
-    current_app.logger.warning(
-        "OWNER_CONFIG_CHANGE | user=%s | MODULE_FLAGS.%s=%s",
-        getattr(current_user, 'id', None),
-        module_key,
-        desired_state,
-    )
-
-    flash(
-        f"{module_key.title()} module {'enabled' if desired_state else 'disabled' }.",
-        "success" if desired_state else "info"
-    )
-    return redirect(url_for('admin.owner.dashboard'))
+    desired_state = not bool(flags.get(module_key))
+    try:
+        ModuleToggleService.set_flag(module_key, desired_state, updated_by=current_user.id)
+        flash(f"{module_key.title()} module {'enabled' if desired_state else 'disabled'}.", "success")
+    except Exception as e:
+        logger.error(f"Module toggle error: {e}")
+        flash("Failed to toggle module.", "danger")
+        
+    return redirect(request.referrer or url_for('admin.owner.module_settings'))
 
 
 @owner_bp.route('/users')

@@ -11,7 +11,10 @@ from app.extensions import db
 from datetime import datetime, timezone
 
 # Attach routes to the tourism blueprint
+from app.utils.module_guard import require_module_enabled
+
 @tourism_bp.route("/", endpoint="home")
+@require_module_enabled("tourism")
 def home():
     """Tourism home page.
 

@@ -211,7 +211,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
        class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
       <i class="fas fa-edit"></i>&nbsp; Edit profile
     </a>
-    <a href="{{ url_for('user.user_dashboard') }}" class="subnav-link">
+    <a href="{{ url_for('user.dashboard') }}" class="subnav-link">
       <i class="fas fa-tachometer-alt"></i>&nbsp; Dashboard
     </a>
   </nav>

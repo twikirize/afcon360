@@ -447,6 +447,47 @@ document.addEventListener('DOMContentLoaded', function() {
       <span class="card-badge badge-system">System</span>
     </a>
 
+    <a href="{{ url_for('media_admin.media_settings_page') }}" class="settings-card">
+      <div class="card-icon">🖼️</div>
+      <div class="card-title">Media Settings</div>
+      <div class="card-description">
+        Configure image optimization, virus scanning, content moderation, and storage quotas
+      </div>
+      <span class="card-badge badge-system">Media</span>
+    </a>
+
+    <!-- Owner-only: Authorize roles to manage media settings -->
+    <div class="settings-card" style="border-left:4px solid #f59e0b;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">🔑</div>
+        <span class="card-badge badge-security">Owner Control</span>
+      </div>
+      <div class="card-title">Media Settings Access</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        By default, <strong>only you (Owner)</strong> can manage media settings. Use the controls below to authorize 
+        <strong>Super Admins</strong> and/or <strong>Admins</strong> to manage media settings on your behalf.
+      </div>
+      <form id="mediaAccessForm" style="margin-top:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display:flex;flex-direction:column;gap:0.75rem;">
+          <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+            <input type="checkbox" id="authSuperAdmin" name="super_admin" 
+                   style="width:18px;height:18px;cursor:pointer;">
+            <span style="font-weight:600;color:#1a1a1a;">Allow Super Admins</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+            <input type="checkbox" id="authAdmin" name="admin" 
+                   style="width:18px;height:18px;cursor:pointer;">
+            <span style="font-weight:600;color:#1a1a1a;">Allow Admins</span>
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="margin-top:1rem;">
+          <i class="fas fa-save"></i> Save Access Settings
+        </button>
+      </form>
+      <div id="mediaAccessStatus" style="margin-top:0.75rem;font-size:0.8125rem;color:#6b7280;"></div>
+    </div>
+
     <a href="{{ url_for('admin.owner.danger_zone') }}" class="settings-card" style="border-color: #ef4444;">
       <div class="card-icon">⚠️</div>
       <div class="card-title" style="color: #ef4444;">Danger Zone</div>

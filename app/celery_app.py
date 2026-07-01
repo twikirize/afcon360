@@ -30,6 +30,7 @@ def make_celery(app=None):
         backend=Config.CELERY_RESULT_BACKEND,
         include=[
             "app.tasks.webhook_processor",
+            "app.media.tasks",
             # add future task modules here
         ]
     )

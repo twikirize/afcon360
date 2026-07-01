@@ -1,0 +1,21 @@
+{# Fan teams widget — shows favorite teams, upcoming matches #}
+{% if fan_profile and fan_profile.favorite_teams_list %}
+<div class="dashboard-widget fan-teams-widget" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+    <div class="widget-header" style="display: flex; align-items: center; margin-bottom: 15px;">
+        <span style="font-size: 20px; margin-right: 10px;">🏆</span>
+        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #111827;">My Teams</h3>
+    </div>
+    <div class="widget-body">
+        <ul class="team-list" style="list-style: none; padding: 0; margin: 0 0 15px 0;">
+            {% for team in fan_profile.favorite_teams_list %}
+            <li class="team-item" style="padding: 8px 12px; background: #f9fafb; border-radius: 6px; margin-bottom: 8px; font-size: 0.95rem; color: #374151; display: flex; align-items: center;">
+                <i class="fas fa-shield-alt me-2" style="color: #6b7280; font-size: 0.8rem;"></i> {{ team }}
+            </li>
+            {% endfor %}
+        </ul>
+        <a href="{{ url_for('user.interests_settings') }}" class="manage-link" style="color: #2563eb; font-size: 0.875rem; text-decoration: none; font-weight: 500;">
+            Manage teams <i class="fas fa-arrow-right ms-1" style="font-size: 0.75rem;"></i>
+        </a>
+    </div>
+</div>
+{% endif %}

@@ -744,27 +744,60 @@
             </div>
             
             <div class="confirmation-body">
-                <!-- Success Message -->
+                <!-- Registration Reference -->
                 <div class="success-message">
                     <p class="success-message-text">
                         <i class="fas fa-check-circle me-2"></i>
-                        Your registration has been confirmed successfully
+                        Registration Confirmed!
                     </p>
                 </div>
 
-                <!-- Email Warning -->
-                {% if not mail_configured %}
-                <div class="email-warning">
-                    <div class="email-warning-icon">
-                        <i class="fas fa-exclamation-triangle"></i>
+                {% if group_registrations %}
+                <!-- Multiple Tickets for Group -->
+                <div class="group-tickets-container">
+                    <h2 class="section-title">
+                        <div class="section-icon"><i class="fas fa-users"></i></div>
+                        Group Tickets ({{ group_registrations|length }})
+                    </h2>
+                    
+                    {% for reg in group_registrations %}
+                    <div class="ticket-card-modern mb-4" style="background: white; border: 2px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+                        <div class="ticket-header" style="background: linear-gradient(135deg, #667eea, #764ba2); padding: 1rem 1.5rem; color: white; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-weight: 700; font-size: 1.1rem;">
+                                <i class="fas fa-ticket-alt me-2"></i> {{ reg.ticket_number }}
+                            </div>
+                            <div style="font-size: 0.85rem; opacity: 0.9;">Ref: {{ reg.registration_ref }}</div>
+                        </div>
+                        <div class="ticket-body" style="display: flex; flex-wrap: wrap; padding: 1.5rem;">
+                            <div class="ticket-details" style="flex: 1; min-width: 250px; padding-right: 1.5rem;">
+                                <h4 style="margin: 0 0 1rem 0; color: #2d3748; font-weight: 800;">{{ reg.full_name }}</h4>
+                                <div class="detail-row" style="margin-bottom: 0.75rem; display: flex; gap: 0.5rem;">
+                                    <span style="color: #718096; font-weight: 600; width: 100px;">Email:</span>
+                                    <span style="color: #2d3748;">{{ reg.email }}</span>
+                                </div>
+                                <div class="detail-row" style="margin-bottom: 0.75rem; display: flex; gap: 0.5rem;">
+                                    <span style="color: #718096; font-weight: 600; width: 100px;">Phone:</span>
+                                    <span style="color: #2d3748;">{{ reg.phone|default('N/A') }}</span>
+                                </div>
+                                <div class="detail-row" style="margin-bottom: 0.75rem; display: flex; gap: 0.5rem;">
+                                    <span style="color: #718096; font-weight: 600; width: 100px;">Nationality:</span>
+                                    <span style="color: #2d3748;">{{ reg.nationality|default('N/A') }}</span>
+                                </div>
+                                <div class="detail-row" style="margin-bottom: 1rem; display: flex; gap: 0.5rem;">
+                                    <span style="color: #718096; font-weight: 600; width: 100px;">Tier:</span>
+                                    <span class="ticket-badge" style="padding: 0.25rem 0.75rem;">{{ reg.ticket_type|upper }}</span>
+                                </div>
+                            </div>
+                            <div class="ticket-qr" style="width: 180px; text-align: center; border-left: 1px dashed #e2e8f0; padding-left: 1.5rem;">
+                                <img src="{{ reg.qr_code or qr_code }}" alt="QR Code" style="width: 150px; height: 150px; border: 2px solid #f8f9fa; border-radius: 10px;">
+                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 0.5rem;">Scan at Entrance</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="email-warning-text">
-                        <strong>Email Not Configured:</strong> Please save this page or screenshot your QR code. No confirmation email was sent.
-                    </div>
+                    {% endfor %}
                 </div>
-                {% endif %}
-
-                <!-- Reference Cards -->
+                {% else %}
+                <!-- Single Ticket Layout -->
                 <div class="reference-cards">
                     <div class="reference-card">
                         <div class="reference-label">Registration Reference</div>
@@ -776,50 +809,19 @@
                     </div>
                 </div>
 
-                <!-- QR Code Section -->
                 <div class="qr-section">
                     <h2 class="qr-title">
                         <i class="fas fa-qrcode qr-title-icon"></i>
                         Your Entry QR Code
                     </h2>
                     <div class="qr-code-container">
-                        <div class="qr-code-touch-hint">Tap to expand</div>
                         <img src="{{ qr_code }}" alt="QR Code" class="qr-code-image" id="qr-code-img">
-                    </div>
-                    <div class="qr-instructions">
-                        <div class="qr-instruction-item">
-                            <i class="fas fa-save"></i>
-                            <span>Save this QR code to your phone</span>
-                        </div>
-                        <div class="qr-instruction-item">
-                            <i class="fas fa-print"></i>
-                            <span>Or print it for entry</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Mobile QR Actions -->
-                    <div class="mobile-qr-actions">
-                        <a href="{{ qr_code }}" download="event-qr-code.png" class="mobile-qr-btn mobile-qr-download">
-                            <i class="fas fa-download"></i>
-                            <span>Download QR Code</span>
-                        </a>
-                        <button onclick="shareQRCode()" class="mobile-qr-btn mobile-qr-share">
-                            <i class="fas fa-share-alt"></i>
-                            <span>Share QR Code</span>
-                        </button>
-                        <button onclick="takeScreenshot()" class="mobile-qr-btn mobile-qr-screenshot">
-                            <i class="fas fa-camera"></i>
-                            <span>Screenshot</span>
-                        </button>
                     </div>
                 </div>
 
-                <!-- Attendee Details -->
                 <div class="attendee-section">
                     <h2 class="section-title">
-                        <div class="section-icon">
-                            <i class="fas fa-user"></i>
-                        </div>
+                        <div class="section-icon"><i class="fas fa-user"></i></div>
                         Attendee Information
                     </h2>
                     <div class="attendee-details">
@@ -832,19 +834,22 @@
                             <div class="attendee-value">{{ registration.email|default('N/A') }}</div>
                         </div>
                         <div class="attendee-row">
+                            <div class="attendee-label">Phone:</div>
+                            <div class="attendee-value">{{ registration.phone|default('N/A') }}</div>
+                        </div>
+                        <div class="attendee-row">
+                            <div class="attendee-label">Nationality:</div>
+                            <div class="attendee-value">{{ registration.nationality|default('N/A') }}</div>
+                        </div>
+                        <div class="attendee-row">
                             <div class="attendee-label">Ticket Type:</div>
                             <div class="attendee-value">
                                 <span class="ticket-badge">{{ registration.ticket_type|default('General')|upper }}</span>
                             </div>
                         </div>
-                        <div class="attendee-row">
-                            <div class="attendee-label">Registration Date:</div>
-                            <div class="attendee-value">
-                                {% if registration.created_at %}{{ registration.created_at[:16]|replace('T', ' ') }}{% else %}Today{% endif %}
-                            </div>
-                        </div>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- Event Info -->
                 <div class="event-info-section">
@@ -869,42 +874,15 @@
                     </div>
                 </div>
 
-                {% if group_registrations %}
-                <div class="group-registrations-section" style="margin-top: 2rem; padding: 1.5rem; background: rgba(118, 75, 162, 0.05); border-radius: 16px; border: 1px dashed rgba(118, 75, 162, 0.2); text-align: left;">
-                    <h4 style="color: #764ba2; font-weight: 700; margin-top: 0; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-                        <i class="fas fa-users"></i> Group Members Registered
-                    </h4>
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
-                            <thead>
-                                <tr style="border-bottom: 2px solid rgba(118, 75, 162, 0.1); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: #764ba2; text-align: left;">
-                                    <th style="padding-bottom: 0.5rem; width: 40%;">Name</th>
-                                    <th style="padding-bottom: 0.5rem; width: 35%;">Email</th>
-                                    <th style="padding-bottom: 0.5rem; text-align: right; width: 25%;">Ticket Number</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for group_reg in group_registrations %}
-                                <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.05); font-size: 0.95rem;">
-                                    <td style="padding: 0.75rem 0; font-weight: 600; color: #2d3748;">{{ group_reg.full_name }}</td>
-                                    <td style="padding: 0.75rem 0; color: #718096;">{{ group_reg.email }}</td>
-                                    <td style="padding: 0.75rem 0; text-align: right; font-family: monospace; font-weight: 700; color: #4a5568;">{{ group_reg.ticket_number }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% if errors %}
-                    <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem; border-radius: 8px; margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404;">
-                        <i class="fas fa-exclamation-triangle me-1"></i>
-                        <strong>Some attendees could not be registered:</strong>
-                        <ul style="margin: 5px 0 0 20px; padding: 0;">
-                            {% for err in errors %}
-                            <li>{{ err }}</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% endif %}
+                {% if group_registrations and errors %}
+                <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem; border-radius: 8px; margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404;">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>Some attendees could not be registered:</strong>
+                    <ul style="margin: 5px 0 0 20px; padding: 0;">
+                        {% for err in errors %}
+                        <li>{{ err }}</li>
+                        {% endfor %}
+                    </ul>
                 </div>
                 {% endif %}
 

@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% block title %}Interests & Fan Profile{% endblock %}
+
+{% block styles %}
+<style>
+    .settings-page { max-width: 800px; margin: 40px auto; padding: 0 20px; }
+    .settings-header { margin-bottom: 30px; }
+    .settings-header h1 { font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: 8px; }
+    .settings-header p { color: #6b7280; font-size: 1.1rem; }
+    
+    .settings-card { background: white; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); overflow: hidden; }
+    .card-header { padding: 24px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 16px; }
+    .card-icon { font-size: 32px; }
+    .card-header h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    .card-header p { margin: 4px 0 0 0; color: #6b7280; font-size: 0.95rem; }
+    
+    .status-badge { padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-left: auto; }
+    .status-badge.active { background: #dcfce7; color: #166534; }
+    .status-badge.inactive { background: #f3f4f6; color: #374151; }
+    
+    .fan-inactive-state { padding: 32px; text-align: center; }
+    .feature-list { list-style: none; padding: 0; margin: 0 auto 32px auto; max-width: 400px; text-align: left; }
+    .feature-list li { margin-bottom: 12px; display: flex; align-items: center; gap: 12px; color: #4b5563; }
+    .feature-list li::before { content: '✓'; color: #059669; font-weight: bold; }
+    
+    .form-section { padding: 24px; border-bottom: 1px solid #f3f4f6; }
+    .form-label { display: block; font-weight: 600; margin-bottom: 12px; color: #374151; }
+    
+    .checkbox-group, .toggle-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+    .checkbox-group label, .toggle-item { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .checkbox-group label:hover, .toggle-item:hover { background: #f9fafb; }
+    
+    .form-actions { padding: 24px; background: #f9fafb; display: flex; justify-content: flex-end; }
+    .danger-zone { padding: 24px; background: #fff1f2; border-top: 1px solid #fecaca; }
+    .danger-zone p { margin: 0 0 16px 0; color: #991b1b; font-size: 0.9rem; }
+    
+    .settings-divider { margin: 0; border: none; border-top: 1px solid #e5e7eb; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <div class="settings-header">
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('user.dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item active">Interests</li>
+            </ol>
+        </nav>
+        <h1>Interests</h1>
+        <p>Control what content you see on your dashboard.</p>
+    </div>
+
+    {# ── FAN PROFILE SECTION ─────────────────────────────────────── #}
+    <div class="settings-card fan-profile-card">
+        <div class="card-header">
+            <span class="card-icon">⚽</span>
+            <div>
+                <h2>Fan Profile</h2>
+                <p>Unlock sports and tournament features</p>
+            </div>
+            <span class="status-badge {% if fan_profile and fan_profile.is_active %}active{% else %}inactive{% endif %}">
+                {% if fan_profile and fan_profile.is_active %}Active{% else %}Inactive{% endif %}
+            </span>
+        </div>
+
+        {% if not fan_profile or not fan_profile.is_active %}
+        {# ── INACTIVE STATE ───────────────────────────────────────── #}
+        <div class="fan-inactive-state">
+            <ul class="feature-list">
+                <li>Follow your favourite teams</li>
+                <li>Tournament match schedules</li>
+                <li>Live scores and updates</li>
+                <li>Fan groups and meetups</li>
+                <li>Stadium transport integration</li>
+            </ul>
+            <form method="POST" action="{{ url_for('user.fan_activate') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary btn-lg px-5">
+                    Activate Fan Profile
+                </button>
+            </form>
+        </div>
+
+        {% else %}
+        {# ── ACTIVE STATE ─────────────────────────────────────────── #}
+        <form method="POST" action="{{ url_for('user.fan_update') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-section">
+                <label class="form-label">Favourite Sports</label>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" name="favorite_sports" value="football"
+                            {% if 'football' in fan_profile.favorite_sports_list %}checked{% endif %}>
+                        Football
+                    </label>
+                    <label>
+                        <input type="checkbox" name="favorite_sports" value="basketball"
+                            {% if 'basketball' in fan_profile.favorite_sports_list %}checked{% endif %}>
+                        Basketball
+                    </label>
+                    <label>
+                        <input type="checkbox" name="favorite_sports" value="rugby"
+                            {% if 'rugby' in fan_profile.favorite_sports_list %}checked{% endif %}>
+                        Rugby
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <label class="form-label">Notifications</label>
+                <div class="toggle-group">
+                    <label class="toggle-item">
+                        <input type="checkbox" name="tournament_notifications"
+                            {% if fan_profile.tournament_notifications %}checked{% endif %}>
+                        Tournament updates
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" name="match_reminders"
+                            {% if fan_profile.match_reminders %}checked{% endif %}>
+                        Match reminders
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" name="team_news"
+                            {% if fan_profile.team_news %}checked{% endif %}>
+                        Team news
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <label class="form-label">Social Features</label>
+                <label class="toggle-item" style="max-width: 300px;">
+                    <input type="checkbox" name="social_features_enabled"
+                        {% if fan_profile.social_features_enabled %}checked{% endif %}>
+                    Fan groups and meetups
+                </label>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Preferences</button>
+            </div>
+        </form>
+
+        <hr class="settings-divider">
+
+        <div class="danger-zone">
+            <p>Deactivating hides all sports content from your dashboard. Your preferences are saved for when you want to return.</p>
+            <form method="POST" action="{{ url_for('user.fan_deactivate') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-danger">
+                    Deactivate Fan Profile
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

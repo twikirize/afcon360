@@ -11,1094 +11,1005 @@
 
 {% block content %}
 <style>
-/* Modern Event Registration Form Styles */
-.event-registration-wrapper {
-    min-height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 2rem 0;
-    position: relative;
-    overflow: hidden;
-}
-
-.event-registration-wrapper::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image: 
-        radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.05) 0%, transparent 50%);
-    opacity: 0.6;
-}
-
-.event-registration-container {
-    position: relative;
-    z-index: 2;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 0 1rem;
-}
-
-.event-registration-card {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    border-radius: 24px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    overflow: hidden;
-    animation: slideUp 0.6s ease-out;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
+    #main {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        max-width: 100% !important;
+        width: 100% !important;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+
+    .reg-wrapper {
+        min-height: 100vh;
+        width: 100vw;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem 0 4rem;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        position: relative;
+        left: 50%;
+        right: 50%;
+        margin-left: -50vw;
+        margin-right: -50vw;
     }
-}
 
-.event-registration-header {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    padding: 3rem 2rem;
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-}
-
-.event-registration-header::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-    animation: float 8s ease-in-out infinite;
-}
-
-@keyframes float {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    50% { transform: translateY(-10px) rotate(180deg); }
-}
-
-.event-registration-title {
-    font-size: 2.5rem;
-    font-weight: 800;
-    color: white;
-    margin-bottom: 0.5rem;
-    position: relative;
-    z-index: 2;
-}
-
-.event-registration-subtitle {
-    font-size: 1.1rem;
-    color: rgba(255,255,255,0.9);
-    margin: 0;
-    position: relative;
-    z-index: 2;
-}
-
-.event-registration-body {
-    padding: 3rem 2rem;
-}
-
-/* Event Summary */
-.event-summary-card {
-    background: linear-gradient(135deg, #f0f4ff, #e6f0ff);
-    border: 2px solid #c3dafe;
-    border-radius: 16px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-}
-
-.event-summary-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.event-summary-label {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #667eea;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.event-summary-value {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #2d3748;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.event-summary-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    color: white;
-}
-
-/* Form Sections */
-.form-section {
-    margin-bottom: 2rem;
-}
-
-.form-section-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #2d3748;
-    margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.form-section-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    color: white;
-}
-
-.form-group-modern {
-    margin-bottom: 1.5rem;
-}
-
-.form-label-modern {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #4a5568;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 0.5rem;
-    display: block;
-}
-
-.form-label-modern .required {
-    color: #e53e3e;
-    margin-left: 0.25rem;
-}
-
-.form-control-modern {
-    width: 100%;
-    padding: 1rem 1.25rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    font-size: 1rem;
-    background: white;
-    color: #2d3748;
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-}
-
-.form-control-modern:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
-    transform: translateY(-2px);
-}
-
-.form-control-modern::placeholder {
-    color: #a0aec0;
-}
-
-select.form-control-modern {
-    cursor: pointer;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.75rem center;
-    background-repeat: no-repeat;
-    background-size: 1.5em 1.5em;
-    padding-right: 2.5rem;
-    appearance: none;
-}
-
-.form-row-modern {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-}
-
-.form-help-text {
-    font-size: 0.85rem;
-    color: #718096;
-    margin-top: 0.5rem;
-}
-
-/* Free Event Notice Card */
-.free-event-notice-card {
-    background: linear-gradient(135deg, #00e5a0, #00b87d);
-    border-radius: 16px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    position: relative;
-    overflow: hidden;
-}
-
-.free-event-notice-card::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-    animation: float 8s ease-in-out infinite;
-}
-
-.free-event-notice-content {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    position: relative;
-    z-index: 2;
-}
-
-.free-event-notice-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    color: white;
-    flex-shrink: 0;
-}
-
-.free-event-notice-text h3 {
-    color: white;
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0 0 0.5rem 0;
-}
-
-.free-event-notice-text p {
-    color: rgba(255,255,255,0.9);
-    font-size: 1.1rem;
-    margin: 0;
-    line-height: 1.5;
-}
-
-/* Legacy Free Event Badge (kept for compatibility) */
-.free-event-badge {
-    background: linear-gradient(135deg, #00e5a0, #00b87d);
-    color: white;
-    padding: 1rem 1.5rem;
-    border-radius: 12px;
-    text-align: center;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-}
-
-.free-event-icon {
-    font-size: 1.25rem;
-}
-
-/* Ticket Selection */
-.ticket-selection-card {
-    background: #f7fafc;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1.5rem;
-    transition: all 0.3s ease;
-}
-
-.ticket-selection-card:hover {
-    border-color: #667eea;
-    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
-}
-
-.ticket-info-display {
-    background: white;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-top: 1rem;
-    animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
+    .reg-wrapper::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%);
+        pointer-events: none;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
 
-.ticket-price-display {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #667eea;
-    text-align: center;
-    margin: 1rem 0;
-}
-
-/* Group Registration Styles */
-.group-registration-toggle {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    padding: 1rem;
-    background: #f8faff;
-    border-radius: 12px;
-    border: 2px solid #e2e8f0;
-}
-
-.toggle-switch {
-    position: relative;
-    width: 60px;
-    height: 30px;
-}
-
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 34px;
-}
-
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 22px;
-    width: 22px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
-}
-
-input:checked + .toggle-slider {
-    background-color: #667eea;
-}
-
-input:checked + .toggle-slider:before {
-    transform: translateX(30px);
-}
-
-.toggle-label {
-    font-weight: 500;
-    color: #4a5568;
-}
-
-.group-registration-fields {
-    margin-top: 1.5rem;
-    padding: 1.5rem;
-    background: #f7fafc;
-    border-radius: 12px;
-    border: 2px solid #e2e8f0;
-}
-
-.attendee-field {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    border: 2px solid #e2e8f0;
-    transition: all 0.3s ease;
-}
-
-.attendee-field:hover {
-    border-color: #667eea;
-    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
-}
-
-.attendee-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-}
-
-.attendee-title {
-    font-weight: 600;
-    color: #2d3748;
-}
-
-.attendee-number {
-    background: #667eea;
-    color: white;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 0.875rem;
-}
-
-/* Payment Method Styles */
-.payment-method-option {
-    margin-bottom: 1rem;
-}
-
-.payment-method-label {
-    display: block;
-    cursor: pointer;
-}
-
-.payment-method-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    background: white;
-    transition: all 0.3s ease;
-}
-
-.payment-method-card:hover {
-    border-color: #667eea;
-    box-shadow: 0 4px 15px rgba(102,126,234,0.1);
-}
-
-.payment-method-card.disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background: #f7fafc;
-}
-
-.payment-method-icon {
-    font-size: 1.5rem;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f8faff;
-    border-radius: 8px;
-}
-
-.payment-method-info {
-    flex: 1;
-}
-
-.payment-method-name {
-    font-weight: 600;
-    color: #2d3748;
-    margin-bottom: 0.25rem;
-}
-
-.payment-method-description {
-    font-size: 0.875rem;
-    color: #718096;
-}
-
-input[name="payment_method"]:checked + .payment-method-card {
-    border-color: #667eea;
-    background: #f8faff;
-}
-
-input[name="payment_method"]:checked + .payment-method-card .payment-method-icon {
-    background: #667eea;
-    color: white;
-}
-
-/* Info Alert */
-.info-alert-modern {
-    background: linear-gradient(135deg, #fef5e7, #fef3cd);
-    border: 2px solid #fbbf24;
-    border-radius: 12px;
-    padding: 1.5rem;
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    margin-top: 2rem;
-}
-
-.info-alert-icon {
-    color: #f59e0b;
-    font-size: 1.25rem;
-    margin-top: 0.25rem;
-}
-
-.info-alert-content {
-    flex: 1;
-    color: #2d3748;
-}
-
-.info-alert-content ul {
-    margin: 0.75rem 0 0 0;
-    padding-left: 1.25rem;
-}
-
-.info-alert-content li {
-    margin-bottom: 0.5rem;
-    color: #4a5568;
-}
-
-/* Form Actions */
-.form-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    padding-top: 2rem;
-    border-top: 2px solid #e2e8f0;
-    margin-top: 2rem;
-}
-
-.btn-cancel-modern {
-    padding: 1rem 2rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    background: white;
-    color: #4a5568;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.3s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.btn-cancel-modern:hover {
-    border-color: #cbd5e0;
-    background: #f7fafc;
-    transform: translateY(-2px);
-}
-
-.btn-submit-modern {
-    padding: 1rem 3rem;
-    border: none;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    font-weight: 700;
-    font-size: 1.1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    min-width: 200px;
-    position: relative;
-    overflow: hidden;
-}
-
-.btn-submit-modern::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    transition: left 0.5s ease;
-}
-
-.btn-submit-modern:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102,126,234,0.3);
-}
-
-.btn-submit-modern:hover::before {
-    left: 100%;
-}
-
-.btn-submit-modern:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-    transform: none;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .event-registration-wrapper {
-        padding: 1rem 0;
-    }
-    
-    .event-registration-header {
-        padding: 2rem 1.5rem;
-    }
-    
-    .event-registration-title {
-        font-size: 2rem;
-    }
-    
-    .event-registration-body {
-        padding: 2rem 1.5rem;
-    }
-    
-    .event-summary-card {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
-    
-    .form-row-modern {
-        grid-template-columns: 1fr;
-    }
-    
-    .free-event-notice-content {
-        flex-direction: column;
-        text-align: center;
-        gap: 1rem;
-    }
-    
-    .free-event-notice-icon {
-        width: 50px;
-        height: 50px;
-        font-size: 1.25rem;
-    }
-    
-    .free-event-notice-text h3 {
-        font-size: 1.25rem;
-    }
-    
-    .free-event-notice-text p {
-        font-size: 1rem;
-    }
-    
-    .form-actions {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .btn-cancel-modern,
-    .btn-submit-modern {
+    .reg-container {
+        position: relative;
+        z-index: 2;
         width: 100%;
+        max-width: 820px;
+        padding: 0 1rem;
+        box-sizing: border-box;
+    }
+
+    /* ── Card ── */
+    .reg-card {
+        background: rgba(255,255,255,0.97);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        overflow: hidden;
+        animation: slideUp 0.5s ease-out;
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(24px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Header ── */
+    .reg-header {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        padding: 1.75rem 2rem;
+        text-align: center;
+    }
+    .reg-header h1 { font-size: 1.75rem; font-weight: 800; color: white; margin: 0 0 0.25rem; }
+    .reg-header p  { color: rgba(255,255,255,0.85); margin: 0; font-size: 0.95rem; }
+
+    /* ── Body ── */
+    .reg-body { padding: 1.75rem 2rem; }
+
+    /* ── Event Summary Bar ── */
+    .event-summary {
+        background: linear-gradient(135deg, #f0f4ff, #e6f0ff);
+        border: 2px solid #c3dafe;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    .summary-item { display: flex; flex-direction: column; gap: 0.2rem; }
+    .summary-label { font-size: 0.7rem; font-weight: 700; color: #667eea; text-transform: uppercase; letter-spacing: 0.6px; }
+    .summary-value { font-size: 0.92rem; font-weight: 700; color: #2d3748; display: flex; align-items: center; gap: 0.4rem; }
+    .summary-icon {
+        width: 22px; height: 22px; border-radius: 5px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 9px; color: white; flex-shrink: 0;
+    }
+
+    /* ── Ticket Tiers Panel (sits right below summary, before the form) ── */
+    .tiers-panel {
+        margin-bottom: 1.75rem;
+    }
+
+    .tiers-panel-title {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #667eea;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 0.6rem;
+        padding-left: 0.25rem;
+    }
+
+    .tiers-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        gap: 0.6rem;
+    }
+
+    .tier-card {
+        background: white;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+
+    .tier-card:hover {
+        border-color: #667eea;
+        background: #f8faff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102,126,234,0.1);
+    }
+
+    .tier-card.selected {
+        border-color: #667eea;
+        background: linear-gradient(135deg, rgba(102,126,234,0.06), rgba(118,75,162,0.06));
+        box-shadow: 0 4px 16px rgba(102,126,234,0.15);
+    }
+
+    .tier-card.sold-out {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    .tier-card .tier-check {
+        position: absolute;
+        top: 0.5rem; right: 0.6rem;
+        width: 18px; height: 18px;
+        border-radius: 50%;
+        background: #667eea;
+        color: white;
+        font-size: 9px;
+        display: none;
+        align-items: center;
         justify-content: center;
     }
-}
+
+    .tier-card.selected .tier-check { display: flex; }
+
+    .tier-name { font-weight: 700; color: #2d3748; font-size: 0.88rem; }
+    .tier-price { font-size: 1.1rem; font-weight: 800; color: #667eea; margin-top: 0.1rem; }
+    .tier-price.free-price { color: #00b87d; }
+    .tier-desc { font-size: 0.72rem; color: #718096; margin-top: 0.15rem; line-height: 1.3; }
+    .tier-seats { font-size: 0.68rem; color: #a0aec0; margin-top: 0.2rem; }
+    .tier-seats.low { color: #e53e3e; font-weight: 600; }
+
+    /* Hidden actual select for form submission */
+    #ticket_type_id_hidden { display: none; }
+
+    /* ── Free event notice (single free tier) ── */
+    .free-notice {
+        background: linear-gradient(135deg, #00e5a0, #00b87d);
+        border-radius: 10px;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 1.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+    }
+    .free-notice-icon {
+        width: 38px; height: 38px; border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; color: white; flex-shrink: 0;
+    }
+    .free-notice-text h3 { color: white; margin: 0 0 0.1rem; font-size: 0.95rem; font-weight: 700; }
+    .free-notice-text p  { color: rgba(255,255,255,0.9); margin: 0; font-size: 0.78rem; }
+
+    /* ── Section Header ── */
+    .section-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #2d3748;
+        margin: 0 0 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .section-icon {
+        width: 26px; height: 26px; border-radius: 6px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 11px; color: white; flex-shrink: 0;
+    }
+
+    /* ── Form Controls ── */
+    .form-section { margin-bottom: 1.5rem; }
+    .form-group   { margin-bottom: 0.9rem; }
+
+    .form-label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #4a5568;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.3rem;
+    }
+    .form-label .req { color: #e53e3e; margin-left: 2px; }
+
+    .form-control {
+        width: 100%;
+        padding: 0.68rem 0.9rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 9px;
+        font-size: 0.9rem;
+        background: white;
+        color: #2d3748;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+    }
+    .form-control:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+
+    /* ── Booking type selector ── */
+    .booking-type-selector { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+
+    .btype-option {
+        flex: 1; min-width: 130px;
+        background: white; border: 2px solid #e2e8f0;
+        border-radius: 12px; padding: 0.9rem 0.75rem;
+        text-align: center; cursor: pointer;
+        transition: all 0.25s;
+        display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+        user-select: none;
+    }
+    .btype-option:hover { border-color: #667eea; background: #f8faff; transform: translateY(-2px); }
+    .btype-option.active {
+        border-color: #667eea;
+        background: linear-gradient(135deg, rgba(102,126,234,0.08), rgba(118,75,162,0.08));
+        box-shadow: 0 4px 12px rgba(102,126,234,0.12);
+    }
+    .btype-option i     { font-size: 1.15rem; color: #667eea; }
+    .btype-title        { font-weight: 700; color: #2d3748; font-size: 0.85rem; }
+    .btype-desc         { font-size: 0.68rem; color: #718096; line-height: 1.3; }
+
+    /* ── Booker pill ── */
+    .booker-pill {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        background: #edf2ff; border: 1.5px solid #c3dafe;
+        border-radius: 50px; padding: 0.45rem 1rem;
+        font-size: 0.82rem; color: #3b5fcb; font-weight: 600;
+        margin-bottom: 1.1rem;
+    }
+    .booker-pill i { font-size: 0.85rem; color: #667eea; }
+
+    /* ── Group — booker inclusion toggle ── */
+    .booker-inclusion-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: #f8faff;
+        border: 1.5px solid #c3dafe;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.2s;
+    }
+    .booker-inclusion-toggle:hover { background: #edf2ff; }
+
+    .toggle-checkbox {
+        width: 18px; height: 18px;
+        border: 2px solid #667eea;
+        border-radius: 4px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.2s;
+    }
+    .toggle-checkbox.checked { background: #667eea; }
+    .toggle-checkbox.checked::after { content: '✓'; color: white; font-size: 11px; font-weight: 700; }
+
+    .toggle-text { font-size: 0.82rem; color: #3b5fcb; font-weight: 600; line-height: 1.3; }
+    .toggle-subtext { font-size: 0.72rem; color: #718096; }
+
+    /* ── Attendee block ── */
+    .attendee-block {
+        background: white;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-bottom: 0.75rem;
+        transition: border-color 0.2s;
+    }
+    .attendee-block:focus-within { border-color: #a3bffa; }
+
+    .attendee-block-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 1rem; padding-bottom: 0.6rem; border-bottom: 1.5px solid #e2e8f0;
+    }
+
+    .attendee-num {
+        width: 26px; height: 26px; border-radius: 50%;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; font-weight: 700; font-size: 0.78rem;
+        display: inline-flex; align-items: center; justify-content: center; margin-right: 0.4rem;
+    }
+    .attendee-label { font-weight: 700; color: #2d3748; font-size: 0.9rem; }
+
+    .remove-btn {
+        background: #fff5f5; color: #e53e3e; border: 1px solid #fed7d7;
+        padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.7rem;
+        cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.25rem;
+    }
+    .remove-btn:hover { background: #e53e3e; color: white; }
+
+    /* ── ID sub-section (always visible, visually separated) ── */
+    .id-subsection {
+        margin-top: 0.85rem;
+        padding-top: 0.75rem;
+        border-top: 1.5px dashed #e2e8f0;
+    }
+    .id-subsection-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #a0aec0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.6rem;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .id-subsection-label i { font-size: 0.7rem; }
+
+    /* ── Add attendee button ── */
+    .add-attendee-btn {
+        width: 100%; background: white; border: 2px dashed #cbd5e0; border-radius: 10px;
+        padding: 0.75rem; color: #667eea; font-weight: 600; font-size: 0.88rem;
+        cursor: pointer; text-align: center; transition: all 0.2s; margin-top: 0.5rem;
+        display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+    }
+    .add-attendee-btn:hover:not(:disabled) { background: #f8faff; border-color: #667eea; transform: translateY(-1px); }
+    .add-attendee-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Count badge ── */
+    .count-badge {
+        background: #667eea; color: white; border-radius: 50px;
+        padding: 0.1rem 0.5rem; font-size: 0.7rem; font-weight: 700; margin-left: 0.4rem;
+    }
+
+    /* ── Actions ── */
+    .form-actions {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 1rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; margin-top: 1.5rem;
+    }
+    .btn-back {
+        padding: 0.7rem 1.4rem; border: 2px solid #e2e8f0; border-radius: 10px;
+        background: white; color: #4a5568; font-weight: 600; font-size: 0.9rem;
+        text-decoration: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+    .btn-back:hover { border-color: #a0aec0; color: #2d3748; }
+    .btn-submit {
+        padding: 0.75rem 2.5rem; border: none; border-radius: 10px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; font-weight: 700; font-size: 1rem; cursor: pointer;
+        transition: all 0.2s; min-width: 170px;
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    }
+    .btn-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(102,126,234,0.3); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    /* ── Info note ── */
+    .info-note {
+        background: #f0f4ff; border-left: 3px solid #667eea;
+        border-radius: 0 8px 8px 0; padding: 0.6rem 0.9rem;
+        font-size: 0.78rem; color: #4a5568;
+        display: flex; align-items: center; gap: 0.5rem; margin-top: 1.25rem;
+    }
+    .info-note i { color: #667eea; flex-shrink: 0; }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+        .reg-header { padding: 1.25rem; }
+        .reg-header h1 { font-size: 1.35rem; }
+        .reg-body { padding: 1.25rem; }
+        .event-summary { grid-template-columns: 1fr 1fr; }
+        .tiers-grid { grid-template-columns: 1fr 1fr; }
+        .form-row { grid-template-columns: 1fr; }
+        .booking-type-selector { flex-direction: column; }
+        .btype-option { min-width: 100%; flex-direction: row; text-align: left; }
+        .form-actions { flex-direction: column; align-items: stretch; }
+        .btn-back, .btn-submit { width: 100%; justify-content: center; }
+    }
+
+    @media (max-width: 400px) {
+        .event-summary { grid-template-columns: 1fr; }
+        .tiers-grid { grid-template-columns: 1fr; }
+    }
 </style>
 
-<div class="event-registration-wrapper">
-    <div class="event-registration-container">
-        <div class="event-registration-card">
-            <div class="event-registration-header">
-                <h1 class="event-registration-title">
-                    <i class="fas fa-user-plus me-3"></i>Register for {{ event.name }}
-                </h1>
-                <p class="event-registration-subtitle">Complete your registration to secure your spot</p>
+<div class="reg-wrapper">
+    <div class="reg-container">
+        <div class="reg-card">
+
+            <!-- Header -->
+            <div class="reg-header">
+                <h1><i class="fas fa-user-plus me-2"></i>Register for {{ event.name }}</h1>
+                <p>Complete the form below to secure your spot</p>
             </div>
-            
-            <div class="event-registration-body">
-                <!-- Event Summary -->
-                <div class="event-summary-card">
-                    <div class="event-summary-item">
-                        <div class="event-summary-label">Event Date</div>
-                        <div class="event-summary-value">
-                            <div class="event-summary-icon">
-                                <i class="fas fa-calendar-alt"></i>
-                            </div>
+
+            <div class="reg-body">
+
+                {# ── Ticket type analysis ── #}
+                {% set has_ticket_types  = event.ticket_types and event.ticket_types|length > 0 %}
+                {% set active_tickets    = event.ticket_types|selectattr('is_active')|list if has_ticket_types else [] %}
+                {% set paid_tickets      = active_tickets|selectattr('price')|selectattr('price', 'greaterthan', 0)|list %}
+                {% set has_paid_tickets  = paid_tickets|length > 0 %}
+                {% set is_single_free    = active_tickets|length == 1 and not has_paid_tickets %}
+                {% set show_tier_picker  = active_tickets|length > 1 or has_paid_tickets %}
+
+                <!-- ── Event Summary ── -->
+                <div class="event-summary">
+                    <div class="summary-item">
+                        <div class="summary-label">Date</div>
+                        <div class="summary-value">
+                            <div class="summary-icon"><i class="fas fa-calendar-alt"></i></div>
                             <span>
                                 {{ event.start_date[:10] if event.start_date else 'TBD' }}
-                                {% if event.end_date and event.end_date != event.start_date %}
-                                    - {{ event.end_date[:10] }}
+                                {% if event.end_date and event.end_date != event.start_date %} – {{ event.end_date[:10] }}{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-label">Location</div>
+                        <div class="summary-value">
+                            <div class="summary-icon"><i class="fas fa-map-marker-alt"></i></div>
+                            <span>{{ event.city }}{% if event.venue %} · {{ event.venue }}{% endif %}</span>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-label">Price</div>
+                        <div class="summary-value">
+                            <div class="summary-icon"><i class="fas fa-tag"></i></div>
+                            <span style="color: {% if not has_paid_tickets %}#00b87d{% else %}#764ba2{% endif %}; font-weight:800;">
+                                {% if not has_paid_tickets %}
+                                    FREE
+                                {% elif active_tickets|length == 1 %}
+                                    {{ event.currency }} {{ paid_tickets[0].price }}
+                                {% else %}
+                                    {{ event.currency }} {{ active_tickets|map(attribute='price')|min }} – {{ active_tickets|map(attribute='price')|max }}
                                 {% endif %}
                             </span>
                         </div>
                     </div>
-                    <div class="event-summary-item">
-                        <div class="event-summary-label">Location</div>
-                        <div class="event-summary-value">
-                            <div class="event-summary-icon">
-                                <i class="fas fa-map-marker-alt"></i>
-                            </div>
-                            <span>{{ event.city }}{% if event.venue %} - {{ event.venue }}{% endif %}</span>
-                        </div>
-                    </div>
                 </div>
 
-                <!-- Registration Form -->
-                <form method="POST" id="registration-form">
+                <!-- ── Ticket Tier Picker (multiple tiers or any paid) ── -->
+                {% if show_tier_picker %}
+                <div class="tiers-panel">
+                    <div class="tiers-panel-title"><i class="fas fa-ticket-alt me-1"></i> Select Your Ticket Tier</div>
+                    <div class="tiers-grid" id="tiers-grid">
+                        {% for tt in active_tickets %}
+                        {% set remaining = tt.available_seats if tt.available_seats is not none else tt.capacity %}
+                        {% set is_sold_out = (tt.capacity and tt.capacity > 0 and remaining is not none and remaining <= 0) %}
+                        <div class="tier-card {% if is_sold_out %}sold-out{% endif %}"
+                             data-tier-id="{{ tt.id }}"
+                             data-tier-price="{{ tt.price }}"
+                             data-tier-name="{{ tt.name }}"
+                             onclick="selectTier(this)">
+                            <div class="tier-check"><i class="fas fa-check"></i></div>
+                            <div class="tier-name">{{ tt.name }}</div>
+                            <div class="tier-price {% if tt.price == 0 %}free-price{% endif %}">
+                                {% if tt.price == 0 %}FREE{% else %}{{ event.currency }} {{ tt.price }}{% endif %}
+                            </div>
+                            {% if tt.description %}
+                            <div class="tier-desc">{{ tt.description }}</div>
+                            {% endif %}
+                            {% if is_sold_out %}
+                            <div class="tier-seats low">Sold out</div>
+                            {% elif tt.capacity and tt.capacity > 0 and remaining is not none %}
+                                {% if remaining <= 10 %}
+                                <div class="tier-seats low">{{ remaining }} seat{% if remaining != 1 %}s{% endif %} left</div>
+                                {% else %}
+                                <div class="tier-seats">{{ remaining }} available</div>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div id="tier-selection-error" style="display:none; color:#e53e3e; font-size:0.8rem; margin-top:0.5rem;">
+                        <i class="fas fa-exclamation-circle"></i> Please select a ticket tier to continue.
+                    </div>
+                </div>
+                <input type="hidden" name="ticket_type_id" id="ticket_type_id_hidden">
+
+                <!-- ── Single free event ── -->
+                {% elif is_single_free %}
+                <div class="free-notice">
+                    <div class="free-notice-icon"><i class="fas fa-gift"></i></div>
+                    <div class="free-notice-text">
+                        <h3>Free Event</h3>
+                        <p>No payment required — just confirm your spot below.</p>
+                    </div>
+                    <input type="hidden" name="ticket_type_id" value="{{ active_tickets[0].id }}">
+                </div>
+                {% endif %}
+
+                <!-- ── Registration Form ── -->
+                <form id="reg-form" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="booking_type" id="booking_type" value="self">
 
-                    <!-- Personal Information -->
+                    <!-- Step: Who are you registering? -->
                     <div class="form-section">
-                        <h2 class="form-section-title">
-                            <div class="form-section-icon">
+                        <h2 class="section-title">
+                            <div class="section-icon"><i class="fas fa-user-friends"></i></div>
+                            Who are you registering?
+                        </h2>
+                        <div class="booking-type-selector">
+                            <div class="btype-option active" data-type="self">
                                 <i class="fas fa-user"></i>
+                                <div class="btype-title">Myself</div>
+                                <div class="btype-desc">Register just for me</div>
                             </div>
-                            Personal Information
-                        </h2>
-                        
-                        <div class="form-group-modern">
-                            <label class="form-label-modern">
-                                Full Name <span class="required">*</span>
-                            </label>
-                            <input type="text" name="full_name" class="form-control-modern"
-                                   value="{{ user_data.full_name }}" required>
-                        </div>
-                        
-                        <div class="form-group-modern">
-                            <label class="form-label-modern">
-                                Email Address <span class="required">*</span>
-                            </label>
-                            <input type="email" name="email" class="form-control-modern"
-                                   value="{{ user_data.email }}" required>
-                            <div class="form-help-text">Your ticket confirmation will be sent to this email</div>
-                        </div>
-
-                        <div class="form-row-modern">
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">Phone Number</label>
-                                <input type="tel" name="phone" class="form-control-modern"
-                                       value="{{ user_data.phone }}" placeholder="+256 123 456 789">
+                            <div class="btype-option" data-type="third_party">
+                                <i class="fas fa-user-plus"></i>
+                                <div class="btype-title">Someone Else</div>
+                                <div class="btype-desc">I'm booking for another person</div>
                             </div>
-                            
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">Nationality</label>
-                                <input type="text" name="nationality" class="form-control-modern"
-                                       value="{{ user_data.nationality }}"
-                                       placeholder="e.g., Ugandan, Kenyan, Tanzanian">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Booking Type Selector -->
-                    <div class="form-section">
-                        <h2 class="form-section-title">
-                            <div class="form-section-icon">
-                                <i class="fas fa-user-friends"></i>
-                            </div>
-                            Registration Type
-                        </h2>
-                        <div class="form-group-modern">
-                            <label class="form-label-modern">Who is this registration for?</label>
-                            <select name="booking_type" id="booking_type" class="form-control-modern">
-                                <option value="self" selected>👤 Myself</option>
-                                <option value="third_party">👥 Someone else</option>
-                            </select>
-                        </div>
-
-                        <!-- Third Party Fields (hidden by default) -->
-                        <div id="third_party_fields" style="display: none; background: #f8fafc; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border: 2px solid #e2e8f0;">
-                            <h5 style="margin-top: 0; margin-bottom: 1rem; color: #2d3748;">Attendee Information</h5>
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">Full Name <span class="required">*</span></label>
-                                <input type="text" name="attendee_name" id="attendee_name" class="form-control-modern" placeholder="Enter attendee's full name">
-                            </div>
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">Email Address <span class="required">*</span></label>
-                                <input type="email" name="attendee_email" id="attendee_email" class="form-control-modern" placeholder="Enter attendee's email">
-                            </div>
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">Phone Number (Optional)</label>
-                                <input type="tel" name="attendee_phone" id="attendee_phone" class="form-control-modern" placeholder="Optional">
-                            </div>
-                            <div class="info-alert-modern" style="margin-top: 1rem; padding: 1rem;">
-                                <div class="info-alert-icon"><i class="fas fa-info-circle"></i></div>
-                                <div class="info-alert-content" style="font-size: 0.875rem;">
-                                    The attendee will receive an email with their ticket. If they don't have an account, one will be created automatically.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Event Status & Ticket Selection -->
-                    {% set has_ticket_types = event.ticket_types and event.ticket_types|length > 0 %}
-                    {% set has_paid_tickets = has_ticket_types and event.ticket_types|selectattr('price')|selectattr('price', 'greaterthan', 0)|list|length > 0 %}
-                    {% set show_ticket_selector = has_ticket_types and (has_paid_tickets or event.ticket_types|length > 1) %}
-                    {% set has_single_free_ticket = has_ticket_types and not has_paid_tickets and event.ticket_types|length == 1 %}
-                    
-                    {% if show_ticket_selector %}
-                    <div class="form-section">
-                        <h2 class="form-section-title">
-                            <div class="form-section-icon">
-                                <i class="fas fa-ticket-alt"></i>
-                            </div>
-                            Ticket Selection
-                        </h2>
-                        
-                        <div class="ticket-selection-card">
-                            <label class="form-label-modern">
-                                Select Ticket Tier <span class="required">*</span>
-                            </label>
-                            <select name="ticket_type_id" class="form-control-modern" id="ticket-type-select" required>
-                                <option value="">-- Choose Your Ticket --</option>
-                                {% for tt in event.ticket_types %}
-                                    {% if tt.is_active %}
-                                        <option value="{{ tt.id }}" data-price="{{ tt.price }}">
-                                            {{ tt.name }} - {{ event.currency }} {{ tt.price }}
-                                            {% if tt.capacity %} ({{ tt.capacity - tt.registration_count if tt.registration_count else tt.capacity }} left){% endif %}
-                                        </option>
-                                    {% endif %}
-                                {% endfor %}
-                            </select>
-                            
-                            <div id="ticket-info" class="ticket-info-display d-none">
-                                <div class="ticket-price-display" id="total-price-display"></div>
-                                <div id="ticket-description" class="text-muted small"></div>
-                            </div>
-                        </div>
-                    </div>
-                    {% elif has_single_free_ticket %}
-                    <!-- Free Event Notice - Integrated into Personal Info section -->
-                    <div class="free-event-notice-card">
-                        <div class="free-event-notice-content">
-                            <div class="free-event-notice-icon">
-                                <i class="fas fa-gift"></i>
-                            </div>
-                            <div class="free-event-notice-text">
-                                <h3>Free Event Registration</h3>
-                                <p>No ticket required - just complete your details below to secure your spot!</p>
-                            </div>
-                        </div>
-                        <input type="hidden" name="ticket_type_id" value="{{ free_ticket_type_id or '' }}">
-                    </div>
-                    {% endif %}
-                    
-                    {% if has_paid_tickets %}
-                    <!-- Payment Method Selection -->
-                    <div id="payment-section" class="form-section" style="display: none;">
-                        <h2 class="form-section-title">
-                            <div class="form-section-icon">
-                                <i class="fas fa-credit-card"></i>
-                            </div>
-                            Payment Method
-                        </h2>
-                        
-                        <div id="payment-methods-loading" class="text-center py-3">
-                            <i class="fas fa-spinner fa-spin"></i> Loading payment methods...
-                        </div>
-                        
-                        <div id="payment-methods-container" style="display: none;">
-                            <!-- Payment methods will be loaded dynamically -->
-                        </div>
-                        
-                        <!-- Mobile Money Details (hidden by default) -->
-                        <div id="mobile-money-details" style="display: none;">
-                            <div class="form-row-modern">
-                                <div class="form-group-modern">
-                                    <label class="form-label-modern">Mobile Money Operator</label>
-                                    <select name="mobile_money_operator" class="form-control-modern" id="mobile-operator-select">
-                                        <option value="">Select Operator</option>
-                                    </select>
-                                </div>
-                                <div class="form-group-modern">
-                                    <label class="form-label-modern">Phone Number</label>
-                                    <input type="tel" name="mobile_money_phone" class="form-control-modern" 
-                                           id="mobile-phone-input" placeholder="Enter mobile money number">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Group Registration -->
-                    {% if has_ticket_types %}
-                    <div class="form-section">
-                        <h2 class="form-section-title">
-                            <div class="form-section-icon">
+                            <div class="btype-option" data-type="group">
                                 <i class="fas fa-users"></i>
-                            </div>
-                            Group Registration
-                        </h2>
-                        
-                        <div class="group-registration-toggle">
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="group-registration-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <span class="toggle-label">Register multiple attendees</span>
-                        </div>
-                        
-                        <div id="group-registration-fields" class="group-registration-fields" style="display: none;">
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">Number of Additional Attendees</label>
-                                <select name="group_size" class="form-control-modern" id="group-size-select">
-                                    <option value="0">Just myself</option>
-                                    <option value="1">1 additional person</option>
-                                    <option value="2">2 additional people</option>
-                                    <option value="3">3 additional people</option>
-                                    <option value="4">4 additional people</option>
-                                    <option value="5">5 additional people</option>
-                                    <option value="6">6 additional people</option>
-                                    <option value="7">7 additional people</option>
-                                    <option value="8">8 additional people</option>
-                                    <option value="9">9 additional people</option>
-                                </select>
-                            </div>
-                            
-                            <div id="additional-attendees-container"></div>
-                            <input type="hidden" name="group_attendees_data" id="group_attendees_data">
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Identification -->
-                    <div class="form-section">
-                        <h2 class="form-section-title">
-                            <div class="form-section-icon">
-                                <i class="fas fa-id-card"></i>
-                            </div>
-                            Identification (Optional)
-                        </h2>
-                        
-                        <div class="form-row-modern">
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">ID Type</label>
-                                <select name="id_type" class="form-control-modern">
-                                    <option value="">Select ID Type (Optional)</option>
-                                    <option value="passport">Passport</option>
-                                    <option value="national_id">National ID</option>
-                                    <option value="drivers_license">Driver's License</option>
-                                    <option value="voter_card">Voter's Card</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group-modern">
-                                <label class="form-label-modern">ID Number</label>
-                                <input type="text" name="id_number" class="form-control-modern"
-                                       placeholder="Optional for verification">
+                                <div class="btype-title">A Group</div>
+                                <div class="btype-desc">Register multiple people</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- What's Next -->
-                    <div class="info-alert-modern">
-                        <div class="info-alert-icon">
-                            <i class="fas fa-qrcode"></i>
-                        </div>
-                        <div class="info-alert-content">
-                            <strong>What happens next?</strong>
-                            <ul>
-                                <li>You'll receive a confirmation email with your QR code ticket</li>
-                                <li>Present the QR code at the event entrance for quick scanning</li>
-                                <li>Save your ticket number for easy reference</li>
-                            </ul>
+                    <!-- ═══════════ SELF ═══════════ -->
+                    <div id="mode-self">
+                        <div class="form-section">
+                            <h2 class="section-title">
+                                <div class="section-icon"><i class="fas fa-user"></i></div>
+                                Your Details
+                            </h2>
+                            <div class="attendee-block">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Full Name <span class="req">*</span></label>
+                                        <input type="text" name="full_name" class="form-control" value="{{ user_data.full_name }}" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Email Address <span class="req">*</span></label>
+                                        <input type="email" name="email" class="form-control" value="{{ user_data.email }}" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Phone Number</label>
+                                        <input type="tel" name="phone" class="form-control" value="{{ user_data.phone }}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Nationality</label>
+                                        <input type="text" name="nationality" class="form-control" value="{{ user_data.nationality }}">
+                                    </div>
+                                </div>
+                                <div class="id-subsection">
+                                    <div class="id-subsection-label"><i class="fas fa-id-card"></i> Identification (Optional)</div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-label">ID Type</label>
+                                            <select name="id_type" class="form-control">
+                                                <option value="">Select type</option>
+                                                <option value="passport">Passport</option>
+                                                <option value="national_id">National ID</option>
+                                                <option value="drivers_license">Driver's License</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">ID Number</label>
+                                            <input type="text" name="id_number" class="form-control" placeholder="e.g. A12345678">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Form Actions -->
+                    <!-- ═══════════ THIRD PARTY ═══════════ -->
+                    <div id="mode-third-party" style="display:none;">
+                        <div class="form-section">
+                            <h2 class="section-title">
+                                <div class="section-icon"><i class="fas fa-user-clock"></i></div>
+                                Attendee Details
+                            </h2>
+                            <div class="booker-pill">
+                                <i class="fas fa-user-shield"></i>
+                                Booking as: <strong>{{ user_data.full_name or user_data.email }}</strong>
+                            </div>
+                            <div class="attendee-block">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Full Name <span class="req">*</span></label>
+                                        <input type="text" name="attendee_name" id="tp_name" class="form-control">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Email Address <span class="req">*</span></label>
+                                        <input type="email" name="attendee_email" id="tp_email" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Phone Number</label>
+                                        <input type="tel" name="attendee_phone" class="form-control">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Nationality</label>
+                                        <input type="text" name="attendee_nationality" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="id-subsection">
+                                    <div class="id-subsection-label"><i class="fas fa-id-card"></i> Attendee Identification (Optional)</div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-label">ID Type</label>
+                                            <select name="attendee_id_type" class="form-control">
+                                                <option value="">Select type</option>
+                                                <option value="passport">Passport</option>
+                                                <option value="national_id">National ID</option>
+                                                <option value="drivers_license">Driver's License</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">ID Number</label>
+                                            <input type="text" name="attendee_id_number" class="form-control" placeholder="e.g. A12345678">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══════════ GROUP ═══════════ -->
+                    <div id="mode-group" style="display:none;">
+                        <div class="form-section">
+                            <h2 class="section-title">
+                                <div class="section-icon"><i class="fas fa-users"></i></div>
+                                Group Attendees
+                                <span class="count-badge" id="group-count">0</span>
+                            </h2>
+
+                            <!-- Booker inclusion toggle -->
+                            <div class="booker-inclusion-toggle" id="booker-toggle" onclick="toggleBookerInclusion()">
+                                <div class="toggle-checkbox" id="booker-checkbox"></div>
+                                <div>
+                                    <div class="toggle-text">Include myself ({{ user_data.full_name or user_data.email }}) in this group</div>
+                                    <div class="toggle-subtext">Uncheck if you are already registered or are booking purely on behalf of others</div>
+                                </div>
+                            </div>
+
+                            <!-- Booker's own attendee card (shown when toggle is checked) -->
+                            <div id="booker-attendee-card" style="display:none;">
+                                <div class="attendee-block">
+                                    <div class="attendee-block-header">
+                                        <div><span class="attendee-num" id="booker-num">1</span><span class="attendee-label">You (Booker)</span></div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-label">Full Name <span class="req">*</span></label>
+                                            <input type="text" name="full_name" class="form-control" value="{{ user_data.full_name }}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Email <span class="req">*</span></label>
+                                            <input type="email" name="email" class="form-control" value="{{ user_data.email }}">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-label">Phone Number</label>
+                                            <input type="tel" name="phone" class="form-control" value="{{ user_data.phone }}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Nationality</label>
+                                            <input type="text" name="nationality" class="form-control" value="{{ user_data.nationality }}">
+                                        </div>
+                                    </div>
+                                    <div class="id-subsection">
+                                        <div class="id-subsection-label"><i class="fas fa-id-card"></i> Identification (Optional)</div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label">ID Type</label>
+                                                <select name="id_type" class="form-control">
+                                                    <option value="">Select type</option>
+                                                    <option value="passport">Passport</option>
+                                                    <option value="national_id">National ID</option>
+                                                    <option value="drivers_license">Driver's License</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">ID Number</label>
+                                                <input type="text" name="id_number" class="form-control" placeholder="e.g. A12345678">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Dynamic additional attendee cards -->
+                            <div id="group-attendees-list"></div>
+
+                            <button type="button" id="add-attendee-btn" class="add-attendee-btn">
+                                <i class="fas fa-plus-circle"></i> Add Attendee
+                            </button>
+                        </div>
+                        <input type="hidden" name="group_attendees_data" id="group_attendees_data">
+                    </div>
+
+                    <!-- QR note -->
+                    <div class="info-note">
+                        <i class="fas fa-qrcode"></i>
+                        Each registered attendee receives a unique QR-code ticket by email.
+                    </div>
+
+                    <!-- Actions -->
                     <div class="form-actions">
-                        <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn-cancel-modern">
-                            <i class="fas fa-arrow-left"></i>
-                            <span>Back to Event</span>
+                        <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn-back">
+                            <i class="fas fa-arrow-left"></i> Back
                         </a>
-                        
-                        <button type="submit" class="btn-submit-modern" id="submit-btn">
-                            <i class="fas fa-check-circle me-2"></i>
-                            Complete Registration
+                        <button type="submit" id="submit-btn" class="btn-submit">
+                            <i class="fas fa-check-circle"></i>
+                            <span id="submit-label">Confirm Registration</span>
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div id="event-context" data-user-registered="{{ 'true' if event_data.user_registered else 'false' }}" style="display:none"></div>
-<script type="application/json" id="ticket-types-json">{{ (event.ticket_types or []) | tojson | safe }}</script>
-<script type="application/json" id="event-currency-json">{{ (event.currency or '') | tojson | safe }}</script>
-<script src="{{ url_for('static', filename='js/modules/events/event-register.js') }}"></script>
+            </div><!-- /reg-body -->
+        </div><!-- /reg-card -->
+    </div><!-- /reg-container -->
+</div><!-- /reg-wrapper -->
+{% endblock %}
+
+{% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const bookingTypeSelect = document.getElementById('booking_type');
-    const thirdPartyFields = document.getElementById('third_party_fields');
-    const attendeeName = document.getElementById('attendee_name');
-    const attendeeEmail = document.getElementById('attendee_email');
-    const groupToggle = document.getElementById('group-registration-toggle');
+document.addEventListener('DOMContentLoaded', function () {
+    var MAX_EXTRA = 24;
 
-    if (bookingTypeSelect) {
-        bookingTypeSelect.addEventListener('change', function() {
-            if (this.value === 'third_party') {
-                thirdPartyFields.style.display = 'block';
-                attendeeName.required = true;
-                attendeeEmail.required = true;
-                
-                // If third party is selected, we might want to disable group registration
-                if (groupToggle && groupToggle.checked) {
-                    groupToggle.click(); // Uncheck group toggle if it was checked
-                }
-            } else {
-                thirdPartyFields.style.display = 'none';
-                attendeeName.required = false;
-                attendeeEmail.required = false;
+    // ── Elements ──
+    var form           = document.getElementById('reg-form');
+    var bookingInput   = document.getElementById('booking_type');
+    var modeSelf       = document.getElementById('mode-self');
+    var modeThird      = document.getElementById('mode-third-party');
+    var modeGroup      = document.getElementById('mode-group');
+    var groupList      = document.getElementById('group-attendees-list');
+    var addBtn         = document.getElementById('add-attendee-btn');
+    var countBadge     = document.getElementById('group-count');
+    var submitLabel    = document.getElementById('submit-label');
+    var bookerCard     = document.getElementById('booker-attendee-card');
+    var bookerCheckbox = document.getElementById('booker-checkbox');
+
+    // Booker inclusion state — default: not included (checkbox unchecked)
+    var bookerIncluded = false;
+
+    window.toggleBookerInclusion = function () {
+        bookerIncluded = !bookerIncluded;
+        bookerCheckbox.classList.toggle('checked', bookerIncluded);
+        bookerCard.style.display = bookerIncluded ? '' : 'none';
+        renumberCards();
+        updateCount();
+    };
+
+    // ── Booking type switching ──
+    document.querySelectorAll('.btype-option').forEach(function (opt) {
+        opt.addEventListener('click', function () {
+            document.querySelectorAll('.btype-option').forEach(function (o) { o.classList.remove('active'); });
+            this.classList.add('active');
+            var type = this.dataset.type;
+            bookingInput.value = type;
+
+            modeSelf.style.display  = (type === 'self')        ? '' : 'none';
+            modeThird.style.display = (type === 'third_party') ? '' : 'none';
+            modeGroup.style.display = (type === 'group')       ? '' : 'none';
+
+            syncRequired(type);
+
+            var labels = { self: 'Confirm Registration', third_party: 'Register Attendee', group: 'Register Group' };
+            if (submitLabel) submitLabel.textContent = labels[type] || 'Confirm Registration';
+
+            // If switching to group and no extra cards yet, add one automatically
+            if (type === 'group' && groupList.querySelectorAll('.attendee-block').length === 0) {
+                addAttendeeCard();
             }
         });
+    });
+
+    function syncRequired(type) {
+        // Self — full_name and email inside mode-self are required
+        modeSelf.querySelectorAll('input[required], input[data-was-required]').forEach(function (el) {
+            if (type === 'self') { el.required = true; el.removeAttribute('data-was-required'); }
+            else { el.required = false; el.setAttribute('data-was-required', '1'); }
+        });
+        // Third party
+        var tpName  = document.getElementById('tp_name');
+        var tpEmail = document.getElementById('tp_email');
+        if (tpName)  tpName.required  = (type === 'third_party');
+        if (tpEmail) tpEmail.required = (type === 'third_party');
     }
-    
-    // Also handle the reverse: if group toggle is checked, reset booking type to 'self'
-    if (groupToggle) {
-        groupToggle.addEventListener('change', function() {
-            if (this.checked && bookingTypeSelect && bookingTypeSelect.value === 'third_party') {
-                bookingTypeSelect.value = 'self';
-                bookingTypeSelect.dispatchEvent(new Event('change'));
-            }
+
+    // ── Tier selection ──
+    window.selectTier = function (card) {
+        document.querySelectorAll('.tier-card').forEach(function (c) { c.classList.remove('selected'); });
+        card.classList.add('selected');
+        var hidden = document.getElementById('ticket_type_id_hidden');
+        if (hidden) hidden.value = card.dataset.tierId;
+        var err = document.getElementById('tier-selection-error');
+        if (err) err.style.display = 'none';
+    };
+
+    // ── Group attendee cards ──
+    function extraCount() {
+        return groupList.querySelectorAll('.attendee-block').length;
+    }
+
+    function updateCount() {
+        var total = (bookerIncluded ? 1 : 0) + extraCount();
+        if (countBadge) countBadge.textContent = total;
+        if (addBtn) addBtn.disabled = (extraCount() >= MAX_EXTRA);
+    }
+
+    function renumberCards() {
+        // Booker card number
+        var bookerNum = document.getElementById('booker-num');
+        if (bookerNum) bookerNum.textContent = '1';
+
+        // Extra cards start at 2 if booker included, else 1
+        groupList.querySelectorAll('.attendee-block').forEach(function (card, i) {
+            var numEl = card.querySelector('.att-num');
+            var lblEl = card.querySelector('.att-lbl');
+            var num   = (bookerIncluded ? 1 : 0) + i + 1;
+            if (numEl) numEl.textContent = num;
+            if (lblEl) lblEl.textContent = 'Attendee ' + num;
         });
     }
-    // Intercept form submit to serialize group attendees data before AJAX submission
-    const registrationForm = document.getElementById('registration-form');
-    if (registrationForm) {
-        registrationForm.addEventListener('submit', function(e) {
-            const groupToggle = document.getElementById('group-registration-toggle');
-            if (groupToggle && groupToggle.checked) {
-                // 1. Temporarily add 'group' option to select if not exists, and select it
-                if (bookingTypeSelect) {
-                    let groupOption = bookingTypeSelect.querySelector('option[value="group"]');
-                    if (!groupOption) {
-                        groupOption = document.createElement('option');
-                        groupOption.value = 'group';
-                        groupOption.textContent = 'Group';
-                        bookingTypeSelect.appendChild(groupOption);
-                    }
-                    bookingTypeSelect.value = 'group';
-                }
-                
-                // 2. Collect attendees and set to hidden input
-                const attendees = [];
-                const groupSize = parseInt(document.getElementById('group-size-select')?.value) || 0;
-                for (let i = 1; i <= groupSize; i++) {
-                    const nameInput = document.querySelector(`[name="attendee_${i}_name"]`);
-                    const emailInput = document.querySelector(`[name="attendee_${i}_email"]`);
-                    const phoneInput = document.querySelector(`[name="attendee_${i}_phone"]`);
-                    if (nameInput && emailInput) {
-                        const name = nameInput.value.trim();
-                        const email = emailInput.value.trim();
-                        const phone = phoneInput ? phoneInput.value.trim() : '';
-                        if (name && email) {
-                            attendees.push({ name, email, phone });
-                        }
-                    }
-                }
-                document.getElementById('group_attendees_data').value = JSON.stringify(attendees);
-            }
-        }, true); // Use capturing listener to run before external script submit handler
+
+    function addAttendeeCard() {
+        if (extraCount() >= MAX_EXTRA) return;
+        var num = (bookerIncluded ? 1 : 0) + extraCount() + 1;
+        var id  = 'att-' + Date.now();
+
+        var card = document.createElement('div');
+        card.className = 'attendee-block';
+        card.id = id;
+        card.innerHTML =
+            '<div class="attendee-block-header">' +
+                '<div>' +
+                    '<span class="attendee-num att-num">' + num + '</span>' +
+                    '<span class="attendee-label att-lbl">Attendee ' + num + '</span>' +
+                '</div>' +
+                '<button type="button" class="remove-btn" onclick="removeCard(\'' + id + '\')">' +
+                    '<i class="fas fa-trash"></i> Remove' +
+                '</button>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Full Name <span class="req">*</span></label>' +
+                    '<input type="text" class="form-control name-input" placeholder="Full name">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Email <span class="req">*</span></label>' +
+                    '<input type="email" class="form-control email-input" placeholder="Email address">' +
+                '</div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Phone Number</label>' +
+                    '<input type="tel" class="form-control phone-input" placeholder="+256...">' +
+                '</div>' +
+                '<div class="form-group">' +
+                    '<label class="form-label">Nationality</label>' +
+                    '<input type="text" class="form-control nationality-input" placeholder="Nationality">' +
+                '</div>' +
+            '</div>' +
+            '<div class="id-subsection">' +
+                '<div class="id-subsection-label"><i class="fas fa-id-card"></i> Identification (Optional)</div>' +
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">ID Type</label>' +
+                        '<select class="form-control id-type-input">' +
+                            '<option value="">Select type</option>' +
+                            '<option value="passport">Passport</option>' +
+                            '<option value="national_id">National ID</option>' +
+                            '<option value="drivers_license">Driver\'s License</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">ID Number</label>' +
+                        '<input type="text" class="form-control id-number-input" placeholder="e.g. A12345678">' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        groupList.appendChild(card);
+        renumberCards();
+        updateCount();
     }
+
+    window.removeCard = function (id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
+        renumberCards();
+        updateCount();
+    };
+
+    if (addBtn) addBtn.addEventListener('click', addAttendeeCard);
+
+    // ── Ticket tier validation on submit ──
+    var tierGrid = document.getElementById('tiers-grid');
+
+    form.addEventListener('submit', function (e) {
+        var type = bookingInput.value;
+
+        // Validate tier selection if picker is shown
+        if (tierGrid) {
+            var hidden = document.getElementById('ticket_type_id_hidden');
+            if (!hidden || !hidden.value) {
+                e.preventDefault();
+                var err = document.getElementById('tier-selection-error');
+                if (err) err.style.display = 'block';
+                tierGrid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            // Copy the selected ticket_type_id into the form as a real named input
+            // (the hidden input is outside the form tag — but it IS inside here, so it submits)
+        }
+
+        if (type === 'group') {
+            var cards = groupList.querySelectorAll('.attendee-block');
+            var valid = true;
+            cards.forEach(function (card) {
+                var name  = card.querySelector('.name-input');
+                var email = card.querySelector('.email-input');
+                if (!name.value.trim() || !email.value.trim()) {
+                    valid = false;
+                    if (!name.value.trim())  name.style.borderColor  = '#e53e3e';
+                    if (!email.value.trim()) email.style.borderColor = '#e53e3e';
+                }
+            });
+            if (!valid) {
+                e.preventDefault();
+                alert('Please fill in the name and email for every attendee.');
+                return;
+            }
+
+            // Build attendees array
+            var attendees = [];
+            var idx = 0;
+
+            if (bookerIncluded) {
+                attendees.push({
+                    name:        (form.querySelector('[name="full_name"]') || {}).value || '',
+                    email:       (form.querySelector('[name="email"]') || {}).value || '',
+                    phone:       (form.querySelector('[name="phone"]') || {}).value || '',
+                    nationality: (form.querySelector('[name="nationality"]') || {}).value || '',
+                    id_type:     (form.querySelector('[name="id_type"]') || {}).value || '',
+                    id_number:   (form.querySelector('[name="id_number"]') || {}).value || '',
+                    group_index: 0
+                });
+                idx = 1;
+            }
+
+            cards.forEach(function (card) {
+                attendees.push({
+                    name:        card.querySelector('.name-input').value.trim(),
+                    email:       card.querySelector('.email-input').value.trim(),
+                    phone:       (card.querySelector('.phone-input') || {}).value || '',
+                    nationality: (card.querySelector('.nationality-input') || {}).value || '',
+                    id_type:     (card.querySelector('.id-type-input') || {}).value || '',
+                    id_number:   (card.querySelector('.id-number-input') || {}).value || '',
+                    group_index: idx++
+                });
+            });
+
+            document.getElementById('group_attendees_data').value = JSON.stringify(attendees);
+        }
+    });
+
+    // Initialise
+    updateCount();
 });
 </script>
 {% endblock %}

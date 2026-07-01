@@ -479,16 +479,19 @@ def create_app(config_object=None) -> Flask:
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         if session.get("user_id"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+            # Don't override Cache-Control on routes that deliberately set their own
+            # (theme preferences API uses private short-lived cache for performance)
+            if 'Cache-Control' not in response.headers:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         return response
 
     # Keep 404 handler but make it cleaner
     @app.errorhandler(404)
     def handle_404(error):
         """Clean 404 handler"""
-        # Don't log missing favicon or static files
+        # Static file 404s: return bare response — no template, no user_loader
         if request.path.startswith(('/favicon.ico', '/static/')):
-            return render_template('errors/404.html'), 404
+            return '', 404
 
         # Log once, clearly
         logger.warning(f"❓ 404: {request.method} {request.path} - Page not found")
@@ -603,6 +606,8 @@ def create_app(config_object=None) -> Flask:
     def load_identity_context():
         """Inject real actor and effective user into request context for every request.
         Uses flask.g to cache per-request to avoid duplicate DB queries."""
+        if request.path.startswith('/static/'):
+            return
         try:
             from flask import g as _g
             if hasattr(_g, '_identity_loaded'):
@@ -616,6 +621,11 @@ def create_app(config_object=None) -> Flask:
             from app.extensions import db
 
             actor_user = current_user if getattr(current_user, "is_authenticated", False) else None
+            # Cache current_user in flask.g to prevent redundant user_loader calls
+            # within the same request (context processors, templates, etc.)
+            if actor_user:
+                _g._cached_user = actor_user
+                _g._cached_user_pubid = str(actor_user.public_id)
             RequestContext.set_actor(actor_user)
 
             effective_user = actor_user
@@ -646,8 +656,14 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     @app.before_request
     def ensure_clean_transaction():
+        if request.path.startswith('/static/'):
+            return
+        # expire_all() marks cached ORM state as stale without detaching objects
+        # or destroying the session scope. db.session.remove() was causing
+        # g._login_user to hold a detached User instance, forcing user_loader
+        # to re-fire on every attribute access across context processors.
         try:
-            db.session.remove()
+            db.session.expire_all()
         except Exception:
             try:
                 db.session.rollback()
@@ -674,72 +690,11 @@ def create_app(config_object=None) -> Flask:
     import threading
     _deferred_lock = threading.Lock()
 
-    # ------------------------------------------------------------------
-    # Middleware - Module Runtime Checks
-    # ------------------------------------------------------------------
-    @app.before_request
-    def check_module_enabled():
-        """Check if requested module is enabled before processing request"""
-        from flask import request, render_template
-        from app.utils.module_guard import module_enabled
-
-        # Skip checks for static files, health checks, and admin routes
-        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith(
-                '/admin'):
-            return
-
-        # Extract module name from path (e.g., /tourism/... -> tourism)
-        path_parts = request.path.strip('/').split('/')
-        if path_parts and path_parts[0] in ['tourism', 'transport', 'accommodation', 'tournament', 'wallet', 'events']:
-            module_name = path_parts[0]
-            if not module_enabled(module_name):
-                return render_template('module_disabled.html', module=module_name), 404
-
-    # ------------------------------------------------------------------
-    # Redis Pub/Sub Subscriber for Real-Time Module Updates
-    # ------------------------------------------------------------------
-    def start_module_toggle_subscriber():
-        """Subscribe to Redis Pub/Sub for real-time module toggle updates"""
-        try:
-            from app.extensions import redis_client
-            redis_client.client  # Trigger connection
-            pubsub = redis_client.pubsub()
-            pubsub.subscribe('module_toggles')
-            logger.info("Redis Pub/Sub subscriber started for module toggles")
-
-            def listen_for_toggles():
-                """Background thread to listen for module toggle events"""
-                try:
-                    for message in pubsub.listen():
-                        if message['type'] == 'message':
-                            data = message['data'].decode('utf-8')
-                            module, enabled = data.split(':')
-                            enabled = enabled.lower() == 'true'
-
-                            # Update in-memory config immediately
-                            app.config['MODULE_FLAGS'][module] = enabled
-                            app.config[f"{module.upper()}_ENABLED"] = enabled
-
-                            # Invalidate request-scoped cache
-                            from flask import g
-                            if hasattr(g, 'module_flags_loaded'):
-                                g.module_flags_loaded = False
-
-                            logger.info(f"Module toggle received via Pub/Sub: {module}={enabled}")
-                except Exception as e:
-                    logger.error(f"Error in module toggle subscriber: {e}")
-
-            # Start listener in background thread
-            import threading
-            subscriber_thread = threading.Thread(target=listen_for_toggles, daemon=True)
-            subscriber_thread.start()
-
-        except Exception as e:
-            logger.warning(f"Failed to start module toggle subscriber: {e}")
-
     @app.before_request
     def _run_deferred_startup():
         """Safe idempotent startup guard – never blocks the request."""
+        if request.path.startswith('/static/'):
+            return
         if app.config.get("STARTUP_DONE"):
             return
         with _deferred_lock:
@@ -785,6 +740,12 @@ def create_app(config_object=None) -> Flask:
     from app.user.routes import user_bp  # Added user blueprint
     # from app.wallet.routes import wallet_bp  # DELETED - will be rebuilt
     from app.admin import admin_bp
+    from app.admin.route_modules.settings import settings_bp
+    try:
+        from app.admin.routes_ultimate import admin_ultimate_bp
+    except ImportError:
+        admin_ultimate_bp = None
+
     try:
         from app.events import events_bp
     except ImportError as e:
@@ -848,6 +809,7 @@ def create_app(config_object=None) -> Flask:
     # 1. Register Core & Static Blueprints
     core_blueprints = [
         (admin_bp, None),
+        (settings_bp, None),
         (auth_bp, None),
         (onboarding_bp, None),
         (fan_bp, None),
@@ -860,9 +822,9 @@ def create_app(config_object=None) -> Flask:
         (placeholder_bp, None),
     ]
 
-    # Add auth KYC blueprint if available
-    if auth_kyc_bp:
-        core_blueprints.append((auth_kyc_bp, None))
+    # Add ultimate admin blueprint if available
+    if admin_ultimate_bp:
+        core_blueprints.append((admin_ultimate_bp, None))
 
     # Removed registration of non-existent blueprints
     # Their functionality is handled within admin_bp
@@ -891,21 +853,18 @@ def create_app(config_object=None) -> Flask:
         logger.error(f"Failed to register organization blueprint: {e}")
 
     # 2. Register API Blueprints
-    api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp]
+    from app.media.routes import media_bp
+    api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp, media_bp]
     for bp in api_blueprints:
         app.register_blueprint(bp)
 
-    # 3. Load database module flags BEFORE blueprint registration (single source of truth)
-    with app.app_context():
-        try:
-            from app.services.module_toggle_service import ModuleToggleService
-            ModuleToggleService.load_overrides_into_app()
-            logger.debug("✅ Module flags loaded from DB (single source of truth)")
-        except Exception as exc:
-            logger.warning(f"Failed to load module flags from DB: {exc}")
-
-        # Start Redis Pub/Sub subscriber for real-time module updates
-        start_module_toggle_subscriber()
+    # Register media admin blueprint
+    try:
+        from app.media.admin_routes import media_admin_bp
+        app.register_blueprint(media_admin_bp)
+        app.logger.info("✅ Media admin blueprint registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register media admin blueprint: {e}")
 
     # 4. Register ALL blueprints at startup (runtime checks handle module status)
     # Tournament module
@@ -1090,6 +1049,7 @@ def create_app(config_object=None) -> Flask:
                 _p = _g._req_profiles[_pk]
                 _profile_completed = bool(_p and _p.profile_completed)
             except Exception:
+                db.session.rollback()
                 pass
             _in_org_context = _session.get("current_context") == "organization"
             if _in_org_context:
@@ -1107,6 +1067,7 @@ def create_app(config_object=None) -> Flask:
             "nav_profile_completed": _profile_completed,
             "nav_in_org_context": _in_org_context,
             "nav_org_name": _org_name,
+            "active_global_role": _session.get("active_global_role"),
         }
 
     def _safe_url(endpoint, *args, **kwargs):
@@ -1202,15 +1163,27 @@ def create_app(config_object=None) -> Flask:
 
     @app.context_processor
     def inject_wallet_status() -> Dict:
+        """Inject wallet status using the centralized service. Cached on g per request."""
+        from flask_login import current_user
+        from flask import g as _g
+
         user_has_wallet = False
-        if session.get('user_id'):
+        wallet_status = None
+
+        if current_user.is_authenticated:
             try:
-                from app.wallet.repositories.wallet_repository import WalletRepository
-                repo = WalletRepository()
-                user_has_wallet = repo.get_by_user_id(session.get('user_id')) is not None
-            except:
+                if not hasattr(_g, '_wallet_status'):
+                    from app.wallet.services.wallet_status_service import WalletStatusService
+                    _g._wallet_status = WalletStatusService.get_wallet_status(current_user)
+                wallet_status = _g._wallet_status
+                user_has_wallet = wallet_status.exists if wallet_status else False
+            except Exception:
                 pass
-        return {'user_has_wallet': user_has_wallet}
+
+        return {
+            'user_has_wallet': user_has_wallet,
+            'global_wallet_status': wallet_status,
+        }
 
     @app.context_processor
     def utility_processor() -> Dict:
@@ -1227,27 +1200,36 @@ def create_app(config_object=None) -> Flask:
 
     @app.context_processor
     def wallet_utility_processor():
-        """Make wallet status available in all templates"""
+        """Make wallet utilities available in all templates. Reads from g-cache — no extra DB hit."""
         from flask_login import current_user
-        from app.wallet.services.wallet_status_service import WalletStatusService
+        from flask import g as _g
+
+        def _get_ws():
+            if not current_user.is_authenticated:
+                return None
+            if not hasattr(_g, '_wallet_status'):
+                from app.wallet.services.wallet_status_service import WalletStatusService
+                _g._wallet_status = WalletStatusService.get_wallet_status(current_user)
+            return _g._wallet_status
 
         def get_wallet_status():
-            if current_user.is_authenticated:
-                return WalletStatusService.get_wallet_status(current_user)
-            return None
+            return _get_ws()
 
         def get_sidebar_items():
             if current_user.is_authenticated:
+                from app.wallet.services.wallet_status_service import WalletStatusService
                 return WalletStatusService.get_visible_sidebar_items(current_user)
             return []
 
         def get_action_buttons():
             if current_user.is_authenticated:
+                from app.wallet.services.wallet_status_service import WalletStatusService
                 return WalletStatusService.get_action_buttons(current_user)
             return []
 
         def get_wallet_banner():
             if current_user.is_authenticated:
+                from app.wallet.services.wallet_status_service import WalletStatusService
                 return WalletStatusService.get_wallet_banner(current_user)
             return None
 
@@ -1255,7 +1237,7 @@ def create_app(config_object=None) -> Flask:
             'get_wallet_status': get_wallet_status,
             'get_sidebar_items': get_sidebar_items,
             'get_action_buttons': get_action_buttons,
-            'get_wallet_banner': get_wallet_banner
+            'get_wallet_banner': get_wallet_banner,
         }
 
     # Add format_number template filter
@@ -1438,16 +1420,66 @@ def create_app(config_object=None) -> Flask:
         """
         from app.identity.models.user import User
         from sqlalchemy.orm import joinedload
+        current_app.logger.debug(
+            f"USER_LOADER called path={request.path} public_id={public_id}"
+        )
+        # Check per-request cache first to avoid redundant DB queries
+        from flask import g as _g
+        if hasattr(_g, '_cached_user_pubid') and _g._cached_user_pubid == public_id:
+            return _g._cached_user
+        
+        # Check Redis user cache (L2) to avoid DB queries
+        _cache_key = f"user:{public_id}"
+        _cached = cache.get(_cache_key)
+        if _cached is not None:
+            # Reconstruct user from cached dict — we need a live DB object for Flask-Login,
+            # so we query by public_id but use the cache to skip if session is valid.
+            # For true cross-request caching, we return a lightweight proxy or requery.
+            # Here we requery but the cache hit means we skip the expensive joins.
+            pass  # Fall through to DB query; cache will be populated below
+        
         try:
-            return (
+            user = (
                 db.session.query(User)
                 .options(joinedload(User.roles))
                 .filter_by(public_id=public_id)
                 .first()
             )
+            # Cache the loaded user for the remainder of this request
+            if user:
+                _g._cached_user = user
+                _g._cached_user_pubid = str(user.public_id)  # plain string — safe if user is later detached
+                # Store in Redis cache for future requests (L2)
+                try:
+                    cache.set(_cache_key, {
+                        'id': user.id,
+                        'public_id': user.public_id,
+                        'email': user.email,
+                        'username': user.username,
+                        'is_active': user.is_active,
+                        'is_verified': user.is_verified,
+                        'kyc_level': user.kyc_level,
+                        'mfa_enabled': user.mfa_enabled,
+                    }, timeout=300)
+                except Exception:
+                    pass  # Cache failure is non-critical
+            current_app.logger.debug(
+                f"USER_LOADER found={user is not None}"
+            )
+            return user
         except Exception:
             db.session.rollback()
+            current_app.logger.warning(
+                f"USER_LOADER exception public_id={public_id}"
+            )
             return None
+
+    def invalidate_user_cache(public_id):
+        """Invalidate cached user data — call after any user data change."""
+        try:
+            cache.delete(f"user:{public_id}")
+        except Exception:
+            pass
 
     @app.route('/')
     def index():
@@ -1563,11 +1595,28 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     try:
         from app.middleware.reload_modules import init_module_reload
+        # In the stable version, this should actually do something.
+        # I'll update reload_modules.py to actually reload.
         init_module_reload(app)
-    except ImportError:
-        app.logger.warning("Module reload middleware not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to initialize module reload middleware: {e}")
+
+    @app.before_request
+    def check_module_enabled():
+        """Check if requested module is enabled before processing request"""
+        from flask import request, render_template
+        from app.utils.module_guard import module_enabled
+
+        # Skip checks for static files, health checks, and admin routes
+        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith('/admin'):
+            return
+
+        # Extract module name from path
+        path_parts = request.path.strip('/').split('/')
+        if path_parts and path_parts[0] in ['tourism', 'transport', 'accommodation', 'tournament', 'wallet', 'events']:
+            module_name = path_parts[0]
+            if not module_enabled(module_name):
+                return render_template('module_disabled.html', module=module_name), 404
 
     # ── Theme CSS generation deferred to first request ──────────────────────────────
     # Global theme CSS will be generated on first access via theme routes
@@ -1610,7 +1659,7 @@ def create_app(config_object=None) -> Flask:
             "events.events_hub",
             "auth.login",
             "auth.register",
-            "fan.dashboard",
+            "user.dashboard",
             "profile.my_public_profile",
             "profile.account_overview",
             "kyc.index",
@@ -1636,5 +1685,3 @@ def create_app(config_object=None) -> Flask:
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app
-
-    # Diagnostic routes for identity separation testing

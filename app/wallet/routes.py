@@ -141,7 +141,7 @@ def activate_wallet():
     db_user = User.query.filter_by(public_id=str(current_user.public_id)).first()
     if not db_user:
         flash("User not found.", "danger")
-        return redirect(url_for("fan.dashboard"))
+        return redirect(url_for("user.dashboard"))
 
     existing = AccountModel.query.filter_by(
         user_id=db_user.id,
@@ -178,6 +178,12 @@ def activate_wallet():
             db.session.add(existing)
 
         flash('Your wallet has been activated!', 'success')
+        
+        # Expert recommendation: Ensure user has a PIN setup immediately after activation
+        if not current_user.transaction_pin_hash:
+            flash('Please set a transaction PIN to secure your funds before you start.', 'info')
+            return redirect(url_for('wallet.pin_page'))
+            
         return redirect(url_for('wallet.wallet_dashboard'))
 
     return render_template('wallet/wallet_activate.html', action='verify', wallet=existing)
@@ -187,7 +193,10 @@ def activate_wallet():
 # HOME / DASHBOARD ROUTES
 # =============================================================================
 
+from app.utils.module_guard import require_module_enabled
+
 @wallet_bp.route('/')
+@require_module_enabled("wallet")
 def home():
     """Wallet module entry point — intelligent traffic director."""
     if not current_user.is_authenticated:
@@ -221,6 +230,7 @@ def wallet_home():
 
 
 @wallet_bp.route('/dashboard')
+@require_module_enabled("wallet")
 @login_required
 def wallet_dashboard():
     """Main wallet dashboard — the real landing page."""
@@ -340,52 +350,64 @@ def overview():
 @wallet_bp.route('/create', methods=['GET'])
 @login_required
 def wallet_create_page():
-    """Show wallet creation page"""
+    """Show wallet creation page with user context"""
     account = get_account(current_user.id)
     if account:
         flash('You already have a wallet.', 'info')
         return redirect(url_for('wallet.wallet_dashboard'))
-    return render_template('wallet/wallet_create.html')
+    
+    # Get user profile for pre-filling
+    from app.profile.models import get_profile_by_user
+    profile = get_profile_by_user(current_user.public_id)
+    nationality = getattr(profile, 'nationality', 'UG') if profile else 'UG'
+    
+    return render_template('wallet/wallet_create.html', nationality=nationality)
 
 
 @wallet_bp.route('/create', methods=['POST'])
 @login_required
 def wallet_create():
-    """Create a new wallet for the current user"""
+    """Create a new wallet and sync profile information"""
     from flask_wtf.csrf import validate_csrf
+    from app.profile.models import get_profile_by_user
+    from app.extensions import db
     
     # Validate CSRF
     csrf_token = request.form.get('csrf_token')
     if not csrf_token:
-        flash('CSRF token missing', 'error')
+        flash('Security token missing. Please try again.', 'error')
         return redirect(url_for('wallet.wallet_create_page'))
     try:
         validate_csrf(csrf_token)
     except Exception:
-        flash('Invalid CSRF token', 'error')
+        flash('Security validation failed. Please refresh and try again.', 'error')
         return redirect(url_for('wallet.wallet_create_page'))
     
-    # Check KYC level before wallet creation (must be at least Tier 0 - email and phone verified)
+    # Check KYC level before wallet creation
+    # (Must have verified email/phone for a fintech-grade wallet)
     if not current_user.email_verified:
-        flash('Please verify your email address before creating a wallet.', 'error')
-        return redirect(url_for('wallet.wallet_create_page'))
-    
-    if not current_user.phone_verified:
-        flash('Please verify your phone number before creating a wallet.', 'error')
+        flash('Email verification required to open a financial account.', 'warning')
         return redirect(url_for('wallet.wallet_create_page'))
     
     # Check terms acceptance
     accept_terms = request.form.get('accept_terms') == '1'
     if not accept_terms:
-        flash('You must accept the Terms and Conditions to create a wallet', 'error')
+        flash('Please accept the Wallet Terms of Service to proceed.', 'error')
         return redirect(url_for('wallet.wallet_create_page'))
     
     try:
         # Check if wallet already exists
         account = get_account(current_user.id)
         if account:
-            flash('You already have a wallet.', 'info')
             return redirect(url_for('wallet.wallet_dashboard'))
+        
+        # Sync profile information (Nationality)
+        nationality = request.form.get('nationality')
+        if nationality:
+            profile = get_profile_by_user(current_user.public_id)
+            if profile:
+                profile.nationality = nationality
+                db.session.add(profile)
         
         # Get currency from form (default to UGX)
         currency = request.form.get('currency', 'UGX')
@@ -393,18 +415,21 @@ def wallet_create():
         # Create account using get_or_create_account with selected currency
         account = get_or_create_account(current_user.id, currency=currency)
         
-        flash('Wallet created successfully! Please activate your wallet.', 'success')
+        # Log successful creation
+        current_app.logger.info(f"Wallet created for user {current_user.id} with currency {currency}")
+        
+        flash('Financial account opened successfully! Your vault is ready for activation.', 'success')
         return redirect(url_for('wallet.wallet_activate'))
         
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
-            user_id=current_user.id if current_user.is_authenticated else None,
-            error_type="WALLET_CREATION_ERROR",
+            user_id=current_user.id,
+            error_type="WALLET_CREATION_FAILURE",
             error_message=str(e),
-            context={"component": "wallet_creation"}
+            context={"component": "wallet_onboarding", "currency": request.form.get('currency')}
         )
-        flash('Unable to create wallet. Please try again later.', 'warning')
+        flash('System encountered a temporary glitch while securing your vault. Please try again.', 'warning')
         return redirect(url_for('wallet.wallet_create_page'))
 
 

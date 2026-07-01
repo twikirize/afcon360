@@ -25,6 +25,10 @@
   --warning-rgb: 255, 204, 0;
   --info: #17a2b8;
   --info-rgb: 23, 162, 184;
+  --blue: #2563eb;
+  --blue-rgb: 37, 99, 235;
+  --orange: #ea580c;
+  --orange-rgb: 234, 88, 12;
   --dark: #1a1a1a;
   --light: #f8f9fa;
 
@@ -128,6 +132,27 @@
   --z-popover: 500;
   --z-toast: 600;
   --z-tooltip: 700;
+
+  /* ===== MOCKUP DESIGN SYSTEM (AFCON 360 REFINED) ===== */
+  --color-background-primary: var(--bg-surface);
+  --color-background-secondary: var(--bg-surface-alt);
+  --color-background-tertiary: var(--bg-body);
+  --color-background-info: var(--info-light);
+  --color-background-warning: var(--warning-light);
+  
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-muted);
+  --color-text-info: var(--info);
+  --color-text-success: var(--success);
+  --color-text-danger: var(--danger);
+  --color-text-warning: var(--brand-accent-dark);
+
+  --color-border-tertiary: var(--border-light);
+  
+  --border-radius-sm: var(--radius-sm);
+  --border-radius-md: var(--radius-md);
+  --border-radius-lg: var(--radius-lg);
 
   /* ===== OPACITY ===== */
   --opacity-disabled: 0.5;

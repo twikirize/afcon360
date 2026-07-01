@@ -19,8 +19,9 @@ from flask import url_for, current_app
 from app.extensions import db, redis_client
 # REMOVED: import app.events.models  <-- THIS CAUSED CIRCULAR IMPORT
 from app.admin.models import ContentFlag
-from app.events.constants import EventStatus
+from app.events.constants import EventStatus, BookingType
 from app.events.trust_service import EventTrustService, TrustLevel
+from app.events.attendee_accounts import find_or_create_attendee_user
 
 # Remove tight coupling to accommodation module
 try:
@@ -649,12 +650,71 @@ class EventService:
         return [cls._registration_to_dict(reg) for reg in registrations]
 
     @classmethod
+    def get_registrations_made_for_others(cls, user_id: int) -> List[Dict]:
+        """
+        Get all registrations where this user booked for someone else.
+        Returns registrations where booked_by_user_id == user_id AND user_id != user_id.
+        """
+        Registration = cls._get_registration_class()
+
+        rows = Registration.query.filter(
+            Registration.booked_by_user_id == user_id,
+            Registration.user_id != user_id
+        ).order_by(
+            Registration.group_booking_id,
+            func.coalesce(Registration.group_index, 0).asc()
+        ).all()
+
+        return [cls._registration_to_dict(r) for r in rows]
+
+    @classmethod
+    def group_registrations_by_batch(cls, registrations: List[Dict]) -> List[Dict]:
+        """
+        Group a list of registration dicts by group_booking_id.
+        Returns list of {group_booking_id, group_label, event, attendees: [...]}
+        """
+        groups = {}
+        for reg in registrations:
+            gid = reg.get('group_booking_id')
+            if not gid:
+                # Individual registrations become their own "group"
+                gid = f"single_{reg['id']}"
+
+            if gid not in groups:
+                groups[gid] = {
+                    'group_booking_id': reg.get('group_booking_id'),
+                    'group_label': reg.get('group_label'),
+                    'event': reg.get('event'),
+                    'attendees': []
+                }
+            groups[gid]['attendees'].append(reg)
+
+        # Sort attendees within each group by group_index
+        for gid in groups:
+            groups[gid]['attendees'].sort(key=lambda x: x.get('group_index', 0))
+
+        return list(groups.values())
+
+    @classmethod
+    def get_group_registrations_ordered(cls, group_booking_id: str) -> List[Dict]:
+        """Get all registrations in a group, ordered by group_index (0 first, then 1..N)"""
+        Registration = cls._get_registration_class()
+        registrations = Registration.query.filter_by(
+            group_booking_id=group_booking_id
+        ).order_by(
+            func.coalesce(Registration.group_index, 0).asc()
+        ).all()
+        return [cls._registration_to_dict(r) for r in registrations]
+
+    @classmethod
     @with_transaction(isolation_level="REPEATABLE_READ")
     def register_for_event_optimistic(cls, identifier: str, user_id: int, data: Dict,
                                       idempotency_key: str = None, max_retries: int = 3,
-                                      booking_type: str = "self",
+                                      booking_type: str = BookingType.SELF.value,
                                       attendee_user_id: int = None,
-                                      group_booking_id: str = None) -> Tuple[
+                                      group_booking_id: str = None,
+                                      group_index: Optional[int] = None,
+                                      group_label: Optional[str] = None) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
         from sqlalchemy import func, and_
         from decimal import Decimal
@@ -741,10 +801,10 @@ class EventService:
                 actual_attendee_id = attendee_user_id or user_id
                 check_user_id = user_id  # default to booker/attendee
 
-                if booking_type == "third_party":
+                if booking_type == BookingType.THIRD_PARTY.value:
                     # For third-party, check if the ATTENDEE is already registered
                     check_user_id = attendee_user_id if attendee_user_id else user_id
-                elif booking_type == "group":
+                elif booking_type == BookingType.GROUP.value:
                     # For group, we'll check each attendee separately in the caller
                     check_user_id = None  # Skip check here, handle in caller
 
@@ -754,7 +814,7 @@ class EventService:
                         user_id=check_user_id
                     ).first()
                     if existing:
-                        if booking_type == "third_party":
+                        if booking_type == BookingType.THIRD_PARTY.value:
                             attendee_email = data.get("email")
                             attendee_name = data.get("full_name")
                             return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
@@ -777,6 +837,8 @@ class EventService:
                     booked_by_user_id=user_id,
                     booking_type=booking_type,
                     group_booking_id=group_booking_id,
+                    group_index=group_index,
+                    group_label=group_label,
                     attendee_user_id=actual_attendee_id if booking_type != "self" else None
                 )
 
@@ -1074,8 +1136,10 @@ class EventService:
             "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
             "created_at": registration.created_at.isoformat() if registration.created_at else None,
             "booking_type": registration.booking_type,
-            "registered_by": registration.registered_by,
+            "registered_by": registration.booking_type,  # deprecated alias
             "group_booking_id": registration.group_booking_id,
+            "group_index": registration.group_index,
+            "group_label": registration.group_label,
             "event": event_dict,
         }
 
@@ -1187,6 +1251,11 @@ class EventService:
             "registration_fee": float(registration.registration_fee) if registration.registration_fee else 0.0,
             "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
             "created_at": registration.created_at.isoformat() if registration.created_at else None,
+            "booking_type": registration.booking_type,
+            "registered_by": registration.registered_by,
+            "group_booking_id": registration.group_booking_id,
+            "group_index": registration.group_index,
+            "group_label": registration.group_label,
             "event": event_dict,
         }
 
@@ -1326,81 +1395,21 @@ class EventService:
         return dashboard_data
 
     @classmethod
-    def find_or_create_attendee_user(cls, email: str, name: str, phone: str = None) -> Tuple[Optional[int], Optional[str]]:
-        """Find existing user by email or create a new one for the attendee.
-        Returns: (user_id, error_message)
-        """
-        from app.identity.models.user import User
-        from app.auth.services import register_user
-        from app.profile.models import get_profile_by_user
-        import secrets
-        
-        if not email:
-            return None, "Email is required for third-party registration"
-        
-        email = email.strip().lower()
-        name = name.strip() if name else None
-        
-        # Try to find existing user
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            return existing_user.id, None
-        
-        # Create new user with temporary credentials
-        temp_username = f"guest_{secrets.token_hex(8)}"
-        temp_password = secrets.token_urlsafe(16)
-        
-        try:
-            # Note: Using register_user from app.auth.services
-            user = register_user(
-                username=temp_username,
-                password=temp_password,
-                email=email,
-                full_name=name
-            )
-            
-            # Note: register_user might not set is_verified=False, is_active=True explicitly 
-            # or it might depend on the model defaults. 
-            # If we need to override them:
-            user.is_verified = False
-            user.is_active = True
-            
-            db.session.commit()
-            logger.info(f"Created guest account for {email}")
-            
-            # Update profile with provided info
-            profile = get_profile_by_user(user.public_id)
-            if profile:
-                if name:
-                    profile.full_name = name
-                    profile.display_name = name
-                if phone:
-                    profile.phone_number = phone
-            
-            db.session.commit()
-            logger.info(f"Created guest account for {email}")
-            return user.id, None
-            
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Failed to create attendee user: {e}")
-            return None, f"Could not create attendee account: {str(e)}"
-
-    @classmethod
     def register_for_event(cls, identifier: str, user_id: int, data: Dict,
-                           booking_type: str = "self",
+                           booking_type: str = BookingType.SELF.value,
                            attendee_email: str = None,
                            attendee_name: str = None,
                            attendee_phone: str = None,
                            group_booking_id: str = None,
-                           group_index: Optional[int] = None) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
+                           group_index: Optional[int] = None,
+                           group_label: Optional[str] = None) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
         
         # Determine attendee ID based on booking type
         attendee_user_id = user_id  # default to booker (self)
         
-        if booking_type == "third_party":
+        if booking_type == BookingType.THIRD_PARTY.value:
             # Create or find attendee user
-            attendee_user_id, error = cls.find_or_create_attendee_user(
+            attendee_user_id, error = find_or_create_attendee_user(
                 email=attendee_email,
                 name=attendee_name,
                 phone=attendee_phone
@@ -1409,7 +1418,7 @@ class EventService:
                 return None, None, error
         
         # For group bookings, generate ID if not provided
-        if booking_type == "group" and not group_booking_id:
+        if booking_type == BookingType.GROUP.value and not group_booking_id:
             import uuid
             group_booking_id = str(uuid.uuid4())
 
@@ -1420,7 +1429,8 @@ class EventService:
                 booking_type=booking_type,
                 attendee_user_id=attendee_user_id,
                 group_booking_id=group_booking_id,
-                group_index=group_index
+                group_index=group_index,
+                group_label=group_label
             )
         else:
             return cls._register_for_event_pessimistic(
@@ -1428,15 +1438,17 @@ class EventService:
                 booking_type=booking_type,
                 attendee_user_id=attendee_user_id,
                 group_booking_id=group_booking_id,
-                group_index=group_index
+                group_index=group_index,
+                group_label=group_label
             )
 
     @classmethod
     def _register_for_event_pessimistic(cls, identifier: str, user_id: int, data: Dict,
-                                       booking_type: str = "self",
+                                       booking_type: str = BookingType.SELF.value,
                                        attendee_user_id: int = None,
                                        group_booking_id: str = None,
-                                       group_index: Optional[int] = None) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
+                                       group_index: Optional[int] = None,
+                                       group_label: Optional[str] = None) -> Tuple[Optional[Dict], Optional[str], Optional[str]]:
         from sqlalchemy import func
         try:
             with db.session.begin_nested():
@@ -1468,10 +1480,10 @@ class EventService:
                 actual_attendee_id = attendee_user_id or user_id
                 check_user_id = user_id  # default to booker/attendee
 
-                if booking_type == "third_party":
+                if booking_type == BookingType.THIRD_PARTY.value:
                     # For third-party, check if the ATTENDEE is already registered
                     check_user_id = attendee_user_id if attendee_user_id else user_id
-                elif booking_type == "group":
+                elif booking_type == BookingType.GROUP.value:
                     # For group, we'll check each attendee separately in the caller
                     check_user_id = None  # Skip check here, handle in caller
 
@@ -1483,7 +1495,7 @@ class EventService:
                         user_id=check_user_id
                     ).first()
                     if existing:
-                        if booking_type == "third_party":
+                        if booking_type == BookingType.THIRD_PARTY.value:
                             attendee_email = data.get("email")
                             attendee_name = data.get("full_name")
                             return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
@@ -1498,7 +1510,7 @@ class EventService:
                         email=email_val
                     ).first()
                     if existing_email:
-                        if booking_type == "third_party":
+                        if booking_type == BookingType.THIRD_PARTY.value:
                             attendee_name = data.get("full_name")
                             return None, None, f"The attendee ({attendee_name or email_val}) is already registered for this event"
                         else:
@@ -1519,8 +1531,9 @@ class EventService:
                     booked_by_user_id=user_id,
                     booking_type=booking_type,
                     group_booking_id=group_booking_id,
-                    attendee_user_id=actual_attendee_id if booking_type != "self" else None,
-                    group_index=group_index
+                    group_index=group_index,
+                    group_label=group_label,
+                    attendee_user_id=actual_attendee_id if booking_type != BookingType.SELF.value else None
                 )
                 registration.generate_refs(event.slug, sequence)
                 db.session.add(registration)

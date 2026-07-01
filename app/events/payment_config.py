@@ -4,19 +4,18 @@ Handles payment method configuration for events and mobile money settings
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
+from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from app.extensions import db
+from app.models.base import BaseModel
 
 
-class PaymentMethodConfig(db.Model):
+class PaymentMethodConfig(BaseModel):
     """
     Configuration for available payment methods in the system
     Admin can enable/disable payment methods globally
     """
     __tablename__ = 'payment_method_configs'
-    
-    id = Column(Integer, primary_key=True)
     
     # Payment method identification
     method_id = Column(String(50), nullable=False, unique=True, index=True)  # e.g., 'mobile_money_mtn_ug'
@@ -56,9 +55,7 @@ class PaymentMethodConfig(db.Model):
     last_error_message = Column(Text, nullable=True)
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    updated_by = Column(Integer, nullable=True)
+    updated_by = Column(BigInteger, nullable=True)
     
     def __init__(self, method_id, display_name, method_type, provider_name, country_code):
         self.method_id = method_id
@@ -215,18 +212,16 @@ class PaymentMethodConfig(db.Model):
             raise e
 
 
-class EventPaymentPreference(db.Model):
+class EventPaymentPreference(BaseModel):
     """
     Event owner's payment preferences for their events
     Allows event owners to specify which payment methods they accept
     """
     __tablename__ = 'event_payment_preferences'
     
-    id = Column(Integer, primary_key=True)
-    
     # Event identification
-    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    event_id = Column(BigInteger, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(BigInteger, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
     # Payment method preferences
     accepted_methods = Column(JSON, default=list)  # List of method_ids
@@ -238,10 +233,6 @@ class EventPaymentPreference(db.Model):
     
     # Additional settings
     payment_settings = Column(JSON, default=dict)
-    
-    # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     event = relationship("Event", backref="payment_preferences")
@@ -262,8 +253,6 @@ class EventPaymentPreference(db.Model):
     
     def get_available_methods(self):
         """Get available payment methods for this event"""
-        from .payment_config import PaymentMethodConfig
-        
         available_methods = PaymentMethodConfig.get_available_methods(self.preferred_currency)
         return [m for m in available_methods if m.method_id in self.accepted_methods]
     
@@ -274,7 +263,6 @@ class EventPaymentPreference(db.Model):
         if not preference:
             preference = cls(event_id=event_id, user_id=user_id, preferred_currency=preferred_currency)
             # Default to accepting all available methods
-            from .payment_config import PaymentMethodConfig
             available_methods = PaymentMethodConfig.get_available_methods(preferred_currency)
             preference.set_accepted_methods([m.method_id for m in available_methods])
             db.session.add(preference)

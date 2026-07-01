@@ -6,11 +6,12 @@ Stores API keys and settings securely in database with encryption
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger
 from app.extensions import db
+from app.models.base import BaseModel
 from cryptography.fernet import Fernet
 from flask import current_app
 
 
-class PaymentProviderConfig(db.Model):
+class PaymentProviderConfig(BaseModel):
     """
     Configuration for payment providers (Flutterwave, Paystack, etc.)
     API keys are encrypted at rest
@@ -248,7 +249,7 @@ class PaymentProviderConfig(db.Model):
         db.session.commit()
 
 
-class WalletSystemConfig(db.Model):
+class WalletSystemConfig(BaseModel):
     """
     General wallet system configuration
     Transaction limits, fees, etc.
@@ -262,6 +263,7 @@ class WalletSystemConfig(db.Model):
     withdrawals_enabled = Column(Boolean, default=True, nullable=False)
     transfers_enabled = Column(Boolean, default=True, nullable=False)
     fx_enabled = Column(Boolean, default=True, nullable=False)
+    agents_enabled = Column(Boolean, default=False, nullable=False)  # Mobile banking agents service
     
     # Transaction limits
     max_deposit_amount = Column(db.Numeric(18, 2), default=1000000)  # Default 1M
@@ -304,6 +306,7 @@ class WalletSystemConfig(db.Model):
             "withdrawals_enabled": self.withdrawals_enabled,
             "transfers_enabled": self.transfers_enabled,
             "fx_enabled": self.fx_enabled,
+            "agents_enabled": self.agents_enabled,
             "max_deposit_amount": float(self.max_deposit_amount),
             "max_withdrawal_amount": float(self.max_withdrawal_amount),
             "max_transfer_amount": float(self.max_transfer_amount),
@@ -320,9 +323,3 @@ class WalletSystemConfig(db.Model):
 
 
 __all__ = ['PaymentProviderConfig', 'WalletSystemConfig']
-</CodeContent>
-<parameter=EmptyFile>false</parameter>
-</function>
-
-<function=write_to_file>
-<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\admin\owner\wallet_config.py

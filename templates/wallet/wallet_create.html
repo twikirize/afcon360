@@ -1,0 +1,375 @@
+{# templates/wallet/wallet_create.html #}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Create Your Financial Passport — AFCON360{% endblock %}
+
+{% block extra_style %}
+<style>
+    .onboarding-container {
+        max-width: 800px;
+        margin: 40px auto;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .fintech-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow: var(--shadow-lg);
+    }
+    
+    .hero-banner {
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dk) 100%);
+        color: white;
+        padding: 48px;
+        text-align: center;
+        position: relative;
+    }
+    
+    .hero-banner::after {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-image: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.1) 0%, transparent 50%);
+    }
+    
+    .hero-icon {
+        width: 80px;
+        height: 80px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        font-size: 36px;
+        backdrop-filter: blur(8px);
+    }
+    
+    .hero-title {
+        font-family: var(--font-display);
+        font-size: 32px;
+        font-weight: 800;
+        margin-bottom: 12px;
+        letter-spacing: -0.02em;
+    }
+    
+    .hero-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    
+    .onboarding-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.2fr;
+        gap: 0;
+    }
+    
+    .benefits-side {
+        padding: 40px;
+        background: var(--surface-2);
+        border-right: 1px solid var(--border);
+    }
+    
+    .form-side {
+        padding: 40px;
+    }
+    
+    .benefit-item {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    
+    .benefit-icon {
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+        font-size: 18px;
+    }
+    
+    .benefit-text h4 {
+        font-size: 15px;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    
+    .benefit-text p {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.4;
+    }
+    
+    .step-indicator {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 32px;
+    }
+    
+    .step-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--border-2);
+    }
+    
+    .step-dot.active {
+        background: var(--accent);
+        width: 24px;
+        border-radius: 4px;
+    }
+    
+    .form-label {
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--ink-2);
+        margin-bottom: 8px;
+        display: block;
+    }
+    
+    .form-select {
+        width: 100%;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border: 1px solid var(--border-2);
+        background: var(--surface);
+        font-family: var(--font-body);
+        font-size: 14px;
+        transition: all 0.2s;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238a8880' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C2.185 5.355 2.398 5 2.851 5h9.297c.452 0 .666.355.4 0-.401-.061.201-.131.282-.163.262-.03.203-.049.25-.13l.003-.005.396-.452-.259-.224-.012-.002a.024.024 0 0 1-.004-.001l-.397-.453a.02.02 0 0 1 0-.028L7.247 11.14Z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 16px center;
+    }
+    
+    .form-select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 4px var(--accent-lt);
+    }
+    
+    .terms-box {
+        background: var(--surface-2);
+        padding: 16px;
+        border-radius: 12px;
+        margin-top: 24px;
+        display: flex;
+        gap: 12px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .terms-box:hover {
+        background: var(--bg-2);
+    }
+    
+    .terms-box input {
+        width: 18px;
+        height: 18px;
+        margin-top: 2px;
+        cursor: pointer;
+    }
+    
+    .terms-text {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+    }
+    
+    .terms-text a {
+        color: var(--accent-dk);
+        font-weight: 700;
+        text-decoration: none;
+    }
+    
+    .submit-btn {
+        width: 100%;
+        padding: 16px;
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 14px;
+        font-size: 16px;
+        font-weight: 700;
+        margin-top: 32px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+    
+    .submit-btn:hover {
+        background: var(--accent-dk);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+    }
+    
+    .submit-btn:disabled {
+        background: var(--border-2);
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @media (max-width: 768px) {
+        .onboarding-grid { grid-template-columns: 1fr; }
+        .benefits-side { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="onboarding-container">
+    <div class="fintech-card">
+        <!-- Hero Header -->
+        <div class="hero-banner">
+            <div class="hero-icon">
+                <i class="fas fa-passport"></i>
+            </div>
+            <h1 class="hero-title">Your Financial Passport</h1>
+            <p class="hero-subtitle">Open your AFCON360 Wallet in seconds. Fast, secure, and ready for your tournament journey.</p>
+        </div>
+        
+        <div class="onboarding-grid">
+            <!-- Left: Benefits & Trust -->
+            <div class="benefits-side">
+                <div class="benefit-item">
+                    <div class="benefit-icon"><i class="fas fa-bolt"></i></div>
+                    <div class="benefit-text">
+                        <h4>Instant Settlement</h4>
+                        <p>Pay for match tickets and transport with zero delay.</p>
+                    </div>
+                </div>
+                
+                <div class="benefit-item">
+                    <div class="benefit-icon"><i class="fas fa-globe-africa"></i></div>
+                    <div class="benefit-text">
+                        <h4>Multi-Currency</h4>
+                        <p>Hold USD, UGX, KES, and more in one digital vault.</p>
+                    </div>
+                </div>
+                
+                <div class="benefit-item">
+                    <div class="benefit-icon"><i class="fas fa-shield-halved"></i></div>
+                    <div class="benefit-text">
+                        <h4>Bank-Grade Security</h4>
+                        <p>Your funds are protected by 256-bit encryption and MFA.</p>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 40px; padding-top: 24px; border-top: 1px dashed var(--border-2);">
+                    <p style="font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 12px;">Verification Status</p>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-check-circle" style="color: var(--green);"></i>
+                        <span style="font-size: 13px; font-weight: 600;">{{ current_user.email }} verified</span>
+                    </div>
+                    {% if current_user.phone %}
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                        <i class="fas fa-check-circle" style="color: var(--green);"></i>
+                        <span style="font-size: 13px; font-weight: 600;">{{ current_user.phone }} verified</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Right: Action Form -->
+            <div class="form-side">
+                <div class="step-indicator">
+                    <div class="step-dot active"></div>
+                    <div class="step-dot"></div>
+                    <div class="step-dot"></div>
+                </div>
+                
+                <form action="{{ url_for('wallet.wallet_create') }}" method="POST" id="onboardingForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <div style="margin-bottom: 24px;">
+                        <label class="form-label">Primary Account Currency</label>
+                        <select name="currency" class="form-select" required>
+                            <option value="UGX">UGX — Ugandan Shilling (Local Default)</option>
+                            <option value="USD">USD — US Dollar</option>
+                            <option value="KES">KES — Kenyan Shilling</option>
+                            <option value="TZS">TZS — Tanzanian Shilling</option>
+                            <option value="NGN">NGN — Nigerian Naira</option>
+                            <option value="EUR">EUR — Euro</option>
+                            <option value="GBP">GBP — British Pound</option>
+                        </select>
+                        <p style="font-size: 11px; color: var(--muted); margin-top: 6px;">You can hold multiple currencies later.</p>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <label class="form-label">Nationality</label>
+                        <select name="nationality" class="form-select" required>
+                            <option value="UG" {% if nationality == 'UG' %}selected{% endif %}>Uganda</option>
+                            <option value="KE" {% if nationality == 'KE' %}selected{% endif %}>Kenya</option>
+                            <option value="TZ" {% if nationality == 'TZ' %}selected{% endif %}>Tanzania</option>
+                            <option value="NG" {% if nationality == 'NG' %}selected{% endif %}>Nigeria</option>
+                            <option value="RW" {% if nationality == 'RW' %}selected{% endif %}>Rwanda</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="terms-box" id="termsBox">
+                        <input type="checkbox" id="termsCheck" name="accept_terms" value="1" required>
+                        <div class="terms-text">
+                            I agree to the <a href="{{ safe_url('wallet.terms') }}" target="_blank">Wallet Terms of Service</a> and confirm I am of legal age to operate a financial account.
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn" id="submitBtn" disabled>
+                        <span>Open My Wallet</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </form>
+                
+                <p style="text-align: center; font-size: 12px; color: var(--muted); margin-top: 24px;">
+                    <i class="fas fa-lock"></i> Secured by AFCON360 Core Banking
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('onboardingForm');
+        const check = document.getElementById('termsCheck');
+        const btn = document.getElementById('submitBtn');
+        const termsBox = document.getElementById('termsBox');
+        
+        check.addEventListener('change', function() {
+            btn.disabled = !this.checked;
+        });
+        
+        termsBox.addEventListener('click', function(e) {
+            if (e.target !== check) {
+                check.checked = !check.checked;
+                btn.disabled = !check.checked;
+            }
+        });
+        
+        form.addEventListener('submit', function() {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Securing Vault...</span>';
+            btn.disabled = true;
+        });
+    });
+</script>
+{% endblock %}

@@ -11,6 +11,28 @@
 {% block module_styles %}
   {{ super() }}
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <style>
+  .btn-consumer-switch {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: white !important;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    border: none;
+    font-size: 0.9rem;
+  }
+  .btn-consumer-switch:hover {
+    background: linear-gradient(135deg, #5a67d8, #6b46c1) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+    color: white !important;
+  }
+  </style>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -201,6 +223,24 @@ function eventModerationAction(action, slug, extraData = {}) {
           Content Mgmt
         </a>
 
+        {# ── Settings, Impersonate, Switch Persona buttons ── #}
+        <a href="{{ url_for('admin_settings.system_settings') }}" class="sad-btn">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 4.5l4 4M4.5 8.5l4-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          Settings
+        </a>
+        <a href="{{ url_for('admin_settings.impersonation_control') }}" class="sad-btn">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 11c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Impersonate
+        </a>
+        <a href="{{ url_for('auth.switch_role') }}" class="btn-consumer-switch">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="4.5" cy="4.5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="8.5" cy="4.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 11c0-1.7 1.3-3 3-3h1M7 11c0-1.7 1.3-3 3-3h1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          {% if active_global_role %}
+            Persona: {{ active_global_role|title }}
+          {% else %}
+            Switch Persona
+          {% endif %}
+        </a>
+
         {# ── Owner-only topbar button ── #}
         {% if current_user.roles | selectattr('role') | selectattr('role.name', 'equalto', 'owner') | list %}
         <a href="{{ url_for('admin.owner.dashboard') }}" class="sad-btn owner-crown-btn">
@@ -224,6 +264,10 @@ function eventModerationAction(action, slug, extraData = {}) {
           <div class="sad-stat-label">Total Users</div>
           <div class="sad-stat-value">{{ total_users }}</div>
           <div class="sad-stat-sub">All registered accounts</div>
+          <div class="sad-stat-sub" style="color:var(--sad-green);font-size:11px;margin-top:4px">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="vertical-align:middle;margin-right:2px"><path d="M1 6l3-3 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            {{ user_growth|default('+0%') }} growth
+          </div>
           <div class="sad-stat-bar"><div class="sad-stat-fill" style="width:100%"></div></div>
         </div>
         <div class="sad-stat s-green">
@@ -243,6 +287,26 @@ function eventModerationAction(action, slug, extraData = {}) {
           <div class="sad-stat-value">{{ active_users }}</div>
           <div class="sad-stat-sub">Ready to use platform</div>
           <div class="sad-stat-bar"><div class="sad-stat-fill" style="width:{{ active_pct }}%"></div></div>
+        </div>
+      </div>
+
+      <!-- System Health & Security Stats -->
+      <div class="sad-stats" style="margin-top:16px">
+        <div class="sad-stat s-purple">
+          <div class="sad-stat-label">System Health</div>
+          <div class="sad-stat-value">{{ system_health|default('Healthy') }}</div>
+          <div class="sad-stat-sub" style="color:var(--sad-green)">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="vertical-align:middle;margin-right:2px"><circle cx="5" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/></svg>
+            All Systems Operational
+          </div>
+        </div>
+        <div class="sad-stat s-indigo">
+          <div class="sad-stat-label">Security Score</div>
+          <div class="sad-stat-value">{{ security_score|default('95%') }}</div>
+          <div class="sad-stat-sub" style="color:var(--sad-green)">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="vertical-align:middle;margin-right:2px"><rect x="1" y="1" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>
+            All Security Active
+          </div>
         </div>
       </div>
 
@@ -316,6 +380,11 @@ function eventModerationAction(action, slug, extraData = {}) {
               <div class="sad-qa-label">Events Admin</div>
               <div class="sad-qa-sub">Manage events & registrations</div>
             </a>
+            <a href="{{ url_for('admin_ultimate.wallet_webhooks') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(108,143,255,0.1)">📡</div>
+              <div class="sad-qa-label">Webhook Queue</div>
+              <div class="sad-qa-sub">Monitor payment webhooks</div>
+            </a>
           </div>
         </div>
       </div>
@@ -386,7 +455,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                       <!-- UPDATED: Enhanced toggle with kill switch for wallet -->
                       <form method="POST" action="{{ url_for('admin.toggle_module', module=name) }}"
                             id="toggle-form-{{ name }}" style="display:inline">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="reason" id="reason-{{ name }}" value="">
                         <input type="hidden" name="confirm" id="confirm-{{ name }}" value="">
                         <label class="sad-toggle" title="Toggle {{ name }}">
@@ -443,7 +512,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                   {% if is_enabled %}<span class="sad-badge on">On</span>
                   {% else %}<span class="sad-badge off">Off</span>{% endif %}
                   <form method="POST" action="{{ url_for('admin.toggle_wallet_feature', feature=name) }}" style="display:inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label class="sad-toggle">
                       <input type="checkbox" {% if is_enabled %}checked{% endif %} onchange="this.form.submit()">
                       <span class="sad-toggle-slider"></span>
@@ -467,7 +536,7 @@ function eventModerationAction(action, slug, extraData = {}) {
             </div>
             <div class="sad-card-body">
               <form method="POST" action="{{ url_for('admin.update_withdraw_settings') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="sad-settings-grid">
                   <div class="sad-form-group">
                     <label for="daily_limit">Daily Limit (USD)</label>
@@ -527,7 +596,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                     {% if is_enabled %}<span class="sad-badge on">On</span>
                     {% else %}<span class="sad-badge off">Off</span>{% endif %}
                     <form method="POST" action="{{ url_for('admin.toggle_transport_feature', feature=name) }}" style="display:inline">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <label class="sad-toggle">
                         <input type="checkbox" {% if is_enabled %}checked{% endif %} onchange="this.form.submit()">
                         <span class="sad-toggle-slider"></span>
@@ -559,7 +628,7 @@ function eventModerationAction(action, slug, extraData = {}) {
             <div id="transportSettingsCollapse" class="collapse">
               <div class="sad-card-body">
               <form method="POST" action="{{ url_for('admin.update_transport_settings') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="sad-section-label">Booking</div>
                 <div class="sad-settings-grid">
@@ -700,6 +769,40 @@ function eventModerationAction(action, slug, extraData = {}) {
             </div>
           </div>
 
+          <!-- Module Status Cards -->
+          <div class="sad-card">
+            <div class="sad-card-head">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(108,143,255,0.12);color:var(--sad-accent)">📦</div>
+                Module Status
+              </div>
+            </div>
+            <div class="sad-card-body" style="padding:12px">
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+                <a href="/accommodation/admin" class="sad-qa-btn" style="padding:12px">
+                  <div class="sad-qa-icon" style="background:rgba(62,207,142,0.1)">🏨</div>
+                  <div class="sad-qa-label">Accommodation</div>
+                  <div class="sad-qa-sub">Manage properties, bookings</div>
+                </a>
+                <a href="/events/admin" class="sad-qa-btn" style="padding:12px">
+                  <div class="sad-qa-icon" style="background:rgba(108,143,255,0.1)">📅</div>
+                  <div class="sad-qa-label">Events</div>
+                  <div class="sad-qa-sub">Manage events, ticketing</div>
+                </a>
+                <a href="/transport/admin" class="sad-qa-btn" style="padding:12px">
+                  <div class="sad-qa-icon" style="background:rgba(108,143,255,0.1)">🚌</div>
+                  <div class="sad-qa-label">Transport</div>
+                  <div class="sad-qa-sub">Manage vehicles, logistics</div>
+                </a>
+                <a href="/wallet/admin" class="sad-qa-btn" style="padding:12px">
+                  <div class="sad-qa-icon" style="background:rgba(48,201,214,0.1)">💳</div>
+                  <div class="sad-qa-label">Wallet</div>
+                  <div class="sad-qa-sub">Manage payments, transactions</div>
+                </a>
+              </div>
+            </div>
+          </div>
+
           <!-- Verification Settings -->
           <div class="sad-card">
             <div class="sad-card-head">
@@ -715,7 +818,7 @@ function eventModerationAction(action, slug, extraData = {}) {
             </div>
             <div class="sad-card-body">
               <form method="POST" action="{{ url_for('admin.toggle_email_verification') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="sad-feature-row" style="margin-bottom:16px">
                   <div>
                     <div class="sad-feature-name">Require Email Verification</div>

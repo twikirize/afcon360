@@ -23,7 +23,7 @@
   </div>
   <div class="stat-card animate-up">
     <div class="stat-icon blue"><i class="fas fa-plus-circle"></i></div>
-    <div class="stat-label" style="font-weight: 600; color: var(--ink);"><a href="{{ url_for('compliance.generate_report') }}" style="text-decoration: none; color: inherit;">Custom Report</a></div>
+    <div class="stat-label" style="font-weight: 600; color: var(--ink);"><a href="{{ url_for('admin.compliance.generate_report') }}" style="text-decoration: none; color: inherit;">Custom Report</a></div>
     <div style="font-size: 12px; color: var(--muted);">Build your own</div>
   </div>
 </div>
@@ -84,9 +84,9 @@
                 </td>
                 <td>
                   <div class="action-group">
-                    <a href="{{ url_for('compliance.view_report', report_id=report.id) }}" class="btn btn-sm btn-secondary">View</a>
+                    <a href="{{ url_for('admin.compliance.view_report', report_id=report.id) }}" class="btn btn-sm btn-secondary">View</a>
                     {% if report.file_path %}
-                    <a href="{{ url_for('compliance.download_report', report_id=report.id) }}" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
+                    <a href="{{ url_for('admin.compliance.download_report', report_id=report.id) }}" class="btn btn-sm btn-primary"><i class="fas fa-download"></i></a>
                     {% endif %}
                   </div>
                 </td>
@@ -181,7 +181,7 @@ function generateReport(type) {
 
   if (confirm(`Generate ${reportName}?\n\n${reportDescription}`)) {
     // Redirect to generate report page with pre-filled type
-    window.location.href = `{{ url_for('compliance.generate_report') }}?type=${type}`;
+    window.location.href = `{{ url_for('admin.compliance.generate_report') }}?type=${type}`;
   }
 }
 {% endblock %}

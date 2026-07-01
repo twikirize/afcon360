@@ -1,0 +1,16 @@
+{# Tournament hero widget — only renders when dashboard_mode == 'tournament' #}
+<div class="dashboard-widget tournament-hero" id="tournament-hero" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+    <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <div style="display: flex; align-items: center;">
+            <span class="widget-icon" style="font-size: 24px; margin-right: 12px;">⚽</span>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700;">Tournament Hub</h3>
+        </div>
+        <a href="{{ url_for('user.interests_settings') }}" class="widget-settings-link" style="color: rgba(255,255,255,0.8); font-size: 0.875rem; text-decoration: none;">
+            Manage <i class="fas fa-cog ms-1"></i>
+        </a>
+    </div>
+    <div class="widget-body">
+        {# Tournament content will be populated when Tournament module is built #}
+        <p class="placeholder-text" style="margin: 0; opacity: 0.9;">Tournament features coming soon. Follow matches, teams, and live updates right here.</p>
+    </div>
+</div>

@@ -74,7 +74,7 @@
             <a href="{{ links.tourism_home }}" class="action-btn {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
                 <i class="bi bi-compass"></i>
                 <span>Explore Tours</span>
-                {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
+                {% if not module_enabled('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
             </a>
         </div>
     </div>

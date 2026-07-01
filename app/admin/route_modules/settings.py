@@ -7,13 +7,15 @@ Comprehensive role-based settings system for:
 - Owner: Property management, booking oversight (already exists)
 """
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from flask_login import login_required, current_user
 from functools import wraps
 from app.extensions import db
 from app.auth.policy import can
-from app.auth.decorators import require_role, require_admin
+from app.auth.decorators import require_role, admin_required
+from app.auth.helpers import has_global_role, highest_role
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ def require_super_admin(f):
     @wraps(f)
     @login_required
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'super_admin':
+        if not has_global_role(current_user, 'super_admin', 'owner'):
             flash('Super admin access required', 'danger')
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
@@ -35,10 +37,8 @@ def require_admin_role(f):
     """Decorator to require admin role or higher"""
     @wraps(f)
     @login_required
+    @admin_required
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role not in ['admin', 'super_admin']:
-            flash('Admin access required', 'danger')
-            return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -47,7 +47,7 @@ def require_moderator_role(f):
     @wraps(f)
     @login_required
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role not in ['moderator', 'admin', 'super_admin']:
+        if not has_global_role(current_user, 'moderator', 'admin', 'super_admin', 'owner'):
             flash('Moderator access required', 'danger')
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
@@ -62,7 +62,9 @@ def require_moderator_role(f):
 @require_super_admin
 def system_settings():
     """System-wide configuration for super admins"""
-    from app.models import SystemConfig, User
+    from app.models.system_config import SystemConfig
+    from app.identity.models.user import User
+    from app.identity.models import Role, UserRole
     
     # Get system configurations
     configs = SystemConfig.query.all()
@@ -72,8 +74,8 @@ def system_settings():
     stats = {
         'total_users': User.query.count(),
         'active_users': User.query.filter_by(is_active=True).count(),
-        'admin_users': User.query.filter(User.role.in_(['admin', 'super_admin'])).count(),
-        'moderator_users': User.query.filter_by(role='moderator').count(),
+        'admin_users': User.query.join(UserRole).join(Role).filter(Role.name.in_(['admin', 'super_admin'])).distinct().count(),
+        'moderator_users': User.query.join(UserRole).join(Role).filter(Role.name == 'moderator').distinct().count(),
     }
     
     return render_template('admin/settings/system.html', 
@@ -89,7 +91,7 @@ def save_system_settings():
         data = request.get_json()
         
         # Update system configurations
-        from app.models import SystemConfig
+        from app.models.system_config import SystemConfig
         for key, value in data.items():
             config = SystemConfig.query.filter_by(key=key).first()
             if not config:
@@ -115,7 +117,7 @@ def save_system_settings():
 @require_super_admin
 def user_management():
     """User management for super admins"""
-    from app.models import User
+    from app.identity.models.user import User
     
     # Get users with pagination
     page = request.args.get('page', 1, type=int)
@@ -134,30 +136,44 @@ def update_user_role(user_id):
     """Update user role (super admin only)"""
     try:
         data = request.get_json()
-        new_role = data.get('role')
+        new_role_name = data.get('role')
         
-        if new_role not in ['user', 'moderator', 'admin', 'super_admin']:
+        if new_role_name not in ['user', 'moderator', 'admin', 'super_admin']:
             return jsonify({'success': False, 'error': 'Invalid role'})
         
-        from app.models import User
+        from app.identity.models.user import User
+        from app.identity.models.roles_permission import Role, UserRole
+        
         user = User.query.get(user_id)
         if not user:
             return jsonify({'success': False, 'error': 'User not found'})
         
         # Prevent super admin from demoting themselves
-        if user_id == current_user.id and new_role != 'super_admin':
+        if user_id == current_user.id and new_role_name != 'super_admin':
             return jsonify({'success': False, 'error': 'Cannot remove your own super admin role'})
         
-        old_role = user.role
-        user.role = new_role
+        old_role = highest_role(user)
+        
+        # Update roles (simplified logic for settings page: replace all global roles with new one)
+        role = Role.query.filter_by(name=new_role_name).first()
+        if not role:
+            return jsonify({'success': False, 'error': f'Role {new_role_name} not found'})
+            
+        # Remove existing global roles
+        UserRole.query.filter_by(user_id=user.id).delete()
+        
+        # Add new role
+        new_user_role = UserRole(user_id=user.id, role_id=role.id)
+        db.session.add(new_user_role)
         db.session.commit()
         
-        logger.info(f"User {user_id} role changed from {old_role} to {new_role} by super admin {current_user.id}")
+        logger.info(f"User {user_id} role changed from {old_role} to {new_role_name} by super admin {current_user.id}")
         
-        return jsonify({'success': True, 'message': f'User role updated to {new_role}'})
+        return jsonify({'success': True, 'message': f'User role updated to {new_role_name}'})
         
     except Exception as e:
         logger.error(f"Failed to update user role: {e}")
+        db.session.rollback()
         return jsonify({'success': False, 'error': 'Failed to update user role'})
 
 
@@ -391,20 +407,22 @@ def access_control():
 def impersonation_control():
     """Impersonation control for admins and super admins"""
     from app.identity.models.user import User
+    from app.identity.models import Role, UserRole
     
     # Get current impersonation status
-    impersonated_user_id = request.session.get('impersonated_user_id')
+    impersonated_user_id = session.get('impersonated_user_id')
     impersonated_user = None
     if impersonated_user_id:
         impersonated_user = User.query.get(impersonated_user_id)
     
     # Get available users for impersonation (only admins+ can impersonate)
-    if current_user.role in ['owner', 'super_admin']:
+    u_role = highest_role(current_user)
+    if u_role in ['owner', 'super_admin']:
         # Owner and super admin can impersonate any role
-        available_users = User.query.filter(User.role.in_(['admin', 'moderator', 'support', 'user'])).all()
-    elif current_user.role == 'admin':
+        available_users = User.query.join(UserRole).join(Role).filter(Role.name.in_(['admin', 'moderator', 'support', 'user'])).distinct().all()
+    elif u_role == 'admin':
         # Admin can impersonate moderator and below
-        available_users = User.query.filter(User.role.in_(['moderator', 'support', 'user'])).all()
+        available_users = User.query.join(UserRole).join(Role).filter(Role.name.in_(['moderator', 'support', 'user'])).distinct().all()
     else:
         available_users = []
     
@@ -425,19 +443,22 @@ def start_impersonation(user_id):
             return jsonify({'success': False, 'error': 'User not found'})
         
         # Validate impersonation permissions
-        if current_user.role == 'admin' and target_user.role in ['owner', 'super_admin']:
+        u_role = highest_role(current_user)
+        t_role = highest_role(target_user)
+        
+        if u_role == 'admin' and t_role in ['owner', 'super_admin']:
             return jsonify({'success': False, 'error': 'Admin cannot impersonate owner or super admin'})
         
-        if current_user.role not in ['owner', 'super_admin'] and target_user.role in ['admin', 'super_admin']:
+        if u_role not in ['owner', 'super_admin'] and t_role in ['admin', 'super_admin']:
             return jsonify({'success': False, 'error': 'Insufficient permissions'})
         
         # Start impersonation
-        request.session['impersonated_user_id'] = target_user.id
-        request.session['impersonation_started_at'] = datetime.utcnow().isoformat()
-        request.session['impersonation_by'] = current_user.id
-        request.session['impersonated_role'] = target_user.role
+        session['impersonated_user_id'] = target_user.id
+        session['impersonation_started_at'] = datetime.utcnow().isoformat()
+        session['impersonation_by'] = current_user.id
+        session['impersonated_role'] = t_role
         
-        logger.info(f"User {current_user.id} started impersonating {target_user.id} ({target_user.role})")
+        logger.info(f"User {current_user.id} started impersonating {target_user.id} ({t_role})")
         
         return jsonify({'success': True, 'message': f'Now impersonating {target_user.username}'})
         
@@ -451,15 +472,15 @@ def start_impersonation(user_id):
 def stop_impersonation():
     """Stop current impersonation"""
     try:
-        impersonated_user_id = request.session.get('impersonated_user_id')
+        impersonated_user_id = session.get('impersonated_user_id')
         if not impersonated_user_id:
             return jsonify({'success': False, 'error': 'No active impersonation'})
         
         # Clear impersonation session
-        request.session.pop('impersonated_user_id', None)
-        request.session.pop('impersonation_started_at', None)
-        request.session.pop('impersonation_by', None)
-        request.session.pop('impersonated_role', None)
+        session.pop('impersonated_user_id', None)
+        session.pop('impersonation_started_at', None)
+        session.pop('impersonation_by', None)
+        session.pop('impersonated_role', None)
         
         logger.info(f"User {current_user.id} stopped impersonating {impersonated_user_id}")
         
@@ -479,19 +500,20 @@ def save_config():
     try:
         data = request.get_json()
         config_type = data.get('config_type')
+        u_role = highest_role(current_user)
         
         # Validate permissions based on config type and user role
-        if config_type == 'system' and current_user.role != 'super_admin':
+        if config_type == 'system' and u_role != 'super_admin':
             return jsonify({'success': False, 'error': 'Insufficient permissions'})
         
-        if config_type == 'platform' and current_user.role not in ['admin', 'super_admin']:
+        if config_type == 'platform' and u_role not in ['admin', 'super_admin']:
             return jsonify({'success': False, 'error': 'Insufficient permissions'})
         
-        if config_type == 'moderation' and current_user.role not in ['moderator', 'admin', 'super_admin']:
+        if config_type == 'moderation' and u_role not in ['moderator', 'admin', 'super_admin']:
             return jsonify({'success': False, 'error': 'Insufficient permissions'})
         
         # Save configuration based on type
-        logger.info(f"Configuration {config_type} saved by {current_user.role} {current_user.id}")
+        logger.info(f"Configuration {config_type} saved by {u_role} {current_user.id}")
         
         return jsonify({'success': True, 'message': f'{config_type} configuration saved'})
         

@@ -26,7 +26,7 @@
       --muted:      var(--text-muted, #8a8880);
       --muted-2:    #b5b3ae;
 
-      --accent:     #2563eb;
+      --accent: #0e4ccd;
       --accent-lt:  #dbeafe;
       --accent-dk:  #1d4ed8;
 
@@ -629,66 +629,66 @@
     </div>
 
     <div class="sidebar-section">OVERVIEW</div>
-    <a href="{{ url_for('compliance.dashboard') }}"
+    <a href="{{ url_for('admin.compliance.dashboard') }}"
        class="nav-item {% if request.endpoint == 'compliance.dashboard' %}active{% endif %}">
       <i class="fas fa-gauge-high"></i> Dashboard
     </a>
 
     <div class="sidebar-section">KYC & VERIFICATION</div>
-    <a href="{{ url_for('compliance.kyc_queue') }}"
+    <a href="{{ url_for('admin.compliance.kyc_queue') }}"
        class="nav-item {% if 'kyc_queue' in request.endpoint or 'kyc_action' in request.endpoint %}active{% endif %}">
       <i class="fas fa-id-card"></i> KYC Queue
       {% if stats.kyc_pending %}<span class="nav-badge amber">{{ stats.kyc_pending }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('compliance.organisations') }}"
+    <a href="{{ url_for('admin.compliance.organisations') }}"
        class="nav-item {% if 'organisations' in request.endpoint or 'org_action' in request.endpoint %}active{% endif %}">
       <i class="fas fa-building"></i> Organisations
       {% if stats.orgs_pending %}<span class="nav-badge amber">{{ stats.orgs_pending }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('compliance.licences') }}"
+    <a href="{{ url_for('admin.compliance.licences') }}"
        class="nav-item {% if 'licences' in request.endpoint %}active{% endif %}">
       <i class="fas fa-certificate"></i> Licences
     </a>
 
     <div class="sidebar-section">TRANSACTIONS</div>
-    <a href="{{ url_for('compliance.payouts') }}"
+    <a href="{{ url_for('admin.compliance.payouts') }}"
        class="nav-item {% if 'payout' in request.endpoint %}active{% endif %}">
       <i class="fas fa-money-bill-wave"></i> Payout Queue
       {% if stats.payouts_pending %}<span class="nav-badge amber">{{ stats.payouts_pending }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('compliance.aml_queue') }}"
+    <a href="{{ url_for('admin.compliance.aml_queue') }}"
        class="nav-item {% if 'aml' in request.endpoint %}active{% endif %}">
       <i class="fas fa-radar"></i> AML Monitoring
       {% if stats.aml_alerts %}<span class="nav-badge red">{{ stats.aml_alerts }}</span>{% endif %}
     </a>
 
     <div class="sidebar-section">CASES</div>
-    <a href="{{ url_for('compliance.cases') }}"
+    <a href="{{ url_for('admin.compliance.cases') }}"
        class="nav-item {% if 'cases' in request.endpoint and 'case_history' not in request.endpoint %}active{% endif %}">
       <i class="fas fa-folder-open"></i> All Cases
       {% if stats.open_cases %}<span class="nav-badge blue">{{ stats.open_cases }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('compliance.escalations') }}"
+    <a href="{{ url_for('admin.compliance.escalations') }}"
        class="nav-item {% if 'escalations' in request.endpoint %}active{% endif %}">
       <i class="fas fa-arrow-up-right-from-square"></i> Escalations
       {% if stats.escalations %}<span class="nav-badge red">{{ stats.escalations }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('compliance.case_history') }}"
+    <a href="{{ url_for('admin.compliance.case_history') }}"
        class="nav-item {% if 'case_history' in request.endpoint %}active{% endif %}">
       <i class="fas fa-clock-rotate-left"></i> Case History
     </a>
 
     <div class="sidebar-section">DATA & REPORTS</div>
-    <a href="{{ url_for('compliance.data_requests') }}"
+    <a href="{{ url_for('admin.compliance.data_requests') }}"
        class="nav-item {% if 'data_request' in request.endpoint %}active{% endif %}">
       <i class="fas fa-user-shield"></i> Data Requests
       {% if stats.data_requests %}<span class="nav-badge amber">{{ stats.data_requests }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('compliance.reports') }}"
+    <a href="{{ url_for('admin.compliance.reports') }}"
        class="nav-item {% if 'reports' in request.endpoint and 'generate_report' not in request.endpoint %}active{% endif %}">
       <i class="fas fa-file-lines"></i> Reports
     </a>
-    <a href="{{ url_for('compliance.generate_report') }}"
+    <a href="{{ url_for('admin.compliance.generate_report') }}"
        class="nav-item {% if 'generate_report' in request.endpoint %}active{% endif %}">
       <i class="fas fa-plus-circle"></i> Generate Report
     </a>
@@ -717,11 +717,11 @@
         <a href="/" class="topbar-icon-btn" data-tip="Home">
           <i class="fas fa-home"></i>
         </a>
-        <a href="{{ url_for('compliance.cases') }}" class="topbar-icon-btn" data-tip="Cases">
+        <a href="{{ url_for('admin.compliance.cases') }}" class="topbar-icon-btn" data-tip="Cases">
           <i class="fas fa-folder-open"></i>
           {% if stats.open_cases %}<span class="topbar-notif-dot"></span>{% endif %}
         </a>
-        <a href="{{ url_for('compliance.escalations') }}" class="topbar-icon-btn" data-tip="Escalations">
+        <a href="{{ url_for('admin.compliance.escalations') }}" class="topbar-icon-btn" data-tip="Escalations">
           <i class="fas fa-arrow-up-right-from-square"></i>
           {% if stats.escalations %}<span class="topbar-notif-dot"></span>{% endif %}
         </a>

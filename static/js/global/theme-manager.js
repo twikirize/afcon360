@@ -49,10 +49,6 @@ class ThemeManager {
     async loadUserPreferences() {
         try {
             const response = await fetch('/theme/api/preferences', {
-                headers: {
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
-                },
                 credentials: 'same-origin',
                 redirect: 'error'
             });

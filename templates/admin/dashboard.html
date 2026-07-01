@@ -15,8 +15,8 @@
         {% if admin_role_management_enabled %}
         <li><a href="{{ safe_url('admin.owner.owner_role_management.role_management_dashboard') }}">Role Management</a></li>
         {% endif %}
-        <li><a href="{{ url_for('admin_ultimate.manage_users') }}">Manage Users</a></li>
-        <li><a href="{{ url_for('admin_ultimate.manage_orgs') }}">Manage Organizations</a></li>
+        <li><a href="{{ url_for('admin.manage_users') }}">Manage Users</a></li>
+        <li><a href="{{ url_for('admin.manage_orgs') }}">Manage Organizations</a></li>
         <li><a href="{{ url_for('admin_ultimate.wallet_webhooks') }}">Webhook Events (Wallet)</a></li>
         <li><a href="{{ url_for('admin_ultimate.wallet_webhooks_stats') }}">Webhook Queue Stats</a></li>
     </ul>

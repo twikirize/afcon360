@@ -99,6 +99,9 @@ class AccommodationBooking(BaseModel):
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False, index=True)
     accommodation_property = relationship("Property", back_populates="bookings")
 
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="RESTRICT"), nullable=True, index=True)
+    room_type = relationship("RoomType", backref="bookings")
+
     guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True)
     guest = relationship("User", foreign_keys=[guest_user_id], backref="accommodation_bookings")
 

@@ -31,6 +31,7 @@ class SystemConfig(db.Model):
                 return config.value
             return default
         except Exception:
+            db.session.rollback()
             return default
     
     @classmethod

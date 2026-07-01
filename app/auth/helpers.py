@@ -57,32 +57,77 @@ ROLE_HIERARCHY: tuple[str, ...] = (
 
 
 # ---------------------------------------------------------------------------
-# Internal DB helpers
-# ---------------------------------------------------------------------------
-
-def _get_user_global_role_ids(user: "User") -> list:
-    """
-    Return the list of Role PKs assigned to the user via their UserRole
-    join records. Safe to call even when role objects are detached - we
-    only read the FK column, not a lazy relationship.
-    """
-    ids = []
-    for ur in (user.roles or []):
-        # ur.role_id is a plain column - never triggers a lazy load.
-        if hasattr(ur, 'role_id') and ur.role_id is not None:
-            ids.append(ur.role_id)
-        elif ur.role:
-            # Fallback: role already in memory
-            ids.append(ur.role.id)
-    return ids
-
-
-# ---------------------------------------------------------------------------
 # Global role helpers  (safe - only inspects role.name, loaded with user)
 # ---------------------------------------------------------------------------
 
+def get_user_global_roles(user: "User") -> list[str]:
+    """Return a list of global role names assigned to the user."""
+    if not user or not user.roles:
+        return []
+    return [ur.role.name for ur in user.roles if ur.role]
+
+
+def get_active_role():
+    """Get current active global role or None."""
+    from flask import session
+    return session.get('active_global_role')
+
+
+def clear_active_role():
+    """Reset to default (all roles active)."""
+    from flask import session
+    session.pop('active_global_role', None)
+
+def get_active_role_name() -> Optional[str]:
+    """
+    Get the currently active global role name from session.
+    If no role is selected, returns None (all roles are active).
+    """
+    from flask import session
+    return session.get("active_global_role")
+
+
+def switch_global_role(role_name: Optional[str]) -> tuple[bool, str]:
+    """
+    Switch the active global role for the current user.
+    
+    Args:
+        role_name: The name of the role to activate, or None/ 'all' to restore all roles.
+        
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    from flask import session
+    from flask_login import current_user
+    
+    if not current_user or not current_user.is_authenticated:
+        return False, "You must be logged in to switch roles."
+        
+    # Normalize 'all' or 'default' to None
+    if role_name in [None, 'all', 'default', 'reset']:
+        session.pop("active_global_role", None)
+        return True, "Role context reset. All assigned permissions are now active."
+
+    # Verify the user actually possesses this role
+    # User.roles is lazy="joined", so we can safely iterate
+    target_role_exists = False
+    for ur in current_user.roles:
+        if ur.role and ur.role.name == role_name:
+            target_role_exists = True
+            break
+            
+    if not target_role_exists:
+        return False, f"Access denied: You do not hold the '{role_name}' role."
+        
+    session["active_global_role"] = role_name
+    return True, f"Successfully switched to {role_name} context."
+
+
 def is_owner(user: "User") -> bool:
-    """Return ``True`` if the user holds the ``owner`` role."""
+    """
+    Return ``True`` if the user holds the ``owner`` role.
+    Respects active role context: if an owner switches to 'user', this returns False.
+    """
     return has_global_role(user, "owner")
 
 
@@ -90,6 +135,7 @@ def is_system_admin(user: "User") -> bool:
     """
     Return ``True`` if the user is at least an ``admin``
     (i.e. owner, super_admin, or admin).
+    Respects active role context.
     """
     return has_global_role(user, "owner", "super_admin", "admin")
 
@@ -97,22 +143,41 @@ def is_system_admin(user: "User") -> bool:
 def has_global_role(user: "User", *role_names: str) -> bool:
     """
     Return ``True`` if the user holds **any** of the named global roles.
-
-    ``owner`` implicitly satisfies every role check - an owner can do
-    anything any other role can do.
+    
+    If ``session["active_global_role"]`` is set, ONLY that role is checked.
+    Otherwise, all assigned roles are checked.
+    
+    ``owner`` implicitly satisfies every role check when active.
 
     Args:
         user:        The authenticated ``User`` instance.
         *role_names: One or more role name strings to check against.
-
-    Example::
-
-        if has_global_role(current_user, "admin", "super_admin"):
-            ...
     """
     if not user or not user.roles:
         return False
 
+    from flask import session
+    active_role = session.get("active_global_role")
+    
+    # Context-aware check: restrict to active role if selected
+    if active_role:
+        # Security validation: does user still have this role?
+        user_possesses_active_role = False
+        for ur in user.roles:
+            if ur.role and ur.role.name == active_role:
+                user_possesses_active_role = True
+                break
+        
+        if user_possesses_active_role:
+            # 'owner' is omnipotent when active
+            if active_role == "owner":
+                return True
+            return active_role in role_names
+        else:
+            # Role was likely revoked; clear stale session state
+            session.pop("active_global_role", None)
+
+    # Default behavior: check all assigned roles
     role_set = frozenset(role_names)
 
     for ur in user.roles:
@@ -129,12 +194,13 @@ def has_global_role(user: "User", *role_names: str) -> bool:
 
 def highest_role(user: "User") -> Optional[str]:
     """
-    Return the name of the user's most-privileged global role, or
-    ``None`` if the user has no roles.
-
-    Uses :data:`ROLE_HIERARCHY` for ordering (index 0 = highest privilege).
-    Roles not present in the hierarchy are treated as lowest priority.
+    Return the name of the user's most-privileged global role.
+    Respects active role context if set.
     """
+    active_role = get_active_role_name()
+    if active_role:
+        return active_role
+        
     if not user or not user.roles:
         return None
 
@@ -145,6 +211,33 @@ def highest_role(user: "User") -> Optional[str]:
             return role_name
 
     return next(iter(user_role_names), None)
+
+
+def _get_user_global_role_ids(user: "User") -> list:
+    """
+    Return the list of Role PKs to use for permission checks.
+    Respects active role context.
+    """
+    from flask import session
+    active_role = session.get("active_global_role")
+    
+    if active_role:
+        for ur in (user.roles or []):
+            if ur.role and ur.role.name == active_role:
+                return [ur.role.id]
+        
+        # Fallback if session role is missing from user object
+        session.pop("active_global_role", None)
+        
+    ids = []
+    for ur in (user.roles or []):
+        # ur.role_id is a plain column - never triggers a lazy load.
+        if hasattr(ur, 'role_id') and ur.role_id is not None:
+            ids.append(ur.role_id)
+        elif ur.role:
+            # Fallback: role already in memory
+            ids.append(ur.role.id)
+    return ids
 
 
 def has_global_permission(user: "User", permission_name: str) -> bool:

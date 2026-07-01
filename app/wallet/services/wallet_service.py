@@ -480,6 +480,31 @@ class WalletService:
         # Only get existing account, do NOT create
         return self.account_repo.get_by_user_id(user_id)
 
+    @staticmethod
+    def get_wallet_by_user_id(user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
+        """
+        Static helper to get an individual wallet by user ID.
+        """
+        from app.wallet.repositories.account_repository import AccountRepository
+        from app.wallet.models.ledger import AccountOwnerType
+        repo = AccountRepository()
+        account = repo.get_by_user_id(user_id, currency)
+        if account and account.owner_type == AccountOwnerType.USER:
+            return account
+        return None
+
+    @staticmethod
+    def get_wallet_by_org_id(org_id: int, currency: str = 'USD') -> Optional[AccountModel]:
+        """
+        Static helper to get an organisation wallet by org internal ID.
+        """
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        return AccountModel.query.filter_by(
+            user_id=org_id,
+            owner_type=AccountOwnerType.ORGANISATION,
+            currency=currency
+        ).first()
+
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def transfer(
         self,

@@ -17,7 +17,7 @@ migrate = Migrate()
 # Auth/session
 login_manager = LoginManager()
 login_manager.login_view = "auth_routes.login"
-login_manager.session_protection = "strong"
+login_manager.session_protection = "basic"
 
 # CSRF protection for forms
 csrf = CSRFProtect()

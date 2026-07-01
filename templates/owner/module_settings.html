@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Module Settings - Owner Panel{% endblock %}
+
+{% block styles %}
+<style>
+    .module-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: transform 0.2s;
+    }
+    .module-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .module-info h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1a202c;
+    }
+    .module-info p {
+        margin: 0.25rem 0 0;
+        font-size: 0.85rem;
+        color: #718096;
+    }
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .status-online { background: #c6f6d5; color: #22543d; }
+    .status-offline { background: #fed7d7; color: #742a2a; }
+    
+    .toggle-btn {
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+    .btn-disable { background: #fff5f5; color: #c53030; border-color: #feb7b7; }
+    .btn-disable:hover { background: #c53030; color: white; }
+    .btn-enable { background: #f0fff4; color: #2f855a; border-color: #9ae6b4; }
+    .btn-enable:hover { background: #2f855a; color: white; }
+    
+    .audit-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 2rem;
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .audit-table th, .audit-table td {
+        padding: 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .audit-table th { background: #f7fafc; color: #4a5568; font-size: 0.75rem; text-transform: uppercase; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 font-weight-bold">Module Management</h1>
+            <p class="text-muted">Control platform feature availability in real-time.</p>
+        </div>
+        <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Dashboard
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            {% for name, enabled in modules.items()|sort %}
+            <div class="module-card">
+                <div class="module-info">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <h3>{{ name|title }}</h3>
+                        <span class="status-badge {{ 'status-online' if enabled else 'status-offline' }}">
+                            {{ 'Enabled' if enabled else 'Disabled' }}
+                        </span>
+                    </div>
+                    <p>Controls all features and routes related to {{ name }}.</p>
+                </div>
+                <form action="{{ url_for('admin.owner.owner_toggle_module', module=name) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="toggle-btn {{ 'btn-disable' if enabled else 'btn-enable' }}">
+                        {{ 'Disable Module' if enabled else 'Enable Module' }}
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white font-weight-bold">
+                    System Information
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2"><strong>Source of Truth:</strong> Database</li>
+                        <li class="mb-2"><strong>Reload Strategy:</strong> Per-request Middleware</li>
+                        <li><strong>Last Sync:</strong> Just now</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card shadow-sm border-0 mt-4">
+                <div class="card-header bg-dark text-white font-weight-bold">
+                    Security Warning
+                </div>
+                <div class="card-body bg-light">
+                    <p class="small text-danger mb-0">
+                        Disabling a module will immediately block access for all users and hide dashboard widgets. 
+                        In-progress transactions or bookings may be interrupted.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-5">
+        <h4 class="font-weight-bold mb-3">Audit History</h4>
+        <table class="audit-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Performed By</th>
+                    <th>Module</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in history %}
+                <tr>
+                    <td class="small">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>User ID: {{ log.user_id }}</td>
+                    <td><strong>{{ log.resource_id|title }}</strong></td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if log.meta.enabled else 'bg-danger' }}">
+                            {{ 'ENABLED' if log.meta.enabled else 'DISABLED' }}
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center py-4 text-muted">No audit history found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

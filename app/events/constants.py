@@ -240,3 +240,27 @@ def validate_transition(current: str, target: str) -> tuple[bool, str]:
         return False, f"Cannot transition from '{current}' to '{target}'. Allowed: {allowed_str}"
 
     return True, ""
+
+
+class BookingType(str, Enum):
+    """Who the registration is for, relative to who submitted the form."""
+    SELF = "self"
+    THIRD_PARTY = "third_party"
+    GROUP = "group"
+
+    @classmethod
+    def values(cls) -> List[str]:
+        return [b.value for b in cls]
+
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        return value in cls.values()
+
+    @classmethod
+    def choices(cls):
+        return [(bt.value, bt.value.replace('_', ' ').title()) for bt in cls]
+
+
+# Group size limits
+MAX_INLINE_GROUP_SIZE = 25  # Maximum attendees per inline form submission
+MAX_BULK_GROUP_SIZE = 500    # Maximum for bulk upload (Phase 5)

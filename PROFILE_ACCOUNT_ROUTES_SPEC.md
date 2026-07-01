@@ -282,7 +282,7 @@ Use Jinja2 `url_for()` — never hardcode paths.
      class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
     <i class="fas fa-edit"></i> Edit Profile
   </a>
-  <a href="{{ url_for('user.user_dashboard') }}"
+  <a href="{{ url_for('user.dashboard') }}"
      class="subnav-link">
     <i class="fas fa-tachometer-alt"></i> Dashboard
   </a>

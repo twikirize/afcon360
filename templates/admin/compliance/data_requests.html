@@ -7,7 +7,7 @@
 <!-- Filters -->
 <div class="card animate-up" style="margin-bottom: 20px;">
   <div class="card-body">
-    <form method="GET" action="{{ url_for('compliance.data_requests') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+    <form method="GET" action="{{ url_for('admin.compliance.data_requests') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
         <label class="form-label">Type</label>
         <select name="type" class="form-control">
@@ -29,7 +29,7 @@
         </select>
       </div>
       <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
-      <a href="{{ url_for('compliance.data_requests') }}" class="btn btn-secondary">Clear</a>
+      <a href="{{ url_for('admin.compliance.data_requests') }}" class="btn btn-secondary">Clear</a>
     </form>
   </div>
 </div>
@@ -81,7 +81,7 @@
         <tbody>
           {% for req in requests %}
           <tr class="{{ 'row-critical' if req.is_overdue else '' }}">
-            <td><a href="{{ url_for('compliance.view_data_request', request_id=req.id) }}">#{{ req.id }}</a></td>
+            <td><a href="{{ url_for('admin.compliance.view_data_request', request_id=req.id) }}">#{{ req.id }}</a></td>
             <td>
               <div class="user-cell">
                 <div class="av">{{ req.user.username[0] if req.user else '?' }}</div>
@@ -123,7 +123,7 @@
               {% endif %}
             </td>
             <td>
-              <a href="{{ url_for('compliance.view_data_request', request_id=req.id) }}" class="btn btn-sm btn-primary">Process</a>
+              <a href="{{ url_for('admin.compliance.view_data_request', request_id=req.id) }}" class="btn btn-sm btn-primary">Process</a>
             </td>
           </tr>
           {% endfor %}

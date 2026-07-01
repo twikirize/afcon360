@@ -7,7 +7,7 @@
 <!-- Filters -->
 <div class="card animate-up" style="margin-bottom: 20px;">
   <div class="card-body">
-    <form method="GET" action="{{ url_for('compliance.cases') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+    <form method="GET" action="{{ url_for('admin.compliance.cases') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
         <label class="form-label">Status</label>
         <select name="status" class="form-control">
@@ -45,7 +45,7 @@
         <input type="text" name="search" class="form-control" placeholder="Case # or title..." value="{{ request.args.get('search', '') }}">
       </div>
       <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
-      <a href="{{ url_for('compliance.cases') }}" class="btn btn-secondary">Clear</a>
+      <a href="{{ url_for('admin.compliance.cases') }}" class="btn btn-secondary">Clear</a>
     </form>
   </div>
 </div>
@@ -54,7 +54,7 @@
 <div class="card animate-up">
   <div class="card-header">
     <div class="card-title"><i class="fas fa-folder-open"></i> Compliance Cases</div>
-    <a href="{{ url_for('compliance.create_case') }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> New Case</a>
+    <a href="{{ url_for('admin.compliance.create_case') }}" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> New Case</a>
   </div>
   <div class="card-body">
     {% if cases %}
@@ -76,7 +76,7 @@
         <tbody>
           {% for case in cases %}
           <tr class="{{ 'row-critical' if case.priority.value == 'critical' else ('row-high' if case.priority.value == 'high' else '') }}">
-            <td><a href="{{ url_for('compliance.view_case', case_id=case.id) }}">{{ case.case_number }}</a></td>
+            <td><a href="{{ url_for('admin.compliance.view_case', case_id=case.id) }}">{{ case.case_number }}</a></td>
             <td style="max-width: 250px;">{{ case.title }}</td>
             <td>
               {% if case.case_type.value == 'kyc' %}
@@ -131,7 +131,7 @@
               {{ case.sla_due_at.strftime('%Y-%m-%d') if case.sla_due_at else '-' }}
             </td>
             <td>
-              <a href="{{ url_for('compliance.view_case', case_id=case.id) }}" class="btn btn-sm btn-primary">View</a>
+              <a href="{{ url_for('admin.compliance.view_case', case_id=case.id) }}" class="btn btn-sm btn-primary">View</a>
             </td>
           </tr>
           {% endfor %}

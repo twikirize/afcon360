@@ -1,24 +1,418 @@
-# AFCON360 - Complete Owner & Admin Management System
+# AFCON360 - Integrated Management Ecosystem
 
 ## Overview
 
-AFCON360 is a comprehensive football tournament management platform with advanced user administration, role-based access control, and impersonation capabilities. This document provides a complete overview of the system architecture, features, and implementation details.
+AFCON360 is a comprehensive Flask/PostgreSQL/Redis web application ecosystem that combines multiple management systems into a unified platform. It serves organizers, attendees, community hosts, and service providers with integrated services including:
+
+- **Fintech/Wallet System**: Double-entry ledger, transactions, payouts, commissions
+- **Transport Management**: Booking system, driver/vehicle management, route tracking
+- **Accommodation Management**: Property listings, booking system, host management
+- **Event Management**: Event creation, registration, ticketing, payments
+- **Tourism Management**: Tourism services, activities, bookings
+- **Tournament Management**: Bracket management, scheduling
+- **Identity/KYC System**: User verification, organization verification, compliance
+
+Each module operates independently but integrates seamlessly - users can pay for events via wallet, book transport to events, secure accommodation, and access tourism activities through a unified platform. The system provides advanced user administration, role-based access control, and modular feature management.
 
 ## System Architecture
 
 ### **Core Technologies**
 - **Backend**: Flask (Python) with SQLAlchemy ORM
-- **Database**: PostgreSQL with Redis for sessions
-- **Frontend**: Bootstrap 5 with custom CSS
+- **Database**: PostgreSQL (production), SQLite (local dev)
+- **Cache/Queue**: Redis
+- **Frontend**: Bootstrap 5 with custom CSS (dark editorial UI with gold accents)
 - **Authentication**: Flask-Login with role-based permissions
-- **Architecture**: Modular Blueprint-based design
+- **Deployment**: Docker Compose on Oracle Cloud VM.Standard.E4.Flex (IP 79.76.104.169)
+- **Server**: Gunicorn + Nginx
+- **Rate Limiting**: Flask-Limiter with Redis storage
 
 ### **Key Components**
 - **User Management System**: Complete CRUD operations with bulk actions
-- **Role-Based Access Control**: 13 hierarchical roles with granular permissions
+- **Role-Based Access Control**: Hierarchical roles with granular permissions
 - **Impersonation System**: Owner can impersonate any role below them
 - **Dashboard System**: Role-specific dashboards with relevant functionality
-- **Audit Logging**: Comprehensive activity tracking (temporarily disabled due to schema)
+- **Module System**: Toggleable features (events, wallet, transport, etc.)
+- **Media Management**: File upload, processing, and storage
+- **Compliance & Audit**: Forensic audit trails for regulatory compliance
+
+---
+
+## Project Structure
+
+```
+app/
+├── __init__.py                 # Application factory
+├── config.py                   # Configuration settings
+├── extensions.py               # Flask extensions initialization
+├── routes.py                   # Core application routes
+├── utils.py                    # Utility functions
+│
+├── admin/                      # Admin management routes
+│   ├── __init__.py
+│   ├── routes.py               # Core admin functionality
+│   ├── routes_ultimate.py      # Advanced user management
+│   ├── decorators.py           # Admin decorators
+│   ├── models.py               # Admin models
+│   ├── services.py             # Admin services
+│   ├── trust_settings.py       # Trust settings
+│   ├── hooks.py                # Admin hooks
+│   │
+│   ├── admin_services/         # Admin service modules
+│   │   ├── ai_detection.py
+│   │   ├── analytics_service.py
+│   │   ├── content_safety.py
+│   │   ├── escalation_workflow.py
+│   │   ├── moderation_queue.py
+│   │   ├── payment_methods.py
+│   │   └── training_system.py
+│   │
+│   ├── owner/                  # Owner-specific functionality
+│   │   ├── __init__.py
+│   │   ├── routes.py
+│   │   ├── audit.py
+│   │   ├── csp_routes.py
+│   │   ├── decorators.py
+│   │   ├── models.py
+│   │   ├── security_routes.py
+│   │   ├── security_service.py
+│   │   ├── settings.md
+│   │   ├── utils.py
+│   │   ├── wallet_config.py
+│   │   └── api/
+│   │       └── module_api.py
+│   │
+│   ├── compliance/             # Compliance routes
+│   │   ├── __init__.py
+│   │   ├── models.py
+│   │   ├── routes.py
+│   │   └── services.py
+│   │
+│   ├── moderator/              # Moderator routes
+│   │   ├── __init__.py
+│   │   ├── pipeline.py
+│   │   ├── registry.py
+│   │   └── routes.py
+│   │
+│   ├── support/                # Support routes
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   │
+│   ├── auditor/                # Auditor routes
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   │
+│   ├── models/                 # Admin models
+│   │   ├── __init__.py
+│   │   ├── core.py
+│   │   ├── emergency_access.py
+│   │   └── moderation.py
+│   │
+│   └── route_modules/          # Role-specific route modules
+│       ├── accommodation_admin.py
+│       ├── event_manager.py
+│       ├── org_admin.py
+│       ├── org_member.py
+│       ├── settings.py
+│       ├── tourism_admin.py
+│       ├── transport_admin.py
+│       └── wallet_admin.py
+│
+├── accommodation/              # Accommodation module
+│   ├── __init__.py
+│   ├── routes.py
+│   ├── routes_old.py
+│   ├── services.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── availability.py
+│   │   ├── booking.py
+│   │   ├── property.py
+│   │   ├── review.py
+│   │   └── wishlist.py
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── abuse_prevention_service.py
+│   │   ├── ai_search_service.py
+│   │   ├── ai_trip_planner_service.py
+│   │   ├── availability_service.py
+│   │   ├── blockchain_reviews_service.py
+│   │   ├── booking_service.py
+│   │   ├── competitive_intelligence_service.py
+│   │   ├── dynamic_pricing_service.py
+│   │   ├── gamified_loyalty_service.py
+│   │   ├── host_service.py
+│   │   ├── hyper_personalization_service.py
+│   │   ├── identity_service.py
+│   │   ├── immersive_tour_service.py
+│   │   ├── payment_option_service.py
+│   │   ├── predictive_availability_service.py
+│   │   ├── pricing_service.py
+│   │   ├── search_service.py
+│   │   ├── urgency_service.py
+│   │   └── voice_booking_service.py
+│   │
+│   └── state_machine/
+│       ├── __init__.py
+│       └── booking_states.py
+│
+├── transport/                  # Transport module
+│   ├── __init__.py
+│   ├── models.py
+│   ├── routes.py
+│   ├── decorator.py
+│   ├── event_listeners.py
+│   ├── listeners.py
+│   ├── view_models.py
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── analytic_routes.py
+│   │   ├── booking_routes.py
+│   │   ├── dashboard_routes.py
+│   │   ├── driver_routes.py
+│   │   ├── incident_routes.py
+│   │   ├── organisation_routes.py
+│   │   ├── route_routes.py
+│   │   ├── settings_routes.py
+│   │   ├── utils.py
+│   │   └── vehicle_routes.py
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── booking_service.py
+│   │   ├── dashboard_service.py
+│   │   ├── external_platforms.py
+│   │   ├── future_adds.py
+│   │   ├── matching_service.py
+│   │   ├── notification_service.py
+│   │   ├── payment_service.py
+│   │   ├── promotion_service.py
+│   │   ├── provider_service.py
+│   │   └── settings_service.py
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       └── helpers.py
+│
+├── events/                     # Events module
+│   ├── __init__.py
+│   ├── models.py
+│   ├── routes.py
+│   ├── services.py
+│   ├── signal_handlers.py
+│   ├── permissions.py
+│   ├── metrics_service.py
+│   ├── payment_service.py
+│   ├── payment_config.py
+│   ├── assignment.py
+│   ├── bulk_upload.py
+│   ├── constants.py
+│   ├── routes_accommodation.py
+│   ├── routes_community_hosts.py
+│   ├── settings_model.py
+│   ├── settings_routes.py
+│   ├── signals.py
+│   └── view_models.py
+│
+├── wallet/                     # Wallet module
+│   ├── __init__.py
+│   ├── models.py
+│   ├── decorators.py
+│   ├── exceptions.py
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── admin_api.py
+│   │   ├── admin_webhook_routes.py
+│   │   ├── fx_api.py
+│   │   ├── wallet_api.py
+│   │   └── webhooks.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── admin_audit.py
+│   │   ├── aggregator.py
+│   │   ├── audit.py
+│   │   ├── commission.py
+│   │   ├── config.py
+│   │   ├── fraud_detection.py
+│   │   ├── fx.py
+│   │   ├── ledger.py
+│   │   ├── nonce_protection.py
+│   │   ├── payout.py
+│   │   ├── reconciliation.py
+│   │   ├── transaction.py
+│   │   ├── travel_rule.py
+│   │   └── webhook_event.py
+│   │
+│   ├── payments/
+│   │   ├── __init__.py
+│   │   ├── alipay.py
+│   │   ├── flutterwave.py
+│   │   ├── mobile_money.py
+│   │   ├── paypal.py
+│   │   ├── paystack.py
+│   │   ├── visa.py
+│   │   └── wechat.py
+│   │
+│   ├── middleware/
+│   │   ├── __init__.py
+│   │   ├── idempotency.py
+│   │   ├── kill_switch.py
+│   │   ├── wallet_activation.py
+│   │   └── wallet_check.py
+│   │
+│   └── repositories/
+│       ├── __init__.py
+│       ├── account_repository.py
+│       └── commission_repository.py
+│
+├── identity/                   # Identity module
+│   ├── __init__.py
+│   ├── routes.py
+│   ├── services.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── compliance_audit_log.py
+│   │   ├── compliance_settings.py
+│   │   ├── kyb.py
+│   │   ├── licence_document.py
+│   │   ├── note.py
+│   │   ├── organisation.py
+│   │   ├── organisation_controller.py
+│   │   ├── organisation_member.py
+│   │   ├── organization_types.py
+│   │   ├── roles_permission.py
+│   │   └── user.py
+│   │
+│   └── services/
+│       ├── __init__.py
+│       ├── organization_permissions.py
+│       └── organization_registration.py
+│
+├── kyc/                        # KYC verification
+│   ├── __init__.py
+│   ├── models.py
+│   ├── routes.py
+│   ├── services.py
+│   ├── nira_verification.py
+│   └── upgrade_routes.py
+│
+├── tourism/                    # Tourism module
+│   ├── __init__.py
+│   └── routes.py
+│
+├── tournament/                 # Tournament module
+│   ├── __init__.py
+│   └── routes.py
+│
+├── auth/                       # Authentication system
+│   ├── routes.py
+│   ├── services.py
+│   ├── decorators.py
+│   └── sessions.py
+│
+├── audit/                      # Audit logging
+│   ├── forensic_audit.py
+│   └── models.py
+│
+├── fan/                        # Fan/attendee features
+│   └── routes.py
+│
+├── profile/                    # User profile management
+│   ├── __init__.py
+│   ├── models.py
+│   └── routes.py
+│
+├── user/                       # User management
+│   ├── routes.py
+│   └── use_dashboard.md
+│
+├── services/                     # Core services
+│   ├── __init__.py
+│   ├── analytics.py
+│   ├── module_toggle_service.py
+│   └── sms_service.py
+│
+├── tasks/                      # Background tasks
+│   ├── reconcile.py
+│   └── webhook_processor.py
+│
+├── middleware/                 # Middleware components
+│   └── (middleware files)
+│
+├── backup/                     # Backup system
+│   └── (backup files)
+│
+├── cli/                        # CLI commands
+│   └── owner.py
+│
+├── tools/                      # Development tools
+│   ├── inspect_project.py
+│   ├── theme_routes.py
+│   └── theme_service.py
+│
+├── forms/                      # Form definitions
+│   ├── booking_forms.py
+│   └── settings_forms.py
+│
+├── models/                     # Core models
+│   ├── base.py
+│   ├── audit.py
+│   ├── analytics.py
+│   ├── system_config.py
+│   └── theme.py
+│
+├── utils/                      # Utility functions
+│   ├── __init__.py
+│   ├── audit.py
+│   ├── caching.py
+│   ├── db_retry.py
+│   ├── error_handler.py
+│   ├── exceptions.py
+│   ├── id_guard.py
+│   ├── id_helpers.py
+│   ├── id_validator.py
+│   ├── idempotency.py
+│   ├── module_disabled.py
+│   ├── module_guard.py
+│   ├── module_switch.py
+│   ├── monitoring.py
+│   ├── rate_limiting.py
+│   ├── redis_lock.py
+│   ├── security.py
+│   ├── template_helpers.py
+│   ├── transactions.py
+│   └── validators.py
+│
+├── core/                       # Core functionality
+│   └── (core files)
+│
+├── compliance/                 # Compliance system
+│   └── (compliance files)
+│
+├── dashboard/                  # Dashboard components
+│   └── (dashboard files)
+│
+├── media/                      # Media management
+│   ├── __init__.py
+│   ├── routes.py
+│   ├── service.py
+│   ├── tasks.py
+│   ├── validators.py
+│   ├── models.py
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── local.py
+│   │   └── oci.py
+│   └── (media files)
+│
+└── Documentation/              # Documentation files
+    └── ID_SYSTEM_RULES.md
+```
 
 ---
 
@@ -26,7 +420,7 @@ AFCON360 is a comprehensive football tournament management platform with advance
 
 ### **Role Levels (Highest to Lowest)**
 
-1. **owner** - Complete system control
+1. **owner** - Complete system control, can impersonate all roles
 2. **super_admin** - System administration except owner modification
 3. **admin** - Administrative functions
 4. **auditor** - Audit and compliance oversight
@@ -42,147 +436,191 @@ AFCON360 is a comprehensive football tournament management platform with advance
 14. **org_member** - Organization member
 15. **user** - Standard user access
 
-### **Permission Matrix**
-- **Owner**: Can impersonate all roles, manage all users, assign/remove roles
-- **Super Admin**: User management, role assignment (except owner), system oversight
-- **Admin**: Standard administrative functions
-- **Other Roles**: Role-specific functionality within their domains
+---
+
+## Core Modules
+
+### **1. Events Module** (`app/events/`)
+- Event creation, approval, and registration workflows
+- Ticketing and payment processing
+- Signal handlers for event lifecycle
+- Event metrics and analytics
+- Community host integration
+- Accommodation and transport integration for events
+
+### **2. Wallet Module** (`app/wallet/`)
+- Double-entry ledger architecture (enterprise-grade)
+- Transaction processing with fraud detection
+- Payout management
+- Commission tracking
+- Payment provider integrations (Flutterwave, Paystack, PayPal, Alipay, WeChat, Visa, Mobile Money)
+- Webhook handling
+- API endpoints for wallet operations
+- Middleware: idempotency, kill switch, activation checks
+
+### **3. Transport Module** (`app/transport/`)
+- Transport booking system
+- Driver and vehicle management
+- Route and incident tracking
+- Real-time notifications
+- External platform integrations
+- Analytics and reporting (32+ API endpoints)
+- State management and matching services
+
+### **4. Accommodation Module** (`app/accommodation/`)
+- Host registration and management
+- Property listing and search
+- Booking system with state machine
+- Review and rating system
+- Pricing and availability management
+- Wallet integration for payments
+- AI-powered search and trip planning
+- Gamified loyalty and blockchain reviews
+
+### **5. Tournament Module** (`app/tournament/`)
+- Bracket management
+- Tournament scheduling
+
+### **6. Identity Module** (`app/identity/`)
+- KYC (Know Your Customer) verification
+- Organization verification (KYB)
+- License document management
+- Compliance audit logging
+- Role and permission management
+- Organization registration and permissions
+
+### **7. KYC Module** (`app/kyc/`)
+- KYC document verification
+- NIRA verification integration
+- KYC upgrade workflows
+
+### **8. Tourism Module** (`app/tourism/`)
+- Tourism service listings
+- Tourism booking management
+- Activity management
+
+### **9. Auth Module** (`app/auth/`)
+- Authentication and session management
+- Role-based access control
+- OTP and email verification
+- Password policy enforcement
+- Onboarding workflows
+
+### **10. Admin Module** (`app/admin/`)
+- Role-based admin dashboards
+- Trust settings management
+- Security and compliance monitoring
+- Module toggle controls
+- AI content detection and moderation
+- Escalation workflows
+
+### **11. Media Module** (`app/media/`)
+- File upload, processing, and storage
+- Local and OCI (Oracle Cloud Infrastructure) storage backends
+- Media validation and processing tasks
+
+### **12. User Module** (`app/user/`)
+- User dashboard and profile management
+- User-specific features and settings
+
+### **13. Profile Module** (`app/profile/`)
+- User profile management
+- Profile update and verification workflows
+
+### **14. Fan Module** (`app/fan/`)
+- Enhanced fan/attendee dashboard
+- Event discovery and registration
+
+### **15. Services Module** (`app/services/`)
+- Analytics services
+- Module toggle service
+- SMS service
+
+### **16. Tasks Module** (`app/tasks/`)
+- Webhook processing
+- Transaction reconciliation
+
+### **17. CLI Module** (`app/cli/`)
+- Owner CLI commands
+
+### **18. Tools Module** (`app/tools/`)
+- Theme management
+- Project inspection tools
+
+### **19. Forms Module** (`app/forms/`)
+- Booking forms
+- Settings forms
+
+### **20. Models Module** (`app/models/`)
+- BaseModel for all models
+- Audit models
+- Analytics models
+- System configuration
+- Theme models
+
+### **21. Utils Module** (`app/utils/`)
+- IDGuard for ID mixing protection
+- Module switch and guard
+- Audit, caching, and security utilities
+- Rate limiting, Redis locks, validators
+- Error handling and template helpers
 
 ---
 
-## Implemented Features
+## Key Features
 
-### **1. Owner Management System**
+### **IDGuard System**
+- Runtime ID mixing protection
+- String FK exception handling
+- Automatic ID validation
 
-#### **Owner Dashboard** (`/admin/owner/dashboard`)
-- **System Statistics**: User counts, role distribution, organization metrics
-- **Super Admin Management**: Add/remove super admin privileges
-- **Recent Activity**: User signups, system events
-- **System Health**: Database and Redis monitoring
-- **Quick Actions**: Direct access to all management functions
+### **Owner Management System**
+- **Owner Dashboard** (`/admin/owner/dashboard`): System statistics, user counts, role distribution
+- **Master Key Impersonation** (`/admin/owner/impersonate-page`): Role-based access with smart redirects
+- **Role Management**: Add/remove super admin privileges
 
-#### **Master Key Impersonation** (`/admin/owner/impersonate-page`)
-- **Role-Based Access**: Instant impersonation of any role
-- **Smart Redirects**: Each role redirects to appropriate dashboard
-- **Session Management**: Secure impersonation tracking
-- **Exit Functionality**: Clean return to owner account
-
-### **2. Advanced User Management**
-
-#### **Ultimate User Interface** (`/admin/manage-users-ultimate`)
-- **Real-time Search**: Filter by name, email, role, status
-- **Bulk Operations**: Verify, activate, deactivate multiple users
-- **Individual Actions**: View details, promote/demote, delete users
-- **Role Management**: Assign/remove roles from users
+### **Advanced User Management**
+- **Ultimate User Interface** (`/admin/manage-users-ultimate`): Real-time search, bulk operations
+- **User Details View**: Complete profile, role history, audit trail
 - **Status Management**: Verification, activation, suspension
 
-#### **User Details View**
-- **Complete Profile**: All user information and activity
-- **Role History**: Track role changes and assignments
-- **Audit Trail**: User actions and modifications
-- **Quick Actions**: Direct role management and status changes
+### **Role Management System**
+- **Role Administration** (`/admin/roles`): Role statistics, assignment, hierarchy display
+- **Global Role Switcher (Persona System)**: Card-based UI to toggle between assigned roles
 
-### **3. Role Management System**
+### **Dashboard System**
+- Super Admin Dashboard (`/admin/super-dashboard`)
+- Moderator Dashboard (`/admin/moderator-dashboard`)
+- Support Dashboard (`/admin/support-dashboard`)
+- Auditor Dashboard (`/admin/auditor-dashboard`)
+- Compliance Officer Dashboard (`/admin/compliance/dashboard`)
+- Event Manager Dashboard (`/admin/event-manager-dashboard`)
+- Transport Admin Dashboard (`/admin/transport-admin-dashboard`)
+- Wallet Admin Dashboard (`/admin/wallet-admin-dashboard`)
+- Accommodation Admin Dashboard (`/admin/accommodation-admin-dashboard`)
+- Tourism Admin Dashboard (`/admin/tourism-admin-dashboard`)
+- Org Admin Dashboard (`/admin/org-admin-dashboard`)
+- Org Member Dashboard (`/admin/org-member-dashboard`)
+- Enhanced Fan Dashboard (`/fan/enhanced-dashboard`)
 
-#### **Role Administration** (`/admin/roles`)
-- **Role Statistics**: User count per role with visual breakdown
-- **Role Assignment**: Add/remove roles from users
-- **Permission Overview**: Role capabilities and restrictions
-- **Hierarchy Display**: Visual representation of role structure
+### **Module System**
+- Toggleable features (events, wallet, transport, accommodation, tournament, identity, tourism)
+- Instant module reload hooks
+- Module disabled page handler
 
-#### **Role Assignment Features**
-- **User Selection**: Choose users for role assignment
-- **Validation**: Prevent self-role removal and unauthorized changes
-- **Feedback**: Success/error messages for all operations
-- **Audit Logging**: Track all role changes
-
-### **4. Dashboard System**
-
-#### **Role-Specific Dashboards**
-- **Super Admin Dashboard** (`/admin/super-dashboard`): System overview and management
-- **Moderator Dashboard** (`/admin/moderator-dashboard`): Content moderation tools
-- **Support Dashboard** (`/admin/support-dashboard`): Customer service interface
-- **Auditor Dashboard** (`/admin/auditor-dashboard`): Compliance and auditing tools
-- **Enhanced Fan Dashboard** (`/fan/enhanced-dashboard`): Complete user experience
-
-#### **Dashboard Features**
-- **Statistics**: Role-relevant metrics and KPIs
-- **Quick Actions**: Common tasks and functions
-- **Recent Activity**: Role-specific activity feeds
-- **Navigation**: Easy access to relevant tools
-
-### **5. Security & Access Control**
-
-#### **Authentication System**
-- **Role-Based Decorators**: `@admin_required`, `@require_role`, `@owner_only`
-- **CSRF Protection**: All forms include security tokens
-- **Session Security**: Secure impersonation tracking
-- **Self-Protection**: Cannot delete/impersonate self
-
-#### **Permission Enforcement**
-- **Blueprint-Level Security**: Route-level access control
-- **Template-Level Protection**: UI elements based on permissions
-- **API Security**: Endpoint protection and validation
-- **Audit Trail**: Action logging and monitoring
-
----
-
-## Technical Implementation
-
-### **Blueprint Architecture**
-
-```
-app/
-admin/
-  routes.py              # Core admin functionality
-  routes_ultimate.py     # Advanced user management
-  routes_extended.py     # Role management & dashboards
-  owner/
-    routes.py           # Owner-specific functionality
-```
-
-### **Database Schema**
-
-#### **Key Models**
-- **User**: Core user information and authentication
-- **Role**: Role definitions and permissions
-- **UserRole**: Many-to-many relationship between users and roles
-- **Organisation**: Organization management
-- **OwnerAuditLog**: Audit trail (temporarily disabled)
-
-#### **Relationships**
-- **User-Role**: Many-to-many with explicit join conditions
-- **User-Organization**: User membership in organizations
-- **Role-Hierarchy**: Level-based permission inheritance
-
-### **Template System**
-
-#### **Template Structure**
-```
-templates/
-  admin/
-    super_dashboard.html      # Super admin interface
-    moderator_dashboard.html   # Moderator tools
-    support_dashboard.html     # Support interface
-    auditor_dashboard.html     # Auditing tools
-    manage_roles.html          # Role management
-    manage_users_ultimate.html # Advanced user management
-  owner/
-    dashboard.html             # Owner overview
-    impersonate.html          # Role impersonation interface
-  fan/
-    enhanced_dashboard.html    # Enhanced user experience
-```
-
-#### **Template Features**
-- **Responsive Design**: Mobile-friendly layouts
-- **Modern UI**: Gradients, animations, hover effects
-- **Real-time Updates**: Dynamic content loading
-- **Accessibility**: Semantic HTML and ARIA labels
+### **Compliance & Forensic Audit**
+- Attempt vs completion tracking
+- Blocked action logging
+- Risk scoring for audit events
+- Suspicious pattern detection
+- Compliance reporting (FIA Uganda, Bank of Uganda formats)
 
 ---
 
 ## API Endpoints
+
+### **Health Check**
+- `GET /api/health/ping` - Health check endpoint
 
 ### **Owner Routes**
 - `GET /admin/owner/dashboard` - Owner dashboard
@@ -205,15 +643,30 @@ templates/
 - `POST /admin/roles/assign` - Assign role to user
 - `POST /admin/roles/remove` - Remove role from user
 
-### **Dashboard Routes**
-- `GET /admin/super-dashboard` - Super admin dashboard
-- `GET /admin/moderator-dashboard` - Moderator dashboard
-- `GET /admin/support-dashboard` - Support dashboard
-- `GET /admin/auditor-dashboard` - Auditor dashboard
+### **Audit API**
+- `/api/audit/timeline/<entity_type>/<entity_id>` - Get forensic timeline
+- `/api/audit/pending-reviews` - Get pending review items
+- `/api/audit/review/<audit_id>` - Process review approvals/rejections
+- `/api/audit/suspicious-patterns` - Get suspicious activity patterns
+- `/api/audit/compliance-report` - Generate compliance reports
+
+### **Wallet API**
+- `/api/wallet/balance` - Get wallet balance
+- `/api/wallet/transactions` - List transactions
+- `/api/wallet/deposit` - Create deposit
+- `/api/wallet/withdraw` - Create withdrawal
+- `/api/wallet/admin/*` - Admin wallet operations
+
+### **Transport API**
+- `/api/transport/bookings` - Booking operations
+- `/api/transport/drivers` - Driver management
+- `/api/transport/vehicles` - Vehicle management
+- `/api/transport/routes` - Route management
+- `/api/transport/analytics` - Analytics data
 
 ---
 
-## Configuration & Setup
+## Configuration
 
 ### **Environment Variables**
 ```python
@@ -225,295 +678,184 @@ REDIS_URL = "redis://localhost:6379/0"
 SECRET_KEY = "your-secret-key"
 CSRF_SECRET_KEY = "your-csrf-secret"
 
+# Rate Limiting
+RATELIMIT_STORAGE_URI = "redis://localhost:6379/1"
+
 # Application Configuration
 DEBUG = False
 TESTING = False
 ```
 
-### **Blueprint Registration**
-```python
-# Core admin blueprint
-app.register_blueprint(admin_bp)
+### **Module Toggle Configuration**
+Modules can be enabled/disabled via system configuration:
+- `events` - Event management module
+- `wallet` - Wallet/transaction module
+- `transport` - Transport booking module
+- `accommodation` - Accommodation module
+- `tournament` - Tournament module
+- `identity` - KYC/identity module
+- `moderation` - Moderation module
 
-# Ultimate admin routes
-register_admin_routes(app)
+---
 
-# Extended admin routes
-app.register_blueprint(admin_extended_bp)
+## Database Models
 
-# Owner routes
-app.register_blueprint(owner_bp)
+### **Core Models**
+- **User**: Core user information and authentication (inherits from `BaseModel`)
+- **Role**: Role definitions and permissions
+- **UserRole**: Many-to-many relationship between users and roles
+- **Organisation**: Organization management
+- **SystemConfig**: System-wide configuration
+
+### **Wallet Models**
+- **WalletAccount**: User wallet accounts
+- **Transaction**: Double-entry ledger transactions
+- **LedgerEntry**: Individual ledger entries
+- **Payout**: Payout requests
+- **Commission**: Commission tracking
+- **FraudDetection**: Fraud detection records
+
+### **Audit Models**
+- **AuditLog**: General audit logging
+- **ForensicAudit**: Forensic audit trail
+- **ComplianceAuditLog**: Compliance-specific audit
+
+---
+
+## Deployment
+
+### **Docker Compose Stack**
+- Flask application container
+- PostgreSQL database container
+- Redis cache/queue container
+- Celery worker container (for background tasks)
+- Nginx reverse proxy container
+
+### **Production Server**
+- Oracle Cloud VM.Standard.E4.Flex (IP: 79.76.104.169)
+- User: ubuntu
+- Health check: `/api/health/ping`
+
+### **Deployment Commands**
+```bash
+# Build and start containers
+docker-compose up -d
+
+# Run database migrations
+flask db upgrade
+
+# Stamp head (after bootstrap)
+flask db stamp head
+
+# Check container status
+docker-compose ps
+
+# View logs
+docker-compose logs -f web
 ```
 
----
-
-## Known Issues & Solutions
-
-### **1. Database Schema Issues**
-- **Problem**: `owner_audit_logs.is_deleted` column does not exist
-- **Solution**: Temporarily disabled audit log queries
-- **Status**: Fixed with graceful error handling
-
-### **2. Transaction Rollback Issues**
-- **Problem**: Database transaction failures causing cascade errors
-- **Solution**: Added comprehensive error handling with automatic rollbacks
-- **Status**: Resolved with transaction management
-
-### **3. URL Endpoint Conflicts**
-- **Problem**: Blueprint registration conflicts
-- **Solution**: Created separate blueprints for extended functionality
-- **Status**: Fixed with proper blueprint architecture
+### **Key Dependencies**
+- Flask 2.x+
+- SQLAlchemy with Alembic migrations
+- PostgreSQL 14+
+- Redis 6+
+- Celery for background tasks
+- Bootstrap 5 for frontend
 
 ---
 
-## Performance Optimizations
+## Development Setup
 
-### **Database Optimizations**
-- **Explicit Joins**: Fixed ambiguous foreign key relationships
-- **Query Optimization**: Efficient database queries with proper indexing
-- **Connection Pooling**: Database connection management
-- **Transaction Management**: Proper rollback handling
+### **Prerequisites**
+- Python 3.10+
+- PostgreSQL 14+
+- Redis 6+
+- Docker (for containerized deployment)
 
-### **Frontend Optimizations**
-- **Lazy Loading**: Dynamic content loading
-- **Caching**: Static asset optimization
-- **Minification**: CSS and JavaScript optimization
-- **Responsive Design**: Mobile-first approach
+### **Installation**
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Initialize database
+flask db upgrade
+
+# Run development server
+flask run
+```
 
 ---
 
 ## Security Considerations
 
-### **Authentication Security**
-- **Password Hashing**: Secure password storage
-- **Session Management**: Secure session handling
-- **CSRF Protection**: Cross-site request forgery prevention
-- **Rate Limiting**: API endpoint protection
-
-### **Authorization Security**
+- **Password Hashing**: Argon2 with passlib
+- **CSRF Protection**: All forms include security tokens
+- **Rate Limiting**: API endpoint protection via Flask-Limiter
+- **Session Security**: Secure session handling with Flask-Session
 - **Role-Based Access**: Granular permission control
-- **Principle of Least Privilege**: Minimal access requirements
 - **Audit Logging**: Comprehensive activity tracking
-- **Self-Protection**: Prevent self-modification
+- **Fernet Encryption**: Lazy `_get_fernet()` pattern for encryption
 
 ---
 
-## COMPREHENSIVE FORENSIC AUDIT TRAIL SYSTEM
+## Testing
 
-### **Overview**
-Implemented to meet compliance requirements from Bank of Uganda and FIA Uganda, this system provides complete forensic audit trails across the entire application. It tracks both attempts and completions of actions, creating a comprehensive timeline for forensic investigations.
+- **Unit Testing**: Model, route, and service tests
+- **Integration Testing**: End-to-end workflow tests
+- **Security Testing**: Permission and authentication tests
+- **Run tests**: `pytest` or `pytest --cov=app`
 
-### **Key Features**
-1. **Attempt vs Completion Tracking**: Records when actions are initiated and when they are completed
-2. **Blocked Action Logging**: Tracks when actions are blocked due to policy violations
-3. **Risk Scoring**: Calculates risk scores for audit events
-4. **Suspicious Pattern Detection**: Identifies potentially malicious activity patterns
-5. **Compliance Reporting**: Generates reports for regulatory bodies
+---
 
-### **Database Schema Updates**
-All audit tables have been enhanced with forensic audit columns:
-- `attempted_at`: When the action was initiated
-- `status`: Current status (pending/completed/blocked/rejected)
-- `reviewed_by_user_id`: Who reviewed the action
-- `reviewed_at`: When the review occurred
-- `review_notes`: Notes from the reviewer
-- `ip_address`: IP address of the user
-- `user_agent`: User agent string
-- `session_id`: Session identifier
-- `correlation_id`: For linking related events
-- `risk_score`: Calculated risk score
+## License
 
-### **Core Service: ForensicAuditService**
-Located at `app/audit/forensic_audit.py`, this service provides:
-- `log_attempt()`: Log when an action is initiated
-- `log_completion()`: Log when an action is completed
-- `log_blocked()`: Log when an action is blocked
-- `get_audit_timeline()`: Retrieve complete timeline for an entity
-- `get_pending_reviews()`: Get items awaiting compliance review
-- `get_suspicious_patterns()`: Detect suspicious activity patterns
+Proprietary - AFCON360 Platform
 
-### **Integration Points**
-The system has been integrated with:
+---
 
-#### **1. User Authentication (`app/auth/services.py`)**
-- User registration: Tracks attempt and completion
-- Login attempts: Logs successful and failed attempts
-- Password reset: Tracks initiation and completion
-- Email verification: Logs verification attempts
+## Static Files & Templates
 
-#### **2. Profile Management (`app/profile/models.py`)**
-- Immutable field enforcement: Logs blocked modification attempts
-- KYC verification: Tracks verification status changes
-
-#### **3. KYC Services (`app/kyc/services.py`)**
-- KYC submission: Tracks submission attempts and approvals
-- Document verification: Logs review processes
-
-#### **4. Wallet Services (`app/wallet/services.py`)**
-- Transaction processing: Tracks initiation and completion
-- Withdrawal requests: Logs approval workflows
-
-### **Frontend Components**
-Several frontend components have been added:
-
-#### **Audit Timeline Component**
-Displays chronological audit events with attempt and completion timestamps
-
-#### **Pending Reviews Widget**
-Shows items awaiting compliance officer review
-
-#### **Suspicious Activity Widget**
-Highlights potentially malicious patterns
-
-### **Dashboard Integration**
-The audit components have been integrated into:
-- Owner Dashboard: For system-wide oversight
-- Compliance Officer Dashboard: For regulatory compliance monitoring
-- User/Fan Dashboard: For personal audit trail visibility
-- Organization Admin Dashboard: For member activity tracking
-
-### **API Endpoints**
-New API endpoints have been created:
-- `/api/audit/timeline/<entity_type>/<entity_id>`: Get forensic timeline
-- `/api/audit/pending-reviews`: Get pending review items
-- `/api/audit/review/<audit_id>`: Process review approvals/rejections
-- `/api/audit/suspicious-patterns`: Get suspicious activity patterns
-- `/api/audit/compliance-report`: Generate compliance reports
-
-### **Compliance Reports**
-The system generates reports in formats required by:
-- **FIA Uganda**: Lists all transactions > UGX 20M with timestamps
-- **Bank of Uganda**: KYC approval timelines and statistics
-
-### **Background Jobs**
-Scheduled tasks run to:
-- Detect suspicious patterns hourly
-- Escalate stale reviews (>24 hours) every 4 hours
-- Generate daily compliance reports
-
-### **Verification Queries**
-After implementation, run these SQL queries to verify the system:
-
-```sql
--- Check time gaps between attempt and completion
-SELECT
-    entity_type,
-    AVG(EXTRACT(EPOCH FROM (created_at - attempted_at))/3600) as avg_hours,
-    MAX(EXTRACT(EPOCH FROM (created_at - attempted_at))/3600) as max_hours,
-    COUNT(*) as total
-FROM user_profile_audit
-WHERE status = 'approved'
-GROUP BY entity_type;
-
--- Find suspicious patterns (multiple attempts in short time)
-SELECT
-    attempted_by_user_id,
-    COUNT(*) as attempt_count,
-    MIN(attempted_at) as first_attempt,
-    MAX(attempted_at) as last_attempt
-FROM user_profile_audit
-WHERE attempted_at > NOW() - INTERVAL '1 hour'
-GROUP BY attempted_by_user_id
-HAVING COUNT(*) > 5;
+### **Static Files Structure**
+```
+static/
+├── css/
+│   └── modules/
+│       ├── accommodation/
+│       ├── admin/
+│       ├── events/
+│       ├── fan/
+│       ├── transport/
+│       └── wallet/
+├── js/
+│   ├── global/
+│   │   ├── main.js
+│   │   ├── media-manager.js
+│   │   └── theme-manager.js
+│   └── modules/
+│       ├── accommodation/
+│       ├── events/
+│       └── transport/
+└── images/
 ```
 
----
-
-## Future Development Roadmap
-
-### **Phase 1: Core Enhancements**
-1. **Audit Logging**: Enhanced with forensic audit capabilities ✓
-2. **Email Notifications**: User verification and system alerts
-3. **File Upload**: Document and media management
-4. **API Documentation**: OpenAPI specification
-
-### **Phase 2: Advanced Features**
-1. **Multi-Tenancy**: Organization isolation
-2. **Workflow Engine**: Automated approval processes
-3. **Reporting System**: Advanced analytics and reporting
-4. **Mobile API**: RESTful API for mobile applications
-
-### **Phase 3: Enterprise Features**
-1. **SSO Integration**: Single sign-on capabilities
-2. **Advanced Security**: 2FA, device management
-3. **Compliance Framework**: GDPR, SOC2 compliance
-4. **Scalability**: Horizontal scaling support
-
----
-
-## Testing Strategy
-
-### **Unit Testing**
-- **Model Tests**: Database model validation
-- **Route Tests**: Endpoint functionality
-- **Service Tests**: Business logic validation
-- **Security Tests**: Permission and authentication
-
-### **Integration Testing**
-- **Workflow Tests**: End-to-end user journeys
-- **API Tests**: API endpoint integration
-- **Database Tests**: Data integrity and consistency
-- **Performance Tests**: Load and stress testing
-
-### **User Acceptance Testing**
-- **Role Testing**: Verify role-specific functionality
-- **Impersonation Testing**: Owner impersonation workflows
-- **Permission Testing**: Access control validation
-- **Usability Testing**: User experience validation
-
----
-
-## Deployment Guidelines
-
-### **Production Deployment**
-1. **Environment Setup**: Configure production environment
-2. **Database Migration**: Apply database schema changes
-3. **Asset Compilation**: Build and optimize static assets
-4. **Security Hardening**: Apply security configurations
-5. **Monitoring Setup**: Implement logging and monitoring
-
-### **Maintenance Procedures**
-1. **Regular Updates**: Keep dependencies updated
-2. **Security Patches**: Apply security updates promptly
-3. **Performance Monitoring**: Monitor system performance
-4. **Backup Procedures**: Regular database backups
-5. **Audit Reviews**: Regular security audits
-
----
-
-## Support & Documentation
-
-### **Technical Documentation**
-- **API Documentation**: Complete API reference
-- **Developer Guide**: Development setup and procedures
-- **Deployment Guide**: Production deployment instructions
-- **Troubleshooting Guide**: Common issues and solutions
-
-### **User Documentation**
-- **User Manual**: End-user instructions
-- **Admin Guide**: Administrative procedures
-- **Role Guides**: Role-specific instructions
-- **FAQ**: Common questions and answers
-
----
-
-## Conclusion
-
-The AFCON360 system represents a comprehensive solution for football tournament management with advanced administrative capabilities. The implementation provides:
-
-- **Complete User Management**: Advanced CRUD operations with bulk actions
-- **Role-Based Access Control**: Granular permissions across 15 hierarchical roles
-- **Impersonation System**: Owner can test any user experience
-- **Dashboard System**: Role-specific interfaces with relevant functionality
-- **Security Framework**: Comprehensive authentication and authorization
-- **Scalable Architecture**: Modular design for future enhancements
-
-The system is production-ready and provides a solid foundation for continued development and enhancement. The modular architecture and comprehensive feature set make it suitable for enterprise deployment and continued evolution.
-
----
-
-**System Status**: PRODUCTION READY
-**Last Updated**: April 8, 2026
-**Version**: 1.0.0
-**Architecture**: Flask + PostgreSQL + Redis
-**Features**: Complete user, role, and impersonation management
+### **Templates Structure**
+```
+templates/
+├── admin/
+│   ├── super_dashboard.html
+│   ├── moderator_dashboard.html
+│   ├── support_dashboard.html
+│   ├── auditor_dashboard.html
+│   ├── manage_roles.html
+│   ├── manage_users_ultimate.html
+│   ├── view_user_ultimate.html
+│   └── compliance/
+├── fan/
+│   └── enhanced_dashboard.html
+├── accommodation_home.html
+├── transport_home.html
+├── tournament_home.html
+├── tourism_home.html
+├── public_home.html
+└── base.html
+```

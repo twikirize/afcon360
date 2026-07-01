@@ -34,11 +34,12 @@ def transport_admin_dashboard():
     """Transport Admin Dashboard with comprehensive transport management."""
     try:
         # Import transport modules
-        from app.transport.models import Vehicle, Driver, TransportBooking
-        from app.transport.services import TransportService
+        from app.transport.models import Vehicle, DriverProfile, Booking, ComplianceStatus
+        from app.transport.services.dashboard_service import get_dashboard_service
         
         # Get transport statistics
-        transport_stats = TransportService.get_admin_dashboard_data()
+        dashboard_service = get_dashboard_service()
+        transport_stats = dashboard_service.get_admin_dashboard_context()
         total_vehicles = transport_stats.get('total_vehicles', 0)
         total_drivers = transport_stats.get('total_drivers', 0)
         total_bookings = transport_stats.get('total_bookings', 0)
@@ -50,10 +51,10 @@ def transport_admin_dashboard():
         ).order_by(Vehicle.created_at.desc()).limit(10).all()
         
         # Get pending driver verifications
-        pending_drivers = Driver.query.filter_by(
-            verification_status='pending',
+        pending_drivers = DriverProfile.query.filter_by(
+            compliance_status=ComplianceStatus.PENDING_REVIEW,
             is_deleted=False
-        ).order_by(Driver.created_at.desc()).limit(5).all()
+        ).order_by(DriverProfile.created_at.desc()).limit(5).all()
         
         return render_template(
             "admin/transport_admin_dashboard.html",
@@ -112,7 +113,7 @@ def transport_admin_create_vehicle():
     try:
         if request.method == 'POST':
             from app.transport.models import Vehicle
-            from app.transport.services import TransportService
+            from app.transport.services.provider_service import get_provider_service
             
             # Process vehicle creation
             vehicle_data = {
@@ -126,7 +127,8 @@ def transport_admin_create_vehicle():
                 'created_by': current_user.id
             }
             
-            vehicle = TransportService.create_vehicle(vehicle_data)
+            provider_service = get_provider_service()
+            vehicle = provider_service.create_vehicle(vehicle_data)
             if vehicle:
                 flash("Vehicle created successfully.", "success")
                 return redirect(url_for('admin.transport_admin_vehicles'))
@@ -147,7 +149,7 @@ def transport_admin_edit_vehicle(vehicle_id):
     """Edit existing vehicle."""
     try:
         from app.transport.models import Vehicle
-        from app.transport.services import TransportService
+        from app.transport.services.provider_service import get_provider_service
         
         vehicle = Vehicle.query.get_or_404(vehicle_id)
         
@@ -163,7 +165,8 @@ def transport_admin_edit_vehicle(vehicle_id):
                 'status': request.form.get('status')
             }
             
-            if TransportService.update_vehicle(vehicle_id, vehicle_data):
+            provider_service = get_provider_service()
+            if provider_service.update_vehicle(vehicle_id, vehicle_data):
                 flash("Vehicle updated successfully.", "success")
                 return redirect(url_for('admin.transport_admin_vehicles'))
             else:
@@ -184,11 +187,12 @@ def transport_admin_delete_vehicle(vehicle_id):
     """Delete vehicle."""
     try:
         from app.transport.models import Vehicle
-        from app.transport.services import TransportService
+        from app.transport.services.provider_service import get_provider_service
         
         vehicle = Vehicle.query.get_or_404(vehicle_id)
         
-        if TransportService.delete_vehicle(vehicle_id):
+        provider_service = get_provider_service()
+        if provider_service.delete_vehicle(vehicle_id):
             flash(f"Vehicle '{vehicle.make} {vehicle.model}' deleted successfully.", "warning")
         else:
             flash("Error deleting vehicle.", "danger")
@@ -209,17 +213,17 @@ def transport_admin_delete_vehicle(vehicle_id):
 def transport_admin_drivers():
     """List and manage all drivers."""
     try:
-        from app.transport.models import Driver
+        from app.transport.models import DriverProfile, ComplianceStatus
         
         page = request.args.get('page', 1, type=int)
         status = request.args.get('status', 'all')
         
-        query = Driver.query.filter_by(is_deleted=False)
+        query = DriverProfile.query.filter_by(is_deleted=False)
         
         if status != 'all':
-            query = query.filter_by(verification_status=status)
+            query = query.filter_by(compliance_status=status)
         
-        drivers = query.order_by(Driver.created_at.desc()).paginate(
+        drivers = query.order_by(DriverProfile.created_at.desc()).paginate(
             page=page, per_page=20, error_out=False
         )
         
@@ -240,13 +244,14 @@ def transport_admin_drivers():
 def transport_admin_verify_driver(driver_id):
     """Verify driver."""
     try:
-        from app.transport.models import Driver
-        from app.transport.services import TransportService
+        from app.transport.models import DriverProfile
+        from app.transport.services.provider_service import get_provider_service
         
-        driver = Driver.query.get_or_404(driver_id)
+        driver = DriverProfile.query.get_or_404(driver_id)
         
-        if TransportService.verify_driver(driver_id, verified_by=current_user.id):
-            flash(f"Driver {driver.name} verified successfully.", "success")
+        provider_service = get_provider_service()
+        if provider_service.verify_driver(driver_id, verified_by=current_user.id):
+            flash(f"Driver {driver.driver_code} verified successfully.", "success")
         else:
             flash("Error verifying driver.", "danger")
         
@@ -263,14 +268,15 @@ def transport_admin_verify_driver(driver_id):
 def transport_admin_reject_driver(driver_id):
     """Reject driver verification."""
     try:
-        from app.transport.models import Driver
-        from app.transport.services import TransportService
+        from app.transport.models import DriverProfile
+        from app.transport.services.provider_service import get_provider_service
         
-        driver = Driver.query.get_or_404(driver_id)
+        driver = DriverProfile.query.get_or_404(driver_id)
         reason = request.form.get('reason', 'No reason provided')
         
-        if TransportService.reject_driver(driver_id, reason):
-            flash(f"Driver {driver.name} verification rejected.", "warning")
+        provider_service = get_provider_service()
+        if provider_service.reject_driver(driver_id, reason):
+            flash(f"Driver {driver.driver_code} verification rejected.", "warning")
         else:
             flash("Error rejecting driver.", "danger")
         
@@ -290,18 +296,18 @@ def transport_admin_reject_driver(driver_id):
 def transport_admin_bookings():
     """Manage transport bookings."""
     try:
-        from app.transport.models import TransportBooking
+        from app.transport.models import Booking
         
         page = request.args.get('page', 1, type=int)
         status = request.args.get('status', 'all')
         
-        query = TransportBooking.query.filter_by(is_deleted=False)
+        query = Booking.query.filter_by(is_deleted=False)
         
         if status != 'all':
             query = query.filter_by(status=status)
         
         bookings = query.order_by(
-            TransportBooking.created_at.desc()
+            Booking.created_at.desc()
         ).paginate(page=page, per_page=20, error_out=False)
         
         return render_template(
@@ -321,12 +327,13 @@ def transport_admin_bookings():
 def transport_admin_approve_booking(booking_id):
     """Approve transport booking."""
     try:
-        from app.transport.models import TransportBooking
-        from app.transport.services import TransportService
+        from app.transport.models import Booking
+        from app.transport.services.booking_service import get_booking_service
         
-        booking = TransportBooking.query.get_or_404(booking_id)
+        booking = Booking.query.get_or_404(booking_id)
         
-        if TransportService.approve_booking(booking_id):
+        booking_service = get_booking_service()
+        if booking_service.approve_booking(booking_id):
             flash(f"Booking for {booking.user.username} approved.", "success")
         else:
             flash("Error approving booking.", "danger")
@@ -344,13 +351,14 @@ def transport_admin_approve_booking(booking_id):
 def transport_admin_reject_booking(booking_id):
     """Reject transport booking."""
     try:
-        from app.transport.models import TransportBooking
-        from app.transport.services import TransportService
+        from app.transport.models import Booking
+        from app.transport.services.booking_service import get_booking_service
         
-        booking = TransportBooking.query.get_or_404(booking_id)
+        booking = Booking.query.get_or_404(booking_id)
         reason = request.form.get('reason', 'No reason provided')
         
-        if TransportService.reject_booking(booking_id, reason):
+        booking_service = get_booking_service()
+        if booking_service.reject_booking(booking_id, reason):
             flash(f"Booking for {booking.user.username} rejected.", "warning")
         else:
             flash("Error rejecting booking.", "danger")
@@ -371,11 +379,11 @@ def transport_admin_reject_booking(booking_id):
 def transport_admin_organizations():
     """Manage transport organizations."""
     try:
-        from app.transport.models import TransportOrganization
+        from app.transport.models import OrganisationTransportProfile
         
-        organizations = TransportOrganization.query.filter_by(
+        organizations = OrganisationTransportProfile.query.filter_by(
             is_deleted=False
-        ).order_by(TransportOrganization.created_at.desc()).all()
+        ).order_by(OrganisationTransportProfile.created_at.desc()).all()
         
         return render_template(
             "admin/transport_admin/organizations.html",
@@ -396,10 +404,11 @@ def transport_admin_organizations():
 def transport_admin_analytics():
     """Transport analytics and reports."""
     try:
-        from app.transport.services import TransportService
+        from app.transport.services.dashboard_service import get_dashboard_service
         
         # Get analytics data
-        analytics = TransportService.get_analytics_data()
+        dashboard_service = get_dashboard_service()
+        analytics = dashboard_service.get_analytics_data()
         
         return render_template(
             "admin/transport_admin/analytics.html",

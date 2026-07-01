@@ -547,6 +547,40 @@ def can_view_event_stats(user, event) -> bool:
 # FULL PERMISSION MAP  (for template context / API responses)
 # ============================================================================
 
+def can_manage_registration(user, registration, event=None) -> bool:
+    """
+    True if user may view/cancel/modify this registration.
+
+    Permissions hierarchy:
+    1. System admin → always True
+    2. Event organizer → True for any registration in their event
+    3. The attendee themselves → True for their own registration
+    4. The person who booked it → True for registrations they paid for
+
+    Returns False for anonymous users.
+    """
+    if not user or not user.is_authenticated:
+        return False
+
+    # System admin can manage anything
+    if auth_is_system_admin(user):
+        return True
+
+    # Event organizer can manage all registrations for their event
+    if event and hasattr(event, 'organizer_id') and event.organizer_id == user.id:
+        return True
+
+    # If we have registration but no event, try to get event
+    if not event and registration and hasattr(registration, 'event'):
+        event = registration.event
+        if event and event.organizer_id == user.id:
+            return True
+
+    # Attendee or booker
+    return (registration.user_id == user.id or
+            registration.booked_by_user_id == user.id)
+
+
 def get_user_event_permissions(user, event_slug: str) -> dict:
     """
     Return a complete permission map for a user on a specific event.

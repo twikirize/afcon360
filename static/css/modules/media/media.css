@@ -1,0 +1,340 @@
+/* ============================================
+   AFCON360 Media System Styles
+   Dark editorial UI with gold accents
+   ============================================ */
+
+/* --- Upload Drop Zone --- */
+.media-uploader {
+    position: relative;
+}
+
+.drop-zone {
+    border: 2px dashed var(--border-color, #444);
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.02);
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+    border-color: var(--accent-gold, #d4a853);
+    background: rgba(212, 168, 83, 0.05);
+}
+
+.drop-zone-content i {
+    font-size: 48px;
+    color: var(--accent-gold, #d4a853);
+    opacity: 0.8;
+}
+
+.drop-zone-content h5 {
+    color: var(--text-primary, #e0e0e0);
+    margin: 0;
+    font-weight: 500;
+}
+
+.drop-zone-content p {
+    color: var(--text-muted, #888);
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.drop-zone input[type="file"] {
+    display: none;
+}
+
+/* --- Upload Queue --- */
+.upload-queue {
+    margin-top: 16px;
+}
+
+.upload-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border-color, #333);
+}
+
+.upload-item-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #1a1a1a;
+}
+
+.upload-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.upload-item-name {
+    color: var(--text-primary, #e0e0e0);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upload-item-size {
+    color: var(--text-muted, #888);
+    font-size: 0.8rem;
+}
+
+.upload-item-status {
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.upload-item-status.uploading {
+    color: var(--accent-gold, #d4a853);
+}
+
+.upload-item-status.success {
+    color: #4caf50;
+}
+
+.upload-item-status.error {
+    color: #f44336;
+}
+
+.upload-item-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted, #888);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 1.1rem;
+    transition: color 0.2s;
+}
+
+.upload-item-remove:hover {
+    color: #f44336;
+}
+
+/* --- Progress Bar --- */
+.upload-progress {
+    height: 4px;
+    background: var(--border-color, #333);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.upload-progress .progress-bar {
+    height: 100%;
+    background: var(--accent-gold, #d4a853);
+    transition: width 0.3s ease;
+    border-radius: 2px;
+}
+
+/* --- Media Gallery Grid --- */
+.media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.media-item {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #1a1a1a;
+    border: 1px solid var(--border-color, #333);
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.media-item:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-gold, #d4a853);
+}
+
+.media-item img,
+.media-item video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.media-item-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: flex-end;
+    padding: 8px;
+}
+
+.media-item:hover .media-item-overlay {
+    opacity: 1;
+}
+
+.media-item-actions {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+.media-item-btn {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-align: center;
+}
+
+.media-item-btn.primary {
+    background: var(--accent-gold, #d4a853);
+    color: #000;
+}
+
+.media-item-btn.danger {
+    background: rgba(244, 67, 54, 0.8);
+    color: #fff;
+}
+
+.media-item-btn:hover {
+    opacity: 0.9;
+}
+
+/* --- Cover Badge --- */
+.media-cover-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: var(--accent-gold, #d4a853);
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* --- Lightbox --- */
+.media-lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.media-lightbox.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.media-lightbox-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    position: relative;
+}
+
+.media-lightbox-content img,
+.media-lightbox-content video {
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.media-lightbox-close {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.media-lightbox-close:hover {
+    opacity: 1;
+}
+
+.media-lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    padding: 16px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+.media-lightbox-nav:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.media-lightbox-prev {
+    left: -60px;
+}
+
+.media-lightbox-next {
+    right: -60px;
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+    .media-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+    }
+
+    .drop-zone {
+        padding: 24px 16px;
+        min-height: 150px;
+    }
+
+    .drop-zone-content i {
+        font-size: 36px;
+    }
+
+    .media-lightbox-nav {
+        padding: 10px;
+        font-size: 1.5rem;
+    }
+
+    .media-lightbox-prev {
+        left: 10px;
+    }
+
+    .media-lightbox-next {
+        right: 10px;
+    }
+}

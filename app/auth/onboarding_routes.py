@@ -107,13 +107,13 @@ def choose_organisation():
 
 
 # ---------------------------------------------------------------------------
-# Fan / Explorer (1-step)
+# Standard User (1-step)
 # ---------------------------------------------------------------------------
 
-@onboarding_bp.route("/fan", methods=["GET", "POST"])
+@onboarding_bp.route("/standard", methods=["GET", "POST"])
 @login_required
-def fan_onboarding():
-    """Simple 1-step fan onboarding."""
+def standard_onboarding():
+    """Simple 1-step standard user onboarding."""
     from app.profile.models import get_profile_by_user
     from app.identity.models.user import User
 
@@ -124,14 +124,14 @@ def fan_onboarding():
 
         if not full_name:
             flash("Full name is required.", "danger")
-            return render_template("onboarding/fan.html")
+            return render_template("onboarding/standard.html")
 
         db_user = User.query.filter_by(public_id=str(current_user.public_id)).first()
         if not db_user:
             flash("Session error. Please log in again.", "danger")
             return redirect(url_for("auth.login"))
 
-        with db_transaction("Fan onboarding - profile update"):
+        with db_transaction("Standard onboarding - profile update"):
             profile = get_profile_by_user(current_user.public_id)
             if profile:
                 profile.full_name = full_name
@@ -141,11 +141,11 @@ def fan_onboarding():
                 if not profile.display_name:
                     profile.display_name = full_name
 
-        flash("Welcome to AFCON 360! Your account is ready.", "success")
-        return redirect(url_for("fan.dashboard"))
+        flash("Welcome to AFCON 360! Your profile is complete.", "success")
+        return redirect(url_for("user.dashboard"))
 
     profile = get_profile_by_user(current_user.public_id)
-    return render_template("onboarding/fan.html", profile=profile)
+    return render_template("onboarding/standard.html", profile=profile)
 
 
 # ---------------------------------------------------------------------------

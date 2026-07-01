@@ -1,0 +1,21 @@
+﻿aider --model gemini/gemini-2.5-flash --subtree-only
+aider --model gemini/gemini-2.5-flash
+aider --model gemini/gemini-2.5-pro --subtree-only
+
+
+Model: gemini/gemini-2.5-flash with diff edit format
+Git repo: .git with 1,146 files
+Warning: For large repos, consider using --subtree-only and .aiderignore
+See: https://aider.chat/docs/faq.html#can-i-use-aider-in-a-large-mono-repo
+Repo-map: using 8192 tokens, manual refresh
+Multiline mode: Enabled. Enter inserts newline, Alt-Enter submits text
+
+Aider v0.86.2
+Model: ollama/llama3 with diff edit format
+Git repo: .git with 1,146 files
+Warning: For large repos, consider using --subtree-only and .aiderignore
+See: https://aider.chat/docs/faq.html#can-i-use-aider-in-a-large-mono-repo
+Repo-map: using 8192 tokens, manual refresh
+Warning: map-tokens > 2048.0 is not recommended. Too much irrelevant code can confuse LLMs.
+Multiline mode: Enabled. Enter inserts newline, Alt-Enter submits text
+

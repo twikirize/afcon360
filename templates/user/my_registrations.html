@@ -2,47 +2,46 @@
 
 {% block content_section %}
 <div id="dashboard" class="content-section active">
-    {# Reuse the events section HTML but rendered as the main content #}
 
-    <div style="margin-bottom:1.5rem;">
-        <h1 style="font-size:1.5rem;font-weight:800;color:#1a202c;margin:0 0 0.25rem;">My Registrations</h1>
-        <p style="color:#718096;margin:0;">All your event tickets in one place.</p>
+    <div class="dash-header">
+        <h1 class="dash-title">My Registrations</h1>
+        <p class="dash-subtitle">Manage your event access and digital tickets.</p>
     </div>
 
     {% if managed_registrations is defined %}
-    <div style="margin-top:2rem;">
-        <h2 style="font-size:1.1rem;font-weight:800;color:#1a202c;margin:0 0 0.75rem;display:flex;align-items:center;gap:0.5rem;">
-            <i class="fas fa-users-cog" style="color:#667eea;"></i>
-            Registrations I Manage
-            <span style="font-size:0.8rem;color:#718096;font-weight:600;">({{ managed_registrations|length }})</span>
+    <div class="section-card">
+        <h2 class="section-title">
+            <span><i class="fas fa-users-cog me-2"></i>Registrations I Manage</span>
+            <span class="tab-count">{{ managed_registrations|length }}</span>
         </h2>
         {% if managed_registrations %}
-        <div style="overflow-x:auto;background:white;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-            <table style="width:100%;border-collapse:collapse;">
+        <div class="table-scroll">
+            <table class="dash-table">
                 <thead>
-                    <tr style="background:#f7fafc;color:#4a5568;text-align:left;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.03em;">
-                        <th style="padding:0.75rem 1rem;">Attendee</th>
-                        <th style="padding:0.75rem 1rem;">Email</th>
-                        <th style="padding:0.75rem 1rem;">Event</th>
-                        <th style="padding:0.75rem 1rem;">Ticket</th>
-                        <th style="padding:0.75rem 1rem;">Status</th>
-                        <th style="padding:0.75rem 1rem;text-align:right;">Actions</th>
+                    <tr>
+                        <th>Attendee</th>
+                        <th>Event</th>
+                        <th>Ticket</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in managed_registrations %}
-                    <tr style="border-top:1px solid #edf2f7;">
-                        <td style="padding:0.75rem 1rem;font-weight:600;color:#2d3748;">{{ r.full_name }}</td>
-                        <td style="padding:0.75rem 1rem;color:#4a5568;">{{ r.email }}</td>
-                        <td style="padding:0.75rem 1rem;color:#4a5568;">{{ r.event.name }}</td>
-                        <td style="padding:0.75rem 1rem;color:#4a5568;">{{ r.ticket_type }}</td>
-                        <td style="padding:0.75rem 1rem;">
-                            <span style="display:inline-block;padding:0.2rem 0.5rem;border-radius:999px;font-size:0.72rem;font-weight:700;{{ 'background:#c6f6d5;color:#22543d;' if r.status in ['confirmed','checked_in'] else 'background:#fed7d7;color:#742a2a;' }}">
+                    <tr>
+                        <td>
+                            <div class="table-title">{{ r.full_name }}</div>
+                            <div class="table-subtitle">{{ r.email }}</div>
+                        </td>
+                        <td class="table-main">{{ r.event.name }}</td>
+                        <td class="table-muted">{{ r.ticket_type }}</td>
+                        <td>
+                            <span class="status-badge status-{{ r.status }}">
                                 {{ r.status|replace('_',' ')|title }}
                             </span>
                         </td>
-                        <td style="padding:0.75rem 1rem;text-align:right;">
-                            <a href="{{ safe_url('events.registration_confirmation', reg_ref=r.registration_ref) }}" style="color:#667eea;font-weight:700;text-decoration:none;">View Ticket →</a>
+                        <td class="text-end">
+                            <a href="{{ safe_url('events.registration_confirmation', reg_ref=r.registration_ref) }}" class="btn-gold btn-gold-sm">View Ticket</a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -50,115 +49,129 @@
             </table>
         </div>
         {% else %}
-        <div style="text-align:center;padding:1.5rem;color:#718096;border:1px dashed #e2e8f0;border-radius:12px;background:#fdfdfd;">
-            <i class="fas fa-user-friends" style="font-size:1.6rem;display:block;margin-bottom:0.5rem;color:#cbd5e0;"></i>
-            <div>No managed registrations yet.</div>
+        <div class="empty-state">
+            <i class="fas fa-user-friends empty-icon"></i>
+            <p>No managed registrations found.</p>
         </div>
         {% endif %}
     </div>
     {% endif %}
 
     {# Stats strip #}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0.75rem;margin-bottom:1.5rem;">
-        <div style="background:white;border-radius:12px;padding:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border:1px solid #e2e8f0;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:800;color:#00b87d;">{{ upcoming_count }}</div>
-            <div style="font-size:0.72rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Upcoming</div>
+    <div class="stats-grid stats-grid-compact">
+        <div class="stat-card stat-card-center stat-value-success">
+            <div class="stat-value">{{ upcoming_count }}</div>
+            <div class="stat-label">Upcoming</div>
         </div>
-        <div style="background:white;border-radius:12px;padding:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border:1px solid #e2e8f0;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:800;color:#667eea;">{{ attended_count }}</div>
-            <div style="font-size:0.72rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Attended</div>
+        <div class="stat-card stat-card-center stat-value-gold">
+            <div class="stat-value">{{ attended_count }}</div>
+            <div class="stat-label">Attended</div>
         </div>
-        <div style="background:white;border-radius:12px;padding:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border:1px solid #e2e8f0;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:800;color:#f6ad55;">${{ total_spent }}</div>
-            <div style="font-size:0.72rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Total Spent</div>
+        <div class="stat-card stat-card-center stat-value-blue">
+            <div class="stat-value">${{ total_spent }}</div>
+            <div class="stat-label">Total Spent</div>
         </div>
-        <div style="background:white;border-radius:12px;padding:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border:1px solid #e2e8f0;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:800;color:#4299e1;">{{ registrations|length }}</div>
-            <div style="font-size:0.72rem;color:#718096;text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+        <div class="stat-card stat-card-center">
+            <div class="stat-value">{{ registrations|length }}</div>
+            <div class="stat-label">Total Entries</div>
         </div>
     </div>
 
     {# Tabs #}
-    <div style="display:flex;gap:0.5rem;border-bottom:2px solid #e2e8f0;margin-bottom:1.25rem;">
-        <button class="ev-tab active" data-evtab="upcoming"
-                style="padding:0.55rem 1.2rem;font-weight:600;font-size:0.875rem;color:#718096;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;">
-            Upcoming ({{ upcoming_count }})
+    <div class="tab-container">
+        <button class="tab-btn active" data-tab="upcoming">
+            Upcoming <span class="tab-count">{{ upcoming_count }}</span>
         </button>
-        <button class="ev-tab" data-evtab="past"
-                style="padding:0.55rem 1.2rem;font-weight:600;font-size:0.875rem;color:#718096;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;">
-            Past ({{ past_registrations|length }})
+        <button class="tab-btn" data-tab="past">
+            Past <span class="tab-count">{{ past_registrations|length }}</span>
         </button>
     </div>
 
-    <div id="evtab-upcoming" class="ev-panel">
+    <div id="tab-upcoming" class="tab-panel">
         {% for reg in upcoming_registrations %}{% include 'user/_reg_card.html' %}{% endfor %}
         {% if not upcoming_registrations %}
-        <div style="text-align:center;padding:3rem;color:#718096;">
-            <i class="fas fa-calendar-plus" style="font-size:2.5rem;display:block;margin-bottom:1rem;color:#cbd5e0;"></i>
-            <h5 style="color:#2d3748;">No upcoming events</h5>
-            <a href="{{ safe_url('events.list') }}" style="color:#667eea;font-weight:600;">Browse Events →</a>
+        <div class="empty-state">
+            <i class="fas fa-calendar-plus empty-icon"></i>
+            <h5 class="empty-title">No upcoming events</h5>
+            <a href="{{ safe_url('events.list') }}" class="btn-gold">Browse Events</a>
         </div>
         {% endif %}
     </div>
 
-    <div id="evtab-past" class="ev-panel" style="display:none;">
+    <div id="tab-past" class="tab-panel">
         {% for reg in past_registrations %}{% include 'user/_reg_card.html' %}{% endfor %}
         {% if not past_registrations %}
-        <div style="text-align:center;padding:3rem;color:#718096;">
-            <i class="fas fa-history" style="font-size:2.5rem;display:block;margin-bottom:1rem;color:#cbd5e0;"></i>
-            <h5 style="color:#2d3748;">No past events yet</h5>
+        <div class="empty-state">
+            <i class="fas fa-history empty-icon"></i>
+            <h5 class="empty-title">No past events yet</h5>
         </div>
         {% endif %}
     </div>
 
-    <div id="cancelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
-        <div style="background:white;border-radius:16px;padding:2rem;max-width:400px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="font-size:2.5rem;color:#fc8181;margin-bottom:1rem;"><i class="fas fa-exclamation-circle"></i></div>
-            <h5 style="font-weight:700;margin-bottom:0.5rem;">Cancel Registration?</h5>
-            <p id="cancelModalText" style="color:#718096;font-size:0.9rem;margin-bottom:1.5rem;"></p>
-            <div style="display:flex;gap:0.75rem;justify-content:center;">
-                <button onclick="closeCancelModal()" style="padding:0.6rem 1.5rem;border-radius:8px;border:1.5px solid #e2e8f0;background:white;font-weight:600;cursor:pointer;">Keep It</button>
-                <button id="confirmCancelBtn" style="padding:0.6rem 1.5rem;border-radius:8px;border:none;background:#fc8181;color:white;font-weight:600;cursor:pointer;">Yes, Cancel</button>
+    {# Cancel modal #}
+    <div id="cancelModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-exclamation-circle"></i></div>
+            <h5 class="modal-title">Cancel Registration?</h5>
+            <p id="cancelModalText" class="modal-text"></p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" data-action="close-modal">Keep It</button>
+                <button id="confirmCancelBtn" class="btn btn-danger">Yes, Cancel</button>
             </div>
         </div>
     </div>
 
 </div>
 
-<style>
-.ev-tab.active { color: #667eea !important; border-bottom-color: #667eea !important; }
-</style>
 <script>
-document.querySelectorAll('.ev-tab').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-        document.querySelectorAll('.ev-tab').forEach(function (t) { t.classList.remove('active'); });
-        document.querySelectorAll('.ev-panel').forEach(function (p) { p.style.display = 'none'; });
-        this.classList.add('active');
-        document.getElementById('evtab-' + this.dataset.evtab).style.display = 'block';
+(function() {
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const panelId = 'tab-' + this.dataset.tab;
+            document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+            this.classList.add('active');
+            document.getElementById(panelId).style.display = 'block';
+        });
     });
-});
-var _cancelRef = null;
-function confirmCancel(ref, name) {
-    _cancelRef = ref;
-    document.getElementById('cancelModalText').textContent = 'Cancel registration for "' + name + '"? This cannot be undone.';
-    document.getElementById('cancelModal').style.display = 'flex';
-}
-function closeCancelModal() {
-    document.getElementById('cancelModal').style.display = 'none';
-    _cancelRef = null;
-}
-document.getElementById('confirmCancelBtn').addEventListener('click', function () {
-    if (!_cancelRef) return;
-    var btn = this; btn.disabled = true; btn.textContent = 'Cancelling…';
-    fetch('/user/cancel-registration', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (document.querySelector('meta[name=csrf-token]') || {}).content || '' },
-        body: JSON.stringify({ reg_ref: _cancelRef })
-    }).then(function (r) { return r.json(); })
-    .then(function (d) {
-        if (d.success) window.location.reload();
-        else { alert(d.error || 'Error'); btn.disabled = false; btn.textContent = 'Yes, Cancel'; }
+
+    // Cancellation
+    let _cancelRef = null;
+    const modal = document.getElementById('cancelModal');
+    const confirmBtn = document.getElementById('confirmCancelBtn');
+
+    window.confirmCancel = function(ref, name) {
+        _cancelRef = ref;
+        document.getElementById('cancelModalText').textContent = `Cancel registration for "${name}"? This cannot be undone.`;
+        modal.style.display = 'flex';
+    };
+
+    window.closeCancelModal = function() {
+        modal.style.display = 'none';
+        _cancelRef = null;
+    };
+
+    document.addEventListener('click', function(e) {
+        if (e.target === modal || e.target.closest('[data-action="close-modal"]')) {
+            closeCancelModal();
+        }
     });
-});
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            if (!_cancelRef) return;
+            this.disabled = true; this.textContent = 'Cancelling...';
+            fetch('/user/cancel-registration', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (document.querySelector('meta[name=csrf-token]') || {}).content || '' },
+                body: JSON.stringify({ reg_ref: _cancelRef })
+            }).then(r => r.json()).then(d => {
+                if (d.success) location.reload();
+                else { alert(d.error || 'Error'); this.disabled = false; this.textContent = 'Yes, Cancel'; }
+            });
+        });
+    }
+})();
 </script>
 {% endblock %}

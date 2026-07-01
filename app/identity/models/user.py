@@ -1,6 +1,7 @@
 # app/identity/user.py
 
 from datetime import datetime, timedelta, timezone
+import json
 import uuid as uuid_lib
 from typing import List
 from sqlalchemy import (
@@ -136,7 +137,8 @@ class User(UserMixin, ProtectedModel):
         "IndividualVerification",           # Short name - safer than full module path
         back_populates="user",
         cascade="all, delete-orphan",
-        foreign_keys="IndividualVerification.user_id"
+        foreign_keys="IndividualVerification.user_id",
+        lazy="joined"
     )
     documents = relationship(
         "IndividualKYCDocument", back_populates="user", cascade="all, delete-orphan"
@@ -249,6 +251,12 @@ class User(UserMixin, ProtectedModel):
             # Don't fail password change if audit fails
             import logging
             logging.error(f"Failed to audit password change: {e}")
+        # Invalidate user cache after password change
+        try:
+            from app.extensions import cache
+            cache.delete(f"user:{self.public_id}")
+        except Exception:
+            pass
 
     # ---------------------------
     # Transaction PIN helpers
@@ -368,7 +376,7 @@ class User(UserMixin, ProtectedModel):
                 return True
             return any(rn in role_names for rn in self.role_names)
         except Exception as e:
-            current_app.logger.error(f"RBAC Error for user {self.id}: {e}")
+            current_app.logger.error(f"RBAC Error for user {self.public_id}: {e}")
             return False
 
     # ---------------------------
@@ -514,8 +522,8 @@ class User(UserMixin, ProtectedModel):
 
     def __repr__(self):
         return (
-            f"<User id={self.id} public_id={self.public_id} "
-            f"username={self.username} email={self.email}>"
+            f"<User public_id={self.public_id} "
+            f"username={self.username}>"
         )
 
     # ---------------------------
@@ -599,6 +607,12 @@ class User(UserMixin, ProtectedModel):
         except Exception as e:
             import logging
             logging.error(f"Failed to audit MFA enablement: {e}")
+        # Invalidate user cache after MFA change
+        try:
+            from app.extensions import cache
+            cache.delete(f"user:{self.public_id}")
+        except Exception:
+            pass
 
     def disable_mfa(self, disabled_by_user_id: int = None, reason: str = None):
         """Disable MFA with audit logging"""
@@ -627,6 +641,12 @@ class User(UserMixin, ProtectedModel):
         except Exception as e:
             import logging
             logging.error(f"Failed to audit MFA disablement: {e}")
+        # Invalidate user cache after MFA change
+        try:
+            from app.extensions import cache
+            cache.delete(f"user:{self.public_id}")
+        except Exception:
+            pass
 
     # ---------------------------
     # Tenure-based Protection Methods
@@ -745,6 +765,12 @@ class User(UserMixin, ProtectedModel):
             except Exception as e:
                 import logging
                 logging.error(f"Failed to audit email change: {e}")
+            # Invalidate user cache after email change
+            try:
+                from app.extensions import cache
+                cache.delete(f"user:{self.public_id}")
+            except Exception:
+                pass
 
         return new_email
 
@@ -775,6 +801,12 @@ class User(UserMixin, ProtectedModel):
             except Exception as e:
                 import logging
                 logging.error(f"Failed to audit phone change: {e}")
+            # Invalidate user cache after phone change
+            try:
+                from app.extensions import cache
+                cache.delete(f"user:{self.public_id}")
+            except Exception:
+                pass
 
         return new_phone
 
@@ -854,7 +886,7 @@ class UserRole(ProtectedModel):
     )
 
     def __repr__(self):
-        return f"<UserRole user_id={self.user_id} role_id={self.role_id}>"
+        return f"<UserRole>"
 
 
 # --------------------------------------
@@ -891,7 +923,7 @@ class MFASecret(ProtectedModel):
     def store_backup_codes(self, backup_codes: List[str]):
         """Store encrypted backup codes."""
         from app.utils.security import get_encryption_key, _fernet
-        encrypted_codes = _fernet.encrypt(str(backup_codes).encode()).decode()
+        encrypted_codes = _fernet.encrypt(json.dumps(backup_codes).encode()).decode()
         self.backup_codes = encrypted_codes
     
     def get_backup_codes(self) -> List[str]:
@@ -902,7 +934,7 @@ class MFASecret(ProtectedModel):
         from app.utils.security import get_encryption_key, _fernet
         try:
             decrypted = _fernet.decrypt(self.backup_codes.encode()).decode()
-            return eval(decrypted)  # Convert string back to list
+            return json.loads(decrypted)  # Convert string back to list
         except Exception:
             return []
     
@@ -924,7 +956,7 @@ class MFASecret(ProtectedModel):
         return value
 
     def __repr__(self):
-        return f"<MFASecret user_id={self.user_id} type={self.mfa_type}>"
+        return f"<MFASecret type={self.mfa_type}>"
 
 
 # --------------------------------------
@@ -948,7 +980,7 @@ class Session(ProtectedModel):
     user = relationship("User", back_populates="sessions", lazy="joined")
 
     def __repr__(self):
-        return f"<Session id={self.id} user_id={self.user_id}>"
+        return f"<Session session_id={self.session_id}>"
 
 
 # --------------------------------------

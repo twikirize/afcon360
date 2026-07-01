@@ -1,4 +1,3 @@
-#app/transport/services/__init__.py
 """
 Transport services initializer
 Allows clean imports across the app
@@ -48,7 +47,7 @@ __all__ = [
     'PromotionService',
     'ExternalPlatformsService',
     'SettingsService',
-    'DashboardService',  # ← ADD THIS (was missing!)
+    'DashboardService',
 
     # Singleton getters
     'get_provider_service',
@@ -59,8 +58,8 @@ __all__ = [
     'get_notification_service',
     'get_promotion_service',
     'get_external_platforms',
-    'get_settings_service',  # ← FIXED: removed parentheses!
-    'get_dashboard_service',  # ← ADD THIS (was missing!)
+    'get_settings_service',
+    'get_dashboard_service',
 
     # Decorators
     'feature_enabled',
@@ -72,74 +71,3 @@ __all__ = [
     'init_booking_service',
     'init_matching_service'
 ]
-#====================================
-"""
-from .provider_service import *
-from .booking_service import *
-from .matching_service import *
-from .payment_service import *
-from .tracking_service import *
-from .notification_service import *
-from .promotion_service import *
-from .external_platforms import *
-from .settings_service import *
-
-#-----------------------------
-#tree
-#-----------------------------
-tree
-├── __init__.py
-├── provider_service.py                      (450 lines)
-├── booking_service.py                       (500 lines)
-├── matching_service.py                      (400 lines)
-├── payment_service.py                       (300 lines)
-├── tracking_service.py                      (350 lines)
-├── notification_service.py                  (250 lines)
-├── promotion_service.py                     (300 lines)
-├── external_platforms.py                    (400 lines)
-└── settings_service.py                      (200 lines)
-
-app/transport/routes.py                      (1,200 lines)
-app/transport/__init__.py                    (50 lines)
-
-app/transport/templates/
-├── transport/
-│   ├── base_transport.html
-│   ├── homes.html                            (150 lines)
-│   ├── my_trips.html                        (200 lines)
-│   ├── booking_form.html                    (250 lines)
-│   ├── booking_detail.html                  (180 lines)
-│   └── live_tracking.html                   (220 lines)
-├── provider/
-│   ├── dashboard.html                       (300 lines)
-│   ├── register.html                        (280 lines)
-│   ├── vehicles.html                        (250 lines)
-│   ├── bookings.html                        (220 lines)
-│   ├── scheduled_routes.html                (200 lines)
-│   └── promotions.html                      (180 lines)
-└── admin/
-    ├── overview.html                        (350 lines)
-    ├── providers.html                       (300 lines)
-    ├── live_map.html                        (280 lines)
-    ├── bookings.html                        (250 lines)
-    └── settings.html                        (400 lines)
-
-    static/transport/
-├── css/
-│   ├── transport.css                        (300 lines)
-│   └── admin.css                            (200 lines)
-└── js/
-    ├── booking.js                           (250 lines)
-    ├── tracking.js                          (200 lines)
-    └── admin_map.js                         (180 lines)
-
-    migrations/versions/
-└── YYYYMMDD_add_transport_tables.py         (200 lines)
-
-docs/
-├── INSTALLATION.md
-├── API-REFERENCE.md
-├── ADMIN-GUIDE.md
-├── PROVIDER-GUIDE.md
-└── TROUBLESHOOTING.md
-"""

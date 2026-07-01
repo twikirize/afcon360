@@ -1,0 +1,238 @@
+<h2 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;">Mockup of a consumer dashboard with a lean home screen showing one quick card per service, a left navigation pane for full detail pages, and a space switcher for jumping to organisation or role dashboards.</h2>
+<div style="border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); overflow:hidden; background:var(--color-background-primary); display:grid; grid-template-columns:160px minmax(0,1fr);">
+  <div style="background:var(--color-background-secondary); border-right:0.5px solid var(--color-border-tertiary); padding:18px 12px; display:flex; flex-direction:column; gap:2px;">
+    <div style="display:flex; align-items:center; gap:8px; padding:0 6px 16px;">
+      <div style="width:26px; height:26px; border-radius:50%; background:var(--color-background-info); display:flex; align-items:center; justify-content:center;"><i class="ti ti-layout-grid" style="font-size:14px; color:var(--color-text-info);" aria-hidden="true"></i></div>
+      <span style="font-size:14px; font-weight:500;">AFCON 360</span>
+    </div>
+    <div class="u-nav-item" data-target="panel-home" onclick="showPanel(this)" style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); cursor:pointer; background:var(--color-background-tertiary); color:var(--color-text-primary); font-weight:500;">
+      <i class="ti ti-home" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Home</span>
+    </div>
+    <div class="u-nav-item" data-target="panel-wallet" onclick="showPanel(this)" style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+      <i class="ti ti-wallet" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Wallet</span>
+    </div>
+    <div class="u-nav-item" data-target="panel-rides" onclick="showPanel(this)" style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+      <i class="ti ti-car" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Rides</span>
+    </div>
+    <div class="u-nav-item" data-target="panel-stays" onclick="showPanel(this)" style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+      <i class="ti ti-bed" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Stays</span>
+    </div>
+    <div class="u-nav-item" data-target="panel-events" onclick="showPanel(this)" style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+      <i class="ti ti-ticket" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Events</span>
+    </div>
+    <div class="u-nav-item" data-target="panel-tourism" onclick="showPanel(this)" style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+      <i class="ti ti-map-pin" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Tourism</span>
+    </div>
+    <div style="margin-top:auto; display:flex; flex-direction:column; gap:2px; padding-top:12px; border-top:0.5px solid var(--color-border-tertiary);">
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); color:var(--color-text-secondary);"><i class="ti ti-user" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Profile</span></div>
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--border-radius-md); color:var(--color-text-secondary);"><i class="ti ti-settings" style="font-size:17px;" aria-hidden="true"></i><span style="font-size:13px;">Settings</span></div>
+    </div>
+  </div>
+  <div style="padding:20px 24px; display:flex; flex-direction:column; gap:16px; min-width:0;">
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+      <i class="ti ti-search" style="font-size:18px; color:var(--color-text-secondary);" aria-hidden="true"></i>
+      <span style="position:relative;"><i class="ti ti-bell" style="font-size:18px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="position:absolute; top:-2px; right:-2px; width:6px; height:6px; border-radius:50%; background:var(--color-text-danger);"></span></span>
+      <div style="position:relative;">
+        <div onclick="toggleSwitcher()" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+          <div style="width:28px; height:28px; border-radius:50%; background:var(--color-background-tertiary); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:500;">AK</div>
+          <i class="ti ti-chevron-down" style="font-size:14px; color:var(--color-text-secondary);" aria-hidden="true"></i>
+        </div>
+        <div id="switcher-panel" style="display:none; position:absolute; top:36px; right:0; width:220px; background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:8px; z-index:20;">
+          <p style="font-size:11px; color:var(--color-text-tertiary); margin:4px 8px 4px;">You're viewing</p>
+          <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--border-radius-md); background:var(--color-background-tertiary);">
+            <i class="ti ti-user" style="font-size:15px;" aria-hidden="true"></i><span style="font-size:12px; flex:1;">Personal</span><i class="ti ti-check" style="font-size:14px; color:var(--color-text-success);" aria-hidden="true"></i>
+          </div>
+          <p style="font-size:11px; color:var(--color-text-tertiary); margin:10px 8px 4px;">Organisations</p>
+          <div onclick="sendPrompt('Mock up the organisation dashboard and explain how context switching should work')" style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+            <i class="ti ti-building" style="font-size:15px;" aria-hidden="true"></i><span style="font-size:12px; flex:1;">Kasozi Logistics</span><i class="ti ti-arrow-right" style="font-size:13px;" aria-hidden="true"></i>
+          </div>
+          <p style="font-size:11px; color:var(--color-text-tertiary); margin:10px 8px 4px;">Other roles</p>
+          <div onclick="sendPrompt('Mock up the driver dashboard, Uber driver app style')" style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+            <i class="ti ti-car" style="font-size:15px;" aria-hidden="true"></i><span style="font-size:12px; flex:1;">Driver dashboard</span><i class="ti ti-arrow-right" style="font-size:13px;" aria-hidden="true"></i>
+          </div>
+          <div onclick="sendPrompt('Mock up the owner and admin console, Stripe-style')" style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary);">
+            <i class="ti ti-shield-check" style="font-size:15px;" aria-hidden="true"></i><span style="font-size:12px; flex:1;">Super admin dashboard</span><i class="ti ti-arrow-right" style="font-size:13px;" aria-hidden="true"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="u-panel" id="panel-home" style="display:flex; flex-direction:column; gap:16px;">
+      <div>
+        <p style="font-size:18px; font-weight:500; margin:0 0 2px;">Good afternoon, Aisha</p>
+        <p style="font-size:13px; color:var(--color-text-secondary); margin:0;">Here's a quick look across your account</p>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--color-background-warning); border-radius:var(--border-radius-md);">
+        <i class="ti ti-shield-check" style="font-size:18px; color:var(--color-text-warning);" aria-hidden="true"></i>
+        <span style="flex:1; font-size:13px; color:var(--color-text-warning);">Tier 1 verified — upgrade for higher limits</span>
+        <button style="font-size:12px; padding:6px 12px; white-space:nowrap;">Upgrade</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;">
+        <div onclick="goToPanel('panel-wallet')" style="cursor:pointer; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-wallet" style="font-size:16px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="font-size:12px; color:var(--color-text-secondary);">Wallet</span></div>
+          <p style="font-size:18px; font-weight:500; margin:0;">UGX 482,300</p>
+          <p style="font-size:11px; color:var(--color-text-tertiary); margin:0;">Sent 50,000 to Mary K. · 2h ago</p>
+        </div>
+        <div onclick="goToPanel('panel-rides')" style="cursor:pointer; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-car" style="font-size:16px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="font-size:12px; color:var(--color-text-secondary);">Rides</span></div>
+          <p style="font-size:13px; font-weight:500; margin:0;">Ride to Entebbe airport</p>
+          <p style="font-size:11px; color:var(--color-text-info); margin:0;">Arrives in 4 min</p>
+        </div>
+        <div onclick="goToPanel('panel-stays')" style="cursor:pointer; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-bed" style="font-size:16px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="font-size:12px; color:var(--color-text-secondary);">Stays</span></div>
+          <p style="font-size:13px; font-weight:500; margin:0;">Lakeside villa, Entebbe</p>
+          <p style="font-size:11px; color:var(--color-text-tertiary); margin:0;">Checks in 12 Jul</p>
+        </div>
+        <div onclick="goToPanel('panel-events')" style="cursor:pointer; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-ticket" style="font-size:16px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="font-size:12px; color:var(--color-text-secondary);">Events</span></div>
+          <p style="font-size:13px; font-weight:500; margin:0;">AFCON 2026 final</p>
+          <p style="font-size:11px; color:var(--color-text-tertiary); margin:0;">18 Jul · ticket ready</p>
+        </div>
+      </div>
+      <div onclick="goToPanel('panel-tourism')" style="cursor:pointer; display:flex; align-items:center; gap:6px; color:var(--color-text-secondary);">
+        <span style="font-size:12px;">Explore tourism</span><i class="ti ti-arrow-right" style="font-size:13px;" aria-hidden="true"></i>
+      </div>
+    </div>
+
+    <div class="u-panel" id="panel-wallet" style="display:flex; flex-direction:column; gap:16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <p style="font-size:18px; font-weight:500; margin:0;">Wallet</p>
+        <button style="font-size:12px; padding:6px 12px; white-space:nowrap;">Add money</button>
+      </div>
+      <div style="border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:18px;">
+        <p style="font-size:12px; color:var(--color-text-secondary); margin:0 0 4px;">Available balance</p>
+        <p style="font-size:28px; font-weight:500; margin:0;">UGX 482,300</p>
+        <div style="display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:16px;">
+          <button style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; font-size:11px;"><i class="ti ti-send" style="font-size:16px;" aria-hidden="true"></i>Send</button>
+          <button style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; font-size:11px;"><i class="ti ti-arrow-down-left" style="font-size:16px;" aria-hidden="true"></i>Request</button>
+          <button style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; font-size:11px;"><i class="ti ti-plus" style="font-size:16px;" aria-hidden="true"></i>Top up</button>
+          <button style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; font-size:11px;"><i class="ti ti-arrow-up-right" style="font-size:16px;" aria-hidden="true"></i>Withdraw</button>
+          <button style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; font-size:11px;"><i class="ti ti-refresh" style="font-size:16px;" aria-hidden="true"></i>Convert</button>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:10px;"><div style="width:24px; height:24px; border-radius:50%; background:var(--color-background-tertiary); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:500; flex-shrink:0;">UGX</div><p style="font-size:13px; font-weight:500; margin:0;">482,300</p></div>
+        <div style="display:flex; align-items:center; gap:8px; background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:10px;"><div style="width:24px; height:24px; border-radius:50%; background:var(--color-background-tertiary); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:500; flex-shrink:0;">USD</div><p style="font-size:13px; font-weight:500; margin:0;">126.40</p></div>
+        <div style="display:flex; align-items:center; gap:8px; background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:10px;"><div style="width:24px; height:24px; border-radius:50%; background:var(--color-background-tertiary); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:500; flex-shrink:0;">KES</div><p style="font-size:13px; font-weight:500; margin:0;">3,250</p></div>
+      </div>
+      <div>
+        <p style="font-size:14px; font-weight:500; margin:0 0 8px;">Recent transactions</p>
+        <div style="display:flex; flex-direction:column;">
+          <div style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:0.5px solid var(--color-border-tertiary);"><i class="ti ti-arrow-up-right" style="font-size:15px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="flex:1; font-size:13px; min-width:0;">Sent to Mary K.</span><span style="font-size:13px; font-weight:500; color:var(--color-text-danger); white-space:nowrap;">-50,000</span></div>
+          <div style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:0.5px solid var(--color-border-tertiary);"><i class="ti ti-arrow-down-left" style="font-size:15px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="flex:1; font-size:13px; min-width:0;">Received from David O.</span><span style="font-size:13px; font-weight:500; color:var(--color-text-success); white-space:nowrap;">+120,000</span></div>
+          <div style="display:flex; align-items:center; gap:12px; padding:8px 0;"><i class="ti ti-ticket" style="font-size:15px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="flex:1; font-size:13px; min-width:0;">AFCON final ticket</span><span style="font-size:13px; font-weight:500; color:var(--color-text-danger); white-space:nowrap;">-85,000</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="u-panel" id="panel-rides" style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:18px; font-weight:500; margin:0;">Rides</p>
+      <div style="border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:16px; display:flex; flex-direction:column; gap:8px;">
+        <p style="font-size:13px; color:var(--color-text-secondary); margin:0;">Book a ride</p>
+        <input type="text" value="Current location" style="width:100%;">
+        <input type="text" placeholder="Where to?" style="width:100%;">
+        <button onclick="sendPrompt('Mock up the ride request and live tracking screen, Uber-style')" style="margin-top:4px;">Find a ride ↗</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); padding:10px 12px;">
+        <i class="ti ti-car" style="font-size:20px; color:var(--color-text-info);" aria-hidden="true"></i>
+        <div style="flex:1; min-width:0;"><p style="font-size:13px; font-weight:500; margin:0;">Your ride is on the way</p><p style="font-size:12px; color:var(--color-text-secondary); margin:2px 0 0;">Moses K. · UBJ 442K</p></div>
+        <span style="font-size:11px; color:var(--color-text-info); white-space:nowrap;">Arrives 4 min</span>
+      </div>
+      <div>
+        <p style="font-size:14px; font-weight:500; margin:0 0 8px;">Recent rides</p>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;"><div><p style="font-size:12px; margin:0;">Home → Garden City mall</p><p style="font-size:11px; color:var(--color-text-tertiary); margin:2px 0 0;">12 Jun · UGX 15,000</p></div><span style="font-size:11px; color:var(--color-text-secondary); white-space:nowrap;"><i class="ti ti-star" style="font-size:12px; vertical-align:-1px;" aria-hidden="true"></i> 4.8</span></div>
+          <div style="display:flex; align-items:center; justify-content:space-between;"><div><p style="font-size:12px; margin:0;">Office → Home</p><p style="font-size:11px; color:var(--color-text-tertiary); margin:2px 0 0;">10 Jun · UGX 12,000</p></div><span style="font-size:11px; color:var(--color-text-secondary); white-space:nowrap;"><i class="ti ti-star" style="font-size:12px; vertical-align:-1px;" aria-hidden="true"></i> 5.0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="u-panel" id="panel-stays" style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:18px; font-weight:500; margin:0;">Stays</p>
+      <div style="border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:16px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:8px; align-items:end;">
+        <div><p style="font-size:11px; color:var(--color-text-secondary); margin:0 0 4px;">Location</p><input type="text" placeholder="Entebbe, Uganda" style="width:100%;"></div>
+        <div><p style="font-size:11px; color:var(--color-text-secondary); margin:0 0 4px;">Dates</p><input type="text" placeholder="12 – 15 Jul" style="width:100%;"></div>
+        <button onclick="sendPrompt('Mock up the stay search results page, Booking.com-style')" style="white-space:nowrap;">Search ↗</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); padding:10px 12px;">
+        <i class="ti ti-bed" style="font-size:20px; color:var(--color-text-secondary);" aria-hidden="true"></i>
+        <div style="flex:1; min-width:0;"><p style="font-size:13px; font-weight:500; margin:0;">Lakeside villa, Entebbe</p><p style="font-size:12px; color:var(--color-text-secondary); margin:2px 0 0;">12 – 15 Jul · 3 nights</p></div>
+        <span style="font-size:11px; color:var(--color-text-secondary); white-space:nowrap;">220k/night</span>
+      </div>
+      <div>
+        <p style="font-size:14px; font-weight:500; margin:0 0 8px;">Recommended stays</p>
+        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Hilltop cabin</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">180k/night</p></div>
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">City loft</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">95k/night</p></div>
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Beach bungalow</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">260k/night</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="u-panel" id="panel-events" style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:18px; font-weight:500; margin:0;">Events</p>
+      <div style="display:flex; gap:8px;">
+        <span style="font-size:11px; padding:4px 10px; border-radius:99px; background:var(--color-background-tertiary);">All</span>
+        <span style="font-size:11px; padding:4px 10px; border-radius:99px; color:var(--color-text-secondary);">Music</span>
+        <span style="font-size:11px; padding:4px 10px; border-radius:99px; color:var(--color-text-secondary);">Sports</span>
+        <span style="font-size:11px; padding:4px 10px; border-radius:99px; color:var(--color-text-secondary);">Conferences</span>
+      </div>
+      <div>
+        <p style="font-size:14px; font-weight:500; margin:0 0 8px;">My tickets</p>
+        <div style="display:flex; align-items:center; gap:12px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); padding:10px 12px;">
+          <i class="ti ti-ticket" style="font-size:20px; color:var(--color-text-secondary);" aria-hidden="true"></i>
+          <div style="flex:1; min-width:0;"><p style="font-size:13px; font-weight:500; margin:0;">AFCON 2026 final</p><p style="font-size:12px; color:var(--color-text-secondary); margin:2px 0 0;">Mandela stadium · 18 Jul</p></div>
+          <button style="font-size:11px; padding:4px 10px; white-space:nowrap;">View ticket</button>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:14px; font-weight:500; margin:0 0 8px;">Discover events</p>
+        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Jazz on the lake</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">22 Jul</p></div>
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Tech summit</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">2 Aug</p></div>
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Charity run</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">9 Aug</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="u-panel" id="panel-tourism" style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:18px; font-weight:500; margin:0;">Tourism</p>
+      <input type="text" placeholder="Search destinations and activities" style="width:100%;">
+      <div>
+        <p style="font-size:14px; font-weight:500; margin:0 0 8px;">Recommended for you</p>
+        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Murchison Falls</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">Wildlife safari</p></div>
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Lake Bunyonyi</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">Lakeside retreat</p></div>
+          <div style="border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);"><div style="height:54px; background:var(--color-background-secondary);"></div><p style="font-size:11px; font-weight:500; margin:6px 8px 2px;">Kidepo valley</p><p style="font-size:11px; color:var(--color-text-secondary); margin:0 8px 8px;">National park</p></div>
+        </div>
+      </div>
+      <p style="font-size:12px; color:var(--color-text-secondary); margin:0;">View saved trips (2)</p>
+    </div>
+
+  </div>
+</div>
+<script>
+function showPanel(navEl){
+  var target = navEl.getAttribute('data-target');
+  document.querySelectorAll('.u-panel').forEach(function(p){ p.style.display = (p.id === target) ? 'flex' : 'none'; });
+  document.querySelectorAll('.u-nav-item').forEach(function(n){
+    n.style.background = 'transparent';
+    n.style.color = 'var(--color-text-secondary)';
+    n.style.fontWeight = '400';
+  });
+  navEl.style.background = 'var(--color-background-tertiary)';
+  navEl.style.color = 'var(--color-text-primary)';
+  navEl.style.fontWeight = '500';
+  var sp = document.getElementById('switcher-panel');
+  if(sp){ sp.style.display = 'none'; }
+}
+function goToPanel(id){
+  var navEl = document.querySelector('.u-nav-item[data-target="' + id + '"]');
+  if(navEl){ showPanel(navEl); }
+}
+function toggleSwitcher(){
+  var p = document.getElementById('switcher-panel');
+  p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'block' : 'none';
+}
+document.querySelectorAll('.u-panel').forEach(function(p){ if(p.id !== 'panel-home'){ p.style.display = 'none'; } });
+</script>

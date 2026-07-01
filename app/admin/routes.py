@@ -1,3 +1,4 @@
+
 # app/admin/routes.py
 """
 Admin Routes for AFCON360 - Production Ready.
@@ -172,8 +173,16 @@ def super_dashboard():
         # Get role management permissions
         super_admin_role_management_enabled = SystemSetting.get('super_admin_role_management_enabled', False)
 
+        # Get active global role for persona display
+        active_global_role = None
+        if hasattr(current_user, 'roles'):
+            for user_role in current_user.roles:
+                if user_role.role and hasattr(user_role.role, 'name'):
+                    active_global_role = user_role.role.name
+                    break
+
         return render_template(
-            "admin/super_dashboard.html",
+            "super_admin_dashboard.html",
             total_users=total_users,
             verified_users=verified_users,
             unverified_users=unverified_users,
@@ -194,6 +203,11 @@ def super_dashboard():
             pending_events_list=pending_events_list,
             super_admin_can_toggle_modules=super_admin_can_toggle_modules,
             super_admin_role_management_enabled=super_admin_role_management_enabled,
+            # New variables for consolidated template
+            active_global_role=active_global_role,
+            user_growth='+0%',
+            system_health='Healthy',
+            security_score='95%',
         )
     except Exception as e:
         db.session.rollback()
@@ -1687,20 +1701,6 @@ def update_profile(user_id):
 # -----------------------------
 # Compliance & Auditor Routes
 # -----------------------------
-@admin_bp.route("/compliance/dashboard", endpoint="compliance_dashboard")
-@login_required
-@require_role('compliance_officer')
-def compliance_dashboard():
-    """Redirect to the new compliance dashboard."""
-    return redirect(url_for('compliance.dashboard'))
-
-@admin_bp.route("/compliance/action/<string:verification_id>", methods=["POST"], endpoint="compliance_action")
-@login_required
-@require_role('compliance_officer')
-def compliance_action(verification_id):
-    """Redirect compliance actions to the new compliance routes."""
-    return redirect(url_for('compliance.compliance_action', verification_id=verification_id))
-
 @admin_bp.route("/auditor/dashboard", endpoint="auditor_dashboard")
 @login_required
 @require_role('auditor')

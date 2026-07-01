@@ -1,0 +1,27 @@
+﻿{% macro group_cell(registration) %}
+    {% if registration.group_booking_id and registration.group_size and registration.group_size > 1 %}
+    <span class="badge bg-info" title="Group ID: {{ registration.group_booking_id }}">
+        <i class="fas fa-users"></i>
+        Group of {{ registration.group_size }}
+        {% if registration.group_label %}
+        <br><small>{{ registration.group_label|truncate(20) }}</small>
+        {% endif %}
+    </span>
+    {% else %}
+    <span class="badge bg-secondary">Individual</span>
+    {% endif %}
+{% endmacro %}
+
+{% macro booked_by_cell(registration, booker_names) %}
+    {% if registration.booking_type != 'self' and registration.booked_by_user_id %}
+        {{ booker_names.get(registration.booked_by_user_id, 'Unknown') }}
+    {% else %}
+        —
+    {% endif %}
+{% endmacro %}
+
+{% macro attendee_cell(registration, booker_names) %}
+    {{ group_cell(registration) }}
+    <br>
+    {{ booked_by_cell(registration, booker_names) }}
+{% endmacro %}

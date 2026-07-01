@@ -47,7 +47,7 @@
     <div class="card animate-up">
       <div class="card-header">
         <div class="card-title"><i class="fas fa-id-card"></i> KYC Review Queue</div>
-        <a href="{{ url_for('compliance.kyc_queue') }}" class="btn btn-sm btn-secondary">View All</a>
+        <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="btn btn-sm btn-secondary">View All</a>
       </div>
       <div class="card-body">
         {% if kyc_items %}
@@ -66,7 +66,7 @@
             <tbody>
               {% for item in kyc_items[:5] %}
               <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
-                <td><a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
+                <td><a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
                 <td>
                   <div class="user-cell">
                     <div class="av">{{ item.user.username[0] if item.user else '?' }}</div>
@@ -77,10 +77,10 @@
                   </div>
                 </td>
                 <td>{{ item.verification_type }}</td>
-                <td class="mono">{{ item.submitted_at.strftime('%Y-%m-%d') if item.submitted_at else '-' }}</td>
+                <td class="mono">{{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '-' }}</td>
                 <td><span class="badge badge-{{ 'orange' if item.status == 'pending' else 'blue' }}">{{ item.status }}</span></td>
                 <td>
-                  <a href="{{ url_for('compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
                 </td>
               </tr>
               {% endfor %}
@@ -100,7 +100,7 @@
     <div class="card animate-up">
       <div class="card-header">
         <div class="card-title"><i class="fas fa-money-bill-wave"></i> Payout Compliance Queue</div>
-        <a href="{{ url_for('compliance.payouts') }}" class="btn btn-sm btn-secondary">View All</a>
+        <a href="{{ url_for('admin.compliance.payouts') }}" class="btn btn-sm btn-secondary">View All</a>
       </div>
       <div class="card-body">
         {% if payout_items %}
@@ -119,7 +119,7 @@
             <tbody>
               {% for item in payout_items[:5] %}
               <tr class="{{ 'row-critical' if item.risk_level == 'high' else ('row-high' if item.risk_level == 'medium' else '') }}">
-                <td><a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}">#{{ item.id }}</a></td>
+                <td><a href="{{ url_for('admin.compliance.view_payout', payout_id=item.id) }}">#{{ item.id }}</a></td>
                 <td>
                   <div class="user-cell">
                     <div class="av">{{ item.wallet.user.username[0] if item.wallet and item.wallet.user else '?' }}</div>
@@ -140,7 +140,7 @@
                   {% endif %}
                 </td>
                 <td>
-                  <a href="{{ url_for('compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
                 </td>
               </tr>
               {% endfor %}
@@ -163,7 +163,7 @@
     <div class="card animate-up">
       <div class="card-header">
         <div class="card-title"><i class="fas fa-arrow-up-right-from-square"></i> Escalations</div>
-        <a href="{{ url_for('compliance.escalations') }}" class="btn btn-sm btn-secondary">View All</a>
+        <a href="{{ url_for('admin.compliance.escalations') }}" class="btn btn-sm btn-secondary">View All</a>
       </div>
       <div class="card-body">
         {% if escalations %}
@@ -203,16 +203,16 @@
       </div>
       <div class="card-body">
         <div style="display: flex; flex-direction: column; gap: 8px;">
-          <a href="{{ url_for('compliance.kyc_queue') }}" class="btn btn-primary">
+          <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="btn btn-primary">
             <i class="fas fa-id-card"></i> Review KYC Queue
           </a>
-          <a href="{{ url_for('compliance.payouts') }}" class="btn btn-secondary">
+          <a href="{{ url_for('admin.compliance.payouts') }}" class="btn btn-secondary">
             <i class="fas fa-money-bill-wave"></i> Review Payouts
           </a>
-          <a href="{{ url_for('compliance.aml_queue') }}" class="btn btn-secondary">
+          <a href="{{ url_for('admin.compliance.aml_queue') }}" class="btn btn-secondary">
             <i class="fas fa-radar"></i> AML Monitoring
           </a>
-          <a href="{{ url_for('compliance.generate_report') }}" class="btn btn-secondary">
+          <a href="{{ url_for('admin.compliance.generate_report') }}" class="btn btn-secondary">
             <i class="fas fa-file-lines"></i> Generate Report
           </a>
         </div>

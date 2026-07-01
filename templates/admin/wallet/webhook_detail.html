@@ -1,0 +1,479 @@
+{% extends "admin/admin.html" %}
+
+{% block title %}Webhook Detail - AFCON360{% endblock %}
+
+{% block module_styles %}
+{{ super() }}
+<style>
+.webhook-detail-container {
+    padding: 1.5rem;
+}
+
+.webhook-detail-card {
+    background: white;
+    border-radius: 10px;
+    padding: 1.5rem;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 1.5rem;
+}
+
+.webhook-detail-card .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.webhook-detail-card .header .id {
+    font-weight: 600;
+    color: #374151;
+    font-size: 1.1rem;
+}
+
+.webhook-detail-card .header .meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.webhook-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.webhook-detail-grid .field {
+    padding: 0.5rem;
+    background: #f9fafb;
+    border-radius: 6px;
+}
+
+.webhook-detail-grid .field .label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: #6b7280;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.webhook-detail-grid .field .value {
+    font-size: 0.9rem;
+    color: #1a1a1a;
+    margin-top: 0.15rem;
+    word-break: break-word;
+}
+
+.webhook-detail-grid .field .value .mono {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    background: #e5e7eb;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.webhook-detail-grid .field.full {
+    grid-column: 1 / -1;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.status-badge.queued { background: #dbeafe; color: #1e40af; }
+.status-badge.processed { background: #d1fae5; color: #065f46; }
+.status-badge.failed { background: #fee2e2; color: #991b1b; }
+
+.status-badge .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-badge.queued .dot { background: #3b82f6; }
+.status-badge.processed .dot { background: #10b981; }
+.status-badge.failed .dot { background: #ef4444; }
+
+.payload-section {
+    margin-top: 1.5rem;
+}
+
+.payload-section .payload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.payload-section .payload-header h6 {
+    margin: 0;
+    font-weight: 600;
+    color: #374151;
+}
+
+.payload-section .payload-header .btn-copy {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    border: none;
+    background: #e5e7eb;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.payload-section .payload-header .btn-copy:hover {
+    background: #d1d5db;
+}
+
+.payload-section pre {
+    background: #1a1a1a;
+    color: #e5e7eb;
+    padding: 1.25rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.75rem;
+    max-height: 500px;
+    font-family: 'Courier New', monospace;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.payload-section pre .json-key { color: #f472b6; }
+.payload-section pre .json-string { color: #34d399; }
+.payload-section pre .json-number { color: #60a5fa; }
+.payload-section pre .json-boolean { color: #fbbf24; }
+.payload-section pre .json-null { color: #9ca3af; }
+
+.actions-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.actions-bar .btn {
+    padding: 0.5rem 1.25rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.actions-bar .btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.actions-bar .btn-primary:hover {
+    background: #2563eb;
+}
+
+.actions-bar .btn-danger {
+    background: #ef4444;
+    color: white;
+}
+
+.actions-bar .btn-danger:hover {
+    background: #dc2626;
+}
+
+.actions-bar .btn-secondary {
+    background: #6b7280;
+    color: white;
+}
+
+.actions-bar .btn-secondary:hover {
+    background: #4b5563;
+}
+
+.actions-bar .btn-success {
+    background: #10b981;
+    color: white;
+}
+
+.actions-bar .btn-success:hover {
+    background: #059669;
+}
+
+.actions-bar .btn-outline {
+    background: transparent;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+}
+
+.actions-bar .btn-outline:hover {
+    background: #f3f4f6;
+}
+
+@media (max-width: 768px) {
+    .webhook-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .webhook-detail-card .header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .payload-section pre {
+        font-size: 0.65rem;
+        max-height: 300px;
+    }
+
+    .actions-bar {
+        flex-direction: column;
+    }
+
+    .actions-bar .btn {
+        justify-content: center;
+        width: 100%;
+    }
+}
+
+/* Raw body toggle */
+.raw-body-toggle {
+    cursor: pointer;
+    color: #3b82f6;
+    font-size: 0.8rem;
+    text-decoration: underline;
+    background: none;
+    border: none;
+}
+
+.raw-body-toggle:hover {
+    color: #2563eb;
+}
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<div class="webhook-detail-container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h2><i class="bi bi-broadcast"></i> Webhook Detail</h2>
+        <a href="{{ url_for('admin_ultimate.wallet_webhooks') }}" class="btn btn-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Back to Queue
+        </a>
+    </div>
+
+    <!-- Main Card -->
+    <div class="webhook-detail-card">
+        <div class="header">
+            <div>
+                <span class="id">#{{ event.id }}</span>
+                <span class="badge bg-secondary ms-2">{{ event.provider|title }}</span>
+                {% if event.event_type %}
+                <span class="badge bg-light text-dark ms-1" style="font-weight:400;">{{ event.event_type }}</span>
+                {% endif %}
+            </div>
+            <div class="meta">
+                <span class="status-badge {{ event.status }}">
+                    <span class="dot"></span>
+                    {{ event.status|title }}
+                </span>
+                <span class="text-muted" style="font-size:0.8rem;">
+                    <i class="bi bi-arrow-repeat"></i> Retries: {{ event.retry_count }}
+                </span>
+                <span class="text-muted" style="font-size:0.8rem;">
+                    <i class="bi bi-clock"></i> {{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                </span>
+            </div>
+        </div>
+
+        <!-- Detail Grid -->
+        <div class="webhook-detail-grid">
+            <div class="field">
+                <div class="label">Provider</div>
+                <div class="value"><strong>{{ event.provider|title }}</strong></div>
+            </div>
+            <div class="field">
+                <div class="label">Event Type</div>
+                <div class="value"><span class="mono">{{ event.event_type or 'N/A' }}</span></div>
+            </div>
+            <div class="field">
+                <div class="label">Status</div>
+                <div class="value">
+                    <span class="status-badge {{ event.status }}" style="font-size:0.75rem;">
+                        <span class="dot"></span>
+                        {{ event.status|title }}
+                    </span>
+                </div>
+            </div>
+            <div class="field">
+                <div class="label">Retry Count</div>
+                <div class="value">{{ event.retry_count }}</div>
+            </div>
+            {% if event.last_error %}
+            <div class="field full">
+                <div class="label">Last Error</div>
+                <div class="value" style="color:#ef4444;">{{ event.last_error }}</div>
+            </div>
+            {% endif %}
+            {% if event.next_retry_at %}
+            <div class="field">
+                <div class="label">Next Retry At</div>
+                <div class="value">{{ event.next_retry_at.strftime('%Y-%m-%d %H:%M:%S') if event.next_retry_at else 'N/A' }}</div>
+            </div>
+            {% endif %}
+            <div class="field">
+                <div class="label">Processed At</div>
+                <div class="value">{{ event.processed_at.strftime('%Y-%m-%d %H:%M:%S') if event.processed_at else 'Not processed' }}</div>
+            </div>
+            <div class="field">
+                <div class="label">Created At</div>
+                <div class="value">{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+            </div>
+            <div class="field">
+                <div class="label">Updated At</div>
+                <div class="value">{{ event.updated_at.strftime('%Y-%m-%d %H:%M:%S') if event.updated_at else 'N/A' }}</div>
+            </div>
+            {% if event.signature %}
+            <div class="field">
+                <div class="label">Signature</div>
+                <div class="value"><span class="mono" style="font-size:0.7rem;">{{ event.signature[:20] }}...</span></div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Payload Section -->
+        <div class="payload-section">
+            <div class="payload-header">
+                <h6><i class="bi bi-file-code"></i> Payload</h6>
+                <div>
+                    <button class="btn-copy" onclick="copyPayload()">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                    <button class="raw-body-toggle" onclick="toggleRawBody()">
+                        <i class="bi bi-body-text"></i> Show Raw Body
+                    </button>
+                </div>
+            </div>
+            <pre id="payloadDisplay">{{ event.payload|tojson(indent=2) }}</pre>
+        </div>
+
+        <!-- Raw Body (hidden by default) -->
+        {% if event.raw_body %}
+        <div class="payload-section" id="rawBodySection" style="display:none;">
+            <div class="payload-header">
+                <h6><i class="bi bi-file-text"></i> Raw Body</h6>
+                <button class="btn-copy" onclick="copyRawBody()">
+                    <i class="bi bi-clipboard"></i> Copy
+                </button>
+            </div>
+            <pre id="rawBodyDisplay">{{ event.raw_body }}</pre>
+        </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="actions-bar">
+            <a href="{{ url_for('admin_ultimate.wallet_webhooks') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            {% if event.status == 'failed' %}
+            <form method="POST" action="{{ url_for('admin.wallet_webhook_retry', event_id=event.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Retry this webhook?')">
+                    <i class="bi bi-arrow-repeat"></i> Retry
+                </button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('admin.wallet_webhook_delete', event_id=event.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this webhook?')">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </form>
+            <a href="{{ url_for('admin_ultimate.wallet_webhooks', status='failed') }}" class="btn btn-outline">
+                <i class="bi bi-exclamation-triangle"></i> View All Failed
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyPayload() {
+    const payload = document.getElementById('payloadDisplay').textContent;
+    navigator.clipboard.writeText(payload).then(() => {
+        showToast('Payload copied to clipboard');
+    }).catch(() => {
+        // Fallback
+        const textarea = document.createElement('textarea');
+        textarea.value = payload;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast('Payload copied to clipboard');
+    });
+}
+
+function copyRawBody() {
+    const rawBody = document.getElementById('rawBodyDisplay').textContent;
+    navigator.clipboard.writeText(rawBody).then(() => {
+        showToast('Raw body copied to clipboard');
+    }).catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = rawBody;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast('Raw body copied to clipboard');
+    });
+}
+
+function toggleRawBody() {
+    const section = document.getElementById('rawBodySection');
+    if (section) {
+        if (section.style.display === 'none') {
+            section.style.display = 'block';
+        } else {
+            section.style.display = 'none';
+        }
+    }
+}
+
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #1a1a1a;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: fadeInUp 0.3s ease;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(toast), 300);
+    }, 3000);
+}
+</script>
+{% endblock %}

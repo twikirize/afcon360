@@ -10,10 +10,14 @@ from .compliance_audit_log import ComplianceAuditLog
 from .compliance_settings import ComplianceSettings
 # Import UserProfile to resolve SQLAlchemy Mapper error
 from app.profile.models import UserProfile
-# Import IndividualVerification to resolve SQLAlchemy Mapper error
+# Import Individual Verification to resolve SQLAlchemy Mapper error
 from app.identity.individuals.individual_verification import IndividualVerification
 
+# Fan profile extension (user-activated, not a role)
+from app.fan.models import FanProfile, UserDashboardContext
+
 __all__ = [
+
     "User", "UserRole", "MFASecret", "Session", "APIKey",
     "Organisation", "OrganisationMember", "OrgUserRole", "OrgRole", "OrganisationController",
     "OrganisationLicense", "OrganisationDocument", "OrganisationAuditLog",

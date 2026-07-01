@@ -59,6 +59,15 @@
                                 <small class="text-muted d-block">Allow currency conversion between wallets</small>
                             </label>
                         </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="agents_enabled" name="agents_enabled" 
+                                   {% if config.agents_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="agents_enabled">
+                                <strong>Agents Service Enabled</strong>
+                                <small class="text-muted d-block">Enable mobile banking agent network for cash-in/cash-out</small>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -259,9 +268,3 @@
 })();
 </script>
 {% endblock %}
-</CodeContent>
-<parameter>EmptyFile=false</parameter>
-</function>
-
-<function=write_to_file>
-<parameter=TargetFile>C:\Users\ADMIN\Desktop\afcon360_app\app\templates\owner\wallet_configenv_setup.html
