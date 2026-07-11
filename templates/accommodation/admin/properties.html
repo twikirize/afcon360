@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Property Management — AFCON360{% endblock %}
+
+{% block module_styles %}
+<style>
+.acc-admin { padding: 2rem 1.5rem; }
+.acc-admin-header {
+  background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.acc-admin-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+.acc-admin-nav a {
+  background: rgba(255,255,255,.18); color: #fff; padding: .45rem 1rem; border-radius: 7px;
+  text-decoration: none; font-weight: 600; font-size: .82rem; margin-left: .4rem; transition: background .2s;
+}
+.acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
+
+/* ── toolbar ── */
+.toolbar {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+}
+.toolbar form { display: flex; gap: .5rem; flex: 1; min-width: 200px; max-width: 440px; }
+.toolbar input[type=text] {
+  flex: 1; padding: .5rem .9rem; border: 1px solid var(--border-light,#d1d5db);
+  border-radius: 8px; font-size: .88rem;
+}
+.toolbar input[type=text]:focus { outline: none; border-color: var(--brand-primary,#047857); }
+.toolbar select {
+  padding: .5rem .85rem; border: 1px solid var(--border-light,#d1d5db);
+  border-radius: 8px; font-size: .88rem; background: var(--bg-surface,#fff);
+  color: var(--text-primary,#111);
+}
+.toolbar button, .toolbar a.btn-tool {
+  padding: .5rem 1.1rem; border-radius: 8px; font-size: .85rem; font-weight: 600;
+  border: none; cursor: pointer; text-decoration: none; transition: background .2s;
+}
+.btn-tool-primary { background: var(--brand-primary,#047857); color: #fff; }
+.btn-tool-primary:hover { background: #065f46; color: #fff; }
+.btn-tool-outline { background: transparent; border: 1px solid var(--border-light,#d1d5db);
+                    color: var(--text-primary,#111); }
+.btn-tool-outline:hover { background: var(--bg-surface-alt,#f3f4f6); }
+
+/* ── table ── */
+.data-card {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.data-card table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.data-card thead th {
+  background: var(--bg-surface-alt,#f9fafb); padding: .85rem 1rem;
+  font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--text-secondary,#6b7280); border-bottom: 1px solid var(--border-light,#e5e7eb);
+  white-space: nowrap;
+}
+.data-card tbody td {
+  padding: .85rem 1rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
+  color: var(--text-primary,#111); vertical-align: middle;
+}
+.data-card tbody tr:last-child td { border-bottom: none; }
+.data-card tbody tr:hover td { background: var(--bg-surface-alt,#f9fafb); }
+
+.prop-img-sm {
+  width: 54px; height: 40px; object-fit: cover; border-radius: 6px;
+  background: var(--bg-surface-alt,#f3f4f6);
+}
+.prop-img-sm.no-img {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; color: #9ca3af;
+}
+
+.status-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 20px;
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  white-space: nowrap;
+}
+.sb-active         { background: #d1fae5; color: #065f46; }
+.sb-pending_review { background: #fef3c7; color: #92400e; }
+.sb-suspended      { background: #fee2e2; color: #b91c1c; }
+.sb-draft          { background: #f3f4f6; color: #6b7280; }
+.sb-archived       { background: #e5e7eb; color: #374151; }
+
+.action-cell { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+.btn-sm-act {
+  padding: 3px 10px; border-radius: 6px; font-size: .77rem; font-weight: 600;
+  text-decoration: none; border: none; cursor: pointer; transition: background .2s;
+}
+.btn-suspend  { background: #fee2e2; color: #b91c1c; }
+.btn-suspend:hover  { background: #fca5a5; }
+.btn-activate { background: #d1fae5; color: #065f46; }
+.btn-activate:hover { background: #a7f3d0; }
+.btn-view-sm  { background: var(--bg-surface-alt,#f3f4f6); color: var(--text-primary,#111);
+                border: 1px solid var(--border-light,#e5e7eb); }
+.btn-view-sm:hover { background: #e5e7eb; color: var(--text-primary,#111); }
+.btn-edit-sm  { background: #dbeafe; color: #1d4ed8; }
+.btn-edit-sm:hover { background: #bfdbfe; }
+
+.empty-box { text-align: center; padding: 4rem 2rem; color: var(--text-secondary,#9ca3af); }
+.empty-box i { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
+
+.result-count { font-size: .83rem; color: var(--text-secondary,#6b7280); margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="acc-admin">
+
+  {# ── Header ── #}
+  <div class="acc-admin-header">
+    <div>
+      <h1><i class="bi bi-house-door-fill me-2"></i>Property Management</h1>
+      <p>Browse, search, and manage all platform property listings</p>
+    </div>
+    <nav class="acc-admin-nav">
+      <a href="{{ url_for('accommodation.admin_dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+      <a href="{{ url_for('accommodation.admin_verification') }}"><i class="bi bi-shield-check me-1"></i>Verification</a>
+      <a href="{{ url_for('accommodation.admin_analytics') }}"><i class="bi bi-graph-up me-1"></i>Analytics</a>
+    </nav>
+  </div>
+
+  {# ── Flash messages ── #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'danger') }} alert-dismissible fade show">
+      {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# ── Toolbar ── #}
+  <div class="toolbar">
+    <form method="GET" action="{{ url_for('accommodation.admin_properties') }}">
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Search title, city, country…">
+      <select name="status">
+        <option value="all" {{ 'selected' if status_filter == 'all' }}>All Statuses</option>
+        {% for s in status_options %}
+        <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-tool-primary">
+        <i class="bi bi-search me-1"></i>Search
+      </button>
+    </form>
+    {% if search_q or status_filter != 'all' %}
+    <a href="{{ url_for('accommodation.admin_properties') }}" class="btn-sm-act btn-view-sm">
+      <i class="bi bi-x-lg me-1"></i>Clear
+    </a>
+    {% endif %}
+  </div>
+
+  <p class="result-count">
+    Showing {{ properties.total }} {{ 'result' if properties.total == 1 else 'results' }}
+    {% if search_q %} for "<strong>{{ search_q }}</strong>"{% endif %}
+    {% if status_filter != 'all' %} · status: <strong>{{ status_filter | replace('_',' ') | title }}</strong>{% endif %}
+  </p>
+
+  {# ── Table ── #}
+  {% if properties.items %}
+  <div class="data-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Thumbnail</th>
+          <th>Title</th>
+          <th>Location</th>
+          <th>Host</th>
+          <th>Type</th>
+          <th>Price/Night</th>
+          <th>Status</th>
+          <th>Bookings</th>
+          <th>Rating</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for prop in properties.items %}
+        <tr>
+          <td>
+            {% if prop.main_image %}
+              <img src="{{ prop.main_image }}" class="prop-img-sm" alt="">
+            {% else %}
+              <span class="prop-img-sm no-img"><i class="bi bi-image"></i></span>
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ prop.title | truncate(40) }}</strong><br>
+            <small class="text-muted">ID {{ prop.id }}</small>
+          </td>
+          <td>{{ prop.city }}, {{ prop.country }}</td>
+          <td>
+            <small>{{ prop.owner_display_name | truncate(25) }}</small><br>
+            <small class="text-muted">{{ 'Individual' if prop.owner_user_id else 'Org' }}</small>
+          </td>
+          <td>
+            {{ (prop.property_type.value if prop.property_type and prop.property_type.value else (prop.property_type|string)) | replace('_',' ') | title }}
+          </td>
+          <td>${{ "{:,.0f}".format(prop.base_price_per_night) }}</td>
+          <td>
+            {% set sv = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
+            <span class="status-badge sb-{{ sv }}">{{ sv | replace('_',' ') | title }}</span>
+            {% if prop.is_verified %}
+            <i class="bi bi-patch-check-fill text-success ms-1" title="Verified"></i>
+            {% endif %}
+          </td>
+          <td class="text-center">{{ prop.total_bookings }}</td>
+          <td>
+            {% if prop.overall_rating and prop.total_reviews > 0 %}
+            <i class="bi bi-star-fill text-warning" style="font-size:.75rem;"></i>
+            {{ "%.1f"|format(prop.overall_rating) }}
+            <small class="text-muted">({{ prop.total_reviews }})</small>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="action-cell">
+              <a href="{{ url_for('accommodation.guest_detail', identifier=prop.id) }}"
+                 target="_blank" class="btn-sm-act btn-view-sm">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}"
+                 class="btn-sm-act btn-edit-sm">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form method="POST"
+                    action="{{ url_for('accommodation.admin_property_toggle', property_id=prop.id) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('Toggle active status for this property?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% set sv2 = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
+                <button type="submit"
+                        class="btn-sm-act {{ 'btn-activate' if sv2 == 'suspended' else 'btn-suspend' }}">
+                  {% if sv2 == 'suspended' %}
+                  <i class="bi bi-play-fill"></i>
+                  {% else %}
+                  <i class="bi bi-pause-fill"></i>
+                  {% endif %}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Pagination ── #}
+  {% if properties.pages > 1 %}
+  <nav class="mt-4 d-flex justify-content-center">
+    <ul class="pagination">
+      {% if properties.has_prev %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.prev_num, q=search_q, status=status_filter) }}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+      {% endif %}
+      {% for p in properties.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+        <li class="page-item {{ 'active' if p == properties.page }}">
+          <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=p, q=search_q, status=status_filter) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      {% if properties.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.next_num, q=search_q, status=status_filter) }}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-box">
+    <i class="bi bi-house-x"></i>
+    <h5>No properties found</h5>
+    <p class="small">Try clearing your search filters.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,818 @@
+﻿<!-- templates/accommodation/host/edit_listing.html -->
+{% extends "base.html" %}
+
+{% block title %}Edit Listing | AFCON 360{% endblock %}
+
+{% block module_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/media/media.css') }}">
+<style>
+  .create-listing-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  .form-section {
+    background: var(--bg-surface);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
+  }
+
+  /* Ensure dropdowns are not clipped - important for form-select */
+  .form-section {
+    overflow: visible !important;
+  }
+
+  .form-section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--bg-surface-alt);
+  }
+
+  .form-section-title i {
+    color: var(--brand-primary);
+    margin-right: 8px;
+  }
+
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .form-label {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 0.4rem;
+  }
+
+  .form-label .required {
+    color: var(--danger);
+    margin-left: 2px;
+  }
+
+  .form-control,
+  .form-select {
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border-medium);
+    padding: 0.6rem 1rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%236c757d' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+  }
+
+  .form-control:focus,
+  .form-select:focus {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb), 0.15);
+  }
+
+  .form-control.is-invalid,
+  .form-select.is-invalid {
+    border-color: var(--danger);
+  }
+
+  .form-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+  }
+
+  .invalid-feedback {
+    font-size: 0.8rem;
+    color: var(--danger);
+    margin-top: 0.25rem;
+  }
+
+  .help-tip {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: help;
+  }
+
+  .help-tip:hover {
+    color: var(--text-primary);
+  }
+
+  .checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.4rem 0;
+  }
+
+  .checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--brand-primary);
+    cursor: pointer;
+  }
+
+  .checkbox-group label {
+    margin: 0;
+    cursor: pointer;
+    font-weight: 400;
+  }
+
+  .btn-submit {
+    background: var(--brand-primary);
+    color: white;
+    border: none;
+    padding: 0.75rem 2.5rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+  }
+
+  .btn-submit:hover {
+    background: var(--brand-primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(var(--brand-primary-rgb), 0.35);
+    color: white;
+  }
+
+  .btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1.5px solid var(--border-medium);
+    padding: 0.75rem 2rem;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .btn-cancel:hover {
+    background: var(--bg-surface-alt);
+    border-color: var(--border-dark);
+    color: var(--text-primary);
+  }
+
+  .form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--bg-surface-alt);
+    margin-top: 1rem;
+  }
+
+  .section-divider {
+    margin: 2rem 0;
+    border: 0;
+    border-top: 2px dashed var(--border-light);
+  }
+
+  /* Responsive grid for form fields */
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+
+  .form-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.25rem;
+  }
+
+  /* Ensure form elements are properly positioned and visible */
+  .form-group {
+    position: relative;
+  }
+
+  .form-select,
+  .form-control {
+    position: relative;
+    z-index: 2;
+  }
+
+  @media (max-width: 768px) {
+    .form-row,
+    .form-row-3 {
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    .form-section {
+      padding: 1.25rem;
+    }
+
+    .form-actions {
+      flex-direction: column;
+    }
+
+    .form-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* File upload styling */
+  .image-upload-area {
+    border: 2px dashed var(--border-medium);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--bg-surface-alt);
+  }
+
+  .image-upload-area:hover {
+    border-color: var(--brand-primary);
+    background: var(--brand-primary-light);
+  }
+
+  .image-upload-area i {
+    font-size: 2.5rem;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .image-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .image-preview img {
+     width: 80px;
+     height: 80px;
+     object-fit: cover;
+     border-radius: var(--radius-md);
+     border: 2px solid var(--border-light);
+   }
+
+   /* Room Type Entry Styles */
+   .room-type-entry {
+     background: var(--bg-surface-alt);
+     border: 1px solid var(--border-light);
+   }
+
+   .room-type-entry .form-label {
+     font-size: 0.85rem;
+     margin-bottom: 0.25rem;
+   }
+
+   .room-type-entry .form-control {
+     font-size: 0.9rem;
+   }
+
+   /* Progress indicator */
+  .progress-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    position: relative;
+  }
+
+  .progress-steps::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border-light);
+    transform: translateY(-50%);
+    z-index: 0;
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 1;
+    background: var(--bg-surface);
+    padding: 0 1rem;
+  }
+
+  .step-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-surface-alt);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .step-circle.active {
+    background: var(--brand-primary);
+    color: white;
+  }
+
+  .step-circle.completed {
+    background: var(--success);
+    color: white;
+  }
+
+  .step-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .step-label.active {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="create-listing-container">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="mb-0">✏️ Edit Listing</h1>
+      <p class="text-muted">Update your property details</p>
+    </div>
+    <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn-cancel">
+      <i class="bi bi-arrow-left me-1"></i> Cancel
+    </a>
+  </div>
+
+  <!-- Progress Steps -->
+  <div class="progress-steps">
+    <div class="step">
+      <div class="step-circle active">1</div>
+      <span class="step-label active">Basics</span>
+    </div>
+    <div class="step">
+      <div class="step-circle">2</div>
+      <span class="step-label">Details</span>
+    </div>
+    <div class="step">
+      <div class="step-circle">3</div>
+      <span class="step-label">Pricing</span>
+    </div>
+    <div class="step">
+      <div class="step-circle">4</div>
+      <span class="step-label">Policies</span>
+    </div>
+    <div class="step">
+      <div class="step-circle">5</div>
+      <span class="step-label">Media</span>
+    </div>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" id="listingForm">
+    {{ form.hidden_tag() }}
+
+    <!-- ─── SECTION 1: Basic Info ─── -->
+    <div class="form-section">
+      <h5 class="form-section-title"><i class="bi bi-info-circle"></i> Basic Information</h5>
+
+      <div class="form-group">
+        <label for="title" class="form-label">
+          Listing Title <span class="required">*</span>
+          <span class="help-tip" data-bs-toggle="tooltip" title="A catchy title that describes your property">
+            <i class="bi bi-question-circle"></i>
+          </span>
+        </label>
+        {{ form.title(class="form-control", placeholder="e.g., Cozy Apartment in Kampala", id="title") }}
+        {% if form.title.errors %}
+          <div class="invalid-feedback d-block">{{ form.title.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">Min 3 characters, max 200. Make it descriptive!</div>
+      </div>
+
+      <div class="form-group">
+        <label for="summary" class="form-label">Short Summary</label>
+        {{ form.summary(class="form-control", placeholder="Brief description (max 500 chars)", id="summary", rows=2) }}
+        {% if form.summary.errors %}
+          <div class="invalid-feedback d-block">{{ form.summary.errors[0] }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="description" class="form-label">
+          Full Description <span class="required">*</span>
+        </label>
+        {{ form.description(class="form-control", placeholder="Detailed description of your property...", id="description", rows=5) }}
+        {% if form.description.errors %}
+          <div class="invalid-feedback d-block">{{ form.description.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">Minimum 30 characters. Be detailed about what makes your property special.</div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="property_type" class="form-label">Property Type <span class="required">*</span></label>
+          {{ form.property_type(class="form-select", id="property_type") }}
+          {% if form.property_type.errors %}
+            <div class="invalid-feedback d-block">{{ form.property_type.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="max_guests" class="form-label">Max Guests <span class="required">*</span></label>
+          {{ form.max_guests(class="form-control", type="number", min=1, max=50, id="max_guests") }}
+          {% if form.max_guests.errors %}
+            <div class="invalid-feedback d-block">{{ form.max_guests.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="bedrooms" class="form-label">Bedrooms</label>
+          {{ form.bedrooms(class="form-control", type="number", min=0, id="bedrooms") }}
+          {% if form.bedrooms.errors %}
+            <div class="invalid-feedback d-block">{{ form.bedrooms.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="beds" class="form-label">Beds</label>
+          {{ form.beds(class="form-control", type="number", min=0, id="beds") }}
+          {% if form.beds.errors %}
+            <div class="invalid-feedback d-block">{{ form.beds.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="bathrooms" class="form-label">Bathrooms</label>
+          {{ form.bathrooms(class="form-control", type="number", step="0.5", min=0, id="bathrooms") }}
+          {% if form.bathrooms.errors %}
+            <div class="invalid-feedback d-block">{{ form.bathrooms.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 2: Location ─── -->
+    <div class="form-section">
+      <h5 class="form-section-title"><i class="bi bi-geo-alt"></i> Location</h5>
+
+      <div class="form-group">
+        <label for="address_line1" class="form-label">Address Line 1 <span class="required">*</span></label>
+        {{ form.address_line1(class="form-control", placeholder="Street address", id="address_line1") }}
+        {% if form.address_line1.errors %}
+          <div class="invalid-feedback d-block">{{ form.address_line1.errors[0] }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="address_line2" class="form-label">Address Line 2</label>
+        {{ form.address_line2(class="form-control", placeholder="Apartment, suite, etc.", id="address_line2") }}
+        {% if form.address_line2.errors %}
+          <div class="invalid-feedback d-block">{{ form.address_line2.errors[0] }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="city" class="form-label">City <span class="required">*</span></label>
+          {{ form.city(class="form-control", placeholder="e.g., Kampala", id="city") }}
+          {% if form.city.errors %}
+            <div class="invalid-feedback d-block">{{ form.city.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="state" class="form-label">State / Region</label>
+          {{ form.state(class="form-control", placeholder="e.g., Central Region", id="state") }}
+          {% if form.state.errors %}
+            <div class="invalid-feedback d-block">{{ form.state.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="country" class="form-label">Country Code <span class="required">*</span></label>
+          {{ form.country(class="form-control", placeholder="UG, KE, US, etc.", id="country", maxlength=2) }}
+          {% if form.country.errors %}
+            <div class="invalid-feedback d-block">{{ form.country.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text">2-letter country code (e.g., UG for Uganda)</div>
+        </div>
+        <div class="form-group">
+          <label for="postal_code" class="form-label">Postal Code</label>
+          {{ form.postal_code(class="form-control", placeholder="e.g., 256", id="postal_code") }}
+          {% if form.postal_code.errors %}
+            <div class="invalid-feedback d-block">{{ form.postal_code.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 3: Pricing & Stay ─── -->
+    <div class="form-section">
+      <h5 class="form-section-title"><i class="bi bi-currency-dollar"></i> Pricing & Stay Rules</h5>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="base_price_per_night" class="form-label">Price per Night <span class="required">*</span></label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            {{ form.base_price_per_night(class="form-control", type="number", step="0.01", min="0", id="base_price_per_night") }}
+          </div>
+          {% if form.base_price_per_night.errors %}
+            <div class="invalid-feedback d-block">{{ form.base_price_per_night.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text">Suggested: $50-200 per night depending on location and amenities</div>
+        </div>
+        <div class="form-group">
+          <label for="currency" class="form-label">Currency <span class="required">*</span></label>
+          {{ form.currency(class="form-select", id="currency") }}
+          {% if form.currency.errors %}
+            <div class="invalid-feedback d-block">{{ form.currency.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="cleaning_fee" class="form-label">Cleaning Fee</label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            {{ form.cleaning_fee(class="form-control", type="number", step="0.01", min="0", id="cleaning_fee") }}
+          </div>
+          {% if form.cleaning_fee.errors %}
+            <div class="invalid-feedback d-block">{{ form.cleaning_fee.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="service_fee_pct" class="form-label">Service Fee %</label>
+          <div class="input-group">
+            {{ form.service_fee_pct(class="form-control", type="number", step="0.01", min="0", max="100", id="service_fee_pct") }}
+            <span class="input-group-text">%</span>
+          </div>
+          {% if form.service_fee_pct.errors %}
+            <div class="invalid-feedback d-block">{{ form.service_fee_pct.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text">Recommended: 10-15%</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="min_stay_nights" class="form-label">Min Stay (nights) <span class="required">*</span></label>
+          {{ form.min_stay_nights(class="form-control", type="number", min=1, id="min_stay_nights") }}
+          {% if form.min_stay_nights.errors %}
+            <div class="invalid-feedback d-block">{{ form.min_stay_nights.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="max_stay_nights" class="form-label">Max Stay (nights)</label>
+          {{ form.max_stay_nights(class="form-control", type="number", min=1, id="max_stay_nights", placeholder="Optional") }}
+          {% if form.max_stay_nights.errors %}
+            <div class="invalid-feedback d-block">{{ form.max_stay_nights.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 4: Policies ─── -->
+    <div class="form-section">
+      <h5 class="form-section-title"><i class="bi bi-shield-check"></i> Policies & Rules</h5>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="cancellation_policy" class="form-label">Cancellation Policy <span class="required">*</span></label>
+          {{ form.cancellation_policy(class="form-select", id="cancellation_policy") }}
+          {% if form.cancellation_policy.errors %}
+            <div class="invalid-feedback d-block">{{ form.cancellation_policy.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text">
+            <span class="badge bg-info text-dark">Flexible</span> Full refund up to 24h before check-in<br>
+            <span class="badge bg-warning text-dark">Moderate</span> Full refund 5+ days, 50% 1-4 days<br>
+            <span class="badge bg-danger">Strict</span> 50% refund 7+ days only
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="check_in_time" class="form-label">Check-in Time</label>
+          {{ form.check_in_time(class="form-control", id="check_in_time") }}
+          {% if form.check_in_time.errors %}
+            <div class="invalid-feedback d-block">{{ form.check_in_time.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text">e.g., 14:00 (2 PM)</div>
+        </div>
+        <div class="form-group">
+          <label for="check_out_time" class="form-label">Check-out Time</label>
+          {{ form.check_out_time(class="form-control", id="check_out_time") }}
+          {% if form.check_out_time.errors %}
+            <div class="invalid-feedback d-block">{{ form.check_out_time.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text">e.g., 11:00 (11 AM)</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">House Rules</label>
+        {{ form.house_rules(class="form-control", rows=3, placeholder="List your house rules...", id="house_rules") }}
+        {% if form.house_rules.errors %}
+          <div class="invalid-feedback d-block">{{ form.house_rules.errors[0] }}</div>
+        {% endif %}
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <div class="checkbox-group">
+            {{ form.instant_book(id="instant_book") }}
+            <label for="instant_book">Enable Instant Booking</label>
+          </div>
+          <div class="form-text">Guests can book without waiting for approval</div>
+        </div>
+        <div class="form-group">
+          <div class="checkbox-group">
+            {{ form.allow_pets(id="allow_pets") }}
+            <label for="allow_pets">Pets Allowed</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="checkbox-group">
+            {{ form.allow_smoking(id="allow_smoking") }}
+            <label for="allow_smoking">Smoking Allowed</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="checkbox-group">
+            {{ form.allow_events(id="allow_events") }}
+            <label for="allow_events">Events Allowed</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 5: Media ─── -->
+    <div class="form-section">
+      <h5 class="form-section-title"><i class="bi bi-images"></i> Media</h5>
+
+      {# Legacy URL fields (kept for backward compatibility) #}
+      <div class="form-group">
+        <label for="main_image" class="form-label">Cover Image URL (Legacy)</label>
+        {{ form.main_image(class="form-control", placeholder="https://example.com/your-image.jpg", id="main_image") }}
+        {% if form.main_image.errors %}
+          <div class="invalid-feedback d-block">{{ form.main_image.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">Paste a public image URL for the cover photo (legacy field)</div>
+      </div>
+
+      <div class="form-group">
+        <label for="gallery_urls" class="form-label">Gallery URLs (Legacy)</label>
+        {{ form.gallery_urls(class="form-control", rows=3, placeholder="https://example.com/image1.jpg\nhttps://example.com/image2.jpg", id="gallery_urls") }}
+        {% if form.gallery_urls.errors %}
+          <div class="invalid-feedback d-block">{{ form.gallery_urls.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">One URL per line (legacy field)</div>
+      </div>
+
+      {# New Unified Media Uploader #}
+      <div class="form-group">
+        <label class="form-label">Property Photos</label>
+        {% include 'components/media_upload.html' %}
+      </div>
+    </div>
+
+    <!-- ─── SECTION 6: SEO ─── -->
+    <div class="form-section">
+      <h5 class="form-section-title"><i class="bi bi-search"></i> SEO (Optional)</h5>
+
+      <div class="form-group">
+        <label for="meta_title" class="form-label">Meta Title</label>
+        {{ form.meta_title(class="form-control", placeholder="SEO title (max 255 chars)", id="meta_title") }}
+        {% if form.meta_title.errors %}
+          <div class="invalid-feedback d-block">{{ form.meta_title.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">Recommended: Include location and property type</div>
+      </div>
+
+      <div class="form-group">
+        <label for="meta_description" class="form-label">Meta Description</label>
+        {{ form.meta_description(class="form-control", rows=2, placeholder="SEO description (max 500 chars)", id="meta_description") }}
+        {% if form.meta_description.errors %}
+          <div class="invalid-feedback d-block">{{ form.meta_description.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">A compelling description that appears in search results</div>
+      </div>
+    </div>
+
+    <!-- ─── Form Actions ─── -->
+    <div class="form-actions">
+      <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn-cancel">
+        <i class="bi bi-x-lg me-1"></i> Cancel
+      </a>
+      <button type="submit" class="btn-submit" id="submitBtn">
+        <i class="bi bi-check-lg me-2"></i> Update Listing
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/global/media-manager.js') }}"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // ── Tooltips ──────────────────────────────────────────────
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function(el) {
+      return new bootstrap.Tooltip(el);
+    });
+
+    // ── Form validation ──────────────────────────────────────
+    const form = document.getElementById('listingForm');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', function(e) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Updating...';
+    });
+
+    // ── Image preview (from URL input) ──────────────────────
+    const mainImageInput = document.getElementById('main_image');
+    const galleryInput = document.getElementById('gallery_urls');
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'image-preview';
+    mainImageInput.parentNode.appendChild(previewContainer);
+
+    function updatePreview() {
+      previewContainer.innerHTML = '';
+      const urls = [];
+
+      if (mainImageInput.value) {
+        urls.push(mainImageInput.value);
+      }
+
+      if (galleryInput.value) {
+        const lines = galleryInput.value.split('\n').filter(line => line.trim());
+        urls.push(...lines.slice(0, 10));
+      }
+
+      urls.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.onerror = function() {
+          this.style.display = 'none';
+        };
+        previewContainer.appendChild(img);
+      });
+    }
+
+    mainImageInput.addEventListener('input', updatePreview);
+    galleryInput.addEventListener('input', updatePreview);
+
+    // ── File input handling ──────────────────────────────────
+    const fileInput = document.getElementById('file-input');
+    if (fileInput) {
+      fileInput.addEventListener('change', function(e) {
+        const files = Array.from(this.files);
+        if (files.length === 0) return;
+
+        // In a real implementation, this would upload to cloud storage
+        // For now, we'll just show a message
+        const urls = files.map(f => URL.createObjectURL(f));
+        previewContainer.innerHTML = '';
+
+        urls.forEach(url => {
+          const img = document.createElement('img');
+          img.src = url;
+          previewContainer.appendChild(img);
+        });
+      });
+    }
+
+    // ── Country code helper ──────────────────────────────────
+    const countryInput = document.getElementById('country');
+    countryInput.addEventListener('input', function() {
+      this.value = this.value.toUpperCase().slice(0, 2);
+    });
+
+    // ── Keyboard shortcuts ──────────────────────────────────
+    document.addEventListener('keydown', function(e) {
+      // Ctrl+S or Cmd+S = Submit
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        form.submit();
+      }
+      // Escape = Cancel
+      if (e.key === 'Escape') {
+        window.location.href = "{{ url_for('accommodation.host_dashboard') }}";
+      }
+    });
+  });
+</script>
+{% endblock %}

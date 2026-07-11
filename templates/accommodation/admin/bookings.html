@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Booking Management — AFCON360{% endblock %}
+
+{% block module_styles %}
+<style>
+.acc-admin { padding: 2rem 1.5rem; }
+.acc-admin-header {
+  background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.acc-admin-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+.acc-admin-nav a {
+  background: rgba(255,255,255,.18); color: #fff; padding: .45rem 1rem; border-radius: 7px;
+  text-decoration: none; font-weight: 600; font-size: .82rem; margin-left: .4rem; transition: background .2s;
+}
+.acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
+
+/* ── status filter strip ── */
+.status-strip {
+  display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem;
+}
+.status-pill {
+  padding: .4rem .95rem; border-radius: 20px; font-size: .8rem; font-weight: 600;
+  text-decoration: none; border: 2px solid transparent; transition: all .2s;
+  background: var(--bg-surface-alt,#f3f4f6); color: var(--text-secondary,#6b7280);
+}
+.status-pill:hover { color: var(--text-primary,#111); }
+.status-pill.active { border-color: var(--brand-primary,#047857); background: #d1fae5; color: #065f46; }
+
+/* ── toolbar ── */
+.toolbar {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+}
+.toolbar form { display: flex; gap: .5rem; flex: 1; min-width: 200px; max-width: 420px; }
+.toolbar input[type=text] {
+  flex: 1; padding: .5rem .9rem; border: 1px solid var(--border-light,#d1d5db);
+  border-radius: 8px; font-size: .88rem;
+}
+.toolbar input[type=text]:focus { outline: none; border-color: var(--brand-primary,#047857); }
+.toolbar button {
+  padding: .5rem 1.1rem; border-radius: 8px; font-size: .85rem; font-weight: 600;
+  border: none; cursor: pointer; background: var(--brand-primary,#047857); color: #fff;
+  transition: background .2s;
+}
+.toolbar button:hover { background: #065f46; }
+
+/* ── table ── */
+.data-card {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.data-card table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.data-card thead th {
+  background: var(--bg-surface-alt,#f9fafb); padding: .8rem 1rem;
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--text-secondary,#6b7280); border-bottom: 1px solid var(--border-light,#e5e7eb);
+  white-space: nowrap;
+}
+.data-card tbody td {
+  padding: .8rem 1rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
+  vertical-align: middle; color: var(--text-primary,#111);
+}
+.data-card tbody tr:last-child td { border-bottom: none; }
+.data-card tbody tr:hover td { background: var(--bg-surface-alt,#f9fafb); }
+
+/* ── status badges ── */
+.sbadge { display: inline-block; padding: 2px 9px; border-radius: 20px;
+          font-size: .7rem; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.sb-confirmed     { background: #d1fae5; color: #065f46; }
+.sb-pending       { background: #fef3c7; color: #92400e; }
+.sb-checked_in    { background: #dbeafe; color: #1d4ed8; }
+.sb-checked_out   { background: #f3f4f6; color: #374151; }
+.sb-cancelled     { background: #fee2e2; color: #b91c1c; }
+.sb-refunded      { background: #ede9fe; color: #6d28d9; }
+.sb-no_show       { background: #e5e7eb; color: #6b7280; }
+
+.pay-badge { display: inline-block; padding: 2px 9px; border-radius: 20px;
+             font-size: .7rem; font-weight: 600; white-space: nowrap; }
+.pay-paid     { background: #d1fae5; color: #065f46; }
+.pay-pending  { background: #fef3c7; color: #92400e; }
+.pay-failed   { background: #fee2e2; color: #b91c1c; }
+.pay-refunded { background: #ede9fe; color: #6d28d9; }
+
+.action-cell { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+.btn-sm-act {
+  padding: 3px 9px; border-radius: 6px; font-size: .75rem; font-weight: 600;
+  text-decoration: none; border: none; cursor: pointer; transition: background .2s;
+}
+.btn-view-sm { background: var(--bg-surface-alt,#f3f4f6); color: var(--text-primary,#111);
+               border: 1px solid var(--border-light,#e5e7eb); }
+.btn-view-sm:hover { background: #e5e7eb; color: var(--text-primary,#111); }
+
+.empty-box { text-align: center; padding: 4rem 2rem; color: var(--text-secondary,#9ca3af); }
+.empty-box i { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
+.result-count { font-size: .83rem; color: var(--text-secondary,#6b7280); margin-bottom: 1rem; }
+
+/* ── responsive table scroll ── */
+.table-scroll { overflow-x: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="acc-admin">
+
+  {# ── Header ── #}
+  <div class="acc-admin-header">
+    <div>
+      <h1><i class="bi bi-calendar-check-fill me-2"></i>Booking Management</h1>
+      <p>Search, filter and review all accommodation bookings</p>
+    </div>
+    <nav class="acc-admin-nav">
+      <a href="{{ url_for('accommodation.admin_dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+      <a href="{{ url_for('accommodation.admin_properties') }}"><i class="bi bi-house-door me-1"></i>Properties</a>
+      <a href="{{ url_for('accommodation.admin_analytics') }}"><i class="bi bi-graph-up me-1"></i>Analytics</a>
+    </nav>
+  </div>
+
+  {# ── Flash messages ── #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'danger') }} alert-dismissible fade show">
+      {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# ── Status filter pills ── #}
+  <div class="status-strip">
+    <a href="{{ url_for('accommodation.admin_bookings', q=search_q) }}"
+       class="status-pill {{ 'active' if status_filter == 'all' }}">
+      All
+      <strong class="ms-1">{{ status_counts.get('all', 0) }}</strong>
+    </a>
+    {% for s_key, s_count in status_counts.items() if s_key != 'all' %}
+    <a href="{{ url_for('accommodation.admin_bookings', status=s_key, q=search_q) }}"
+       class="status-pill {{ 'active' if status_filter == s_key }}">
+      {{ s_key | replace('_',' ') | title }}
+      <strong class="ms-1">{{ s_count }}</strong>
+    </a>
+    {% endfor %}
+  </div>
+
+  {# ── Search toolbar ── #}
+  <div class="toolbar">
+    <form method="GET" action="{{ url_for('accommodation.admin_bookings') }}">
+      {% if status_filter and status_filter != 'all' %}
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      {% endif %}
+      <input type="text" name="q" value="{{ search_q }}"
+             placeholder="Reference, guest name or email…">
+      <button type="submit"><i class="bi bi-search me-1"></i>Search</button>
+    </form>
+    {% if search_q %}
+    <a href="{{ url_for('accommodation.admin_bookings', status=status_filter) }}"
+       style="font-size:.82rem;color:var(--text-secondary,#6b7280);text-decoration:none;">
+      <i class="bi bi-x-lg me-1"></i>Clear search
+    </a>
+    {% endif %}
+  </div>
+
+  <p class="result-count">
+    {{ bookings.total }} {{ 'booking' if bookings.total == 1 else 'bookings' }} found
+    {% if search_q %} · "<strong>{{ search_q }}</strong>"{% endif %}
+    {% if status_filter and status_filter != 'all' %} · status: <strong>{{ status_filter | replace('_',' ') | title }}</strong>{% endif %}
+  </p>
+
+  {# ── Table ── #}
+  {% if bookings.items %}
+  <div class="data-card">
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Reference</th>
+          <th>Guest</th>
+          <th>Property</th>
+          <th>Check-In</th>
+          <th>Check-Out</th>
+          <th>Nights</th>
+          <th>Guests</th>
+          <th>Total</th>
+          <th>Booking Status</th>
+          <th>Payment</th>
+          <th>Booked At</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bk in bookings.items %}
+        <tr>
+          <td>
+            <span style="font-family:monospace;font-size:.78rem;">{{ bk.booking_reference }}</span>
+          </td>
+          <td>
+            <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
+            <small class="text-muted">{{ bk.guest_email | truncate(28) }}</small>
+          </td>
+          <td>
+            {% if bk.accommodation_property %}
+            <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
+            <small class="text-muted">{{ bk.accommodation_property.city }}</small>
+            {% else %}
+            <small class="text-muted">Deleted</small>
+            {% endif %}
+          </td>
+          <td>{{ bk.check_in.strftime('%d %b %Y') if bk.check_in else '—' }}</td>
+          <td>{{ bk.check_out.strftime('%d %b %Y') if bk.check_out else '—' }}</td>
+          <td class="text-center">{{ bk.num_nights }}</td>
+          <td class="text-center">{{ bk.num_guests }}</td>
+          <td>
+            <strong>${{ "{:,.2f}".format(bk.total_amount) }}</strong>
+            <small class="text-muted d-block">{{ bk.currency }}</small>
+          </td>
+          <td>
+            <span class="sbadge sb-{{ bk.status }}">{{ bk.status | replace('_',' ') | title }}</span>
+          </td>
+          <td>
+            <span class="pay-badge pay-{{ bk.payment_status }}">
+              {{ bk.payment_status | replace('_',' ') | title }}
+            </span>
+          </td>
+          <td>
+            <small>{{ bk.created_at.strftime('%d %b %Y') if bk.created_at else '—' }}</small>
+          </td>
+          <td>
+            <div class="action-cell">
+              {% if bk.accommodation_property %}
+              <a href="{{ url_for('accommodation.guest_detail', identifier=bk.accommodation_property.id) }}"
+                 target="_blank" class="btn-sm-act btn-view-sm" title="View property">
+                <i class="bi bi-house-door"></i>
+              </a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  {# ── Pagination ── #}
+  {% if bookings.pages > 1 %}
+  <nav class="mt-4 d-flex justify-content-center">
+    <ul class="pagination">
+      {% if bookings.has_prev %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=bookings.prev_num, status=status_filter, q=search_q) }}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+      {% endif %}
+      {% for p in bookings.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+        <li class="page-item {{ 'active' if p == bookings.page }}">
+          <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=p, status=status_filter, q=search_q) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      {% if bookings.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=bookings.next_num, status=status_filter, q=search_q) }}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-box">
+    <i class="bi bi-calendar-x"></i>
+    <h5>No bookings found</h5>
+    <p class="small">Try a different status filter or clear your search.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

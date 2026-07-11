@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Accommodation Settings — AFCON360{% endblock %}
+
+{% block module_styles %}
+<style>
+.acc-admin { padding: 2rem 1.5rem; }
+.acc-admin-header {
+  background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.acc-admin-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+.acc-admin-nav a {
+  background: rgba(255,255,255,.18); color: #fff; padding: .45rem 1rem; border-radius: 7px;
+  text-decoration: none; font-weight: 600; font-size: .82rem; margin-left: .4rem; transition: background .2s;
+}
+.acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
+
+/* ── two-column layout ── */
+.settings-layout {
+  display: grid; grid-template-columns: 1fr 1.6fr; gap: 1.75rem; align-items: start;
+}
+@media(max-width:860px){ .settings-layout { grid-template-columns: 1fr; } }
+
+/* ── panel cards ── */
+.panel {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.panel h4 {
+  font-size: 1rem; font-weight: 700; color: var(--text-primary,#111);
+  margin: 0 0 1.25rem; padding-bottom: .75rem;
+  border-bottom: 1px solid var(--border-light,#e5e7eb);
+  display: flex; align-items: center; gap: .5rem;
+}
+
+/* ── add form ── */
+.field-row { margin-bottom: 1rem; }
+.field-row label {
+  display: block; font-size: .82rem; font-weight: 600;
+  color: var(--text-secondary,#6b7280); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .3px;
+}
+.field-row input, .field-row textarea {
+  width: 100%; padding: .55rem .85rem;
+  border: 1px solid var(--border-light,#d1d5db); border-radius: 8px;
+  font-size: .9rem; color: var(--text-primary,#111);
+  background: var(--bg-surface,#fff); transition: border-color .2s;
+}
+.field-row input:focus, .field-row textarea:focus {
+  outline: none; border-color: var(--brand-primary,#047857);
+}
+.field-row textarea { resize: vertical; min-height: 64px; }
+.field-hint { font-size: .77rem; color: var(--text-secondary,#9ca3af); margin-top: 3px; }
+
+.btn-save {
+  background: var(--brand-primary,#047857); color: #fff; border: none;
+  padding: .6rem 1.4rem; border-radius: 8px; font-size: .9rem; font-weight: 700;
+  cursor: pointer; transition: background .2s; width: 100%; margin-top: .25rem;
+}
+.btn-save:hover { background: #065f46; }
+
+/* ── configs table ── */
+.data-card {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.data-card table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.data-card thead th {
+  background: var(--bg-surface-alt,#f9fafb); padding: .75rem 1rem;
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--text-secondary,#6b7280); border-bottom: 1px solid var(--border-light,#e5e7eb);
+  white-space: nowrap;
+}
+.data-card tbody td {
+  padding: .75rem 1rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
+  vertical-align: middle; color: var(--text-primary,#111);
+}
+.data-card tbody tr:last-child td { border-bottom: none; }
+.data-card tbody tr:hover td { background: var(--bg-surface-alt,#f9fafb); }
+
+.key-code {
+  font-family: monospace; font-size: .82rem;
+  background: var(--bg-surface-alt,#f3f4f6); padding: 2px 6px; border-radius: 4px;
+}
+.val-cell { max-width: 220px; word-break: break-all; font-size: .85rem; }
+.desc-cell { max-width: 200px; font-size: .8rem; color: var(--text-secondary,#6b7280); }
+.updated-cell { font-size: .77rem; color: var(--text-secondary,#9ca3af); white-space: nowrap; }
+
+/* ── inline edit ── */
+.inline-edit-form { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.inline-edit-form input {
+  flex: 1; min-width: 100px; max-width: 180px; padding: 3px 8px;
+  border: 1px solid var(--border-light,#d1d5db); border-radius: 6px; font-size: .83rem;
+}
+.inline-edit-form input:focus { outline: none; border-color: var(--brand-primary,#047857); }
+.btn-inline-save {
+  background: #d1fae5; color: #065f46; border: none; padding: 3px 10px;
+  border-radius: 6px; font-size: .78rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: background .2s;
+}
+.btn-inline-save:hover { background: #a7f3d0; }
+
+/* ── known keys reference panel ── */
+.ref-panel {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; padding: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+  margin-top: 1.5rem;
+}
+.ref-panel h6 { font-size: .88rem; font-weight: 700; margin-bottom: .75rem; }
+.ref-item {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: .45rem 0; border-bottom: 1px solid var(--border-light,#e5e7eb);
+  font-size: .8rem; gap: 1rem;
+}
+.ref-item:last-child { border-bottom: none; }
+.ref-key { font-family: monospace; color: var(--brand-primary,#047857); font-weight: 600; }
+.ref-desc { color: var(--text-secondary,#6b7280); text-align: right; max-width: 55%; }
+
+.empty-box { text-align: center; padding: 3rem 2rem; color: var(--text-secondary,#9ca3af); }
+.empty-box i { font-size: 3rem; display: block; margin-bottom: .75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="acc-admin">
+
+  {# ── Header ── #}
+  <div class="acc-admin-header">
+    <div>
+      <h1><i class="bi bi-gear-fill me-2"></i>Accommodation Settings</h1>
+      <p>Manage platform-wide accommodation configuration keys</p>
+    </div>
+    <nav class="acc-admin-nav">
+      <a href="{{ url_for('accommodation.admin_dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+      <a href="{{ url_for('accommodation.admin_analytics') }}"><i class="bi bi-graph-up me-1"></i>Analytics</a>
+    </nav>
+  </div>
+
+  {# ── Flash messages ── #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'danger') }} alert-dismissible fade show">
+      {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="settings-layout">
+
+    {# ── Left: Add / Update form ── #}
+    <div>
+      <div class="panel">
+        <h4><i class="bi bi-plus-circle-fill text-success"></i>Add / Update Setting</h4>
+        <form method="POST" action="{{ url_for('accommodation.admin_settings_update') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field-row">
+            <label for="cfg-key">Key</label>
+            <input type="text" id="cfg-key" name="key"
+                   placeholder="e.g. accommodation_commission_pct"
+                   pattern="^[a-z0-9_]+$" required>
+            <div class="field-hint">Lowercase letters, digits and underscores only. Must start with <code>accommodation_</code>.</div>
+          </div>
+          <div class="field-row">
+            <label for="cfg-val">Value</label>
+            <input type="text" id="cfg-val" name="value" placeholder="e.g. 10.5" required>
+          </div>
+          <div class="field-row">
+            <label for="cfg-desc">Description <small>(optional)</small></label>
+            <textarea id="cfg-desc" name="description"
+                      placeholder="Short explanation of what this setting controls…"></textarea>
+          </div>
+          <button type="submit" class="btn-save">
+            <i class="bi bi-floppy-fill me-2"></i>Save Setting
+          </button>
+        </form>
+      </div>
+
+      {# ── Known keys reference ── #}
+      <div class="ref-panel">
+        <h6><i class="bi bi-info-circle-fill text-primary me-1"></i>Recommended Setting Keys</h6>
+        {% set reference_keys = [
+          ('accommodation_commission_pct',   'Platform commission % on bookings'),
+          ('accommodation_max_guests',       'Global max-guests cap'),
+          ('accommodation_min_stay_nights',  'Global minimum stay length'),
+          ('accommodation_instant_book',     'Allow instant booking platform-wide (true/false)'),
+          ('accommodation_auto_payout_days', 'Days after checkout before host payout'),
+          ('accommodation_review_window_days','Days guests have to leave a review'),
+          ('accommodation_cancellation_fee', 'Flat admin cancellation fee ($)'),
+          ('accommodation_service_fee_pct',  'Default service fee charged to guests (%)'),
+        ] %}
+        {% for key, desc in reference_keys %}
+        <div class="ref-item">
+          <span class="ref-key">{{ key }}</span>
+          <span class="ref-desc">{{ desc }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ── Right: Existing configs table ── #}
+    <div>
+      <div class="data-card">
+        {% if configs %}
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Value</th>
+              <th>Description</th>
+              <th>Last Updated</th>
+              <th>Quick Edit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cfg in configs %}
+            <tr>
+              <td><span class="key-code">{{ cfg.key }}</span></td>
+              <td class="val-cell">{{ cfg.value }}</td>
+              <td class="desc-cell">{{ cfg.description or '—' }}</td>
+              <td class="updated-cell">
+                {{ cfg.updated_at.strftime('%d %b %Y %H:%M') if cfg.updated_at else '—' }}
+              </td>
+              <td>
+                <form method="POST" action="{{ url_for('accommodation.admin_settings_update') }}"
+                      class="inline-edit-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="key" value="{{ cfg.key }}">
+                  <input type="hidden" name="description" value="{{ cfg.description or '' }}">
+                  <input type="text" name="value" value="{{ cfg.value }}" required>
+                  <button type="submit" class="btn-inline-save">
+                    <i class="bi bi-check-lg"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-box">
+          <i class="bi bi-sliders2"></i>
+          <h6>No accommodation settings yet</h6>
+          <p class="small">Use the form on the left to add your first configuration key.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block module_scripts %}
+<script>
+// Auto-fill the key field from quick-ref panel clicks
+document.querySelectorAll('.ref-key').forEach(function(el) {
+  el.style.cursor = 'pointer';
+  el.title = 'Click to use this key';
+  el.addEventListener('click', function() {
+    document.getElementById('cfg-key').value = el.textContent.trim();
+    document.getElementById('cfg-key').focus();
+  });
+});
+</script>
+{% endblock %}

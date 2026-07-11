@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}Property Verification — AFCON360{% endblock %}
+
+{% block module_styles %}
+<style>
+.acc-admin { padding: 2rem 1.5rem; }
+.acc-admin-header {
+  background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.acc-admin-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+.acc-admin-nav a {
+  background: rgba(255,255,255,.18); color: #fff; padding: .45rem 1rem; border-radius: 7px;
+  text-decoration: none; font-weight: 600; font-size: .82rem; margin-left: .4rem; transition: background .2s;
+}
+.acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
+
+/* ── counts bar ── */
+.count-bar {
+  display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+}
+.count-pill {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .55rem 1.1rem; border-radius: 30px;
+  font-size: .85rem; font-weight: 600; text-decoration: none; border: 2px solid transparent;
+  transition: all .2s;
+}
+.count-pill.active       { border-color: var(--brand-primary,#047857); background: #d1fae5; color: #065f46; }
+.count-pill.cp-pending   { background: #fff3e0; color: #b45309; }
+.count-pill.cp-pending:hover { background: #fed7aa; }
+.count-pill.cp-verified  { background: #d1fae5; color: #065f46; }
+.count-pill.cp-verified:hover { background: #a7f3d0; }
+.count-pill.cp-rejected  { background: #fee2e2; color: #b91c1c; }
+.count-pill.cp-rejected:hover { background: #fecaca; }
+.count-pill .badge-num   { background: currentColor; color: #fff; border-radius: 20px;
+                            padding: 1px 8px; font-size: .78rem; opacity: .85; }
+
+/* ── property cards ── */
+.prop-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+.prop-card {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition: transform .2s, box-shadow .2s;
+}
+.prop-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,.1); }
+
+.prop-thumb {
+  height: 150px; overflow: hidden; position: relative; background: var(--bg-surface-alt,#f3f4f6);
+}
+.prop-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.prop-thumb .no-img {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary,#9ca3af); font-size: 2.5rem;
+}
+.prop-status-badge {
+  position: absolute; top: 10px; left: 10px;
+  padding: 3px 10px; border-radius: 20px; font-size: .7rem; font-weight: 700; text-transform: uppercase;
+}
+.psb-pending_review { background: #f59e0b; color: #fff; }
+.psb-active         { background: #10b981; color: #fff; }
+.psb-suspended      { background: #ef4444; color: #fff; }
+.psb-draft          { background: #6b7280; color: #fff; }
+
+.prop-body { padding: 1.1rem; }
+.prop-title { font-weight: 700; font-size: 1rem; color: var(--text-primary,#111); margin-bottom: 3px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prop-meta  { font-size: .82rem; color: var(--text-secondary,#6b7280); margin-bottom: .75rem; }
+.prop-meta span { margin-right: .8rem; }
+.prop-detail { font-size: .82rem; color: var(--text-secondary,#6b7280); margin-bottom: .9rem; line-height: 1.6; }
+.prop-detail strong { color: var(--text-primary,#111); }
+
+.prop-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.btn-approve {
+  background: #059669; color: #fff; border: none; padding: .45rem 1rem; border-radius: 7px;
+  font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .2s;
+}
+.btn-approve:hover { background: #047857; }
+.btn-reject-trigger {
+  background: #fee2e2; color: #b91c1c; border: none; padding: .45rem 1rem; border-radius: 7px;
+  font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .2s;
+}
+.btn-reject-trigger:hover { background: #fca5a5; }
+.btn-view {
+  background: var(--bg-surface-alt,#f3f4f6); color: var(--text-primary,#111);
+  border: 1px solid var(--border-light,#e5e7eb); padding: .45rem .9rem; border-radius: 7px;
+  font-size: .82rem; font-weight: 500; text-decoration: none; transition: background .2s;
+}
+.btn-view:hover { background: #e5e7eb; text-decoration: none; color: var(--text-primary,#111); }
+
+/* ── reject modal ── */
+.reject-modal-bg {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 1050; align-items: center; justify-content: center;
+}
+.reject-modal-bg.open { display: flex; }
+.reject-modal {
+  background: #fff; border-radius: 14px; padding: 2rem; width: 100%; max-width: 440px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+.reject-modal h5 { font-weight: 700; margin-bottom: 1rem; }
+.reject-modal textarea {
+  width: 100%; border: 1px solid #d1d5db; border-radius: 8px;
+  padding: .65rem .85rem; font-size: .9rem; resize: vertical; min-height: 80px;
+}
+.reject-modal-actions { display: flex; gap: .75rem; justify-content: flex-end; margin-top: 1rem; }
+
+/* ── empty state ── */
+.empty-box {
+  text-align: center; padding: 4rem 2rem;
+  color: var(--text-secondary,#9ca3af);
+}
+.empty-box i { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="acc-admin">
+
+  {# ── Header ── #}
+  <div class="acc-admin-header">
+    <div>
+      <h1><i class="bi bi-shield-check me-2"></i>Property Verification</h1>
+      <p>Review submitted listings and approve or reject them for the platform</p>
+    </div>
+    <nav class="acc-admin-nav">
+      <a href="{{ url_for('accommodation.admin_dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+      <a href="{{ url_for('accommodation.admin_properties') }}"><i class="bi bi-house-door me-1"></i>All Properties</a>
+    </nav>
+  </div>
+
+  {# ── Status filter pills ── #}
+  <div class="count-bar">
+    <a href="{{ url_for('accommodation.admin_verification', status='pending_review') }}"
+       class="count-pill cp-pending {{ 'active' if filter_status == 'pending_review' }}">
+      <i class="bi bi-hourglass-split"></i> Pending Review
+      <span class="badge-num">{{ counts.pending_review }}</span>
+    </a>
+    <a href="{{ url_for('accommodation.admin_verification', status='verified') }}"
+       class="count-pill cp-verified {{ 'active' if filter_status == 'verified' }}">
+      <i class="bi bi-check-circle-fill"></i> Verified
+      <span class="badge-num">{{ counts.verified }}</span>
+    </a>
+    <a href="{{ url_for('accommodation.admin_verification', status='rejected') }}"
+       class="count-pill cp-rejected {{ 'active' if filter_status == 'rejected' }}">
+      <i class="bi bi-x-circle-fill"></i> Rejected
+      <span class="badge-num">{{ counts.rejected }}</span>
+    </a>
+  </div>
+
+  {# ── Flash messages ── #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'danger') }} alert-dismissible fade show" role="alert">
+      {{ msg }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# ── Property grid ── #}
+  {% if properties.items %}
+  <div class="prop-grid">
+    {% for prop in properties.items %}
+    <div class="prop-card">
+      <div class="prop-thumb">
+        {% if prop.main_image %}
+          <img src="{{ prop.main_image }}" alt="{{ prop.title }}" loading="lazy">
+        {% else %}
+          <div class="no-img"><i class="bi bi-image"></i></div>
+        {% endif %}
+        {% set sv = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
+        <span class="prop-status-badge psb-{{ sv }}">{{ sv | replace('_',' ') | title }}</span>
+      </div>
+      <div class="prop-body">
+        <div class="prop-title" title="{{ prop.title }}">{{ prop.title }}</div>
+        <div class="prop-meta">
+          <span><i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ prop.city }}, {{ prop.country }}</span>
+          <span><i class="bi bi-tag-fill text-primary me-1"></i>
+            {{ (prop.property_type.value if prop.property_type and prop.property_type.value else (prop.property_type|string)) | replace('_',' ') | title }}
+          </span>
+        </div>
+        <div class="prop-detail">
+          <strong>Host:</strong> {{ prop.owner_display_name }}<br>
+          <strong>Price:</strong> ${{ "{:,.0f}".format(prop.base_price_per_night) }}/night<br>
+          <strong>Submitted:</strong> {{ prop.created_at.strftime('%d %b %Y') if prop.created_at else '—' }}
+          {% if prop.verification_notes %}
+          <br><strong>Notes:</strong> {{ prop.verification_notes | truncate(80) }}
+          {% endif %}
+        </div>
+        <div class="prop-actions">
+          {% if prop.status and prop.status.value == 'pending_review' %}
+          <form method="POST" action="{{ url_for('accommodation.admin_verify_approve', property_id=prop.id) }}"
+                style="display:inline;">
+            {{ csrf_input() if csrf_input is defined else '<input type="hidden" name="csrf_token" value="' + csrf_token() + '">"|safe }}
+            <button type="submit" class="btn-approve"><i class="bi bi-check-lg me-1"></i>Approve</button>
+          </form>
+          <button class="btn-reject-trigger"
+                  onclick="openRejectModal({{ prop.id }}, '{{ prop.title | replace("'", "\\'") }}')">
+            <i class="bi bi-x-lg me-1"></i>Reject
+          </button>
+          {% endif %}
+          <a href="{{ url_for('accommodation.guest_detail', identifier=prop.id) }}"
+             target="_blank" class="btn-view">
+            <i class="bi bi-eye me-1"></i>Preview
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── Pagination ── #}
+  {% if properties.pages > 1 %}
+  <nav class="mt-4 d-flex justify-content-center" aria-label="Page navigation">
+    <ul class="pagination">
+      {% if properties.has_prev %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_verification', page=properties.prev_num, status=filter_status) }}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+      {% endif %}
+      {% for p in properties.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+        <li class="page-item {{ 'active' if p == properties.page }}">
+          <a class="page-link" href="{{ url_for('accommodation.admin_verification', page=p, status=filter_status) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      {% if properties.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_verification', page=properties.next_num, status=filter_status) }}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-box">
+    <i class="bi bi-clipboard2-check"></i>
+    <h5>No properties in this category</h5>
+    <p class="small">Check another filter tab above.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Reject modal ── #}
+<div class="reject-modal-bg" id="rejectModalBg">
+  <div class="reject-modal">
+    <h5><i class="bi bi-x-circle-fill text-danger me-2"></i>Reject Property</h5>
+    <p id="rejectModalName" class="text-muted small mb-2"></p>
+    <form method="POST" id="rejectForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label small fw-bold">Reason for rejection</label>
+      <textarea name="reason" class="form-control" placeholder="Explain why this listing is being rejected…" required></textarea>
+      <div class="reject-modal-actions">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeRejectModal()">Cancel</button>
+        <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-x-lg me-1"></i>Reject Listing</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block module_scripts %}
+<script>
+function openRejectModal(propId, propTitle) {
+  document.getElementById('rejectForm').action =
+    '/accommodation/admin/verification/' + propId + '/reject';
+  document.getElementById('rejectModalName').textContent = propTitle;
+  document.getElementById('rejectModalBg').classList.add('open');
+}
+function closeRejectModal() {
+  document.getElementById('rejectModalBg').classList.remove('open');
+}
+document.getElementById('rejectModalBg').addEventListener('click', function(e) {
+  if (e.target === this) closeRejectModal();
+});
+</script>
+{% endblock %}
