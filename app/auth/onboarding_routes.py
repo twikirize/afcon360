@@ -474,7 +474,7 @@ def host_onboarding(step: int = 1):
                 _commit_host_onboarding(current_user, data)
                 session.pop("host_onboarding", None)
                 flash("Property listed successfully! We will verify your details.", "success")
-                return redirect(url_for("accommodation.host.dashboard"))
+                return redirect(url_for("accommodation.host_dashboard"))
             except Exception as e:
                 current_app.logger.error(f"Host onboarding error: {e}")
                 flash("Something went wrong. Please try again.", "danger")

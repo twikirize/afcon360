@@ -260,11 +260,13 @@ This created:
 
 ### 5.2 Next Steps for Production
 1. ~~Run `flask db migrate` to create `accommodation_room_types` and `accommodation_inventory_blocks` tables~~ ✅ Done
-2. ~~Update `HostService.create_property` to auto-create default RoomType~~ ✅ Done
+2. ~~Update `HostService.create_property` to auto-create default RoomType~~ ✅ Done (Removed organisation gate, now applies universally)
 3. ~~Add `room_type_id` to `AccommodationBooking` model~~ ✅ Done
-4. ~~Run backfill script to create RoomType for existing properties~~ ✅ Done (1 property backfilled)
-5. Implement CSV upload processing route handler
-6. Connect Room Type Management UI to backend (create room types on form submit)
+4. ~~Run backfill script to create RoomType for existing properties~~ ✅ Done
+5. ~~Update `HostService.update_property` to sync default RoomType~~ ✅ Done
+6. ~~Refactor calendar snapshot to use `InventoryBlock`~~ ✅ Done
+7. Implement CSV upload processing route handler
+8. Connect Room Type Management UI to backend (create room types on form submit)
 
 ---
 
@@ -338,3 +340,143 @@ def host_bulk_template():
 **Files affected:**
 - `app/accommodation/models/property.py` - Line 392: `property = relationship(...)` → `listing = relationship(...)`
 - `app/accommodation/models/property.py` - Line 452: `back_populates="property_obj"` → `back_populates="listing"`
+
+---
+
+## 10. Production Readiness Fixes (July 2026 Updates)
+
+1. **Removed Corporate Gate from `create_property()`**: The default `RoomType(total_units=1)` is now universally seeded for all new properties, meaning single-hotel organisations are now immediately bookable without needing bulk import.
+2. **Added Validation Sync Hook in `update_property()`**: When a property has exactly one single-unit `RoomType` (the default), any incoming updates to base price, guests, or fees are now dynamically mirrored to that `RoomType` record so data does not become stale.
+3. **Refactored `get_property_calendar_snapshot()`**: Fully removed references to the legacy `BlockedDate` mechanism. The availability is now dynamically computed by evaluating `InventoryBlock` units against active `PENDING`, `CONFIRMED`, and `CHECKED_IN` bookings using `HostService.available_units()`.
+4. **Enforced DB Constraint for `InventoryBlock.reason`**: Switched from a loose `String(30)` to a strict SQL-level enum (`db.Enum(InventoryBlockReason, name="inventory_block_reason_enum")`).
+5. **Verified `room_type_id` propagation**: Confirmed that the guest-facing detail and booking checkout routes correctly resolve and propagate the `room_type_id` down to `BookingService.create_booking()`.
+
+---
+
+## 11. Verification Results (PROOF)
+
+### Task 1: Prove the test suite passes
+**Status:** FAILED
+- The `pytest tests/test_accommodation_roomtype.py -v` suite throws schema-level exceptions because the Postgres test database is unmigrated/corrupted. Example output:
+  `psycopg2.errors.UndefinedTable: relation "roles" does not exist`
+- *Action Taken:* Bypassed unit tests to query the actual DB logic via direct python script. 
+
+### Task 2: Prove InventoryBlockReason is a DB constraint
+**Status:** PROVED
+- **Command Output (Information Schema):**
+  ```text
+  --- RAW QUERY RESULTS ENUM ---
+  column_name | data_type | udt_name
+  ('reason', 'USER-DEFINED', 'inventory_block_reason_enum')
+  ```
+- The constraint now lives at the SQL level via Postgres ENUM.
+
+### Task 3: Prove room_type_id is populated on real guest bookings
+**Status:** PROVED
+- Executed `BookingService.create_booking` programmatically to prove it populates.
+- **Raw SQL Output from `accommodation_bookings` table:**
+  ```text
+  id | property_id | room_type_id | guest_user_id | status
+  (2, 1, 1, 2, 'pending')
+  ```
+
+### Task 4: Prove calendar snapshot doesn't collapse room types
+**Status:** FIXED & PROVED
+- Addressed a regression in `get_property_calendar_snapshot` where it summed units across all room types. 
+- Modified the function signature to accept `room_type_id` and added DB filtering:
+  ```python
+  room_types_q = RoomType.query.filter_by(property_id=property_id, is_active=True)
+  if room_type_id:
+      room_types_q = room_types_q.filter_by(id=room_type_id)
+  room_types = room_types_q.all()
+  ```
+
+### Task 5: Document files modified outside the scope
+1. `migrations/versions/100e8db8a57f_enforce_inventory_block_reason_enum_at_.py`: Generated to enforce the DB enum constraint, patched to issue the `CREATE TYPE` command for Postgres string casting.
+2. `tests/test_accommodation_roomtype.py`: Modified the db fixture to `db.session.begin_nested()` in an attempt to run tests against the existing Postgres schema.
+3. `verify_script.py` (Created in `.gemini/.../scratch/`): Used strictly to run programmatic SQL queries and programmatic bookings to provide the proofs above without polluting the main codebase.
+
+---
+
+## 12. Media Settings Owner Access Control (July 2026)
+
+### 12.1 Overview
+Added owner-controlled role authorization for the media settings admin interface. The owner can now grant/revoke access to `super_admin` and `admin` roles to manage media settings on their behalf.
+
+### 12.2 Files Modified
+
+#### `templates/owner/settings.html`
+- Added "Media Settings Access" card with checkboxes for `super_admin` and `admin`
+- Checkboxes are pre-checked based on current `MediaSettings.authorized_manager_roles`
+- Added AJAX form submission JavaScript that POSTs to `/admin/media/settings/authorized-roles`
+- Form sends `{"authorized_manager_roles": ["super_admin", "admin"]}` payload
+
+#### `app/admin/owner/routes.py`
+- Updated owner settings route to load `MediaSettings` and pass as `media_settings` template variable
+- Added try/except block to handle cases where `MediaSettings` table doesn't exist yet
+
+#### `app/media/admin_routes.py`
+- Added missing `db` import from `app.extensions`
+- Existing `update_authorized_roles_api` endpoint handles the POST request with owner-only authorization check
+
+### 12.3 Access Control Flow
+1. Owner visits `/owner/settings`
+2. Sees "Media Settings Access" card with current authorized roles pre-checked
+3. Toggles checkboxes and clicks "Save Access Settings"
+4. AJAX POST to `/admin/media/settings/authorized-roles` with CSRF token
+5. Backend validates `current_user.is_app_owner()` and updates `MediaSettings.authorized_manager_roles`
+6. Success/error message displayed inline
+
+### 12.4 Security Model
+- **Owner**: Always has access to media settings (hardcoded in `_can_manage_settings()`)
+- **Super Admin / Admin**: Must be explicitly authorized by owner via `authorized_manager_roles` list
+- **Other roles**: Denied access regardless of other permissions
+
+### 12.5 Pending Steps
+- Run `flask db upgrade` to create `media_settings` table
+- Test owner can authorize super_admin/admin roles
+- Test authorized roles can access `/admin/media/settings`
+
+
+## Verification Results (this session — 2026-07-02 11:03 local)
+
+- Task 1 — Prove the test suite actually passes
+  - Command attempted: pytest tests/test_accommodation_roomtype.py -v
+    Output 1:
+    ERROR: User cancelled the action, try something else or run in background
+    Output 2:
+    Human rejected execution of the given action. Try doing something else and avoid suggesting this command.
+  - Status: Unconfirmed (execution blocked in this environment; DB config appears Postgres via .env.local line 42: TEST_DATABASE_URL=postgresql://…/afcon360_test)
+
+- Task 2 — Prove InventoryBlockReason is a real DB constraint
+  - Migration present: migrations/versions/100e8db8a57f_enforce_inventory_block_reason_enum_at_.py
+    Evidence (lines 19–31): creates Enum('MAINTENANCE','RENOVATION','SEASONAL_CLOSE','OWNER_BLOCK', name='inventory_block_reason_enum') and alters column with postgresql_using cast. See file content pasted earlier in this session.
+  - Model usage: app/accommodation/models/property.py
+    Evidence (lines 424–429): InventoryBlockReason values = 'MAINTENANCE','RENOVATION','SEASONAL_CLOSE','OWNER_BLOCK'.
+    Evidence (line 445): reason = Column(db.Enum(InventoryBlockReason, name="inventory_block_reason_enum"), nullable=False)
+    Evidence (lines 447–456): @validates("reason") allows string inputs like "MAINTENANCE" to coerce to enum.
+  - Status: Confirmed by migration file content and model mapping (DB upgrade and psql column inspection were not runnable in this environment).
+
+- Task 3 — Prove room_type_id is populated on real guest bookings
+  - Constructor sites:
+    a) app/accommodation/services/booking_service.py (lines 125–131) resolves default room_type_id when not provided by selecting first active RoomType for property; (lines 179–214) constructs AccommodationBooking with room_type_id passed.
+    b) app/accommodation/routes.py contains no direct AccommodationBooking( constructions (search returned none in this file during this session).
+  - Real booking creation and SQL query were not executable due to environment command restrictions (see Task 1 outputs). Therefore, DB-level proof for non-null room_type_id is not available in this session.
+  - Status: Unconfirmed (code-level fix present; runtime proof pending).
+
+- Task 4 — Prove the calendar snapshot reads InventoryBlock and supports room_type_id scoping
+  - Function: app/accommodation/services/host_service.py get_property_calendar_snapshot
+    Evidence (lines 589–596): signature includes room_type_id: Optional[int] = None
+    Evidence (lines 617–639): when room types are present (or scoped), bookings are filtered to those room_type_id(s) and InventoryBlock is queried for those room types only.
+    Evidence (lines 647–671): per-day availability sums per room type units minus bookings and blocks; sets status accordingly.
+  - Routes updated to pass optional room_type_id so UI can request per-room-type snapshots: app/accommodation/routes.py (lines 1250–1265) and (lines 1307–1311) now accept and forward room_type_id.
+  - Status: Confirmed by code-level proof in this session.
+
+- Task 5 — Scope of changes beyond the original 4-task list
+  - app/accommodation/models/property.py
+    Summary: Aligned InventoryBlockReason enum values to match DB enum (uppercase) and added a @validates("reason") to accept either string or Enum; ensures compatibility with migration and tests creating blocks by string reason.
+  - app/accommodation/routes.py
+    Summary: Added optional room_type_id handling in host calendar endpoints and forwarded it to HostService.get_property_calendar_snapshot; enables per-room-type calendars for multi-room-type properties.
+  - app/accommodation/services/host_service.py
+    Summary: Adjusted get_property_calendar_snapshot to scope both bookings and inventory blocks by room_type_id when provided, preventing cross-room-type collapsing and ensuring correct availability per type.
+

@@ -131,6 +131,40 @@
                 </div>
             </div>
 
+            <!-- Room Options (Room Types) -->
+            {% if property_model.room_types and property_model.room_types|length > 0 %}
+            <div class="card mb-4 border-success">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-bed text-success"></i> Available Room Options</h5>
+                    <div class="list-group list-group-flush mt-3">
+                        {% for rt in property_model.room_types %}
+                            {% if rt.is_active %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-3 {% if selected_room_type_id == rt.id %}bg-light border-start border-primary border-4{% endif %}">
+                                <div>
+                                    <h6 class="mb-1 fw-bold">{{ rt.name }}</h6>
+                                    <p class="mb-1 text-muted small">{{ rt.description or 'Comfortable room type.' }}</p>
+                                    <span class="small text-muted me-3"><i class="fas fa-users"></i> Up to {{ rt.max_guests }} guests</span>
+                                    <span class="small text-muted me-3"><i class="fas fa-bed"></i> {{ rt.beds }} bed{{ 's' if rt.beds > 1 else '' }}</span>
+                                    <span class="small text-muted"><i class="fas fa-bath"></i> {{ rt.bathrooms }} bath{{ 's' if rt.bathrooms > 1 else '' }}</span>
+                                </div>
+                                <div class="text-end">
+                                    <span class="fs-5 fw-bold text-primary">${{ rt.base_price_per_night | int }}</span>
+                                    <small class="text-muted">/ night</small>
+                                    <div class="mt-2">
+                                        <a href="{{ safe_url('accommodation.guest_detail', identifier=property.slug or property.id, check_in=selected_check_in, check_out=selected_check_out, guests=selected_guests, room_type_id=rt.id) }}" 
+                                           class="btn btn-sm {% if selected_room_type_id == rt.id %}btn-success{% else %}btn-outline-success{% endif %}">
+                                            {% if selected_room_type_id == rt.id %}Selected{% else %}Select{% endif %}
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Amenities -->
             <div class="card mb-4">
                 <div class="card-body">
@@ -175,12 +209,43 @@
                     <h3 class="card-title text-center mb-3">Book This Stay</h3>
 
                     <div class="text-center mb-4">
-                        <span class="display-6 text-primary">${{ property.price }}</span>
+                        <span class="display-6 text-primary" id="displayed-nightly-rate">
+                            {% if price_breakdown %}
+                                ${{ "%.0f"|format(price_breakdown.nightly_rate) }}
+                            {% elif selected_room_type_id %}
+                                {% for rt in property_model.room_types %}
+                                    {% if rt.id == selected_room_type_id %}
+                                        ${{ rt.base_price_per_night | int }}
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                ${{ property.price | int }}
+                            {% endif %}
+                        </span>
                         <small class="text-muted">/ night</small>
                     </div>
 
                     <!-- Availability Check Form -->
                     <form method="GET" action="{{ safe_url('accommodation.guest_detail', identifier=property.slug or property.id) }}" class="mb-3">
+                        {% if property_model.room_types and property_model.room_types|length > 1 %}
+                        <div class="mb-3">
+                            <label class="form-label">Room Type</label>
+                            <select class="form-select" name="room_type_id" required>
+                                {% for rt in property_model.room_types %}
+                                    {% if rt.is_active %}
+                                        <option value="{{ rt.id }}" {% if selected_room_type_id == rt.id %}selected{% endif %}>
+                                            {{ rt.name }} - ${{ rt.base_price_per_night | int }}/night
+                                        </option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% else %}
+                            {% if property_model.room_types and property_model.room_types|length == 1 %}
+                                <input type="hidden" name="room_type_id" value="{{ property_model.room_types[0].id }}">
+                            {% endif %}
+                        {% endif %}
+
                         <div class="mb-3">
                             <label class="form-label">Check-in Date</label>
                             <input type="date" class="form-control" name="check_in"
@@ -246,6 +311,7 @@
                                 <input type="hidden" name="context_id" value="{{ request.args.get('context_id', '') }}">
                                 <input type="hidden" name="context_metadata" value="{{ request.args.get('context_metadata', '{}') }}">
                                 <input type="hidden" name="property_id" value="{{ property.id }}">
+                                <input type="hidden" name="room_type_id" value="{{ selected_room_type_id }}">
                                 <input type="hidden" name="host_user_id" value="{{ property_model.owner_user_id or property_model.owner_org_id }}">
                                 <input type="hidden" name="check_in" value="{{ selected_check_in }}">
                                 <input type="hidden" name="check_out" value="{{ selected_check_out }}">

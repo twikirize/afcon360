@@ -19,3 +19,9 @@ Repo-map: using 8192 tokens, manual refresh
 Warning: map-tokens > 2048.0 is not recommended. Too much irrelevant code can confuse LLMs.
 Multiline mode: Enabled. Enter inserts newline, Alt-Enter submits text
 
+
+###########
+# use iader for less tokens
+aider --model openrouter/openrouter/free --subtree-only
+
+

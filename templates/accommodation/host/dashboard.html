@@ -118,6 +118,317 @@
       </div>
     </div>
 
+    {# ── ADVANCED ANALYTICS SECTION ────────────────────────────────── #}
+    <div class="adv-section animate-in" id="advanced-analytics">
+      <div class="adv-section-header">
+        <h3>📊 Advanced Analytics</h3>
+        <span class="adv-subtitle">Deep booking performance insights</span>
+      </div>
+      <div class="adv-grid-4">
+        <div class="adv-card">
+          <div class="adv-card-icon adv-blue"><i class="bi bi-cash-stack"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Avg. Booking Value</span>
+            <span class="adv-value">${{ "{:,.0f}".format(advanced_metrics.get('avg_booking_value', 0)) }}</span>
+            {% set growth = advanced_metrics.get('revenue_growth', 0) %}
+            <span class="adv-trend {{ 'adv-positive' if growth >= 0 else 'adv-negative' }}">
+              {{ '↑' if growth >= 0 else '↓' }} {{ "{:.1f}".format(growth|abs) }}% MoM
+            </span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-green"><i class="bi bi-moon-stars"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Avg. Length of Stay</span>
+            <span class="adv-value">{{ "{:.1f}".format(advanced_metrics.get('avg_length_of_stay', 0)) }} nights</span>
+            <span class="adv-trend adv-neutral">Trailing average</span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-orange"><i class="bi bi-calendar-week"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Booking Distribution</span>
+            <span class="adv-value">{{ advanced_metrics.get('weekday_bookings', 0) }} / {{ advanced_metrics.get('weekend_bookings', 0) }}</span>
+            <span class="adv-trend adv-neutral">Weekday / Weekend</span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-purple"><i class="bi bi-rocket-takeoff"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Booking Velocity</span>
+            <span class="adv-value">{{ booking_velocity.get('daily', 0) }}/day</span>
+            <span class="adv-trend adv-neutral">{{ booking_velocity.get('weekly', 0) }}/week · {{ booking_velocity.get('monthly', 0) }}/month</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── PERFORMANCE METRICS SECTION ────────────────────────────────── #}
+    <div class="adv-section animate-in" id="performance-metrics">
+      <div class="adv-section-header">
+        <h3>📈 Performance Metrics</h3>
+        <span class="adv-subtitle">Key hosting KPIs</span>
+      </div>
+      <div class="adv-grid-5">
+        <div class="adv-metric-card">
+          <div class="adv-metric-icon adv-blue"><i class="bi bi-currency-dollar"></i></div>
+          <span class="adv-label">Avg Daily Rate (ADR)</span>
+          <span class="adv-value">${{ "{:,.0f}".format(performance_metrics.get('avg_daily_rate', 0)) }}</span>
+          {% set adr = performance_metrics.get('avg_daily_rate', 0) %}
+          {% set mar = competitive_intelligence.get('market_avg_rate', 0) %}
+          {% if adr > 0 and mar > 0 %}
+            {% set diff = ((adr - mar) / mar * 100)|round %}
+            <span class="adv-trend {{ 'adv-positive' if diff >= 0 else 'adv-negative' }}">
+              {{ '↑' if diff >= 0 else '↓' }} {{ diff|abs }}% vs market
+            </span>
+          {% else %}
+            <span class="adv-trend adv-neutral">No market data</span>
+          {% endif %}
+        </div>
+        <div class="adv-metric-card">
+          <div class="adv-metric-icon adv-green"><i class="bi bi-graph-up-arrow"></i></div>
+          <span class="adv-label">RevPAR</span>
+          <span class="adv-value">${{ "{:,.0f}".format(performance_metrics.get('revenue_per_available_room', 0)) }}</span>
+          <span class="adv-trend adv-neutral">Per property</span>
+        </div>
+        <div class="adv-metric-card">
+          <div class="adv-metric-icon adv-orange"><i class="bi bi-clock-history"></i></div>
+          <span class="adv-label">Avg Lead Time</span>
+          <span class="adv-value">{{ "{:.0f}".format(performance_metrics.get('booking_lead_time', 0)) }} days</span>
+          <span class="adv-trend adv-neutral">Before check-in</span>
+        </div>
+        <div class="adv-metric-card">
+          {% set cr = performance_metrics.get('cancellation_rate', 0) %}
+          <div class="adv-metric-icon {{ 'adv-red' if cr > 10 else 'adv-green' }}"><i class="bi bi-x-circle"></i></div>
+          <span class="adv-label">Cancellation Rate</span>
+          <span class="adv-value">{{ "{:.1f}".format(cr) }}%</span>
+          <span class="adv-trend {{ 'adv-negative' if cr > 10 else 'adv-positive' }}">
+            {{ '⚠️ High' if cr > 10 else '✅ Low' }}
+          </span>
+        </div>
+        <div class="adv-metric-card">
+          <div class="adv-metric-icon adv-purple"><i class="bi bi-arrow-repeat"></i></div>
+          <span class="adv-label">Conversion Rate</span>
+          <span class="adv-value">{{ "{:.1f}".format(conversion_rate) }}%</span>
+          <span class="adv-trend adv-neutral">Views → Bookings</span>
+        </div>
+      </div>
+    </div>
+
+    {# ── GUEST INTELLIGENCE SECTION ─────────────────────────────────── #}
+    <div class="adv-section animate-in" id="guest-intelligence">
+      <div class="adv-section-header">
+        <h3>👤 Guest Intelligence</h3>
+        <span class="adv-subtitle">Understanding your guests</span>
+      </div>
+      <div class="adv-grid-3">
+        <div class="adv-card">
+          <div class="adv-card-icon adv-green"><i class="bi bi-people-fill"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Repeat Guest Rate</span>
+            {% set rgr = guest_intelligence.get('repeat_guest_rate', 0) %}
+            <span class="adv-value">{{ "{:.1f}".format(rgr) }}%</span>
+            <span class="adv-trend {{ 'adv-positive' if rgr >= 20 else 'adv-neutral' }}">
+              {{ '✅ Strong retention' if rgr >= 20 else '💡 Room to grow' }}
+            </span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-purple"><i class="bi bi-currency-dollar"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Guest Lifetime Value</span>
+            <span class="adv-value">${{ "{:,.0f}".format(guest_intelligence.get('guest_lifetime_value', 0)) }}</span>
+            <span class="adv-trend adv-neutral">Avg per guest</span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-orange"><i class="bi bi-star-half"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Satisfaction Trend</span>
+            {% set sat = guest_intelligence.get('satisfaction_trend', {}) %}
+            <span class="adv-value">{{ sat.get('trend', 'stable')|title }}</span>
+            <span class="adv-trend {{ 'adv-positive' if sat.get('trend') == 'up' else ('adv-negative' if sat.get('trend') == 'down' else 'adv-neutral') }}">
+              {% if sat.get('change', 0) != 0 %}
+                {{ '↑' if sat.get('change', 0) > 0 else '↓' }} {{ "{:.2f}".format(sat.get('change', 0)|abs) }} stars
+              {% else %}
+                No change
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── COMPETITIVE INTELLIGENCE SECTION ───────────────────────────── #}
+    <div class="adv-section animate-in" id="competitive-intelligence">
+      <div class="adv-section-header">
+        <h3>🏆 Competitive Intelligence</h3>
+        <span class="adv-subtitle">How you compare to the local market</span>
+      </div>
+      <div class="adv-grid-4">
+        <div class="adv-card">
+          <div class="adv-card-icon adv-blue"><i class="bi bi-building"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Competitors Nearby</span>
+            <span class="adv-value">{{ competitive_intelligence.get('competitor_count', 0) }}</span>
+            <span class="adv-trend adv-neutral">Active listings</span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-green"><i class="bi bi-cash"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Market Avg Rate</span>
+            <span class="adv-value">${{ "{:,.0f}".format(competitive_intelligence.get('market_avg_rate', 0)) }}</span>
+            <span class="adv-trend adv-neutral">Per night</span>
+          </div>
+        </div>
+        <div class="adv-card">
+          <div class="adv-card-icon adv-orange"><i class="bi bi-house-check"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Market Occupancy</span>
+            <span class="adv-value">{{ "{:.1f}".format(competitive_intelligence.get('market_occupancy', 0)) }}%</span>
+            <span class="adv-trend adv-neutral">Area average</span>
+          </div>
+        </div>
+        <div class="adv-card">
+          {% set demand = competitive_intelligence.get('market_demand_index', 0) %}
+          <div class="adv-card-icon {{ 'adv-green' if demand >= 70 else 'adv-orange' }}"><i class="bi bi-graph-up"></i></div>
+          <div class="adv-card-body">
+            <span class="adv-label">Demand Index</span>
+            <span class="adv-value">{{ demand }}/100</span>
+            <span class="adv-trend {{ 'adv-positive' if demand >= 70 else 'adv-neutral' }}">
+              {{ '🔥 High demand' if demand >= 70 else '📊 Moderate' }}
+            </span>
+          </div>
+        </div>
+      </div>
+      {% set pos = competitive_intelligence.get('price_positioning', {}) %}
+      {% if pos.get('description') %}
+      <div class="adv-positioning-banner adv-pos-{{ pos.get('position', 'unknown') }}">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Price Positioning:</strong> {{ pos.get('description') }}
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── AI INSIGHTS SECTION ─────────────────────────────────────────── #}
+    {% if ai_insights %}
+    <div class="adv-section animate-in" id="ai-insights">
+      <div class="adv-section-header">
+        <h3>🤖 AI-Powered Insights</h3>
+        <span class="adv-subtitle">Smart recommendations for your properties</span>
+      </div>
+      <div class="adv-insights-list">
+        {% for insight in ai_insights %}
+        <div class="adv-insight-card adv-insight-{{ insight.get('type', 'info') }}">
+          <div class="adv-insight-icon">{{ insight.get('icon', '💡') }}</div>
+          <div class="adv-insight-body">
+            <strong>{{ insight.get('title', '') }}</strong>
+            <p>{{ insight.get('description', '') }}</p>
+          </div>
+          {% if insight.get('action_url') and insight.get('action_text') %}
+          <a href="{{ url_for(insight.action_url) }}" class="adv-insight-action">
+            {{ insight.action_text }} →
+          </a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── REVENUE FORECAST SECTION ────────────────────────────────────── #}
+    <div class="adv-section animate-in" id="revenue-forecast">
+      <div class="adv-section-header">
+        <h3>💰 Revenue Forecast</h3>
+        <span class="adv-subtitle">
+          Projected earnings · Confidence:
+          <span class="adv-confidence-badge adv-conf-{{ revenue_forecast.get('confidence', 'low') }}">
+            {{ revenue_forecast.get('confidence', 'low')|title }}
+          </span>
+        </span>
+      </div>
+      <div class="adv-forecast-grid">
+        <div class="adv-forecast-card">
+          <span class="adv-forecast-period">Next 30 Days</span>
+          <span class="adv-forecast-amount">${{ "{:,.0f}".format(revenue_forecast.get('next_30_days', 0)) }}</span>
+        </div>
+        <div class="adv-forecast-card">
+          <span class="adv-forecast-period">Next 60 Days</span>
+          <span class="adv-forecast-amount">${{ "{:,.0f}".format(revenue_forecast.get('next_60_days', 0)) }}</span>
+        </div>
+        <div class="adv-forecast-card">
+          <span class="adv-forecast-period">Next 90 Days</span>
+          <span class="adv-forecast-amount">${{ "{:,.0f}".format(revenue_forecast.get('next_90_days', 0)) }}</span>
+        </div>
+      </div>
+    </div>
+
+    {# ── CHANNEL PERFORMANCE SECTION ─────────────────────────────────── #}
+    {% if channel_performance %}
+    <div class="adv-section animate-in" id="channel-performance">
+      <div class="adv-section-header">
+        <h3>📱 Channel Performance</h3>
+        <span class="adv-subtitle">Booking source breakdown</span>
+      </div>
+      <div class="adv-channel-list">
+        {% set total_ch_rev = channel_performance | sum(attribute='revenue') or 1 %}
+        {% for ch in channel_performance %}
+        <div class="adv-channel-item">
+          <div class="adv-channel-meta">
+            <span class="adv-channel-name">{{ ch.channel }}</span>
+            <span class="adv-channel-stats">{{ ch.bookings }} booking{{ 's' if ch.bookings != 1 }} · ${{ "{:,.0f}".format(ch.revenue) }}</span>
+          </div>
+          <div class="adv-channel-bar-wrap">
+            <div class="adv-channel-bar" style="width: {{ ch.pct }}%;"></div>
+          </div>
+          <span class="adv-channel-pct">{{ ch.pct }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── SEASONAL TRENDS SECTION ─────────────────────────────────────── #}
+    <div class="adv-section animate-in" id="seasonal-trends">
+      <div class="adv-section-header">
+        <h3>🌤️ Seasonal Trends</h3>
+        <span class="adv-subtitle">Optimise your pricing strategy by season</span>
+      </div>
+      <div class="adv-seasons-grid">
+        {% if seasonal_trends.get('high_season') %}
+        <div class="adv-season-card adv-season-high">
+          <div class="adv-season-emoji">🔥</div>
+          <div class="adv-season-info">
+            <span class="adv-season-label">High Season</span>
+            <span class="adv-season-months">{{ seasonal_trends.high_season | join(', ') }}</span>
+            <span class="adv-season-tip">Peak demand — maximise your rates</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if seasonal_trends.get('shoulder_season') %}
+        <div class="adv-season-card adv-season-shoulder">
+          <div class="adv-season-emoji">🌤️</div>
+          <div class="adv-season-info">
+            <span class="adv-season-label">Shoulder Season</span>
+            <span class="adv-season-months">{{ seasonal_trends.shoulder_season | join(', ') }}</span>
+            <span class="adv-season-tip">Good balance of demand &amp; pricing</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if seasonal_trends.get('low_season') %}
+        <div class="adv-season-card adv-season-low">
+          <div class="adv-season-emoji">❄️</div>
+          <div class="adv-season-info">
+            <span class="adv-season-label">Low Season</span>
+            <span class="adv-season-months">{{ seasonal_trends.low_season | join(', ') }}</span>
+            <span class="adv-season-tip">Consider promotions &amp; special offers</span>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
     {# ── MAIN GRID ────────────────────────────────────────────────── #}
     <div class="main-grid-modern">
 

@@ -125,7 +125,360 @@ def host_register():
 @require_role('admin', 'owner', 'accommodation_admin')
 def admin_dashboard():
     """Accommodation admin dashboard"""
-    return render_template("accommodation/admin/dashboard.html")
+    stats = HostService.get_admin_dashboard_stats()
+    return render_template("admin/accommodation_admin_dashboard.html", **stats)
+
+
+# ── Admin: Analytics ────────────────────────────────────────────────────────
+@accommodation_bp.route("/admin/analytics", endpoint="admin_analytics")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_analytics():
+    """Platform-wide accommodation analytics dashboard."""
+    from sqlalchemy import func
+
+    # Revenue by month (last 12 months)
+    today = date.today()
+    monthly_revenue = []
+    for i in range(11, -1, -1):
+        month_start = (today.replace(day=1) - timedelta(days=30 * i)).replace(day=1)
+        if month_start.month == 12:
+            month_end = month_start.replace(year=month_start.year + 1, month=1, day=1)
+        else:
+            month_end = month_start.replace(month=month_start.month + 1, day=1)
+
+        rev = db.session.query(
+            func.coalesce(func.sum(AccommodationBooking.total_amount), 0)
+        ).filter(
+            AccommodationBooking.created_at >= month_start,
+            AccommodationBooking.created_at < month_end,
+            AccommodationBooking.status.in_([
+                'confirmed', 'checked_in', 'checked_out'
+            ])
+        ).scalar() or 0
+        monthly_revenue.append({
+            "month": month_start.strftime("%b %Y"),
+            "amount": float(rev)
+        })
+
+    # Booking status breakdown
+    status_counts = db.session.query(
+        AccommodationBooking.status,
+        func.count(AccommodationBooking.id).label('count')
+    ).group_by(AccommodationBooking.status).all()
+    booking_status_breakdown = [
+        {"status": s.replace('_', ' ').title(), "count": c}
+        for s, c in status_counts
+    ]
+
+    # Property type breakdown
+    type_counts = db.session.query(
+        Property.property_type,
+        func.count(Property.id).label('count')
+    ).filter(
+        Property.is_deleted.is_(False)
+    ).group_by(Property.property_type).all()
+    property_type_breakdown = [
+        {"type": (t.value if hasattr(t, 'value') else str(t)).replace('_', ' ').title(), "count": c}
+        for t, c in type_counts
+    ]
+
+    # Top cities by listing count
+    top_cities = db.session.query(
+        Property.city,
+        func.count(Property.id).label('count')
+    ).filter(
+        Property.is_deleted.is_(False),
+        Property.is_active.is_(True)
+    ).group_by(Property.city).order_by(func.count(Property.id).desc()).limit(8).all()
+    top_cities_data = [{"city": city or "Unknown", "count": c} for city, c in top_cities]
+
+    # Summary totals
+    total_revenue = db.session.query(
+        func.coalesce(func.sum(AccommodationBooking.total_amount), 0)
+    ).filter(
+        AccommodationBooking.status.in_(['confirmed', 'checked_in', 'checked_out'])
+    ).scalar() or 0
+
+    total_bookings = AccommodationBooking.query.count()
+    total_properties = Property.query.filter(Property.is_deleted.is_(False)).count()
+    total_reviews = Review.query.filter(Review.is_published.is_(True)).count()
+
+    avg_rating_row = db.session.query(
+        func.avg(Review.overall_rating)
+    ).filter(Review.is_published.is_(True)).scalar()
+    avg_rating = round(float(avg_rating_row or 0), 2)
+
+    return render_template(
+        "accommodation/admin/analytics.html",
+        monthly_revenue=monthly_revenue,
+        booking_status_breakdown=booking_status_breakdown,
+        property_type_breakdown=property_type_breakdown,
+        top_cities=top_cities_data,
+        total_revenue=float(total_revenue),
+        total_bookings=total_bookings,
+        total_properties=total_properties,
+        total_reviews=total_reviews,
+        avg_rating=avg_rating,
+    )
+
+
+# ── Admin: Verification queue ────────────────────────────────────────────────
+@accommodation_bp.route("/admin/verification", endpoint="admin_verification")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_verification():
+    """Property verification queue — review and approve/reject pending listings."""
+    from app.accommodation.models.property import AccommodationVerificationStatus
+
+    page = request.args.get('page', 1, type=int)
+    filter_status = request.args.get('status', 'pending_review')
+
+    q = Property.query.filter(Property.is_deleted.is_(False))
+    if filter_status == 'pending_review':
+        q = q.filter(Property.status == AccommodationPropertyStatus.PENDING_REVIEW)
+    elif filter_status == 'verified':
+        q = q.filter(Property.is_verified.is_(True))
+    elif filter_status == 'rejected':
+        q = q.filter(
+            Property.verification_status == AccommodationVerificationStatus.REJECTED
+        )
+
+    pending_page = q.order_by(Property.created_at.asc()).paginate(
+        page=page, per_page=20, error_out=False
+    )
+
+    counts = {
+        "pending_review": Property.query.filter(
+            Property.is_deleted.is_(False),
+            Property.status == AccommodationPropertyStatus.PENDING_REVIEW
+        ).count(),
+        "verified": Property.query.filter(
+            Property.is_deleted.is_(False),
+            Property.is_verified.is_(True)
+        ).count(),
+        "rejected": Property.query.filter(
+            Property.is_deleted.is_(False),
+            Property.verification_status == AccommodationVerificationStatus.REJECTED
+        ).count(),
+    }
+
+    return render_template(
+        "accommodation/admin/verification.html",
+        properties=pending_page,
+        counts=counts,
+        filter_status=filter_status,
+    )
+
+
+@accommodation_bp.route("/admin/verification/<int:property_id>/approve", methods=['POST'],
+                        endpoint="admin_verify_approve")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_verify_approve(property_id):
+    """Approve a property listing."""
+    from app.accommodation.models.property import AccommodationVerificationStatus
+    prop = Property.query.get_or_404(property_id)
+    prop.status = AccommodationPropertyStatus.ACTIVE
+    prop.is_verified = True
+    prop.is_active = True
+    prop.verification_status = AccommodationVerificationStatus.VERIFIED
+    prop.verified_at = datetime.now(timezone.utc)
+    prop.verified_by = current_user.id
+    try:
+        db.session.commit()
+        flash(f"'{prop.title}' approved and is now live.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error approving property %s", property_id)
+        flash("Could not approve property. Please try again.", "danger")
+    return redirect(url_for("accommodation.admin_verification"))
+
+
+@accommodation_bp.route("/admin/verification/<int:property_id>/reject", methods=['POST'],
+                        endpoint="admin_verify_reject")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_verify_reject(property_id):
+    """Reject a property listing with a reason."""
+    from app.accommodation.models.property import AccommodationVerificationStatus
+    prop = Property.query.get_or_404(property_id)
+    reason = request.form.get('reason', '').strip() or 'No reason provided.'
+    prop.status = AccommodationPropertyStatus.SUSPENDED
+    prop.is_active = False
+    prop.verification_status = AccommodationVerificationStatus.REJECTED
+    prop.verification_notes = reason
+    try:
+        db.session.commit()
+        flash(f"'{prop.title}' rejected.", "warning")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error rejecting property %s", property_id)
+        flash("Could not reject property. Please try again.", "danger")
+    return redirect(url_for("accommodation.admin_verification"))
+
+
+# ── Admin: Properties ────────────────────────────────────────────────────────
+@accommodation_bp.route("/admin/properties", endpoint="admin_properties")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_properties():
+    """Browse and manage all property listings."""
+    page = request.args.get('page', 1, type=int)
+    status_filter = request.args.get('status', 'all')
+    search_q = request.args.get('q', '').strip()
+
+    q = Property.query.filter(Property.is_deleted.is_(False))
+
+    if status_filter != 'all':
+        try:
+            q = q.filter(Property.status == AccommodationPropertyStatus(status_filter))
+        except ValueError:
+            pass
+
+    if search_q:
+        q = q.filter(
+            or_(
+                Property.title.ilike(f'%{search_q}%'),
+                Property.city.ilike(f'%{search_q}%'),
+                Property.country.ilike(f'%{search_q}%'),
+            )
+        )
+
+    properties = q.order_by(Property.created_at.desc()).paginate(
+        page=page, per_page=25, error_out=False
+    )
+
+    status_options = [s.value for s in AccommodationPropertyStatus]
+
+    return render_template(
+        "accommodation/admin/properties.html",
+        properties=properties,
+        status_filter=status_filter,
+        search_q=search_q,
+        status_options=status_options,
+    )
+
+
+@accommodation_bp.route("/admin/properties/<int:property_id>/toggle-active", methods=['POST'],
+                        endpoint="admin_property_toggle")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_property_toggle(property_id):
+    """Activate or suspend a property."""
+    prop = Property.query.get_or_404(property_id)
+    if prop.status == AccommodationPropertyStatus.SUSPENDED:
+        prop.status = AccommodationPropertyStatus.ACTIVE
+        prop.is_active = True
+        msg = f"'{prop.title}' reactivated."
+    else:
+        prop.status = AccommodationPropertyStatus.SUSPENDED
+        prop.is_active = False
+        msg = f"'{prop.title}' suspended."
+    try:
+        db.session.commit()
+        flash(msg, "success")
+    except Exception:
+        db.session.rollback()
+        flash("Could not update property status.", "danger")
+    return redirect(url_for("accommodation.admin_properties"))
+
+
+# ── Admin: Bookings ──────────────────────────────────────────────────────────
+@accommodation_bp.route("/admin/bookings", endpoint="admin_bookings")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_bookings():
+    """Browse and manage all accommodation bookings."""
+    from sqlalchemy import func
+
+    page = request.args.get('page', 1, type=int)
+    status_filter = request.args.get('status', 'all')
+    search_q = request.args.get('q', '').strip()
+
+    q = AccommodationBooking.query
+
+    if status_filter != 'all':
+        q = q.filter(AccommodationBooking.status == status_filter)
+
+    if search_q:
+        q = q.filter(
+            or_(
+                AccommodationBooking.booking_reference.ilike(f'%{search_q}%'),
+                AccommodationBooking.guest_name.ilike(f'%{search_q}%'),
+                AccommodationBooking.guest_email.ilike(f'%{search_q}%'),
+            )
+        )
+
+    bookings = q.order_by(AccommodationBooking.created_at.desc()).paginate(
+        page=page, per_page=25, error_out=False
+    )
+
+    # Summary counts for the filter bar
+    from app.accommodation.models.booking import AccommodationBookingStatus
+    status_counts = {
+        s.value: AccommodationBooking.query.filter(
+            AccommodationBooking.status == s.value
+        ).count()
+        for s in AccommodationBookingStatus
+    }
+    status_counts['all'] = AccommodationBooking.query.count()
+
+    return render_template(
+        "accommodation/admin/bookings.html",
+        bookings=bookings,
+        status_filter=status_filter,
+        search_q=search_q,
+        status_counts=status_counts,
+    )
+
+
+# ── Admin: Settings ──────────────────────────────────────────────────────────
+@accommodation_bp.route("/admin/settings", endpoint="admin_settings")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_settings():
+    """Platform-level accommodation settings."""
+    from app.models.system_config import SystemConfig
+    configs = SystemConfig.query.filter(
+        SystemConfig.key.like('accommodation_%')
+    ).order_by(SystemConfig.key).all()
+    return render_template(
+        "accommodation/admin/settings.html",
+        configs=configs,
+    )
+
+
+@accommodation_bp.route("/admin/settings/update", methods=['POST'],
+                        endpoint="admin_settings_update")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_settings_update():
+    """Persist an accommodation setting key/value/description."""
+    from app.models.system_config import SystemConfig
+    key = request.form.get('key', '').strip()
+    value = request.form.get('value', '').strip()
+    description = request.form.get('description', '').strip() or None
+    if not key:
+        flash("Setting key is required.", "warning")
+        return redirect(url_for("accommodation.admin_settings"))
+    cfg = SystemConfig.query.filter_by(key=key).first()
+    if cfg:
+        cfg.value = value
+        if description is not None:
+            cfg.description = description
+    else:
+        cfg = SystemConfig(key=key, value=value, description=description,
+                           created_by=current_user.id)
+        db.session.add(cfg)
+    try:
+        db.session.commit()
+        flash(f"Setting '{key}' saved.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error saving setting %s", key)
+        flash("Could not save setting.", "danger")
+    return redirect(url_for("accommodation.admin_settings"))
 
 
 @accommodation_bp.route("/moderate", endpoint="moderate")
@@ -290,6 +643,13 @@ def guest_detail(identifier):
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
     guests = request.args.get('guests', 2, type=int)
+    selected_room_type_id = request.args.get('room_type_id', type=int)
+
+    # Resolve default RoomType if not selected and room types exist
+    if property_model and not selected_room_type_id and property_model.room_types:
+        active_rts = [rt for rt in property_model.room_types if rt.is_active]
+        if active_rts:
+            selected_room_type_id = active_rts[0].id
 
     availability_status = None
     price_breakdown = None
@@ -299,13 +659,20 @@ def guest_detail(identifier):
             check_in_date = datetime.strptime(check_in, '%Y-%m-%d').date()
             check_out_date = datetime.strptime(check_out, '%Y-%m-%d').date()
 
-            is_available, blocked_dates, error = AvailabilityService.is_range_available(
-                property_model.id, check_in_date, check_out_date
-            )
+            # Check room type counter availability first if selected_room_type_id is set
+            if selected_room_type_id:
+                from app.accommodation.services.host_service import HostService
+                avail = HostService.available_units(selected_room_type_id, check_in_date, check_out_date)
+                is_available = avail > 0
+                error = None if is_available else "Selected room type is fully booked/blocked"
+            else:
+                is_available, blocked_dates, error = AvailabilityService.is_range_available(
+                    property_model.id, check_in_date, check_out_date
+                )
 
             if is_available:
                 price_breakdown = PricingService.calculate_total(
-                    property_model, check_in_date, check_out_date, guests
+                    property_model, check_in_date, check_out_date, guests, room_type_id=selected_room_type_id
                 )
                 availability_status = "available"
             else:
@@ -322,6 +689,7 @@ def guest_detail(identifier):
         selected_check_in=check_in,
         selected_check_out=check_out,
         selected_guests=guests,
+        selected_room_type_id=selected_room_type_id,
         urgency=urgency,
         now=datetime.utcnow()
     )
@@ -443,8 +811,24 @@ def guest_checkout():
             flash('Property not found', 'danger')
             return redirect(url_for('accommodation.guest_search'))
 
-        # Determine host_user_id (property owner)
-        host_user_id = property_obj.owner_user_id or property_obj.owner_org_id
+        # Determine host_user_id (property owner).
+        # NOTE: owner_org_id is an Organisation ID, not a User ID — never assign it
+        # directly to host_user_id, which is a FK to users.id. For org-owned properties,
+        # resolve the organisation's primary_contact_user_id instead.
+        if property_obj.owner_user_id:
+            host_user_id = property_obj.owner_user_id
+        elif property_obj.owner_org_id:
+            org_contact_id = getattr(property_obj.owner_org, "primary_contact_user_id", None)
+            if not org_contact_id:
+                flash('This property\'s organisation has no primary contact configured for bookings. Please contact support.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+            host_user_id = org_contact_id
+        else:
+            flash('Property has no valid owner configured.', 'danger')
+            return redirect(url_for('accommodation.guest_search'))
+
+        room_type_id_raw = data.get('room_type_id')
+        room_type_id = int(room_type_id_raw) if room_type_id_raw else None
 
         booking, error = BookingService.create_booking(
             property_id=int(data['property_id']),
@@ -473,6 +857,7 @@ def guest_checkout():
             group_booking_id=data.get('group_booking_id') if booking_type == 'group' else None,
             room_number=int(data.get('room_number', 1)) if booking_type == 'group' else None,
             guest_instructions=data.get('guest_instructions'),
+            room_type_id=room_type_id,
         )
 
         if error:
@@ -994,6 +1379,16 @@ def host_dashboard():
         total_views=dashboard_data.get("total_views", 0),
         conversion_rate=dashboard_data.get("conversion_rate", 0),
         insights=dashboard_data.get("insights", []),
+        # Advanced analytics
+        advanced_metrics=dashboard_data.get("advanced_metrics", {}),
+        performance_metrics=dashboard_data.get("performance_metrics", {}),
+        guest_intelligence=dashboard_data.get("guest_intelligence", {}),
+        competitive_intelligence=dashboard_data.get("competitive_intelligence", {}),
+        ai_insights=dashboard_data.get("ai_insights", []),
+        revenue_forecast=dashboard_data.get("revenue_forecast", {}),
+        channel_performance=dashboard_data.get("channel_performance", []),
+        seasonal_trends=dashboard_data.get("seasonal_trends", {}),
+        booking_velocity=dashboard_data.get("booking_velocity", {}),
     )
 
 
@@ -1066,7 +1461,7 @@ def host_create_listing():
                 "Listing submitted for review. We'll notify you once moderation completes.",
                 "success",
             )
-            return redirect(url_for("accommodation.host.dashboard"))
+            return redirect(url_for("accommodation.host_dashboard"))
         except Exception as exc:
             db.session.rollback()
             logger.exception("Failed to create listing")
@@ -1187,7 +1582,7 @@ def host_edit_listing(property_id: int):
 
             db.session.commit()
             flash("Listing updated successfully.", "success")
-            return redirect(url_for("accommodation.host.dashboard"))
+            return redirect(url_for("accommodation.host_dashboard"))
         except Exception as exc:
             db.session.rollback()
             logger.exception("Failed to update listing")
@@ -1228,6 +1623,9 @@ def host_calendar():
         properties[0],
     )
 
+    # Optional: scope calendar to a specific room type when multiple exist
+    selected_room_type_id = request.args.get("room_type_id", type=int)
+
     month_start = date(current_month["year"], current_month["month"], 1)
     month_end = date(
         current_month["year"],
@@ -1239,6 +1637,7 @@ def host_calendar():
         property_id=selected_property["id"],
         start_date=month_start,
         end_date=month_end,
+        room_type_id=selected_room_type_id,
     )
 
     month_label = month_start.strftime("%B %Y")
@@ -1450,7 +1849,8 @@ def admin_admin_dashboard():
     if not can(current_user, "accommodation.manage"):
         flash("Insufficient permissions", "danger")
         return redirect(url_for('index'))
-    return render_template("accommodation/admin/dashboard.html")
+    stats = HostService.get_admin_dashboard_stats()
+    return render_template("admin/accommodation_admin_dashboard.html", **stats)
 
 
 @accommodation_bp.route("/admin/listings", endpoint="admin_listings")

@@ -1,9 +1,9 @@
 # app/media/routes.py
 
-import uuid
+import uuid as uuid_lib
 from flask import Blueprint, request, jsonify, current_app, send_from_directory, abort
 from flask_login import login_required, current_user
-from app.extensions import limiter
+from app.extensions import limiter, db
 
 media_bp = Blueprint('media', __name__, url_prefix='/api/media')
 

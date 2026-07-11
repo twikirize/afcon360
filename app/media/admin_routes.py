@@ -6,7 +6,7 @@ Accessible by: owner, super_admin, admin roles.
 
 from flask import Blueprint, request, jsonify, render_template, current_app
 from flask_login import login_required, current_user
-from app.extensions import limiter
+from app.extensions import db, limiter
 from app.media.settings_service import MediaSettingsService
 
 media_admin_bp = Blueprint(

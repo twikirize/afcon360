@@ -25,7 +25,8 @@ class PricingService:
             property: Property,
             check_in: date,
             check_out: date,
-            num_guests: int = 1
+            num_guests: int = 1,
+            room_type_id: Optional[int] = None
     ) -> Dict[str, Decimal]:
         """
         Calculate total price breakdown.
@@ -45,17 +46,25 @@ class PricingService:
         if nights <= 0:
             raise ValueError("Check-out must be after check-in")
 
-        # Base nightly rate
-        nightly_rate = property.base_price_per_night
+        # Base nightly rate and fees - check if room_type_id is provided
+        if room_type_id:
+            from app.accommodation.models.property import RoomType
+            room_type = RoomType.query.get(room_type_id)
+            if not room_type or room_type.property_id != property.id:
+                raise ValueError("Room type not found or does not belong to this property")
+            nightly_rate = room_type.base_price_per_night
+            cleaning_fee = room_type.cleaning_fee or Decimal('0')
+            service_fee_pct = room_type.service_fee_pct
+        else:
+            nightly_rate = property.base_price_per_night
+            cleaning_fee = property.cleaning_fee or Decimal('0')
+            service_fee_pct = property.service_fee_pct
 
         # Calculate subtotal
         subtotal = nightly_rate * nights
 
-        # Cleaning fee
-        cleaning_fee = property.cleaning_fee or Decimal('0')
-
         # Service fee (platform commission)
-        service_fee = subtotal * (property.service_fee_pct / Decimal('100'))
+        service_fee = subtotal * (service_fee_pct / Decimal('100'))
 
         # Total
         total = subtotal + cleaning_fee + service_fee
@@ -87,7 +96,7 @@ class PricingService:
         from app.accommodation.models.property import AccommodationCancellationPolicy
 
         days_until_checkin = (booking.check_in - cancellation_date).days
-        policy = booking.property.cancellation_policy
+        policy = booking.accommodation_property.cancellation_policy
 
         if policy == AccommodationCancellationPolicy.FLEXIBLE:
             if days_until_checkin >= 1:

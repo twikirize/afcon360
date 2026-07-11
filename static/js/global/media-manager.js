@@ -112,13 +112,13 @@ class MediaManager {
 
         try {
             const response = await fetch(
-                `/api/media/get/${this.options.module}/${this.options.entityId}`,
+                `/api/media/entity/${this.options.module}/${this.options.entityId}`,
                 { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
             );
             const data = await response.json();
 
-            if (data.success) {
-                this.uploadedFiles = data.media || [];
+            if (data && data.length >= 0) {
+                this.uploadedFiles = data || [];
                 this.renderGallery();
             }
         } catch (error) {
@@ -176,7 +176,8 @@ class MediaManager {
 
             const uploadPromise = new Promise((resolve, reject) => {
                 xhr.onload = () => {
-                    if (xhr.status === 200) {
+                    // Accept 200, 201, 202 as success
+                    if (xhr.status >= 200 && xhr.status < 300) {
                         resolve(JSON.parse(xhr.responseText));
                     } else {
                         reject(new Error(xhr.responseText));
@@ -185,18 +186,25 @@ class MediaManager {
                 xhr.onerror = () => reject(new Error('Upload failed'));
             });
 
-            xhr.open('POST', '/api/media/upload');
-            xhr.send(formData);
-            const result = await uploadPromise;
+            xhr.open('POST', `/api/media/upload/${this.options.module}`);
+             xhr.send(formData);
+             const result = await uploadPromise;
 
-            if (result.success) {
-                this.uploadedFiles.push(result.media);
-                this.uploadQueue = this.uploadQueue.filter(f => f !== file);
-                item?.remove();
-                this.renderGallery();
-            } else {
-                throw new Error(result.error || 'Upload failed');
-            }
+             // Upload returns 202 with media_id, not success flag
+             if (result && (result.media_id || result.status)) {
+                 this.uploadedFiles.push({
+                     id: result.media_id,
+                     media_id: result.media_id,
+                     status: result.status,
+                     urls: result.urls,
+                     ...result
+                 });
+                 this.uploadQueue = this.uploadQueue.filter(f => f !== file);
+                 item?.remove();
+                 this.renderGallery();
+             } else {
+                 throw new Error(result?.error || 'Upload failed');
+             }
         } catch (error) {
             console.error('Upload error:', error);
             if (statusEl) {
@@ -266,7 +274,7 @@ class MediaManager {
 
         try {
             const response = await fetch(
-                `/api/media/delete/${this.options.module}/${mediaId}`,
+                `/api/media/delete/${mediaId}`,
                 {
                     method: 'DELETE',
                     headers: {
@@ -277,8 +285,8 @@ class MediaManager {
             );
             const data = await response.json();
 
-            if (data.success) {
-                this.uploadedFiles = this.uploadedFiles.filter(m => m.id !== mediaId);
+            if (data.deleted) {
+                this.uploadedFiles = this.uploadedFiles.filter(m => m.id !== mediaId && m.media_id !== mediaId);
                 this.renderGallery();
             } else {
                 alert(data.error || 'Delete failed');
@@ -290,29 +298,10 @@ class MediaManager {
     }
 
     async setCover(mediaId) {
-        try {
-            const response = await fetch(
-                `/api/media/set-cover/${this.options.module}/${mediaId}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': this.options.csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                }
-            );
-            const data = await response.json();
-
-            if (data.success) {
-                this.uploadedFiles = this.uploadedFiles.map(m => ({
-                    ...m,
-                    is_cover: m.id === mediaId
-                }));
-                this.renderGallery();
-            }
-        } catch (error) {
-            console.error('Set cover error:', error);
-        }
+        // Note: set-cover endpoint not implemented in routes.py
+        // This is a placeholder for future implementation
+        console.warn('Set cover endpoint not available - feature not implemented');
+        alert('Set cover feature is not yet available');
     }
 
     openLightbox(index) {

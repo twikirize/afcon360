@@ -36,9 +36,40 @@ AFCON360 is a modular Flask application using a modular architecture for managin
 ## Coding Standards
 - **Imports:** Use absolute imports (e.g., `from app.auth.models import User`).
 - **Relationships:** When adding relationships, explicitly check for existing `backref` names in the same model file to avoid startup crashes.
-- **Migrations:** 
+- **Migrations:**
     - Never patch migration files as workarounds. Fix root causes in model/source files.
     - Do NOT run `flask db migrate` automatically; always propose it to the user first.
+    - Follow the **Migration Agent Protocol** (see dedicated section below) to prevent multiple-head divergence.
+
+## Migration Agent Protocol (Alembic Head Management)
+
+To prevent the "multiple heads" problem that fragments the Alembic migration tree, ALL agents MUST follow this protocol when working with database migrations. These rules are enforced by `scripts/create_migration.py` and `scripts/migration_agent_config.py`.
+
+### Core Principles
+- **Short revision IDs:** Always keep revision IDs under 32 characters (PostgreSQL identifier limit is 63 bytes). Use timestamp-based IDs (e.g., `20260706_2018`) for consistency and sortability.
+- **Single-head enforcement:** Before creating any new migration, check for multiple heads with `flask db heads`. If more than one head exists, merge them first.
+- **Auto-merge:** When multiple heads are detected, run `flask db merge heads -m "merge_<date>"` to collapse them into a single linear history. `scripts/create_migration.py` does this automatically when `AUTO_MERGE_HEADS = True`.
+- **Never patch migration files:** Fix root causes in models/source. Never edit a generated migration as a workaround.
+- **Propose, don't auto-migrate:** `flask db migrate` (autogenerate from models) must still be proposed to the user first per the Coding Standards above. The agent script handles `flask db revision` (manual) and head-merging only — it does NOT run `flask db migrate`.
+
+### Tooling
+- `scripts/migration_agent_config.py` — central config: `MAX_REVISION_LENGTH`, `AUTO_MERGE_HEADS`, `MERGE_MESSAGE_PREFIX`, `AUTO_UPGRADE_AFTER_MERGE`.
+- `scripts/create_migration.py` — run `python scripts/create_migration.py "message"` to safely create a revision with a short ID and auto-merge heads if needed.
+
+### Pre-Migration Checklist
+1. Run `flask db heads` — confirm exactly one head.
+2. If multiple heads: `flask db merge heads -m "merge_<date>"` then `flask db upgrade` (or let the script do it).
+3. Create the revision via `python scripts/create_migration.py "description"` (uses a short timestamp ID).
+4. Review the generated migration file for correctness before proposing `flask db upgrade` to the user.
+
+### Quick Reference — Common Issues
+| Problem | Solution |
+|---------|----------|
+| Multiple heads | `flask db merge heads -m "merge_branches"` |
+| Revision ID too long | Edit the file, set `revision = 'short_id'` (under 32 chars) |
+| Migration fails | `flask db stamp <head_id>` then fix the root cause |
+| Confused state | `flask db current` and `flask db heads` to inspect |
+
 - **UI/Templates:**
     - Use `{{ csrf_token() }}` for CSRF protection in forms.
     - For AJAX/Pane loads, check for `?_pane=1` conditionals in `base.html`.

@@ -581,3 +581,477 @@
 .stat-card-modern:nth-child(4) { animation-delay: 0.4s; }
 .stat-card-modern:nth-child(5) { animation-delay: 0.5s; }
 .stat-card-modern:nth-child(6) { animation-delay: 0.6s; }
+
+
+
+/* ============================================================
+   ADVANCED ANALYTICS SECTIONS — adv-* namespace
+   Matches the AFCON 360 dark editorial theme (var(--*) tokens)
+   ============================================================ */
+
+/* ── Shared Section Shell ───────────────────────────────────── */
+.adv-section {
+  margin: 2.25rem 0;
+}
+
+.adv-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.adv-section-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.adv-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ── Generic Card ────────────────────────────────────────────── */
+.adv-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: 1.4rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.adv-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.adv-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.adv-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Icon colour variants */
+.adv-blue   { background: var(--brand-primary-light, #e8f5e9); color: var(--brand-primary, #2e7d32); }
+.adv-green  { background: var(--success-light, #d1fae5);       color: var(--success, #059669); }
+.adv-orange { background: var(--warning-light, #fff3e0);       color: var(--orange, #e65100); }
+.adv-purple { background: #ede9fe;                             color: #7c3aed; }
+.adv-red    { background: #fce8e8;                             color: #d93025; }
+
+/* ── Shared Typography ───────────────────────────────────────── */
+.adv-label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.adv-value {
+  display: block;
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+}
+
+.adv-trend {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.adv-positive { color: var(--success, #059669); }
+.adv-negative { color: #d93025; }
+.adv-neutral  { color: var(--text-secondary); }
+
+/* ── Grid Layouts ────────────────────────────────────────────── */
+.adv-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+}
+
+.adv-grid-5 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.adv-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* ── Performance Metric Cards (narrower, icon on top) ────────── */
+.adv-metric-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: 1.25rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.adv-metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.adv-metric-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  margin-bottom: 6px;
+}
+
+/* ── Price Positioning Banner ─────────────────────────────────── */
+.adv-positioning-banner {
+  margin-top: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.adv-pos-above_average {
+  background: var(--warning-light, #fff8e1);
+  color: var(--orange, #e65100);
+  border-left: 4px solid var(--orange, #e65100);
+}
+
+.adv-pos-below_average {
+  background: var(--brand-primary-light, #e8f5e9);
+  color: var(--brand-primary, #2e7d32);
+  border-left: 4px solid var(--brand-primary, #2e7d32);
+}
+
+.adv-pos-at_market {
+  background: var(--bg-surface-alt, #f5f5f5);
+  color: var(--text-secondary);
+  border-left: 4px solid var(--border-medium, #ccc);
+}
+
+.adv-pos-unknown {
+  background: var(--bg-surface-alt, #f5f5f5);
+  color: var(--text-secondary);
+  border-left: 4px solid var(--border-light, #e0e0e0);
+}
+
+/* ── AI Insights ─────────────────────────────────────────────── */
+.adv-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.adv-insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.adv-insight-card.adv-insight-success {
+  background: var(--success-light, #d1fae5);
+  border-color: var(--success, #059669);
+}
+
+.adv-insight-card.adv-insight-warning {
+  background: var(--warning-light, #fff3e0);
+  border-color: var(--orange, #ea580c);
+}
+
+.adv-insight-card.adv-insight-info {
+  background: var(--brand-primary-light, #e8f5e9);
+  border-color: var(--brand-primary, #2e7d32);
+}
+
+.adv-insight-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.adv-insight-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.adv-insight-body strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.adv-insight-body p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.adv-insight-action {
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--brand-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  align-self: center;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--brand-primary);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.adv-insight-action:hover {
+  background: var(--brand-primary);
+  color: white;
+  text-decoration: none;
+}
+
+/* ── Revenue Forecast ────────────────────────────────────────── */
+.adv-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.adv-forecast-card {
+  background: linear-gradient(135deg, var(--brand-primary-dark, #1b5e20) 0%, var(--brand-primary, #2e7d32) 100%);
+  border-radius: var(--radius-xl);
+  padding: 1.6rem 1.25rem;
+  text-align: center;
+  color: white;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.25s ease;
+}
+
+.adv-forecast-card:hover {
+  transform: translateY(-4px);
+}
+
+.adv-forecast-period {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+.adv-forecast-amount {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.adv-confidence-badge {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.adv-conf-high   { background: var(--success-light, #d1fae5); color: var(--success, #059669); }
+.adv-conf-medium { background: var(--warning-light, #fff3e0); color: var(--orange, #ea580c); }
+.adv-conf-low    { background: var(--bg-surface-alt, #f5f5f5); color: var(--text-secondary); }
+
+/* ── Channel Performance ─────────────────────────────────────── */
+.adv-channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.adv-channel-item {
+  display: grid;
+  grid-template-columns: 1fr 3fr 48px;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.adv-channel-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adv-channel-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.adv-channel-stats {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.adv-channel-bar-wrap {
+  height: 8px;
+  background: var(--bg-surface-alt, #f5f5f5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.adv-channel-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-primary-dark, #1b5e20), var(--brand-primary, #2e7d32));
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  min-width: 4px;
+}
+
+.adv-channel-pct {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* ── Seasonal Trends ─────────────────────────────────────────── */
+.adv-seasons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.adv-season-card {
+  border-radius: var(--radius-xl);
+  padding: 1.4rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  border-left: 4px solid transparent;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s ease;
+}
+
+.adv-season-card:hover {
+  transform: translateY(-3px);
+}
+
+.adv-season-high {
+  background: #fff8e1;
+  border-color: #f59e0b;
+}
+
+.adv-season-shoulder {
+  background: var(--brand-primary-light, #e8f5e9);
+  border-color: var(--brand-primary, #2e7d32);
+}
+
+.adv-season-low {
+  background: var(--bg-surface-alt, #f5f5f5);
+  border-color: var(--border-medium, #9e9e9e);
+}
+
+.adv-season-emoji {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.adv-season-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.adv-season-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.adv-season-months {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.adv-season-tip {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .adv-grid-4,
+  .adv-grid-5,
+  .adv-grid-3,
+  .adv-forecast-grid,
+  .adv-seasons-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .adv-channel-item {
+    grid-template-columns: 1fr 2fr 40px;
+    gap: 0.5rem;
+  }
+
+  .adv-value {
+    font-size: 1.3rem;
+  }
+
+  .adv-insight-card {
+    flex-wrap: wrap;
+  }
+
+  .adv-insight-action {
+    margin-top: 8px;
+  }
+}

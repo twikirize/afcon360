@@ -75,7 +75,7 @@ class BookingService:
         idempotency_key: str = None,
         ip_address: str = None,
         user_agent: str = None,
-        context_type: 'BookingContextType' = None,  # Will import at top
+        context_type: 'BookingContextType' = None,
         context_id: str = None,
         context_metadata: dict = None,
         # NEW PARAMETERS
@@ -88,6 +88,7 @@ class BookingService:
         group_booking_id: str = None,
         room_number: int = None,
         guest_instructions: str = None,
+        room_type_id: Optional[int] = None,
     ) -> Tuple[Optional[AccommodationBooking], Optional[str]]:
 
 
@@ -97,7 +98,7 @@ class BookingService:
         Returns:
             (booking, error_message) - booking is None if error
         """
-        from app.accommodation.models.property import Property
+        from app.accommodation.models.property import Property, RoomType
 
         try:
             # 1. IDEMPOTENCY CHECK
@@ -120,6 +121,12 @@ class BookingService:
 
             if not property.can_be_booked():
                 return None, "Property is not available for booking"
+
+            # Resolve room_type_id if not provided
+            if not room_type_id:
+                room_type = RoomType.query.filter_by(property_id=property_id, is_active=True).first()
+                if room_type:
+                    room_type_id = room_type.id
 
             # 3. ANTI-ABUSE PREVENTION (OPTIONAL)
             try:
@@ -147,6 +154,13 @@ class BookingService:
                 logger.warning(f"Anti-abuse check failed: {e}")
 
             # 4. AVAILABILITY CHECK
+            # Verify counter-based availability if room_type_id is set
+            if room_type_id:
+                from app.accommodation.services.host_service import HostService
+                avail = HostService.available_units(room_type_id, check_in, check_out)
+                if avail <= 0:
+                    return None, "Selected dates are not available for this room type"
+
             is_available, blocked_dates, error = AvailabilityService.is_range_available(
                 property_id, check_in, check_out
             )
@@ -156,7 +170,7 @@ class BookingService:
             # 5. PRICE CALCULATION
             try:
                 pricing = PricingService.calculate_total(
-                    property, check_in, check_out, num_guests
+                    property, check_in, check_out, num_guests, room_type_id=room_type_id
                 )
             except ValueError as e:
                 return None, str(e)
@@ -164,6 +178,7 @@ class BookingService:
             # 6. CREATE BOOKING (PENDING STATE)
             booking = AccommodationBooking(
                 property_id=property_id,
+                room_type_id=room_type_id,
                 guest_user_id=guest_user_id,
                 host_user_id=host_user_id,
                 check_in=check_in,
@@ -257,6 +272,17 @@ class BookingService:
 
         try:
             # 1. RE-VERIFY AVAILABILITY (Exclude own hold)
+            if booking.room_type_id:
+                from app.accommodation.services.host_service import HostService
+                avail = HostService.available_units(
+                    booking.room_type_id,
+                    booking.check_in,
+                    booking.check_out,
+                    exclude_booking_id=booking.id
+                )
+                if avail <= 0:
+                    return False, "Selected dates are no longer available for this room type. Please contact support."
+
             is_available, blocked_dates, error = AvailabilityService.is_range_available(
                 booking.property_id,
                 booking.check_in,

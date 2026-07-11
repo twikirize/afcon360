@@ -471,12 +471,14 @@ document.addEventListener('DOMContentLoaded', function() {
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div style="display:flex;flex-direction:column;gap:0.75rem;">
           <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
-            <input type="checkbox" id="authSuperAdmin" name="super_admin" 
+            <input type="checkbox" id="authSuperAdmin" name="super_admin"
+                   {% if media_settings and 'super_admin' in (media_settings.authorized_manager_roles or []) %}checked{% endif %}
                    style="width:18px;height:18px;cursor:pointer;">
             <span style="font-weight:600;color:#1a1a1a;">Allow Super Admins</span>
           </label>
           <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
-            <input type="checkbox" id="authAdmin" name="admin" 
+            <input type="checkbox" id="authAdmin" name="admin"
+                   {% if media_settings and 'admin' in (media_settings.authorized_manager_roles or []) %}checked{% endif %}
                    style="width:18px;height:18px;cursor:pointer;">
             <span style="font-weight:600;color:#1a1a1a;">Allow Admins</span>
           </label>
@@ -561,6 +563,40 @@ function showOrgRegistrationDetails() {
         }
     });
 }
+
+    // Media Settings Access Control
+    const mediaAccessForm = document.getElementById('mediaAccessForm');
+    if (mediaAccessForm) {
+        mediaAccessForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusEl = document.getElementById('mediaAccessStatus');
+            const formData = new FormData(mediaAccessForm);
+            const authorizedRoles = [];
+            if (formData.has('super_admin')) authorizedRoles.push('super_admin');
+            if (formData.has('admin')) authorizedRoles.push('admin');
+            const data = {
+                authorized_manager_roles: authorizedRoles
+            };
+            try {
+                const response = await fetch('{{ url_for("media_admin.update_authorized_roles_api") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    statusEl.innerHTML = '<span style="color:#16a34a;"><i class="fas fa-check-circle"></i> ' + result.message + '</span>';
+                } else {
+                    statusEl.innerHTML = '<span style="color:#dc2626;"><i class="fas fa-exclamation-circle"></i> ' + (result.error || 'Failed to update') + '</span>';
+                }
+            } catch (error) {
+                statusEl.innerHTML = '<span style="color:#dc2626;"><i class="fas fa-exclamation-circle"></i> Network error</span>';
+            }
+        });
+    }
 </script>
 
 {% endblock %}

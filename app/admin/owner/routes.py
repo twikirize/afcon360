@@ -853,9 +853,17 @@ def settings():
             logger.warning(f"Could not load SystemConfiguration: {config_error}")
             org_registration_mode = 'testing'
 
+        # Load media settings for the access control form
+        try:
+            from app.media.models import MediaSettings
+            media_settings = MediaSettings.get()
+        except Exception:
+            media_settings = None
+
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
+                             media_settings=media_settings,
                              require_owner_mfa=require_mfa,
                              super_admin_can_toggle_modules=super_admin_can_toggle_modules,
                              org_registration_mode=org_registration_mode)

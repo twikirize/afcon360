@@ -423,10 +423,10 @@ class RoomType(BaseModel):
 
 class InventoryBlockReason(enum.Enum):
     """Reason for blocking inventory"""
-    MAINTENANCE = "maintenance"
-    RENOVATION = "renovation"
-    SEASONAL_CLOSE = "seasonal_close"
-    OWNER_BLOCK = "owner_block"
+    MAINTENANCE = "MAINTENANCE"
+    RENOVATION = "RENOVATION"
+    SEASONAL_CLOSE = "SEASONAL_CLOSE"
+    OWNER_BLOCK = "OWNER_BLOCK"
 
 
 class InventoryBlock(BaseModel):
@@ -442,7 +442,18 @@ class InventoryBlock(BaseModel):
     date_range_start = Column(Date, nullable=False)
     date_range_end = Column(Date, nullable=False)  # half-open range, not one row per day
     units_blocked = Column(Integer, nullable=False, default=0)
-    reason = Column(String(30), nullable=False)  # maintenance, renovation, seasonal_close, owner_block
+    reason = Column(db.Enum(InventoryBlockReason, name="inventory_block_reason_enum"), nullable=False)
+
+    @validates("reason")
+    def _validate_reason(self, key, value):
+        """Allow setting reason by enum or by its string value (e.g., 'MAINTENANCE')."""
+        if isinstance(value, str):
+            try:
+                # Try member lookup by name, then by value
+                return InventoryBlockReason[value] if value in InventoryBlockReason.__members__ else InventoryBlockReason(value)
+            except Exception:
+                raise ValueError(f"Invalid InventoryBlock.reason: {value}")
+        return value
 
     def __repr__(self):
         return f"<InventoryBlock {self.room_type_id}: {self.date_range_start} to {self.date_range_end} ({self.units_blocked} units)>"

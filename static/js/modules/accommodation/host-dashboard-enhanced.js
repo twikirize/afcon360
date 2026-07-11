@@ -39,12 +39,20 @@ class HostDashboard {
             };
             
             this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
+                console.warn('WebSocket not available, using polling fallback');
+                this.ws = null;
+                this.initPolling();
             };
             
-            this.ws.onclose = () => {
-                console.log('🔌 WebSocket disconnected, reconnecting...');
-                setTimeout(() => this.initWebSocket(), 3000);
+            this.ws.onclose = (event) => {
+                // Only reconnect if the connection was closed normally (not due to 404)
+                if (event.code !== 1006) { // 1006 = abnormal closure (often means endpoint not found)
+                    console.log('🔌 WebSocket disconnected, reconnecting...');
+                    setTimeout(() => this.initWebSocket(), 3000);
+                } else {
+                    console.log('WebSocket endpoint not available, using polling fallback');
+                    this.initPolling();
+                }
             };
         } catch (error) {
             console.warn('WebSocket not available, using polling fallback');
@@ -321,10 +329,16 @@ class HostDashboard {
 
     // ── Analytics Tracking ──────────────────────────────────────────
     trackEvent(event, properties = {}) {
+        // Get CSRF token from meta tag
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
         // Send to analytics
         fetch('/accommodation/host/api/track', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || ''
+            },
             body: JSON.stringify({
                 event,
                 properties,

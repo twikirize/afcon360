@@ -51,26 +51,40 @@ class AvailabilityService:
             logger.debug(f"Date {check_date} blocked for property {property_id}: {blocked.reason.value}")
             return False
 
-        # Check confirmed bookings that cover this date
-        query = AccommodationBooking.query.filter(
-            AccommodationBooking.property_id == property_id,
-            AccommodationBooking.status.in_([
-                AccommodationBookingStatus.CONFIRMED.value,
-                AccommodationBookingStatus.CHECKED_IN.value
-            ]),
-            AccommodationBooking.check_in <= check_date,
-            AccommodationBooking.check_out > check_date
-        )
+        # Check RoomType availability if RoomTypes exist
+        from app.accommodation.models.property import RoomType
+        room_types = RoomType.query.filter_by(property_id=property_id, is_active=True).all()
+        if room_types:
+            from app.accommodation.services.host_service import HostService
+            any_available = False
+            for rt in room_types:
+                if HostService.available_units(rt.id, check_date, check_date + timedelta(days=1), exclude_booking_id=exclude_booking_id) > 0:
+                    any_available = True
+                    break
+            if not any_available:
+                logger.debug(f"No room types have available units on {check_date} for property {property_id}")
+                return False
+        else:
+            # Check confirmed bookings that cover this date (legacy fallback)
+            query = AccommodationBooking.query.filter(
+                AccommodationBooking.property_id == property_id,
+                AccommodationBooking.status.in_([
+                    AccommodationBookingStatus.CONFIRMED.value,
+                    AccommodationBookingStatus.CHECKED_IN.value
+                ]),
+                AccommodationBooking.check_in <= check_date,
+                AccommodationBooking.check_out > check_date
+            )
 
-        # Exclude the current booking if we're checking for confirmation
-        if exclude_booking_id:
-            query = query.filter(AccommodationBooking.id != exclude_booking_id)
+            # Exclude the current booking if we're checking for confirmation
+            if exclude_booking_id:
+                query = query.filter(AccommodationBooking.id != exclude_booking_id)
 
-        booking = query.first()
+            booking = query.first()
 
-        if booking:
-            logger.debug(f"Date {check_date} booked for property {property_id} by booking {booking.booking_reference}")
-            return False
+            if booking:
+                logger.debug(f"Date {check_date} booked for property {property_id} by booking {booking.booking_reference}")
+                return False
 
         # Check availability rules (recurring rules)
         from app.accommodation.models.availability import AvailabilityRule

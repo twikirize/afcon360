@@ -3,21 +3,20 @@
 System configuration model for storing platform-wide settings
 """
 
+from sqlalchemy import Column, String, Text, BigInteger, ForeignKey
+from app.models.base import BaseModel
 from app.extensions import db
 from datetime import datetime
 
 
-class SystemConfig(db.Model):
+class SystemConfig(BaseModel):
     """System configuration key-value store"""
     __tablename__ = 'system_configs'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(100), unique=True, nullable=False, index=True)
-    value = db.Column(db.Text, nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    value = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    created_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     
     def __repr__(self):
         return f'<SystemConfig {self.key}={self.value}>'
