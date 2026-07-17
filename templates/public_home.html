@@ -2,7 +2,7 @@
 
 {% block styles %}
 {{ super() }}
-<link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/home.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -37,8 +37,10 @@
         <option>This Year</option>
       </select>
     </div>
-    <button class="search-btn">🔍 Search</button>
-    <button class="search-btn-arrow">▼</button>
+    <div class="search-btn-group">
+      <button class="search-btn">🔍 Search</button>
+      <button class="search-btn-arrow">▼</button>
+    </div>
   </div>
   <div class="trending-tags">
     <span class="trending-label">🔥 Trending:</span>
@@ -141,7 +143,7 @@
             <span class="feat-badge">Premier Event</span>
             <div class="feat-title">AFCON <span class="feat-gold">2027</span></div>
             <div class="feat-meta">📅 Sept 19 – Oct 18, 2027<br>📍 Nairobi / Kampala / Dar es Salaam</div>
-            <span class="feat-explore-btn">Explore Event &rsaquo;</span>
+            <span class="feat-explore-btn">Explore Event ›</span>
           </div>
         </a>
 
@@ -154,7 +156,7 @@
             <span class="feat-badge">Summit</span>
             <div class="feat-title">CHOGM <span class="feat-gold">2026</span></div>
             <div class="feat-meta">📅 June 2026<br>📍 Kuala Lumpur, Malaysia</div>
-            <span class="feat-explore-btn">Explore Event &rsaquo;</span>
+            <span class="feat-explore-btn">Explore Event ›</span>
           </div>
         </a>
 
@@ -167,7 +169,7 @@
             <span class="feat-badge">Football</span>
             <div class="feat-title">World Cup <span class="feat-gold">Qualifiers</span></div>
             <div class="feat-meta">📅 Road to 2026<br>📍 Coming Soon!</div>
-            <span class="feat-explore-btn">View Details &rsaquo;</span>
+            <span class="feat-explore-btn">View Details ›</span>
           </div>
         </a>
 
@@ -180,7 +182,7 @@
             <span class="feat-badge">Religious</span>
             <div class="feat-title">East Africa <span class="feat-gold">Revival Crusade</span></div>
             <div class="feat-meta">📅 2026<br>📍 East Africa</div>
-            <span class="feat-explore-btn">View Details &rsaquo;</span>
+            <span class="feat-explore-btn">View Details ›</span>
           </div>
         </a>
 
@@ -202,7 +204,7 @@
           <div class="live-card-body">
             <span class="live-badge">🔥 Happening Now!</span>
             <div class="live-card-title">Pan-African Tech Summit</div>
-            <span class="live-action-btn">Join Live &rsaquo;</span>
+            <span class="live-action-btn">Join Live ›</span>
           </div>
         </a>
 
@@ -213,7 +215,7 @@
             <span class="upcoming-badge">⏰ In 5 Days</span>
             <div class="live-card-title">CHOGM <span class="live-gold">2026</span></div>
             <div class="live-card-sub">li 3 Days</div>
-            <span class="live-action-btn">Get Ready &rsaquo;</span>
+            <span class="live-action-btn">Get Ready ›</span>
           </div>
         </a>
 
@@ -224,7 +226,7 @@
             <span class="upcoming-badge">📅 Sept 15–18</span>
             <div class="live-card-title">Global Business Expo</div>
             <div class="live-card-sub">Dubai, UAE</div>
-            <span class="live-action-btn">View Details &rsaquo;</span>
+            <span class="live-action-btn">View Details ›</span>
           </div>
         </a>
 
@@ -267,9 +269,9 @@
         <div class="host-banner-title">Host Your Event on <span>AFCON360</span></div>
         <div class="host-banner-sub">Reach Millions &amp; Make Your Event a Success!</div>
         {% if session.get('user_id') %}
-        <a href="{{ safe_url('events.create_event') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        <a href="{{ safe_url('events.create_event') }}" class="host-banner-btn">Get Started ›</a>
         {% else %}
-        <a href="{{ url_for('auth.login') }}" class="host-banner-btn">Get Started &rsaquo;</a>
+        <a href="{{ url_for('auth.login') }}" class="host-banner-btn">Get Started ›</a>
         {% endif %}
       </div>
     </section>
@@ -289,7 +291,7 @@
         <div class="right-ad-sub">Get Exclusive Rates, Book Now!</div>
       </div>
       <div class="right-ad-foot">
-        <a href="#" class="right-ad-btn">Book Now <span>&rsaquo;</span></a>
+        <a href="#" class="right-ad-btn">Book Now <span>›</span></a>
       </div>
     </div>
 
@@ -301,7 +303,7 @@
         <div class="right-ad-sub">Great Deals on Flights!</div>
       </div>
       <div class="right-ad-foot">
-        <a href="#" class="right-ad-btn">Book Flights <span>&rsaquo;</span></a>
+        <a href="#" class="right-ad-btn">Book Flights <span>›</span></a>
       </div>
     </div>
 
