@@ -4,72 +4,82 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Virtual environments
+# -------------------------
+# Virtual Environment
+# -------------------------
 .venv/
 venv/
+ENV/
 env/
 
 # -------------------------
-# Secrets / environment
+# Secrets / Environment Variables
 # -------------------------
 .env
-.env.*
+.env.local
+.env.*.local
+*.secret
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
 
 # -------------------------
-# Flask runtime
+# Flask Runtime
 # -------------------------
 instance/
 flask_session/
+*.pid
 
 # -------------------------
 # Database
 # -------------------------
-*.sqlite3
 *.db
+*.sqlite
+*.sqlite3
 
 # -------------------------
-# IDE
+# IDE / Editor
 # -------------------------
-.idea/
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
 
 # -------------------------
 # Logs
 # -------------------------
+logs/
 *.log
 
 # -------------------------
-# MCP Server
-# -------------------------
-mcp_server.py
-
-# -------------------------
-# OS files
-# -------------------------
-
-.DS_Store
-Thumbs.db
-
-.continue/agents/
-
-# -------------------------
-# Backups
-# -------------------------
-backups_today/
-.aider*
-.continue/
-PROFILE_ACCOUNT_ROUTES_SPEC.md
-dockerignore
-
-
-# AI tooling
-.kilo/
-.kilocode/
-rules/
-
-# -------------------------
-# Backups & Temp files
+# Backups & Temp Files
 # -------------------------
 backups_today/
 model_backups/
@@ -80,6 +90,8 @@ backup_*.json
 *.bak2
 *.tmp
 *.temp
+*.zip
+*.tar.gz
 
 # -------------------------
 # Testing & Coverage
@@ -91,6 +103,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.tox/
 
 # -------------------------
 # Node / Frontend
@@ -103,3 +116,56 @@ yarn-error.log*
 .cache/
 dist/
 build/
+*.css.map
+*.js.map
+
+# -------------------------
+# AI Tooling / IDE Extensions
+# -------------------------
+.windsurf/
+.junie/
+.kiro/
+.kilocode/
+.continue/
+.aider*
+
+# -------------------------
+# MCP Servers
+# -------------------------
+mcps/
+
+# -------------------------
+# Prompts & Specs
+# -------------------------
+prompts/
+
+# -------------------------
+# Jupyter Notebooks
+# -------------------------
+.ipynb_checkpoints/
+*.ipynb
+
+# -------------------------
+# Celery
+# -------------------------
+celerybeat-schedule
+celerybeat.pid
+
+# -------------------------
+# Docker
+# -------------------------
+docker-compose.override.yml
+*.pid
+
+# -------------------------
+# Generated Assets
+# -------------------------
+static/css/generated/
+
+# -------------------------
+# OS Files
+# -------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
