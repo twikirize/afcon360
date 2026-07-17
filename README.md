@@ -438,6 +438,135 @@ app/
 
 ---
 
+## Core Modules
+
+### **1. Events Module** (`app/events/`)
+- Event creation, approval, and registration workflows
+- Ticketing and payment processing
+- Signal handlers for event lifecycle
+- Event metrics and analytics
+- Community host integration
+- Accommodation and transport integration for events
+
+### **2. Wallet Module** (`app/wallet/`)
+- Double-entry ledger architecture (enterprise-grade)
+- Transaction processing with fraud detection
+- Payout management
+- Commission tracking
+- Payment provider integrations (Flutterwave, Paystack, PayPal, Alipay, WeChat, Visa, Mobile Money)
+- Webhook handling
+- API endpoints for wallet operations
+- Middleware: idempotency, kill switch, activation checks
+
+### **3. Transport Module** (`app/transport/`)
+- Transport booking system
+- Driver and vehicle management
+- Route and incident tracking
+- Real-time notifications
+- External platform integrations
+- Analytics and reporting (32+ API endpoints)
+- State management and matching services
+
+### **4. Accommodation Module** (`app/accommodation/`)
+- Host registration and management
+- Property listing and search
+- Booking system with state machine
+- Review and rating system
+- Pricing and availability management
+- Wallet integration for payments
+- AI-powered search and trip planning
+- Gamified loyalty and blockchain reviews
+
+### **5. Tournament Module** (`app/tournament/`)
+- Bracket management
+- Tournament scheduling
+
+### **6. Identity Module** (`app/identity/`)
+- KYC (Know Your Customer) verification
+- Organization verification (KYB)
+- License document management
+- Compliance audit logging
+- Role and permission management
+- Organization registration and permissions
+
+### **7. KYC Module** (`app/kyc/`)
+- KYC document verification
+- NIRA verification integration
+- KYC upgrade workflows
+
+### **8. Tourism Module** (`app/tourism/`)
+- Tourism service listings
+- Tourism booking management
+- Activity management
+
+### **9. Auth Module** (`app/auth/`)
+- Authentication and session management
+- Role-based access control
+- OTP and email verification
+- Password policy enforcement
+- Onboarding workflows
+
+### **10. Admin Module** (`app/admin/`)
+- Role-based admin dashboards
+- Trust settings management
+- Security and compliance monitoring
+- Module toggle controls
+- AI content detection and moderation
+- Escalation workflows
+
+### **11. Media Module** (`app/media/`)
+- File upload, processing, and storage
+- Local and OCI (Oracle Cloud Infrastructure) storage backends
+- Media validation and processing tasks
+
+### **12. User Module** (`app/user/`)
+- User dashboard and profile management
+- User-specific features and settings
+
+### **13. Profile Module** (`app/profile/`)
+- User profile management
+- Profile update and verification workflows
+
+### **14. Fan Module** (`app/fan/`)
+- Enhanced fan/attendee dashboard
+- Event discovery and registration
+
+### **15. Services Module** (`app/services/`)
+- Analytics services
+- Module toggle service
+- SMS service
+
+### **16. Tasks Module** (`app/tasks/`)
+- Webhook processing
+- Transaction reconciliation
+
+### **17. CLI Module** (`app/cli/`)
+- Owner CLI commands
+
+### **18. Tools Module** (`app/tools/`)
+- Theme management
+- Project inspection tools
+
+### **19. Forms Module** (`app/forms/`)
+- Booking forms
+- Settings forms
+
+### **20. Models Module** (`app/models/`)
+- BaseModel for all models
+- Audit models
+- Analytics models
+- System configuration
+- Theme models
+
+### **21. Utils Module** (`app/utils/`)
+- IDGuard for ID mixing protection
+- Module switch and guard
+- Audit, caching, and security utilities
+- Rate limiting, Redis locks, validators
+- Error handling and template helpers
+
+---
+
 ## Key Features
 
 ### **IDGuard System**
