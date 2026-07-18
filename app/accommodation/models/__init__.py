@@ -39,6 +39,7 @@ from app.accommodation.models.availability import (
 
 # Review models
 from app.accommodation.models.review import Review, AccommodationReviewStatus
+from app.accommodation.models.room import RoomCategory, Room, RoomBooking
 from app.accommodation.models.wishlist import Wishlist
 
 __all__ = [
@@ -71,6 +72,9 @@ __all__ = [
     'AccommodationReviewStatus',
     'BookingContextType',
     'Wishlist',
+    'RoomCategory',
+    'Room',
+    'RoomBooking',
 ]
 
 

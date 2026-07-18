@@ -82,6 +82,9 @@ class BaseModel(TimestampMixin, db.Model):
             'key_id',  # APIKey.key_id - string key identifier
             'device_id',  # Session.device_id - string device identifier
             'resource_id',  # AuditLog.resource_id - UUID string
+            'wallet_txn_id',  # AccommodationBooking / Event wallet transaction reference
+            'context_id',  # AccommodationBooking / Event context reference
+            'group_booking_id',  # AccommodationBooking group booking reference
         }
 
         # Check if this is an _id field that needs validation

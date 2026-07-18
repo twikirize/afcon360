@@ -459,6 +459,174 @@ Phase 2	Core Booking Engine	✅ COMPLETE
 Phase 3	Host Dashboard	🔄 IN PROGRESS
 Phase 4	Admin Dashboard	📋 PLANNED
 Phase 5	Polish & Enhancements	📋 PLANNED
+
+---
+
+## 🧪 Recent Fixes & Testing Checklist
+
+### Room Type Validation & Checkout Hardening
+
+**Problem:** `room_type_id` was sometimes submitted as the string `"None"`, causing `ValueError: invalid literal for int() with base 10: 'None'` during checkout.
+
+**Fix applied:**
+
+- Backend validation in `guest_checkout()` rejects missing, empty, `"None"`, and non-numeric `room_type_id` values before booking creation.
+- Enhanced warning logging captures invalid attempts with user ID and property ID.
+- Frontend form in `detail.html` conditionally renders the hidden `room_type_id` field only when a room type is selected.
+- Inline client-side validation intercepts form submission and blocks invalid requests with an alert.
+- Conditional UI indicator displays the selected room type name and nightly rate in the booking card.
+
+**Test scenarios:**
+
+| Scenario | Expected Result |
+|----------|-----------------|
+| No room type selected | Flash message; redirect back to property detail |
+| `room_type_id="None"` sent | Flash message; redirect back to property detail |
+| Valid room type selected | Proceed to checkout successfully |
+| JavaScript disabled | Backend still blocks invalid `room_type_id` |
+| Malformed manual request | Blocked + logged at WARNING level |
+
+**Log example:**
+
+```text
+[WARNING] app.accommodation.routes: Checkout attempted with invalid room_type_id: None by user 1 for property 5
+```
+
+
+### Frontend Date Validation & Feedback
+
+**Problem:** The property detail page did not prevent users from selecting past dates or invalid date ranges before form submission, and there was no real-time feedback when dates were changed.
+
+**Fix applied:**
+
+- Date inputs now have dynamic `min` attributes tied to today''s date.
+- Inline JavaScript validates `check_in` and `check_out` on `change` and `blur` events.
+- A dedicated feedback alert shows immediate warnings for past dates, invalid ranges, and checkout before check-in.
+- The checkout minimum date is automatically updated based on the selected check-in date.
+
+**User-facing behavior:**
+
+- Selecting a past check-in date shows an immediate danger alert: "Check-in date cannot be in the past."
+- Selecting a check-out date on or before check-in shows: "Check-out must be after check-in date."
+- The form submit handler also re-validates dates before sending the request.
+
+
+### Optional `room_type_id` for Single Properties
+
+**Problem:** `guest_checkout()` previously required `room_type_id` for all properties, causing failures for single properties or homes that do not use room types.
+
+**Fix applied:**
+
+- Backend now counts active `RoomType` records for the property.
+- If the property has active room types, `room_type_id` is required and verified to belong to the property.
+- If the property has no active room types, `room_type_id` is set to `None` and the booking proceeds without it.
+- Frontend booking form always includes a `room_type_id` hidden input so the value is explicitly submitted.
+
+**User-facing behavior:**
+
+- Single properties / homes: book without selecting a room type.
+- Hotels with multiple room types: must select a room type before checkout.
+- Hotels with one room type: auto-selected with an info alert.
+
+**Files changed:**
+
+- `app/accommodation/routes.py`
+- `templates/accommodation/guest/detail.html`
+
+---
+
+**Files changed:**
+
+- `templates/accommodation/guest/detail.html`
+
+---
+
+**Files changed:**
+
+- `app/accommodation/routes.py`
+- `templates/accommodation/guest/detail.html`
+
+---
+
+
+---
+
+## 🏗️ Room Management & Operations
+
+### Individual Room Management
+
+The accommodation module now supports individual room management for hotels with 100+ rooms.
+
+**Models:**
+
+- `RoomCategory` - Groups rooms by type (VIP Suite, Deluxe King, Standard Twin)
+- `Room` - Individual physical rooms with room numbers, floors, maintenance status
+- `RoomBooking` - Assignment records linking bookings to specific rooms
+
+**Features:**
+
+- Individual room numbering (101, A-12, Suite-1)
+- Room categories with per-category pricing
+- Per-room maintenance tracking
+- Room availability status (available, booked, maintenance, cleaning)
+- Bulk room creation support
+
+### Check-in / Check-out Flow
+
+Hosts can now perform check-in and check-out operations:
+
+- **Check-in:** Assigns an available room, marks booking as `CHECKED_IN`, creates `RoomBooking` record
+- **Check-out:** Releases the assigned room, marks booking as `CHECKED_OUT`
+- Automatic room assignment from available pool during check-in
+- Full audit trail with `checked_in_by` / `checked_out_by` user tracking
+
+**Routes:**
+
+- `POST /host/booking/<id>/check-in`
+- `POST /host/booking/<id>/check-out`
+
+### Host Payout & Earnings
+
+- `host_earnings` route now renders a functional earnings dashboard
+- Revenue summary, occupancy rate, and total bookings displayed
+- Integration with `HostService.get_dashboard_data()` for analytics
+
+### Broken Routes Fixed
+
+- `host_bookings` → `templates/accommodation/host/bookings.html` ✅ Created
+- `host_earnings` → `templates/accommodation/host/earnings.html` ✅ Created
+
+### ENUM Convention Fixes
+
+- Converted `db.Enum` columns to `db.String` with `CheckConstraint` in `Property` model
+- Converted `db.Enum` in `InventoryBlock.reason` to `db.String`
+- All enum validations now use application-level CHECK constraints
+
+### Database Changes Required
+
+Run the following Alembic commands after reviewing the model changes:
+
+```bash
+flask db migrate -m 'add room management and check-in/out fields'
+flask db upgrade
+```
+
+New tables:
+
+- `accommodation_room_categories`
+- `accommodation_rooms`
+- `accommodation_room_bookings`
+
+New columns on `accommodation_bookings`:
+
+- `assigned_room_id`
+- `checked_in_by`
+- `checked_out_by`
+- `is_checked_in`
+- `is_checked_out`
+
+---
+
 🤝 Contributing
 Code Standards
 Layered Architecture: Routes → Services → Models

@@ -80,6 +80,26 @@ class Property(BaseModel):
         ),
         CheckConstraint("base_price_per_night >= 0", name="ck_price_positive"),
         CheckConstraint("max_guests >= 1", name="ck_max_guests_min"),
+        CheckConstraint(
+            "property_type IN ('entire_place', 'private_room', 'shared_room', 'hotel_room', 'community_host')",
+            name="ck_property_type_valid"
+        ),
+        CheckConstraint(
+            "cancellation_policy IN ('flexible', 'moderate', 'strict', 'super_strict')",
+            name="ck_cancellation_policy_valid"
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'pending_review', 'active', 'suspended', 'archived')",
+            name="ck_property_status_valid"
+        ),
+        CheckConstraint(
+            "verification_status IN ('unverified', 'pending', 'verified', 'rejected')",
+            name="ck_verification_status_valid"
+        ),
+        CheckConstraint(
+            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK')",
+            name="ck_inventory_block_reason_valid"
+        ),
     )
 
     # -------------------------------
@@ -95,7 +115,7 @@ class Property(BaseModel):
     slug = Column(String(220), nullable=False, unique=True)
     description = Column(Text, nullable=False)
     summary = Column(String(500), nullable=True)
-    property_type = Column(db.Enum(AccommodationPropertyType), nullable=False)
+    property_type = Column(String(50), nullable=False, default="hotel_room")
 
     # -------------------------------
     # Location
@@ -134,7 +154,7 @@ class Property(BaseModel):
     # -------------------------------
     # Policies
     # -------------------------------
-    cancellation_policy = Column(db.Enum(AccommodationCancellationPolicy), default=AccommodationCancellationPolicy.MODERATE)
+    cancellation_policy = Column(String(50), default="moderate")
     check_in_time = Column(String(20), default="14:00")
     check_out_time = Column(String(20), default="11:00")
     instant_book = Column(Boolean, default=False)
@@ -156,7 +176,7 @@ class Property(BaseModel):
     # -------------------------------
     # Status Flags
     # -------------------------------
-    status = Column(db.Enum(AccommodationPropertyStatus), default=AccommodationPropertyStatus.DRAFT, nullable=False, index=True)
+    status = Column(String(50), default="draft", nullable=False, index=True)
     is_verified = Column(Boolean, default=False, nullable=False, index=True)
     is_featured = Column(Boolean, default=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
@@ -164,7 +184,7 @@ class Property(BaseModel):
     # -------------------------------
     # Verification
     # -------------------------------
-    verification_status = Column(db.Enum(AccommodationVerificationStatus), default=AccommodationVerificationStatus.UNVERIFIED)
+    verification_status = Column(String(50), default="unverified")
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     verification_notes = Column(Text, nullable=True)
@@ -259,17 +279,17 @@ class Property(BaseModel):
     def soft_delete(self):
         self.is_deleted = True
         self.deleted_at = datetime.now(timezone.utc)
-        self.status = AccommodationPropertyStatus.ARCHIVED
+        self.status = "archived"
         self.is_active = False
 
     def restore(self):
         self.is_deleted = False
         self.deleted_at = None
-        self.status = AccommodationPropertyStatus.DRAFT
+        self.status = "draft"
         self.is_active = True
 
     def can_be_booked(self):
-        return (self.status == AccommodationPropertyStatus.ACTIVE and
+        return (self.status == "active" and
                 self.is_verified and
                 self.is_active and
                 not self.is_deleted)
@@ -442,7 +462,7 @@ class InventoryBlock(BaseModel):
     date_range_start = Column(Date, nullable=False)
     date_range_end = Column(Date, nullable=False)  # half-open range, not one row per day
     units_blocked = Column(Integer, nullable=False, default=0)
-    reason = Column(db.Enum(InventoryBlockReason, name="inventory_block_reason_enum"), nullable=False)
+    reason = Column(String(50), nullable=False, default="MAINTENANCE")
 
     @validates("reason")
     def _validate_reason(self, key, value):
@@ -461,4 +481,6 @@ class InventoryBlock(BaseModel):
 
 # Add relationship to Property
 Property.room_types = relationship("RoomType", back_populates="listing", cascade="all, delete-orphan")
+Property.room_categories = relationship("RoomCategory", back_populates="listing", cascade="all, delete-orphan")
+Property.rooms = relationship("Room", back_populates="listing", cascade="all, delete-orphan")
 RoomType.inventory_blocks = relationship("InventoryBlock", back_populates="room_type", cascade="all, delete-orphan")

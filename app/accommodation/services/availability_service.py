@@ -48,7 +48,7 @@ class AvailabilityService:
                 logger.debug(
                     f"Date {check_date} blocked by current booking {exclude_booking_id}, considering available")
                 return True
-            logger.debug(f"Date {check_date} blocked for property {property_id}: {blocked.reason.value}")
+            logger.debug(f"Date {check_date} blocked for property {property_id}: {blocked.reason}")
             return False
 
         # Check RoomType availability if RoomTypes exist

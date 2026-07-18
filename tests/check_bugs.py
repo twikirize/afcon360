@@ -9,20 +9,20 @@ issues = []
 # =====================================================
 # Read all relevant files
 # =====================================================
-with open('app/accommodation/routes.py', 'r', encoding='utf-8') as f:
+with open('../app/accommodation/routes.py', 'r', encoding='utf-8') as f:
     routes_content = f.read()
     routes_lines = routes_content.splitlines()
 
-with open('app/accommodation/services/booking_service.py', 'r', encoding='utf-8') as f:
+with open('../app/accommodation/services/booking_service.py', 'r', encoding='utf-8') as f:
     svc_content = f.read()
 
-with open('app/accommodation/models/booking.py', 'r', encoding='utf-8') as f:
+with open('../app/accommodation/models/booking.py', 'r', encoding='utf-8') as f:
     model_content = f.read()
 
-with open('templates/accommodation/my_accommodation.html', 'r', encoding='utf-8') as f:
+with open('../templates/accommodation/my_accommodation.html', 'r', encoding='utf-8') as f:
     tmpl_content = f.read()
 
-with open('templates/accommodation/guest/checkout.html', 'r', encoding='utf-8') as f:
+with open('../templates/accommodation/guest/checkout.html', 'r', encoding='utf-8') as f:
     checkout_content = f.read()
 
 

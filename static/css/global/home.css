@@ -34,11 +34,8 @@
   background: transparent;
   padding: 0.55rem 0.3rem;
   cursor: pointer; flex: 1;
-  appearance: none; -webkit-appearance: none;
 }
-.search-select-wrap::after {
-  content: 'â–¾'; font-size: 0.65rem; color: #888; pointer-events: none;
-}
+
 
 /* Search buttons grouped as one connected unit */
 .search-btn-group {

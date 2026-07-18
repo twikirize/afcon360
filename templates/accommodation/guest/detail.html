@@ -248,16 +248,23 @@
 
                         <div class="mb-3">
                             <label class="form-label">Check-in Date</label>
-                            <input type="date" class="form-control" name="check_in"
+                            <input type="date" class="form-control" name="check_in" id="check_in"
                                    value="{{ selected_check_in or '' }}"
-                                   min="{{ now }}" required>
+                                   min="{{ now.strftime('%Y-%m-%d') }}" required>
+                            <div id="check_in_feedback" class="invalid-feedback"></div>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Check-out Date</label>
-                            <input type="date" class="form-control" name="check_out"
+                            <input type="date" class="form-control" name="check_out" id="check_out"
                                    value="{{ selected_check_out or '' }}"
-                                   min="{{ selected_check_in or now }}" required>
+                                   min="{{ selected_check_in or now.strftime('%Y-%m-%d') }}" required>
+                            <div id="check_out_feedback" class="invalid-feedback"></div>
+                        </div>
+
+                        <div id="date_range_feedback" class="alert alert-warning" style="display:none;" role="alert">
+                            <i class="fas fa-calendar-times"></i>
+                            <span id="date_range_message"></span>
                         </div>
 
                         <div class="mb-3">
@@ -304,6 +311,55 @@
                                 </div>
                             </div>
 
+                            <!-- ============================================================ -->
+                            <!-- ROOM TYPE SELECTION (Only show if property has room types)   -->
+                            <!-- ============================================================ -->
+                            {% if property_model and property_model.room_types %}
+                                {% set active_room_types = property_model.room_types|selectattr('is_active')|list %}
+                                {% if active_room_types|length > 1 %}
+                                    <div class="room-types-section mt-3 mb-3">
+                                        <h5 class="mb-2">Select Room Type</h5>
+                                        <p class="text-muted small mb-2">This property offers multiple room types. Please select one below.</p>
+                                        <div class="row">
+                                            {% for room_type in active_room_types %}
+                                            <div class="col-md-6 mb-2">
+                                                <div class="card room-type-card {% if selected_room_type_id == room_type.id %}border-primary border-3{% endif %}">
+                                                    <div class="card-body py-2">
+                                                        <h6 class="card-title mb-1">{{ room_type.name }}</h6>
+                                                        <p class="card-text small text-muted mb-1">{{ room_type.description or 'Comfortable room.' }}</p>
+                                                        <ul class="list-unstyled small mb-2">
+                                                            <li><i class="fas fa-users"></i> Up to {{ room_type.max_guests }} guests</li>
+                                                            <li><i class="fas fa-bed"></i> {{ room_type.beds }} bed{{ 's' if room_type.beds > 1 else '' }}</li>
+                                                            <li><i class="fas fa-bath"></i> {{ room_type.bathrooms }} bath{{ 's' if room_type.bathrooms > 1 else '' }}</li>
+                                                            <li><i class="fas fa-dollar-sign"></i> ${{ room_type.base_price_per_night | int }}/night</li>
+                                                        </ul>
+                                                        <button type="button"
+                                                                class="btn {% if selected_room_type_id == room_type.id %}btn-primary{% else %}btn-outline-primary{% endif %} btn-sm w-100"
+                                                                onclick="selectRoomType({{ room_type.id }})">
+                                                            {% if selected_room_type_id == room_type.id %}
+                                                                <i class="fas fa-check"></i> Selected
+                                                            {% else %}
+                                                                Select Room
+                                                            {% endif %}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    {% if active_room_types|length == 1 %}
+                                        <div class="alert alert-info py-2 mb-3">
+                                            <small><i class="fas fa-info-circle"></i> 
+                                            This property offers <strong>{{ active_room_types[0].name }}</strong> rooms.
+                                            </small>
+                                        </div>
+                                    {% endif %}
+                                {% endif %}
+                            {% else %}
+                            {% endif %}
+
                             <!-- Booking Form -->
                             <form id="booking-form" method="POST" action="{{ safe_url('accommodation.guest_checkout') }}">
                                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -311,7 +367,7 @@
                                 <input type="hidden" name="context_id" value="{{ request.args.get('context_id', '') }}">
                                 <input type="hidden" name="context_metadata" value="{{ request.args.get('context_metadata', '{}') }}">
                                 <input type="hidden" name="property_id" value="{{ property.id }}">
-                                <input type="hidden" name="room_type_id" value="{{ selected_room_type_id }}">
+                                <input type="hidden" name="room_type_id" id="room_type_id" value="{{ selected_room_type_id or '' }}">
                                 <input type="hidden" name="host_user_id" value="{{ property_model.owner_user_id or property_model.owner_org_id }}">
                                 <input type="hidden" name="check_in" value="{{ selected_check_in }}">
                                 <input type="hidden" name="check_out" value="{{ selected_check_out }}">
@@ -325,6 +381,15 @@
                                 <input type="hidden" name="name" value="{{ property.name }}">
                                 <input type="hidden" name="city" value="{{ property.city }}">
 
+                                {% if selected_room_type_id %}
+                                <div class="alert alert-success py-2 mb-3">
+                                    <small><i class="fas fa-bed"></i> <strong>Room Type:</strong>
+                                        {% for rt in property_model.room_types %}
+                                            {% if rt.id == selected_room_type_id %}{{ rt.name }} - ${{ rt.base_price_per_night | int }}/night{% endif %}
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                {% endif %}
                                 {% if current_user.is_authenticated %}
                                     <button type="submit" class="btn btn-primary w-100 btn-lg">
                                         <i class="fas fa-credit-card"></i> Proceed to Checkout
@@ -336,6 +401,18 @@
                                 {% endif %}
                             </form>
 
+                        {% elif availability_status == 'past_date' %}
+                            <div class="alert alert-warning mb-3">
+                                <i class="fas fa-calendar-times"></i>
+                                <strong>Please select a future date for your stay.</strong>
+                                <p class="mb-0 mt-1 small">Check-in cannot be in the past.</p>
+                            </div>
+                        {% elif availability_status == 'invalid_range' %}
+                            <div class="alert alert-warning mb-3">
+                                <i class="fas fa-calendar-times"></i>
+                                <strong>Invalid date range.</strong>
+                                <p class="mb-0 mt-1 small">Check-out must be after check-in.</p>
+                            </div>
                         {% elif availability_status == 'unavailable' %}
                             <div class="alert alert-danger mb-3">
                                 <i class="fas fa-times-circle"></i>
@@ -395,5 +472,155 @@
 {% endif %}
 
 <script src="{{ url_for('static', filename='js/modules/accommodation/detail.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var bookingForm = document.getElementById("booking-form");
+    var checkInInput = document.getElementById("check_in");
+    var checkOutInput = document.getElementById("check_out");
+    var dateRangeFeedback = document.getElementById("date_range_feedback");
+    var dateRangeMessage = document.getElementById("date_range_message");
+    var roomTypeIdInput = document.getElementById("room_type_id");
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayStr = today.toISOString().split('T')[0];
+
+    // ============================================================
+    // Room Type Selection
+    // ============================================================
+    function selectRoomType(roomTypeId) {
+        if (!roomTypeIdInput) return;
+        roomTypeIdInput.value = roomTypeId;
+
+        // Update UI
+        document.querySelectorAll('.room-type-card').forEach(function(card) {
+            card.classList.remove('border-primary', 'border-3');
+        });
+
+        // Find the selected card and highlight it
+        var selectedCard = document.querySelector('.room-type-card button[onclick="selectRoomType(' + roomTypeId + ')"]');
+        if (selectedCard) {
+            var card = selectedCard.closest('.room-type-card');
+            if (card) {
+                card.classList.add('border-primary', 'border-3');
+            }
+
+            // Update button text
+            document.querySelectorAll('.room-type-card button').forEach(function(btn) {
+                if (btn === selectedCard) {
+                    btn.className = 'btn btn-primary btn-sm w-100';
+                    btn.innerHTML = '<i class="fas fa-check"></i> Selected';
+                } else {
+                    btn.className = 'btn btn-outline-primary btn-sm w-100';
+                    btn.innerHTML = 'Select Room';
+                }
+            });
+        }
+    }
+
+    function showDateFeedback(message, type) {
+        if (!dateRangeFeedback || !dateRangeMessage) return;
+        dateRangeMessage.textContent = message;
+        dateRangeFeedback.className = 'alert alert-' + type;
+        dateRangeFeedback.style.display = 'block';
+        dateRangeFeedback.classList.add('mt-2');
+    }
+
+    function hideDateFeedback() {
+        if (dateRangeFeedback) {
+            dateRangeFeedback.style.display = 'none';
+        }
+    }
+
+    function validateCheckIn() {
+        if (!checkInInput) return true;
+        var value = checkInInput.value;
+        if (!value) {
+            hideDateFeedback();
+            return true;
+        }
+        if (value < todayStr) {
+            showDateFeedback('Check-in date cannot be in the past. Please select a future date.', 'danger');
+            checkInInput.classList.add('is-invalid');
+            return false;
+        }
+        checkInInput.classList.remove('is-invalid');
+
+        // Update check-out min date when check-in changes
+        if (checkOutInput && value) {
+            var checkInDate = new Date(value);
+            var minCheckOut = new Date(checkInDate);
+            minCheckOut.setDate(minCheckOut.getDate() + 1);
+            var minCheckOutStr = minCheckOut.toISOString().split('T')[0];
+            checkOutInput.min = minCheckOutStr;
+
+            // If current check-out is before new min, clear it
+            if (checkOutInput.value && checkOutInput.value < minCheckOutStr) {
+                checkOutInput.value = '';
+            }
+        }
+
+        hideDateFeedback();
+        return true;
+    }
+
+    function validateCheckOut() {
+        if (!checkOutInput) return true;
+        var value = checkOutInput.value;
+        var checkInValue = checkInInput ? checkInInput.value : '';
+        if (!value) {
+            hideDateFeedback();
+            return true;
+        }
+        if (checkInValue && value <= checkInValue) {
+            showDateFeedback('Check-out must be after check-in date.', 'danger');
+            checkOutInput.classList.add('is-invalid');
+            return false;
+        }
+        if (value < todayStr) {
+            showDateFeedback('Check-out date cannot be in the past.', 'danger');
+            checkOutInput.classList.add('is-invalid');
+            return false;
+        }
+        checkOutInput.classList.remove('is-invalid');
+        hideDateFeedback();
+        return true;
+    }
+
+    if (checkInInput) {
+        checkInInput.addEventListener('change', validateCheckIn);
+        checkInInput.addEventListener('blur', validateCheckIn);
+    }
+
+    if (checkOutInput) {
+        checkOutInput.addEventListener('change', validateCheckOut);
+        checkOutInput.addEventListener('blur', validateCheckOut);
+    }
+
+    if (bookingForm) {
+        bookingForm.addEventListener("submit", function(e) {
+            var roomTypeInput = document.querySelector('input[name="room_type_id"]');
+            var roomTypeValue = roomTypeInput ? roomTypeInput.value : '';
+
+            // Only require room_type_id if property has room types
+            var hasRoomTypes = document.querySelectorAll('.room-type-card').length > 0;
+            if (hasRoomTypes && (!roomTypeValue || roomTypeValue === 'None' || roomTypeValue.trim() === '')) {
+                e.preventDefault();
+                alert('Please select a room type before booking.');
+                return false;
+            }
+
+            var checkInValid = validateCheckIn();
+            var checkOutValid = validateCheckOut();
+
+            if (!checkInValid || !checkOutValid) {
+                e.preventDefault();
+                return false;
+            }
+
+            return true;
+        });
+    }
+});
+</script>
 {% endblock %}
 {% endif %}

@@ -210,10 +210,23 @@ class AccommodationBooking(BaseModel):
     guest_instructions = Column(Text, nullable=True)
 
     # -------------------------------
+    # Room Assignment & Check-in/out
+    # -------------------------------
+    assigned_room_id = Column(BigInteger, ForeignKey("accommodation_rooms.id"), nullable=True, index=True)
+    assigned_room = relationship("Room", foreign_keys=[assigned_room_id])
+
+    checked_in_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    checked_out_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+
+    is_checked_in = Column(Boolean, default=False, nullable=False)
+    is_checked_out = Column(Boolean, default=False, nullable=False)
+
+    # -------------------------------
     # Relationships (continued)
     # -------------------------------
     status_history = relationship("BookingStatusHistory", back_populates="booking", cascade="all, delete-orphan")
     review = relationship("Review", back_populates="booking", uselist=False)
+    room_assignments = relationship("RoomBooking", back_populates="booking", cascade="all, delete-orphan")
 
     # ==========================================
     # PROPERTIES
@@ -292,14 +305,14 @@ class AccommodationBooking(BaseModel):
         days_until = (self.check_in - datetime.now(timezone.utc).date()).days
         policy = self.accommodation_property.cancellation_policy
 
-        if policy == AccommodationCancellationPolicy.FLEXIBLE:
+        if policy == "flexible":
             return True, "Full refund", self.total_amount
-        elif policy == AccommodationCancellationPolicy.MODERATE:
+        elif policy == "moderate":
             if days_until >= 5:
                 return True, "Full refund", self.total_amount
             elif days_until >= 1:
                 return True, "50% refund", self.total_amount * Decimal("0.5")
-        elif policy == AccommodationCancellationPolicy.STRICT:
+        elif policy == "strict":
             if days_until >= 7:
                 return True, "50% refund", self.total_amount * Decimal("0.5")
         return False, "Non-refundable", 0

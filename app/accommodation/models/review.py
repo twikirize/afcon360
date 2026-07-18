@@ -47,6 +47,10 @@ class Review(BaseModel):
         CheckConstraint("communication_rating BETWEEN 1 AND 5", name="ck_communication_range"),
         CheckConstraint("location_rating BETWEEN 1 AND 5", name="ck_location_range"),
         CheckConstraint("value_rating BETWEEN 1 AND 5", name="ck_value_range"),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'flagged')",
+            name="ck_review_status_valid"
+        ),
     )
 
     # -------------------------------
@@ -82,7 +86,7 @@ class Review(BaseModel):
     # -------------------------------
     # Moderation
     # -------------------------------
-    status = Column(db.Enum(AccommodationReviewStatus), default=AccommodationReviewStatus.PENDING, nullable=False, index=True)
+    status = Column(String(50), default="pending", nullable=False, index=True)
     moderated_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     moderation_reason = Column(Text, nullable=True)
     moderated_at = Column(DateTime, nullable=True)
@@ -101,14 +105,14 @@ class Review(BaseModel):
         return f"<Review {self.id}: rating={self.overall_rating}>"
 
     def publish(self, moderator_id):
-        self.status = AccommodationReviewStatus.APPROVED
+        self.status = "approved"
         self.is_published = True
         self.published_at = datetime.now(timezone.utc)
         self.moderated_by = moderator_id
         self.moderated_at = datetime.now(timezone.utc)
 
     def reject(self, moderator_id, reason):
-        self.status = AccommodationReviewStatus.REJECTED
+        self.status = "rejected"
         self.moderation_reason = reason
         self.moderated_by = moderator_id
         self.moderated_at = datetime.now(timezone.utc)

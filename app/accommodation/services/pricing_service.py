@@ -98,7 +98,7 @@ class PricingService:
         days_until_checkin = (booking.check_in - cancellation_date).days
         policy = booking.accommodation_property.cancellation_policy
 
-        if policy == AccommodationCancellationPolicy.FLEXIBLE:
+        if policy == "flexible":
             if days_until_checkin >= 1:
                 return {
                     'refund_amount': booking.total_amount,
@@ -112,7 +112,7 @@ class PricingService:
                     'explanation': 'No refund (cancelled within 24h of check-in)'
                 }
 
-        elif policy == AccommodationCancellationPolicy.MODERATE:
+        elif policy == "moderate":
             if days_until_checkin >= 5:
                 return {
                     'refund_amount': booking.total_amount,
@@ -133,7 +133,7 @@ class PricingService:
                     'explanation': 'No refund (cancelled within 24h of check-in)'
                 }
 
-        elif policy == AccommodationCancellationPolicy.STRICT:
+        elif policy == "strict":
             if days_until_checkin >= 7:
                 refund = booking.total_amount * Decimal('0.5')
                 return {

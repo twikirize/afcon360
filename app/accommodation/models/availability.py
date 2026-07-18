@@ -48,6 +48,10 @@ class BlockedDate(BaseModel):
         # FIX 2: Removed CheckConstraint("blocked_date >= CURRENT_DATE") - enforcing this at the
         # DB level breaks `db upgrade` whenever historical blocked dates exist in the table.
         # Validate future-only dates in the service/API layer instead.
+        CheckConstraint(
+            "reason IN ('booked', 'temporary_hold', 'owner_blocked', 'maintenance', 'seasonal')",
+            name="ck_blocked_reason_valid"
+        ),
     )
 
     # -------------------------------
@@ -64,7 +68,7 @@ class BlockedDate(BaseModel):
     # Blocked Date Details
     # -------------------------------
     blocked_date = Column(Date, nullable=False)
-    reason = Column(db.Enum(AccommodationBlockedReason), nullable=False)
+    reason = Column(String(50), nullable=False)
     note = Column(Text, nullable=True)
 
     # -------------------------------
@@ -73,7 +77,7 @@ class BlockedDate(BaseModel):
     created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     def __repr__(self):
-        return f"<BlockedDate property={self.property_id} date={self.blocked_date} reason={self.reason.value}>"
+        return f"<BlockedDate property={self.property_id} date={self.blocked_date} reason={self.reason}>"
 
     def is_active(self):
         """Check if this blocked date is still in the future"""
@@ -161,7 +165,7 @@ def is_date_available(property_id: int, check_date: date) -> bool:
     # Check for confirmed bookings that cover this date
     booking = Booking.query.filter(
         Booking.property_id == property_id,
-        Booking.status.in_([AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.CHECKED_IN]),
+        Booking.status.in_([AccommodationBookingStatus.CONFIRMED.value, AccommodationBookingStatus.CHECKED_IN.value]),
         Booking.check_in <= check_date,
         Booking.check_out > check_date
     ).first()
@@ -207,7 +211,7 @@ def get_available_dates(
     if exclude_booked:
         bookings = Booking.query.filter(
             Booking.property_id == property_id,
-            Booking.status.in_([AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.CHECKED_IN]),
+            Booking.status.in_([AccommodationBookingStatus.CONFIRMED.value, AccommodationBookingStatus.CHECKED_IN.value]),
             Booking.check_out > start_date,
             Booking.check_in < end_date
         ).all()
@@ -297,7 +301,7 @@ def unblock_dates(property_id: int, start_date: date, end_date: date) -> int:
     result = BlockedDate.query.filter(
         BlockedDate.property_id == property_id,
         BlockedDate.blocked_date.between(start_date, end_date),
-        BlockedDate.reason != AccommodationBlockedReason.BOOKED
+        BlockedDate.reason != AccommodationBlockedReason.BOOKED.value
     ).delete(synchronize_session=False)
 
     db.session.commit()

@@ -122,6 +122,10 @@ Key modules and their locations — stay within the relevant subtree:
 - Use `id` (BigInteger) for ForeignKey definitions, never `public_id`
 
 ### Migrations (CRITICAL PROTOCOL)
+- **NEVER create, generate, write, or patch migration files manually**
+- **NEVER run `flask db migrate` or `flask db upgrade` automatically**
+- **The user handles all migrations manually** — propose commands only
+- **Let Alembic auto-generate migration files** when the user runs `flask db migrate`
 - **Never patch migration files** as workarounds — fix root causes in model/source files
 - **Do NOT run `flask db migrate` automatically** — always propose it to the user first
 - Follow the **Migration Agent Protocol** below to prevent multiple-head divergence

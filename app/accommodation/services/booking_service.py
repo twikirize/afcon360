@@ -242,6 +242,122 @@ class BookingService:
             logger.error(f"Create booking failed for property {property_id}: {e}", exc_info=True)
             return None, "Unable to create booking. Please try again."
 
+
+
+    # -------------------------
+    # CHECK-IN
+    # -------------------------
+    @staticmethod
+    def check_in(booking_id: int, user_id: int) -> Tuple[bool, Optional[str]]:
+        """
+        Check in a booking and assign room if not already assigned.
+        """
+        booking = AccommodationBooking.query.get(booking_id)
+        if not booking:
+            return False, "Booking not found"
+
+        if booking.status != AccommodationBookingStatus.CONFIRMED.value:
+            return False, "Only confirmed bookings can be checked in"
+
+        if booking.is_checked_in:
+            return False, "Booking is already checked in"
+
+        try:
+            # Assign room if not assigned
+            if not booking.assigned_room_id:
+                available_room = Room.query.filter(
+                    Room.property_id == booking.property_id,
+                    Room.is_active == True,
+                    Room.status == "available",
+                    Room.is_maintenance == False,
+                ).first()
+
+                if not available_room:
+                    return False, "No available rooms for check-in"
+
+                booking.assigned_room_id = available_room.id
+                available_room.assign_booking(booking.id)
+
+            # Create room booking assignment
+            room_booking = RoomBooking(
+                booking_id=booking.id,
+                room_id=booking.assigned_room_id,
+                check_in=booking.check_in,
+                check_out=booking.check_out,
+                status="checked_in",
+                assigned_by=user_id,
+            )
+            db.session.add(room_booking)
+
+            # Update booking
+            booking.status = AccommodationBookingStatus.CHECKED_IN.value
+            booking.checked_in_by = user_id
+            booking.is_checked_in = True
+            booking.checked_in_at = datetime.now(timezone.utc)
+
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.CHECKED_IN,
+                changed_by_user_id=user_id,
+                reason="Guest checked in",
+            )
+
+            db.session.commit()
+            return True, None
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Check-in failed for booking {booking_id}: {e}", exc_info=True)
+            return False, "Check-in failed. Please try again."
+
+    # -------------------------
+    # CHECK-OUT
+    # -------------------------
+    @staticmethod
+    def check_out(booking_id: int, user_id: int) -> Tuple[bool, Optional[str]]:
+        """
+        Check out a booking and release the room.
+        """
+        booking = AccommodationBooking.query.get(booking_id)
+        if not booking:
+            return False, "Booking not found"
+
+        if booking.status != AccommodationBookingStatus.CHECKED_IN.value:
+            return False, "Only checked-in bookings can be checked out"
+
+        if booking.is_checked_out:
+            return False, "Booking is already checked out"
+
+        try:
+            booking.status = AccommodationBookingStatus.CHECKED_OUT.value
+            booking.checked_out_by = user_id
+            booking.is_checked_out = True
+            booking.checked_out_at = datetime.now(timezone.utc)
+
+            # Release assigned room
+            if booking.assigned_room_id:
+                assigned_room = Room.query.get(booking.assigned_room_id)
+                if assigned_room:
+                    assigned_room.release()
+
+            # Update room booking assignments
+            for rb in booking.room_assignments:
+                if rb.status == "checked_in":
+                    rb.check_out()
+
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.CHECKED_OUT,
+                changed_by_user_id=user_id,
+                reason="Guest checked out",
+            )
+
+            db.session.commit()
+            return True, None
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Check-out failed for booking {booking_id}: {e}", exc_info=True)
+            return False, "Check-out failed. Please try again."
+
     # -------------------------
     # CONFIRM BOOKING
     # -------------------------

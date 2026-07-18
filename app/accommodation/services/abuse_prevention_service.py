@@ -24,7 +24,7 @@ class AbusePreventionService:
 
         pending_holds = AccommodationBooking.query.filter(
             AccommodationBooking.guest_user_id == user_id,
-            AccommodationBooking.status == AccommodationBookingStatus.PENDING,
+            AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
             AccommodationBooking.expires_at > now  # only active pending
         ).count()
 
@@ -42,7 +42,7 @@ class AbusePreventionService:
 
         pending_holds = AccommodationBooking.query.filter(
             AccommodationBooking.property_id == property_id,
-            AccommodationBooking.status == AccommodationBookingStatus.PENDING,
+            AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
             AccommodationBooking.expires_at > now
         ).count()
 
@@ -95,7 +95,7 @@ class AbusePreventionService:
         # Check for too many unpaid or failed bookings
         failed = AccommodationBooking.query.filter(
             AccommodationBooking.guest_user_id == user_id,
-            AccommodationBooking.payment_status != AccommodationPaymentStatus.PAID
+            AccommodationBooking.payment_status != AccommodationPaymentStatus.PAID.value
         ).count()
 
         if (failed / total) > 0.8:

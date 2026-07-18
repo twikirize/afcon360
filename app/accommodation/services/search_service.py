@@ -85,7 +85,7 @@ def search_properties(params: dict = None) -> dict:
             selectinload(Property.photos),    # photos relationship exists
             selectinload(Property.reviews),   # reviews relationship exists
         ).filter(
-            Property.status == AccommodationPropertyStatus.ACTIVE,
+            Property.status == "active",
             Property.is_verified == True,
             Property.is_deleted == False,
             Property.is_active == True
@@ -218,10 +218,11 @@ def get_property_by_identifier(identifier: str) -> Optional[Dict]:
         else:
             prop = Property.query.filter_by(slug=identifier).first()
 
-        if prop and prop.status == AccommodationPropertyStatus.ACTIVE and prop.is_verified:  # FIX 1 applied here
+        if prop and prop.status == "active" and prop.is_verified:  # FIX 1 applied here
             return _property_to_dict(prop)
 
     except Exception as e:
+        db.session.rollback()
         logger.warning(f"DB lookup failed, using hardcoded: {e}")
 
     # Fallback to hardcoded
@@ -258,7 +259,7 @@ def _property_to_dict(property: Property) -> Dict:
         "house_rules": property.house_rules,
         "check_in_time": property.check_in_time,
         "check_out_time": property.check_out_time,
-        "cancellation_policy": property.cancellation_policy.value if property.cancellation_policy else None,
+        "cancellation_policy": property.cancellation_policy if property.cancellation_policy else None,
         "min_stay_nights": property.min_stay_nights,
         "instant_book": property.instant_book
     }

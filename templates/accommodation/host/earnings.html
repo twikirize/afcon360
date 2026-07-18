@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Host Earnings - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2>Earnings</h2>
+    <p class="text-muted">Track your property revenue and payouts</p>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Total Revenue</h6>
+                    <div class="display-6 text-primary mb-0">${{ "{:,.0f}".format(host_info.performance_metrics.get('total_revenue', 0) if host_info.performance_metrics else 0) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Occupancy Rate</h6>
+                    <div class="display-6 text-success mb-0">{{ "{:.1f}".format(host_info.performance_metrics.get('occupancy_rate', 0) if host_info.performance_metrics else 0) }}%</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Total Bookings</h6>
+                    <div class="display-6 text-info mb-0">{{ host_info.performance_metrics.get('total_bookings', 0) if host_info.performance_metrics else 0 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h5 class="mb-3">Revenue Summary</h5>
+            {% if host_info.performance_metrics and host_info.performance_metrics.get('revenue_summary') %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Period</th>
+                            <th>Revenue</th>
+                            <th>Bookings</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for period, data in host_info.performance_metrics.revenue_summary.items() %}
+                        <tr>
+                            <td>{{ period }}</td>
+                            <td>${{ "{:,.2f}".format(data.revenue) }}</td>
+                            <td>{{ data.bookings }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No revenue data available yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

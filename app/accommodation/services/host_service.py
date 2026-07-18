@@ -122,7 +122,7 @@ class HostService:
             gallery=_extract_gallery(data.get("main_image"), data.get("gallery_urls")),
             meta_title=data.get("meta_title"),
             meta_description=data.get("meta_description"),
-            status=AccommodationPropertyStatus.PENDING_REVIEW,
+            status="pending_review",
             is_active=False,
             is_verified=False,
         )
@@ -216,10 +216,10 @@ class HostService:
         properties = property_query.order_by(Property.created_at.desc()).all()
 
         # ── Enhanced Stats ───────────────────────────────────────────
-        active_properties = [p for p in properties if p.status == AccommodationPropertyStatus.ACTIVE and p.is_active]
-        pending_properties = [p for p in properties if p.status == AccommodationPropertyStatus.PENDING_REVIEW]
-        draft_properties = [p for p in properties if p.status == AccommodationPropertyStatus.DRAFT]
-        suspended_properties = [p for p in properties if p.status == AccommodationPropertyStatus.SUSPENDED]
+        active_properties = [p for p in properties if p.status == "active" and p.is_active]
+        pending_properties = [p for p in properties if p.status == "pending_review"]
+        draft_properties = [p for p in properties if p.status == "draft"]
+        suspended_properties = [p for p in properties if p.status == "suspended"]
         total_views = sum(p.views_last_24h for p in properties)
 
         stats = {
@@ -365,7 +365,7 @@ class HostService:
         """Return platform-wide accommodation stats for the admin dashboard."""
         # Base queries without owner filters
         properties = Property.query.filter(Property.is_deleted.is_(False)).all()
-        active_properties = [p for p in properties if p.status == AccommodationPropertyStatus.ACTIVE and p.is_active]
+        active_properties = [p for p in properties if p.status == "active" and p.is_active]
 
         total_properties = len(properties)
         total_bookings = AccommodationBooking.query.count()
@@ -635,7 +635,7 @@ class HostService:
         active_prices = [
             float(p.base_price_per_night)
             for p in properties
-            if p.status == AccommodationPropertyStatus.ACTIVE
+            if p.status == "active"
             and p.base_price_per_night
         ]
         avg_daily_rate = round(sum(active_prices) / len(active_prices), 2) if active_prices else 0.0
@@ -765,7 +765,7 @@ class HostService:
                 peers = (
                     Property.query.filter(
                         Property.city.in_(cities),
-                        Property.status == AccommodationPropertyStatus.ACTIVE,
+                        Property.status == "active",
                         Property.is_active.is_(True),
                         Property.is_deleted.is_(False),
                         Property.id.notin_([p.id for p in properties]),
@@ -1420,7 +1420,7 @@ class HostService:
                         day_info["status"] = "blocked"
                         blocks_on_day = [ib for ib in inventory_blocks if ib.date_range_start <= cursor <= ib.date_range_end]
                         if blocks_on_day:
-                            day_info["blocked_reason"] = blocks_on_day[0].reason.value if blocks_on_day[0].reason else "Inventory Block"
+                            day_info["blocked_reason"] = blocks_on_day[0].reason if blocks_on_day[0].reason else "Inventory Block"
                         else:
                             day_info["blocked_reason"] = "Inventory Block"
             else:

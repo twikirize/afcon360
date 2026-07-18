@@ -17,7 +17,7 @@ with app.app_context():
     
     # Check the model file directly
     import ast
-    with open('app/events/models.py', 'r') as f:
+    with open('../app/events/models.py', 'r') as f:
         content = f.read()
         # Find the Event class and its status column
         import re
