@@ -10,6 +10,7 @@ from sqlalchemy import func, and_, desc
 
 from app.extensions import db
 from app.accommodation.models.property import AccommodationPropertyStatus
+from app.accommodation.utils import enum_value
 from app.accommodation.models.property import (
     AccommodationCancellationPolicy,
     AccommodationPropertyStatus,
@@ -18,6 +19,7 @@ from app.accommodation.models.property import (
     RoomType,
     InventoryBlock,
 )
+from app.accommodation.models.room import RoomCategory, Room
 from app.accommodation.models.booking import (
     AccommodationBooking,
     AccommodationBookingStatus,
@@ -67,6 +69,24 @@ def _extract_gallery(main_image: Optional[str], gallery_field: Optional[str]) ->
             unique.append(img)
             seen.add(img)
     return unique
+
+
+def convert_enum_values(data):
+    """Recursively convert Python Enum objects to their string values.
+
+    SQLAlchemy cannot adapt Enum members to the String columns used in this
+    project (no PostgreSQL ENUM types), so any enum must be reduced to .value
+    before hitting the session. Handles nested dicts and lists.
+    """
+    import enum
+
+    if isinstance(data, dict):
+        return {k: convert_enum_values(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [convert_enum_values(v) for v in data]
+    if isinstance(data, enum.Enum):
+        return data.value
+    return data
 
 
 class HostService:
@@ -155,10 +175,15 @@ class HostService:
     @staticmethod
     def update_property(prop: Property, data: Dict) -> Property:
         """Update an existing property with validated form data."""
+        # Reduce any Enum members to their string .value before persistence.
+        # The project stores these as String columns (no PostgreSQL ENUM types),
+        # so SQLAlchemy would otherwise fail to adapt the enum objects.
+        data = convert_enum_values(data)
+
         prop.title = data["title"].strip()
         prop.summary = data.get("summary")
         prop.description = data["description"].strip()
-        prop.property_type = AccommodationPropertyType(data["property_type"])
+        prop.property_type = data["property_type"]
         prop.address_line1 = data["address_line1"].strip()
         prop.address_line2 = data.get("address_line2") or None
         prop.city = data["city"].strip()
@@ -175,7 +200,7 @@ class HostService:
         prop.service_fee_pct = Decimal(str(data.get("service_fee_pct") or 0)).quantize(Decimal("0.01"))
         prop.min_stay_nights = data.get("min_stay_nights", prop.min_stay_nights)
         prop.max_stay_nights = data.get("max_stay_nights")
-        prop.cancellation_policy = AccommodationCancellationPolicy(data["cancellation_policy"])
+        prop.cancellation_policy = data["cancellation_policy"]
         prop.check_in_time = data.get("check_in_time") or prop.check_in_time
         prop.check_out_time = data.get("check_out_time") or prop.check_out_time
         prop.instant_book = bool(data.get("instant_book"))
@@ -247,7 +272,8 @@ class HostService:
             bookings_query.filter(
                 AccommodationBooking.status.in_(
                     [AccommodationBookingStatus.CONFIRMED.value, 
-                     AccommodationBookingStatus.PENDING.value]
+                     AccommodationBookingStatus.PENDING.value,
+                     AccommodationBookingStatus.PENDING_APPROVAL.value]
                 ),
                 AccommodationBooking.check_in >= date.today(),
             )
@@ -322,6 +348,7 @@ class HostService:
                 AccommodationBookingStatus.CHECKED_OUT.value,
                 AccommodationBookingStatus.CHECKED_IN.value,
                 AccommodationBookingStatus.PENDING.value,
+                AccommodationBookingStatus.PENDING_APPROVAL.value,
             ])
         ).count()
 
@@ -1328,7 +1355,7 @@ class HostService:
             {
                 "id": prop.id,
                 "title": prop.title,
-                "status": prop.status.value if prop.status else None,
+                "status": enum_value(prop.status) if prop.status else None,
                 "is_active": prop.is_active,
                 "city": prop.city,
                 "country": prop.country,
@@ -1450,7 +1477,7 @@ class HostService:
             "property": {
                 "id": prop.id,
                 "title": prop.title,
-                "status": prop.status.value if prop.status else None,
+                "status": enum_value(prop.status) if prop.status else None,
                 "is_active": prop.is_active,
                 "timezone": getattr(prop, "timezone", None),
             },
@@ -1513,3 +1540,49 @@ class HostService:
         ) or 0
         
         return room_type.total_units - booked - blocked
+
+    @staticmethod
+    def sync_room_type_inventory(property_id: int) -> None:
+        categories = RoomCategory.query.filter_by(property_id=property_id).all()
+        room_types = RoomType.query.filter_by(property_id=property_id).all()
+        matched_rt_ids = set()
+
+        for category in categories:
+            rt = RoomType.query.filter_by(property_id=property_id, name=category.name).first()
+            if not rt:
+                rt = RoomType(
+                    property_id=property_id,
+                    name=category.name,
+                    description=category.description,
+                    max_guests=category.max_guests,
+                    bedrooms=category.bedrooms,
+                    beds=category.beds,
+                    bathrooms=category.bathrooms,
+                    base_price_per_night=category.base_price_per_night,
+                    currency=category.currency,
+                    cleaning_fee=category.cleaning_fee,
+                    total_units=0,
+                    is_active=category.is_active,
+                )
+                db.session.add(rt)
+                db.session.flush()
+            else:
+                rt.description = category.description
+                rt.max_guests = category.max_guests
+                rt.bedrooms = category.bedrooms
+                rt.beds = category.beds
+                rt.bathrooms = category.bathrooms
+                rt.base_price_per_night = category.base_price_per_night
+                rt.currency = category.currency
+                rt.cleaning_fee = category.cleaning_fee
+                rt.is_active = category.is_active
+                matched_rt_ids.add(rt.id)
+
+            count = Room.query.filter_by(property_id=property_id, category_id=category.id).count()
+            rt.total_units = count
+
+        for rt in room_types:
+            if rt.id not in matched_rt_ids:
+                rt.total_units = 0
+
+        db.session.commit()

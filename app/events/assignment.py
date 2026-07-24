@@ -329,7 +329,7 @@ def check_available_properties(event_id):
 
     properties = Property.query.filter(
         Property.city == event.city,
-        Property.status == AccommodationPropertyStatus.ACTIVE,
+        Property.status == AccommodationPropertyStatus.ACTIVE.value,
         Property.is_deleted == False
     ).limit(50).all()
 

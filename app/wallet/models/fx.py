@@ -24,8 +24,8 @@ class FXRateModel(db.Model):
     quote_currency = Column(String(3), nullable=False, index=True)  # e.g., UGX
     rate = Column(Numeric(20, 8), nullable=False)  # Exchange rate (1 base = rate quote)
     source = Column(String(50), nullable=False)  # Rate source (xe.com, central_bank, etc.)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-    expires_at = Column(DateTime, nullable=False, index=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     spread = Column(Numeric(10, 6), default=Decimal('0.01'))  # Platform spread in percentage
     
     # Composite unique constraint for active rates
@@ -96,8 +96,8 @@ class FXTransactionModel(db.Model):
     error_message = Column(String(500), nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     
     __table_args__ = (
         Index('idx_fx_user_status', 'user_id', 'status'),

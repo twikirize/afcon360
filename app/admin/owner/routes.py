@@ -449,14 +449,14 @@ def dashboard():
         health = get_system_health()
 
         # System settings
-        from app.admin.owner.models import SystemSetting
-        lockdown_enabled = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
-        maintenance_enabled = SystemSetting.get('MAINTENANCE_MODE', False)
-        wallet_enabled = SystemSetting.get('ENABLE_WALLET', True)
+        from app.models.system_config import SystemConfig
+        lockdown_enabled = SystemConfig.get('EMERGENCY_LOCKDOWN', False)
+        maintenance_enabled = SystemConfig.get('MAINTENANCE_MODE', False)
+        wallet_enabled = SystemConfig.get('ENABLE_WALLET', True)
 
         # Module flags
         modules = ModuleToggleService.get_flags()
-        super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
+        super_admin_can_toggle_modules = SystemConfig.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
 
         module_health = [
             {
@@ -796,7 +796,8 @@ def settings():
     """Owner settings page - includes system security settings"""
     try:
         logger.info("Loading settings page")
-        from app.admin.owner.models import OwnerSettings, SystemSetting
+        from app.admin.owner.models import OwnerSettings
+        from app.models.system_config import SystemConfig
 
         if request.method == 'POST':
             # Update settings
@@ -928,7 +929,7 @@ def toggle_org_registration_mode():
 def toggle_super_admin_module_access():
     """Toggle whether super admins are allowed to enable/disable modules"""
     try:
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig as SystemSetting
         current_value = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
         new_value = not current_value
 
@@ -1140,7 +1141,7 @@ def revoke_role():
 def danger_zone():
     """Danger zone - critical platform actions"""
     try:
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig as SystemSetting
         lockdown_enabled = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
         maintenance_enabled = SystemSetting.get('MAINTENANCE_MODE', False)
 
@@ -1158,7 +1159,7 @@ def danger_zone():
 def toggle_global_maintenance():
     """Toggle global maintenance mode"""
     try:
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig as SystemSetting
         current_mode = SystemSetting.get('MAINTENANCE_MODE', False)
         new_mode = not current_mode
 
@@ -1187,7 +1188,7 @@ def toggle_global_maintenance():
 def toggle_lockdown():
     """Toggle emergency lockdown"""
     try:
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig as SystemSetting
         current_mode = SystemSetting.get('EMERGENCY_LOCKDOWN', False)
         new_mode = not current_mode
 
@@ -1217,7 +1218,7 @@ def system_health():
     """View system health metrics"""
     try:
         health = get_system_health()
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig as SystemSetting
         settings_count = SystemSetting.query.count()
 
         return render_template('owner/system_health.html',

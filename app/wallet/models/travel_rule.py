@@ -51,8 +51,8 @@ class TravelRuleConfig(db.Model):
     
     # Metadata
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
@@ -102,7 +102,7 @@ class TravelRuleTransfer(db.Model):
     originator_name = Column(String(255), nullable=True)
     originator_account_number = Column(String(255), nullable=True)
     originator_address = Column(Text, nullable=True)
-    originator_dob = Column(DateTime, nullable=True)  # Date of birth
+    originator_dob = Column(DateTime(timezone=True), nullable=True)  # Date of birth
     originator_id_number = Column(String(100), nullable=True)
     originator_nationality = Column(String(10), nullable=True)
     
@@ -110,7 +110,7 @@ class TravelRuleTransfer(db.Model):
     beneficiary_name = Column(String(255), nullable=True)
     beneficiary_account_number = Column(String(255), nullable=True)
     beneficiary_address = Column(Text, nullable=True)
-    beneficiary_dob = Column(DateTime, nullable=True)
+    beneficiary_dob = Column(DateTime(timezone=True), nullable=True)
     beneficiary_id_number = Column(String(100), nullable=True)
     beneficiary_nationality = Column(String(10), nullable=True)
     
@@ -133,11 +133,11 @@ class TravelRuleTransfer(db.Model):
     # Reporting
     reported_to_vasp = Column(Boolean, default=False)
     vasp_response = Column(Text, nullable=True)
-    vasp_reported_at = Column(DateTime, nullable=True)
+    vasp_reported_at = Column(DateTime(timezone=True), nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""

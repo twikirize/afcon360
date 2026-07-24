@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Review Your Stay - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">Review Your Stay</h4>
+                    <p class="text-muted mb-0 mt-1">How was your experience at {{ property.name }}?</p>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <strong>Booking:</strong> {{ booking.booking_reference }} |
+                        {{ booking.check_in.strftime('%b %d, %Y') }} — {{ booking.check_out.strftime('%b %d, %Y') }}
+                    </div>
+
+                    <form method="POST" action="{{ url_for('accommodation.guest_submit_review', booking_id=booking.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Overall Rating *</label>
+                            <div class="d-flex gap-3" id="star-rating">
+                                {% for i in range(1, 6) %}
+                                <button type="button" class="star-btn" data-value="{{ i }}" onclick="setRating({{ i }})">
+                                    <i class="far fa-star fa-2x"></i>
+                                </button>
+                                {% endfor %}
+                            </div>
+                            <input type="hidden" name="overall_rating" id="overall_rating" value="0" required>
+                            <small class="text-muted" id="rating-text">Click a star to rate</small>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cleanliness</label>
+                                <select name="cleanliness_rating" class="form-select">
+                                    <option value="0">—</option>
+                                    {% for i in range(1, 6) %}
+                                    <option value="{{ i }}">{{ i }} ★</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Accuracy</label>
+                                <select name="accuracy_rating" class="form-select">
+                                    <option value="0">—</option>
+                                    {% for i in range(1, 6) %}
+                                    <option value="{{ i }}">{{ i }} ★</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Check-in</label>
+                                <select name="checkin_rating" class="form-select">
+                                    <option value="0">—</option>
+                                    {% for i in range(1, 6) %}
+                                    <option value="{{ i }}">{{ i }} ★</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Communication</label>
+                                <select name="communication_rating" class="form-select">
+                                    <option value="0">—</option>
+                                    {% for i in range(1, 6) %}
+                                    <option value="{{ i }}">{{ i }} ★</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Location</label>
+                                <select name="location_rating" class="form-select">
+                                    <option value="0">—</option>
+                                    {% for i in range(1, 6) %}
+                                    <option value="{{ i }}">{{ i }} ★</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Value</label>
+                                <select name="value_rating" class="form-select">
+                                    <option value="0">—</option>
+                                    {% for i in range(1, 6) %}
+                                    <option value="{{ i }}">{{ i }} ★</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">Your Review</label>
+                            <textarea name="comment" class="form-control" rows="5"
+                                      placeholder="Tell other guests about your stay..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-lg w-100">
+                            Submit Review
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+function setRating(value) {
+    document.getElementById('overall_rating').value = value;
+    document.getElementById('rating-text').textContent = ratingLabels[value] || '';
+    document.querySelectorAll('.star-btn').forEach((btn, idx) => {
+        const icon = btn.querySelector('i');
+        if (idx < value) {
+            icon.classList.remove('far');
+            icon.classList.add('fas', 'text-warning');
+        } else {
+            icon.classList.remove('fas', 'text-warning');
+            icon.classList.add('far');
+        }
+    });
+}
+</script>
+
+<style>
+.star-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.star-btn:hover {
+    transform: scale(1.2);
+}
+</style>
+{% endblock %}

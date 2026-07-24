@@ -20,11 +20,14 @@ class AbusePreventionService:
         """Check if user has too many pending holds"""
         from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         pending_holds = AccommodationBooking.query.filter(
             AccommodationBooking.guest_user_id == user_id,
-            AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.PENDING.value,
+                AccommodationBookingStatus.PENDING_APPROVAL.value,
+            ]),
             AccommodationBooking.expires_at > now  # only active pending
         ).count()
 
@@ -38,11 +41,14 @@ class AbusePreventionService:
         """Check if property has too many pending holds"""
         from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         pending_holds = AccommodationBooking.query.filter(
             AccommodationBooking.property_id == property_id,
-            AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.PENDING.value,
+                AccommodationBookingStatus.PENDING_APPROVAL.value,
+            ]),
             AccommodationBooking.expires_at > now
         ).count()
 
@@ -56,7 +62,7 @@ class AbusePreventionService:
         """Check if user is creating bookings too quickly"""
         from app.accommodation.models.booking import AccommodationBooking
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
         # Burst limit (per minute)
         one_minute_ago = now - timedelta(minutes=1)

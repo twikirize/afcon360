@@ -18,10 +18,10 @@ class ModuleToggleService:
 
     @classmethod
     def _fetch_stored_flags(cls) -> Dict[str, bool]:
-        """Fetch persisted module flags from SystemSetting."""
+        """Fetch persisted module flags from SystemConfig."""
         try:
-            from app.admin.owner.models import SystemSetting
-            stored_val = SystemSetting.get(cls.SETTINGS_KEY)
+            from app.models.system_config import SystemConfig
+            stored_val = SystemConfig.get(cls.SETTINGS_KEY)
             if stored_val:
                 return json.loads(stored_val)
             return {}
@@ -53,12 +53,12 @@ class ModuleToggleService:
         """Update a module flag."""
         module = module.strip().lower()
         from app.extensions import db
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig
         
         overrides = cls._fetch_stored_flags()
         overrides[module] = bool(enabled)
         
-        SystemSetting.set(
+        SystemConfig.set(
             key=cls.SETTINGS_KEY,
             value=json.dumps(overrides),
             value_type='json',

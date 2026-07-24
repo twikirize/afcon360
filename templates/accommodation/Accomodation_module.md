@@ -627,6 +627,50 @@ New columns on `accommodation_bookings`:
 
 ---
 
+## 🛠️ Recent Fixes & Improvements
+
+### Admin Moderation Workflow
+
+**Problem:** The admin property list (`/accommodation/admin/properties`) only showed a "Toggle Active" button, which didn't provide the full moderation workflow (approve/reject/request changes).
+
+**Fix applied:**
+
+- Added missing `GET /accommodation/moderate/property/<property_id>` route in `app/accommodation/routes.py`
+- Updated `templates/accommodation/admin/properties.html` to show:
+  - **Review** button linking to the moderation page
+  - **Edit** button linking to host edit listing
+  - **Approve** and **Reject** buttons for pending properties
+  - Status badges with proper conditional styling
+  - CSRF protection on all POST forms
+- Fixed `templates/accommodation/moderate_property.html`:
+  - Corrected `property.status.value` and `property.property_type.value` to handle String columns
+  - Fixed `property.max_capacity` → `property.max_guests`
+  - Fixed `property.base_price` → `property.base_price_per_night`
+  - Added **Suspend** button for active properties
+  - Added property photos display
+  - Added CSRF tokens to all moderation forms
+
+**Files changed:**
+
+- `app/accommodation/routes.py`
+- `templates/accommodation/admin/properties.html`
+- `templates/accommodation/moderate_property.html`
+
+### Enum Comparison Fixes
+
+**Problem:** `Property.status` is a `String` column, but several routes were comparing it directly to `AccommodationPropertyStatus` enum members (e.g., `Property.status == AccommodationPropertyStatus.ACTIVE`), causing `can't adapt type 'AccommodationPropertyStatus'` errors.
+
+**Fix applied:**
+
+- `app/accommodation/routes.py`: Changed `admin_properties()` to use `enum_value(status_filter)` helper
+- `app/admin/route_modules/settings.py`: Added `.value` to enum comparisons in `moderation_settings()`
+- `app/events/assignment.py`: Added `.value` to enum comparison in `check_available_properties()`
+- `app/admin/moderator/routes.py`: Added `.value` to enum comparison in stats builder
+
+**Rule:** Always compare `String` columns to string literals or enum `.value`, never to raw enum members.
+
+---
+
 🤝 Contributing
 Code Standards
 Layered Architecture: Routes → Services → Models

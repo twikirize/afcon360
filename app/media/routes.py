@@ -335,7 +335,114 @@ def complete_chunked_upload(upload_id: str):
         return jsonify({'error': 'Upload failed'}), 500
 
 
-@media_bp.route('/quota', methods=['GET'])
+@media_bp.route('/presign/<module>', methods=['POST'])
+@login_required
+@limiter.limit("30 per minute")
+def presign(module: str):
+    """
+    Return a direct-to-storage (pre-signed) upload target so the client can
+    PUT/POST the file bytes straight to the bucket, bypassing the app server.
+    Only available for backends that support pre-signed uploads (OCI/S3).
+    Local dev falls back to the streamed /upload endpoint (this returns 501).
+    """
+    from app.media.storage import get_storage_backend
+    import uuid as _uuid
+
+    data = request.get_json(silent=True) or request.form
+    entity_id = data.get('entity_id')
+    filename = data.get('filename')
+    content_type = data.get('content_type', 'application/octet-stream')
+    total_size = int(data.get('total_size', 0))
+
+    if not all([entity_id, filename]):
+        return jsonify({'error': 'entity_id and filename required'}), 400
+
+    module_config = current_app.config['MEDIA_MODULE_CONFIG'].get(module)
+    if not module_config:
+        return jsonify({'error': f"Unknown module: {module}"}), 400
+
+    max_size = module_config.get('max_size', 20 * 1024 * 1024)
+    if total_size > max_size:
+        return jsonify({'error': f"File too large. Max {max_size // (1024*1024)}MB"}), 400
+
+    try:
+        from app.media.utils.quota_manager import QuotaManager
+        QuotaManager.enforce_quota(current_user.id, total_size, module)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception:
+        pass
+
+    backend = get_storage_backend()
+    try:
+        # SHA-256 unknown pre-upload; use a random key to avoid collisions.
+        storage_key = f"{module}/{entity_id}/raw/{_uuid.uuid4().hex}_{filename}"
+        target = backend.create_presigned_upload(
+            storage_key, content_type, expires_in=900
+        )
+    except NotImplementedError:
+        return jsonify({'error': 'pre-signed upload not supported for this storage backend'}), 501
+
+    # Reserve a Media record in 'uploading' so processing can pick it up after
+    # the client confirms the direct upload via /api/media/confirm.
+    public_id = str(_uuid.uuid4())
+    from app.media.models import Media
+    media = Media(
+        public_id=public_id,
+        module=module,
+        entity_id=entity_id,
+        uploaded_by=current_user.id,
+        media_type='photo',
+        storage_key=storage_key,
+        storage_backend=current_app.config.get('STORAGE_TYPE', 'local'),
+        original_filename=filename,
+        mime_type=content_type,
+        file_size=total_size,
+        status='uploading',  # awaiting client confirmation of direct upload
+    )
+    db.session.add(media)
+    db.session.commit()
+
+    target['media_id'] = public_id
+    target['storage_key'] = storage_key
+    target['confirm_url'] = f"/api/media/confirm/{public_id}"
+    return jsonify(target), 200
+
+
+@media_bp.route('/confirm/<media_public_id>', methods=['POST'])
+@login_required
+@limiter.limit("30 per minute")
+def confirm_upload(media_public_id: str):
+    """
+    Client calls this after a successful direct-to-storage upload to trigger
+    async processing (resize/transcode) and final association.
+    """
+    from app.media.models import Media
+    from app.media.tasks import process_media_task
+    from app.media.storage import get_storage_backend
+
+    media = db.session.query(Media).filter(
+        Media.public_id == media_public_id,
+        Media.is_deleted == False
+    ).first()
+    if not media:
+        return jsonify({'error': 'Not found'}), 404
+
+    # Validate the file actually landed in storage.
+    backend = get_storage_backend()
+    if not backend.exists(media.storage_key):
+        return jsonify({'error': 'File not found in storage'}), 409
+
+    media.status = 'pending'
+    db.session.commit()
+    task = process_media_task.delay(media.id)
+
+    return jsonify({
+        'media_id': media.public_id,
+        'status': 'processing',
+        'poll_url': f"/api/media/status/{media.public_id}",
+        'celery_task_id': task.id,
+    }), 202
 @login_required
 def get_quota():
     """Get current user's storage quota status."""

@@ -104,16 +104,16 @@ class ContentSubmission(BaseModel):
     submitted_by = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     submitted_by_org = Column(BigInteger, ForeignKey("organisations.id"), nullable=True)
 
-    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Phase 3: Claim / assignment fields
     assigned_to_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    claimed_at = Column(DateTime, nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
     processing_time_seconds = Column(Integer, nullable=True)  # seconds
 
     # SLA tracking
-    sla_due_at = Column(DateTime, nullable=True)  # When this submission should be reviewed by
+    sla_due_at = Column(DateTime(timezone=True), nullable=True)  # When this submission should be reviewed by
 
     # Internal moderation notes (separate from review_notes which go to submitter)
     moderation_notes = Column(Text, nullable=True)
@@ -176,7 +176,7 @@ class ModerationLog(BaseModel):
     submission_id = Column(BigInteger, ForeignKey("content_submissions.id"), nullable=False, index=True)
     moderator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String(20), nullable=False)  # approve | reject | claim
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     notes = Column(Text, nullable=True)
 
     # Relationships

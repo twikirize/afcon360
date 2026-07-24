@@ -20,6 +20,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import validates, relationship
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.id_kinds import IDKind
+from app.utils.id_kinds import IDKind
 
 # ---------------------------
 # Enumerations
@@ -62,7 +64,7 @@ class UserProfile(BaseModel):
     # 🌍 External identity join
     # CRITICAL FIX: ForeignKey now points to users.public_id (the UUID string)
     user_id = Column(String(64), ForeignKey("users.public_id", ondelete="CASCADE"), nullable=False, unique=True,
-                     index=True)
+                     index=True, info={"id_kind": IDKind.PUBLIC_ID})
     user = relationship("User", foreign_keys=[user_id], primaryjoin="UserProfile.user_id == User.public_id", back_populates="profile", uselist=False)
 
     # Personal info

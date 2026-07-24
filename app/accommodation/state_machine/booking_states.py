@@ -28,6 +28,11 @@ class BookingStateMachine:
         AccommodationBookingStatus.PENDING: [
             AccommodationBookingStatus.CONFIRMED,
             AccommodationBookingStatus.CANCELLED,
+            AccommodationBookingStatus.PENDING_APPROVAL,
+        ],
+        AccommodationBookingStatus.PENDING_APPROVAL: [
+            AccommodationBookingStatus.CONFIRMED,
+            AccommodationBookingStatus.CANCELLED,
         ],
         AccommodationBookingStatus.CONFIRMED: [
             AccommodationBookingStatus.CHECKED_IN,

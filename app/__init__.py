@@ -82,7 +82,7 @@ except ImportError:
 from flask_wtf.csrf import CSRFError
 from typing import Dict
 from app.config import get_config  # layered config with env validation
-from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail
+from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
 from app.services.module_toggle_service import ModuleToggleService
 
 
@@ -130,8 +130,8 @@ def should_upgrade_insecure():
     from flask import current_app
     try:
         with current_app.app_context():
-            from app.admin.owner.models import SystemSetting
-            setting = SystemSetting.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
+            from app.models.system_config import SystemConfig
+            setting = SystemConfig.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
             return setting and setting.value == 'true'
     except:
         return False
@@ -556,12 +556,18 @@ def create_app(config_object=None) -> Flask:
     register_all_models()
 
     db.init_app(app)
+    socketio.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
 
     # Initialize mail
     mail.init_app(app)
+    
+    # Initialize socketio
+    from app.accommodation.sockets import HostDashboardNamespace
+    socketio.on_namespace(HostDashboardNamespace('/ws/host-dashboard'))
+    
     logger.info("✅ Mail extension initialized")
 
     # Module flag DB overrides are loaded on first request (see _run_deferred_startup)

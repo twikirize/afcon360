@@ -3,6 +3,8 @@
 import boto3
 from botocore.client import Config as BotoConfig
 
+from app.media.storage import StorageBackend
+
 
 class OCIStorageBackend(StorageBackend):
     """
@@ -83,3 +85,53 @@ class OCIStorageBackend(StorageBackend):
         bucket = current_app.config['OCI_BUCKET_NAME']
         obj = client.get_object(Bucket=bucket, Key=storage_key)
         return obj['Body']
+
+    def create_presigned_upload(self, storage_key: str, content_type: str,
+                                expires_in: int = 900):
+        from flask import current_app
+        client = self._get_client()
+        bucket = current_app.config['OCI_BUCKET_NAME']
+
+        # Private modules (e.g. kyc) must upload with restricted ACL.
+        is_public = current_app.config['MEDIA_MODULE_CONFIG'].get(
+            storage_key.split('/', 1)[0], {}
+        ).get('is_public', True)
+        acl = 'public-read' if is_public else 'private'
+
+        # Prefer presigned POST (handles fields + ACL in one signed form).
+        try:
+            post = client.generate_presigned_post(
+                Bucket=bucket,
+                Key=storage_key,
+                Fields={'Content-Type': content_type, 'acl': acl},
+                Conditions=[
+                    {'Content-Type': content_type},
+                    {'acl': acl},
+                    ['content-length-range', 1, 100 * 1024 * 1024],
+                ],
+                ExpiresIn=expires_in,
+            )
+            return {
+                'url': post['url'],
+                'method': 'POST',
+                'fields': post['fields'],
+                'headers': {},
+            }
+        except Exception:
+            # Fallback to presigned PUT if POST is unsupported.
+            url = client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': bucket,
+                    'Key': storage_key,
+                    'ContentType': content_type,
+                    'ACL': acl,
+                },
+                ExpiresIn=expires_in,
+            )
+            return {
+                'url': url,
+                'method': 'PUT',
+                'fields': {},
+                'headers': {'Content-Type': content_type, 'x-amz-acl': acl},
+            }

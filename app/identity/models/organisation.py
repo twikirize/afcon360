@@ -72,7 +72,17 @@ class Organisation(BaseModel):
     # -------------------
     # Compliance Integration (KYB)
     # -------------------
-    compliance_case_id = Column(BigInteger, ForeignKey("compliance_cases.id"), nullable=True, index=True)
+    # Deferrable FK to break the organisations <-> compliance_cases cycle:
+    # compliance_cases.organisation_id also references organisations, so a normal
+    # (immediate) FK on this side makes the two tables un-sortable for Alembic
+    # (SAWarning: unresolvable cycles). Deferring to COMMIT lets inserts happen
+    # in either order and lets Alembic sort the tables. PostgreSQL only.
+    compliance_case_id = Column(
+        BigInteger,
+        ForeignKey("compliance_cases.id", deferrable=True, initially="deferred"),
+        nullable=True,
+        index=True,
+    )
     compliance_status = Column(String(50), nullable=True, index=True)  # pending, approved, rejected, escalated
     compliance_notes = Column(Text, nullable=True)
     compliance_reviewed_at = Column(DateTime, nullable=True)

@@ -20,7 +20,7 @@ class AgentCommission(BaseModel):
     source_id = Column(String(64), nullable=False)
     recipient_id = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     status = Column(String(20), nullable=False, default='pending', index=True)
-    paid_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
     paid_by = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     extra_data = Column(db.JSON, nullable=True, default=dict)
 

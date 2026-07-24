@@ -242,6 +242,9 @@ class Config:
         "retention_days": int(os.getenv("AUDIT_RETENTION_DAYS", "3650")),
     }
 
+    BOOKING_HOLD_MINUTES      = int(os.getenv("BOOKING_HOLD_MINUTES", "15"))
+    PLATFORM_COMMISSION_PCT   = Decimal(os.getenv("PLATFORM_COMMISSION_PCT", "10.0"))
+
     # ── Media / Storage ────────────────────────────────────────────────────────
     STORAGE_TYPE = os.getenv('STORAGE_TYPE', 'local')  # local | oci | s3
 

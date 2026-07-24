@@ -13,6 +13,7 @@ from sqlalchemy.orm import relationship, validates
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
 from app.models.base import ProtectedModel
+from app.utils.id_kinds import IDKind
 from flask_login import UserMixin
 from flask import current_app
 # KycRecord is imported via string reference in the relationship
@@ -42,7 +43,8 @@ class User(UserMixin, ProtectedModel):
     # EXTERNAL ID (UUID) - Use for ALL public exposure, URLs, Flask-Login sessions
     public_id = Column(
         String(64), unique=True, nullable=False, index=True,
-        default=lambda: str(uuid_lib.uuid4())
+        default=lambda: str(uuid_lib.uuid4()),
+        info={"id_kind": IDKind.PUBLIC_ID}
     )
 
     username = Column(String(80), nullable=True, index=True)
@@ -965,12 +967,12 @@ class MFASecret(ProtectedModel):
 class Session(ProtectedModel):
     __tablename__ = "sessions"
 
-    session_id = Column(String(128), unique=True, nullable=False, index=True)
+    session_id = Column(String(128), unique=True, nullable=False, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     user_id = Column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False, index=True
     )
-    device_id = Column(String(128), index=True)
+    device_id = Column(String(128), index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     ip = Column(String(64), index=True)
     user_agent = Column(String(512))
     expires_at = Column(DateTime, nullable=False, index=True)
@@ -989,7 +991,7 @@ class Session(ProtectedModel):
 class APIKey(ProtectedModel):
     __tablename__ = "api_keys"
 
-    key_id = Column(String(64), nullable=False, index=True)
+    key_id = Column(String(64), nullable=False, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     key_hash = Column(String(512), nullable=False)
     owner_type = Column(String(32), nullable=False, index=True)
     owner_id = Column(BigInteger, nullable=False, index=True)

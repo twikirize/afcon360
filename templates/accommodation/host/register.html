@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Become a Host - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">Become a Host</h4>
+                    <p class="text-muted mb-0 mt-1">Start listing your property on AFCON360</p>
+                </div>
+                <div class="card-body">
+                    {% if user_orgs and user_orgs|length > 0 %}
+                    <div class="alert alert-info">
+                        <strong>Organisation detected:</strong> You can host as an individual or on behalf of an organisation.
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('accommodation.host_register') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        {% if user_orgs and user_orgs|length > 0 %}
+                        <div class="mb-3">
+                            <label class="form-label">Host as</label>
+                            <select name="org_id" class="form-select">
+                                <option value="">Individual Host</option>
+                                {% for org in user_orgs %}
+                                <option value="{{ org.id }}">{{ org.name }} ({{ org.role }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label">Display Name</label>
+                            <input type="text" name="display_name" class="form-control"
+                                   value="{{ current_user.username or current_user.email }}"
+                                   placeholder="How guests will see you">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Tax ID / Business Registration</label>
+                            <input type="text" name="tax_id" class="form-control"
+                                   placeholder="TIN / Business registration number">
+                            <small class="text-muted">Required for payouts and tax compliance.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Default Payout Method</label>
+                            <select name="payout_method" class="form-select">
+                                <option value="wallet">AFCON360 Wallet</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                                <option value="mobile_money">Mobile Money</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="terms" required>
+                                <label class="form-check-label" for="terms">
+                                    I agree to the <a href="#" target="_blank">Host Terms of Service</a>
+                                    and <a href="#" target="_blank">Cancellation Policy</a>.
+                                </label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 btn-lg">
+                            Become a Host
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

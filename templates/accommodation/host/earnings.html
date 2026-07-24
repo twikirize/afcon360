@@ -5,30 +5,33 @@
 {% block content %}
 <div class="container py-4">
     <h2>Earnings</h2>
-    <p class="text-muted">Track your property revenue and payouts</p>
+    <p class="text-muted">Track your payouts and commission breakdown</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6 class="text-muted mb-2">Total Revenue</h6>
-                    <div class="display-6 text-primary mb-0">${{ "{:,.0f}".format(host_info.performance_metrics.get('total_revenue', 0) if host_info.performance_metrics else 0) }}</div>
+                    <h6 class="text-muted mb-2">Released</h6>
+                    <div class="display-6 text-success mb-0">${{ "{:,.2f}".format(earnings.released) }}</div>
+                    <small class="text-muted">Paid out after check-in</small>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6 class="text-muted mb-2">Occupancy Rate</h6>
-                    <div class="display-6 text-success mb-0">{{ "{:.1f}".format(host_info.performance_metrics.get('occupancy_rate', 0) if host_info.performance_metrics else 0) }}%</div>
+                    <h6 class="text-muted mb-2">Held in Escrow</h6>
+                    <div class="display-6 text-warning mb-0">${{ "{:,.2f}".format(earnings.held) }}</div>
+                    <small class="text-muted">Awaiting guest check-in</small>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h6 class="text-muted mb-2">Total Bookings</h6>
-                    <div class="display-6 text-info mb-0">{{ host_info.performance_metrics.get('total_bookings', 0) if host_info.performance_metrics else 0 }}</div>
+                    <h6 class="text-muted mb-2">Total Earnings</h6>
+                    <div class="display-6 text-primary mb-0">${{ "{:,.2f}".format(earnings.total) }}</div>
+                    <small class="text-muted">Released + Held</small>
                 </div>
             </div>
         </div>
@@ -36,30 +39,48 @@
 
     <div class="card border-0 shadow-sm">
         <div class="card-body">
-            <h5 class="mb-3">Revenue Summary</h5>
-            {% if host_info.performance_metrics and host_info.performance_metrics.get('revenue_summary') %}
+            <h5 class="mb-3">Payout History</h5>
+            {% if payout_history %}
             <div class="table-responsive">
                 <table class="table table-hover">
                     <thead>
                         <tr>
-                            <th>Period</th>
-                            <th>Revenue</th>
-                            <th>Bookings</th>
+                            <th>Booking</th>
+                            <th>Property</th>
+                            <th>Guest</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                            <th>Payout</th>
+                            <th>Status</th>
+                            <th>Released</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for period, data in host_info.performance_metrics.revenue_summary.items() %}
+                        {% for commission, booking in payout_history %}
                         <tr>
-                            <td>{{ period }}</td>
-                            <td>${{ "{:,.2f}".format(data.revenue) }}</td>
-                            <td>{{ data.bookings }}</td>
+                            <td>{{ booking.booking_reference }}</td>
+                            <td>{{ booking.accommodation_property.title if booking.accommodation_property else 'N/A' }}</td>
+                            <td>{{ booking.primary_guest_name or booking.guest_name or 'N/A' }}</td>
+                            <td>{{ booking.check_in.strftime('%Y-%m-%d') if booking.check_in else 'N/A' }}</td>
+                            <td>{{ booking.check_out.strftime('%Y-%m-%d') if booking.check_out else 'N/A' }}</td>
+                            <td>${{ "{:,.2f}".format(commission.host_payout) }}</td>
+                            <td>
+                                {% if commission.status == 'released' %}
+                                    <span class="badge bg-success">Released</span>
+                                {% elif commission.status == 'refunded' %}
+                                    <span class="badge bg-danger">Refunded</span>
+                                {% else %}
+                                    <span class="badge bg-warning">{{ commission.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ commission.released_at.strftime('%Y-%m-%d %H:%M') if commission.released_at else 'N/A' }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             {% else %}
-            <p class="text-muted">No revenue data available yet.</p>
+            <p class="text-muted">No payout history yet. Payouts are released after guest check-in.</p>
             {% endif %}
         </div>
     </div>

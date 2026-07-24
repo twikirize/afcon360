@@ -181,6 +181,73 @@
     border-top: 2px dashed var(--border-light);
   }
 
+  /* ── Media section retouch ── */
+  .media-info-banner {
+    border: 1px solid rgba(var(--brand-primary-rgb), 0.25);
+    background: rgba(var(--brand-primary-rgb), 0.06);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .media-info-banner i { color: var(--brand-primary); }
+
+  .media-upload-card {
+    border: 1.5px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .media-upload-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .media-upload-card-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+  }
+
+  .media-upload-card .drop-zone {
+    border: 2px dashed var(--border-medium);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-alt);
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .media-upload-card .drop-zone:hover {
+    border-color: var(--brand-primary);
+    background: rgba(var(--brand-primary-rgb), 0.05);
+  }
+
+  .legacy-fields {
+    margin-top: 1.5rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-alt);
+  }
+  .legacy-fields > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    list-style: none;
+  }
+  .legacy-fields > summary::-webkit-details-marker { display: none; }
+  .legacy-fields > summary::before {
+    content: "▸ ";
+    color: var(--brand-primary);
+  }
+  .legacy-fields[open] > summary::before { content: "▾ "; }
+  .legacy-fields .form-group:first-of-type { margin-top: 1rem; }
+
   /* Responsive grid for form fields */
   .form-row {
     display: grid;
@@ -351,9 +418,14 @@
       <h1 class="mb-0">✏️ Edit Listing</h1>
       <p class="text-muted">Update your property details</p>
     </div>
-    <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn-cancel">
-      <i class="bi bi-arrow-left me-1"></i> Cancel
-    </a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('accommodation.host_rooms', property_id=property.id) }}" class="btn-cancel">
+        <i class="bi bi-door-closed me-1"></i> Manage Rooms
+      </a>
+      <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn-cancel">
+        <i class="bi bi-arrow-left me-1"></i> Cancel
+      </a>
+    </div>
   </div>
 
   <!-- Progress Steps -->
@@ -661,30 +733,46 @@
     <div class="form-section">
       <h5 class="form-section-title"><i class="bi bi-images"></i> Media</h5>
 
-      {# Legacy URL fields (kept for backward compatibility) #}
-      <div class="form-group">
-        <label for="main_image" class="form-label">Cover Image URL (Legacy)</label>
-        {{ form.main_image(class="form-control", placeholder="https://example.com/your-image.jpg", id="main_image") }}
-        {% if form.main_image.errors %}
-          <div class="invalid-feedback d-block">{{ form.main_image.errors[0] }}</div>
-        {% endif %}
-        <div class="form-text">Paste a public image URL for the cover photo (legacy field)</div>
+      <div class="alert alert-info media-info-banner" role="status">
+        <i class="bi bi-info-circle me-1"></i>
+        Photos are uploaded to the <strong>central media system</strong> — they are
+        virus-scanned, optimised (WebP), and deduplicated automatically. Drag &amp; drop
+        or browse to add property photos.
       </div>
 
-      <div class="form-group">
-        <label for="gallery_urls" class="form-label">Gallery URLs (Legacy)</label>
-        {{ form.gallery_urls(class="form-control", rows=3, placeholder="https://example.com/image1.jpg\nhttps://example.com/image2.jpg", id="gallery_urls") }}
-        {% if form.gallery_urls.errors %}
-          <div class="invalid-feedback d-block">{{ form.gallery_urls.errors[0] }}</div>
-        {% endif %}
-        <div class="form-text">One URL per line (legacy field)</div>
+      {# Primary: Unified Media Uploader (routes to app/media) #}
+      <div class="media-upload-card">
+        <div class="media-upload-card-header">
+          <span class="media-upload-card-title"><i class="bi bi-cloud-upload me-1"></i> Property Photos</span>
+          <span class="badge bg-light text-dark">JPG · PNG · WebP · HEIC</span>
+        </div>
+        {% with entity_id=property.public_id %}
+          {% include 'components/media_upload.html' %}
+        {% endwith %}
       </div>
 
-      {# New Unified Media Uploader #}
-      <div class="form-group">
-        <label class="form-label">Property Photos</label>
-        {% include 'components/media_upload.html' %}
-      </div>
+      {# Legacy URL fields — kept for backward compatibility, demoted #}
+      <details class="legacy-fields">
+        <summary>Legacy image URL fields</summary>
+        <p class="form-text mb-3">
+          These are kept only for properties that already store image URLs directly.
+          New uploads should use the uploader above.
+        </p>
+        <div class="form-group">
+          <label for="main_image" class="form-label">Cover Image URL (Legacy)</label>
+          {{ form.main_image(class="form-control", placeholder="https://example.com/your-image.jpg", id="main_image") }}
+          {% if form.main_image.errors %}
+            <div class="invalid-feedback d-block">{{ form.main_image.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="gallery_urls" class="form-label">Gallery URLs (Legacy)</label>
+          {{ form.gallery_urls(class="form-control", rows=3, placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg", id="gallery_urls") }}
+          {% if form.gallery_urls.errors %}
+            <div class="invalid-feedback d-block">{{ form.gallery_urls.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </details>
     </div>
 
     <!-- ─── SECTION 6: SEO ─── -->

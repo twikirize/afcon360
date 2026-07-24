@@ -859,3 +859,6 @@ templates/
 ├── public_home.html
 └── base.html
 ```
+
+### **Mobile Optimization Documentation**
+- **`static/MOBILE_OPTIMIZATION.md`** — Canonical record of the 2026 mobile responsive refactor. Includes full file tree, per-file change log, what was explicitly preserved (colors, gradients, desktop layout), verification checklist, and future isolation plan for subsequent optimization phases.

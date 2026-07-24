@@ -26,21 +26,27 @@ from app.accommodation.models.booking import (
     BookingContextType,
 )
 
+# Booking Policy models
+from app.accommodation.models.booking_policy import PropertyBookingPolicy
+from app.accommodation.models.property_payment_method import PropertyPaymentMethod
+from app.accommodation.models.guest_identity import GuestIdentityProfile
+from app.accommodation.models.platform_override import PlatformBookingPolicyOverride
+from app.accommodation.models.commission import BookingCommission
+from app.accommodation.models.host_profile import HostProfile, HostOrganisationProfile
+from app.accommodation.models.property_document import PropertyDocument
+
 # Availability models
 from app.accommodation.models.availability import (
     BlockedDate,
     AvailabilityRule,
     AccommodationBlockedReason,
-    is_date_available,
-    get_available_dates,
-    block_dates,
-    unblock_dates,
 )
 
 # Review models
 from app.accommodation.models.review import Review, AccommodationReviewStatus
 from app.accommodation.models.room import RoomCategory, Room, RoomBooking
 from app.accommodation.models.wishlist import Wishlist
+from app.accommodation.models.guest_profile import GuestProfile
 
 __all__ = [
     # Property
@@ -63,18 +69,24 @@ __all__ = [
     'BlockedDate',
     'AvailabilityRule',
     'AccommodationBlockedReason',
-    'is_date_available',
-    'get_available_dates',
-    'block_dates',
-    'unblock_dates',
     # Review
     'Review',
     'AccommodationReviewStatus',
     'BookingContextType',
     'Wishlist',
+    'GuestProfile',
     'RoomCategory',
     'Room',
     'RoomBooking',
+    # Booking Policy
+    'PropertyBookingPolicy',
+    'PropertyPaymentMethod',
+    'GuestIdentityProfile',
+    'PlatformBookingPolicyOverride',
+    'BookingCommission',
+    'HostProfile',
+    'HostOrganisationProfile',
+    'PropertyDocument',
 ]
 
 

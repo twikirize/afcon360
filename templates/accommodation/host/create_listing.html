@@ -680,10 +680,12 @@
         <div class="form-text">One URL per line (legacy field)</div>
       </div>
 
-      {# New Unified Media Uploader #}
-      <div class="form-group">
-        <label class="form-label">Property Photos</label>
-        {% include 'components/media_upload.html' %}
+      {# Unified Media Uploader requires an existing property (public_id);
+         so it is only available on the edit page after the listing is saved. #}
+      <div class="alert alert-info media-info-banner" role="status">
+        <i class="bi bi-info-circle me-1"></i>
+        Save this listing first, then open it from <strong>Manage Listings</strong> to
+        upload property photos via the central media system.
       </div>
     </div>
 
@@ -710,159 +712,7 @@
       </div>
     </div>
 
-     {# ─── ORGANISATION-ONLY: Bulk Import, Room Types, Inventory ─── #}
-     {% if host_info and host_info.type == 'organisation' %}
-     <!-- ─── SECTION 7: Bulk Property Import (Org Only) ─── -->
-     <div class="form-section">
-       <h5 class="form-section-title">
-         <i class="bi bi-upload"></i> Bulk Property Import
-         <span class="badge bg-warning text-dark ms-2">Organisation Feature</span>
-       </h5>
-
-       <div class="form-group">
-         <label class="form-label">CSV Template Download</label>
-         <p class="form-text">Download the template to bulk import multiple properties at once.</p>
-         <a href="{{ url_for('accommodation.host_bulk_template') }}" class="btn btn-outline-primary btn-sm">
-           <i class="bi bi-download me-1"></i> Download CSV Template
-         </a>
-       </div>
-
-       <div class="form-group">
-         <label for="bulk_csv" class="form-label">Upload CSV File</label>
-         <input type="file" class="form-control" id="bulk_csv" name="bulk_csv" accept=".csv">
-         <div class="form-text">
-           Max 1000 properties per upload. Required columns: title, description, property_type, city, country, base_price_per_night
-         </div>
-       </div>
-
-       <div class="form-group">
-         <div class="checkbox-group">
-           <input type="checkbox" id="auto_publish" name="auto_publish">
-           <label for="auto_publish">Auto-publish after import (skip review)</label>
-         </div>
-       </div>
-
-       <div id="bulk-preview" class="mt-3" style="display: none;">
-         <h6>Preview (first 5 rows)</h6>
-         <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
-           <table class="table table-sm table-bordered">
-             <thead id="bulk-preview-header"></thead>
-             <tbody id="bulk-preview-body"></tbody>
-           </table>
-         </div>
-       </div>
-     </div>
-
-     <!-- ─── SECTION 8: Room Type Management (Org Only) ─── -->
-     <div class="form-section">
-       <h5 class="form-section-title">
-         <i class="bi bi-door-open"></i> Room Type Management
-         <span class="badge bg-warning text-dark ms-2">Organisation Feature</span>
-       </h5>
-
-       <div class="form-group">
-         <label class="form-label">Add Room Types for This Property</label>
-         <p class="form-text">Define different room categories (Deluxe, Suite, Standard, etc.) with individual pricing and amenities.</p>
-       </div>
-
-       <div id="room-types-container">
-         <div class="room-type-entry card mb-3 p-3" data-index="0">
-           <div class="row g-3">
-             <div class="col-md-4">
-               <label class="form-label">Room Type Name</label>
-               <input type="text" class="form-control" name="room_type_name[]" placeholder="e.g., Deluxe King">
-             </div>
-             <div class="col-md-3">
-               <label class="form-label">Max Occupancy</label>
-               <input type="number" class="form-control" name="room_type_max_guests[]" min="1" max="10" value="2">
-             </div>
-             <div class="col-md-3">
-               <label class="form-label">Price/Night</label>
-               <div class="input-group">
-                 <span class="input-group-text">$</span>
-                 <input type="number" class="form-control" name="room_type_price[]" step="0.01" min="0">
-               </div>
-             </div>
-             <div class="col-md-2 d-flex align-items-end">
-               <button type="button" class="btn btn-outline-danger btn-sm remove-room-type" style="display: none;">
-                 <i class="bi bi-trash"></i>
-               </button>
-             </div>
-           </div>
-         </div>
-       </div>
-
-       <button type="button" class="btn btn-outline-success btn-sm" id="add-room-type">
-         <i class="bi bi-plus-lg me-1"></i> Add Another Room Type
-       </button>
-     </div>
-
-     <!-- ─── SECTION 9: Advanced Inventory Controls (Org Only) ─── -->
-     <div class="form-section">
-       <h5 class="form-section-title">
-         <i class="bi bi-calendar-week"></i> Advanced Inventory Controls
-         <span class="badge bg-warning text-dark ms-2">Organisation Feature</span>
-       </h5>
-
-       <div class="form-group">
-         <label class="form-label">Room-Level Availability</label>
-         <p class="form-text">Set availability for each room type independently. Useful for hotels with 1000+ rooms.</p>
-       </div>
-
-       <div class="form-row-3">
-         <div class="form-group">
-           <label for="total_rooms" class="form-label">Total Rooms</label>
-           <input type="number" class="form-control" id="total_rooms" name="total_rooms" min="1" placeholder="e.g., 150">
-           <div class="form-text">Total rooms in property</div>
-         </div>
-         <div class="form-group">
-           <label for="available_rooms" class="form-label">Available Now</label>
-           <input type="number" class="form-control" id="available_rooms" name="available_rooms" min="0" placeholder="e.g., 120">
-           <div class="form-text">Currently available</div>
-         </div>
-         <div class="form-group">
-           <label for="maintenance_rooms" class="form-label">Under Maintenance</label>
-           <input type="number" class="form-control" id="maintenance_rooms" name="maintenance_rooms" min="0" placeholder="e.g., 5">
-           <div class="form-text">Rooms under repair</div>
-         </div>
-       </div>
-
-       <div class="form-group">
-         <label class="form-label">Bulk Date Blocking</label>
-         <p class="form-text">Block multiple dates at once for maintenance, renovations, or seasonal closures.</p>
-       </div>
-
-       <div class="form-row">
-         <div class="form-group">
-           <label for="block_start_date" class="form-label">Block From</label>
-           <input type="date" class="form-control" id="block_start_date" name="block_start_date">
-         </div>
-         <div class="form-group">
-           <label for="block_end_date" class="form-label">Block To</label>
-           <input type="date" class="form-control" id="block_end_date" name="block_end_date">
-         </div>
-       </div>
-
-       <div class="form-group">
-         <label for="block_reason" class="form-label">Block Reason</label>
-         <select class="form-select" id="block_reason" name="block_reason">
-           <option value="maintenance">Maintenance</option>
-           <option value="renovation">Renovation</option>
-           <option value="seasonal">Seasonal Closure</option>
-           <option value="other">Other</option>
-         </select>
-       </div>
-
-       <div class="form-group">
-         <div class="checkbox-group">
-           <input type="checkbox" id="apply_to_all_rooms" name="apply_to_all_rooms" checked>
-           <label for="apply_to_all_rooms">Apply to all room types</label>
-         </div>
-       </div>
-     </div>
-     {% endif %}
-
-     <!-- ─── Form Actions ─── -->
+      <!-- ─── Form Actions ─── -->
     <div class="form-actions">
       <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn-cancel">
         <i class="bi bi-x-lg me-1"></i> Cancel

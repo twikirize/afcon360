@@ -10,7 +10,7 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.admin.owner.decorators import owner_required
 from app.admin.owner.security_service import SecuritySettingsService
-from app.admin.owner.models import SystemSetting
+from app.models.system_config import SystemConfig as SystemSetting
 from app.audit.comprehensive_audit import AuditService, AuditSeverity
 
 logger = logging.getLogger(__name__)

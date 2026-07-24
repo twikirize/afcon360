@@ -93,8 +93,8 @@ class Room(BaseModel):
     status = Column(String(50), nullable=False, default="available")
     is_maintenance = Column(Boolean, default=False, nullable=False)
     maintenance_reason = Column(Text, nullable=True)
-    maintenance_start = Column(DateTime, nullable=True)
-    maintenance_end = Column(DateTime, nullable=True)
+    maintenance_start = Column(DateTime(timezone=True), nullable=True)
+    maintenance_end = Column(DateTime(timezone=True), nullable=True)
 
     features_override = Column(JSON, default=dict)
     notes = Column(Text, nullable=True)
@@ -152,7 +152,7 @@ class RoomBooking(BaseModel):
     room_id = Column(BigInteger, ForeignKey("accommodation_rooms.id", ondelete="RESTRICT"), nullable=False)
     room = relationship("Room", back_populates="bookings")
 
-    assigned_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
     assigned_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     assigned_by_user = relationship("User", foreign_keys=[assigned_by])
 

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Property Documents - {{ property.title }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+        <div>
+            <h2 class="mb-1">Property Documents</h2>
+            <p class="text-muted mb-0">
+                <a href="{{ url_for('accommodation.host_edit_listing', property_id=property.id) }}">{{ property.title }}</a>
+                &middot; {{ property.city }}, {{ property.country }}
+            </p>
+        </div>
+        <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn btn-outline-secondary">
+            &larr; Back to Dashboard
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light fw-semibold">Upload Document</div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('accommodation.host_property_documents', property_id=property.id) }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label class="form-label">Document Type</label>
+                            <select name="document_type" class="form-select" required>
+                                <option value="">Select type...</option>
+                                {% for dt in document_types %}
+                                <option value="{{ dt }}">{{ dt|replace('_', ' ')|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">File</label>
+                            <input type="file" name="document" class="form-control" required>
+                            <small class="text-muted">Accepted: PDF, JPG, PNG. Max 10MB.</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload me-1"></i> Upload Document
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-light fw-semibold">Uploaded Documents</div>
+        <div class="card-body">
+            {% if documents %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>File</th>
+                            <th>Status</th>
+                            <th>Uploaded</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr>
+                            <td>{{ doc.document_type.value|replace('_', ' ')|title }}</td>
+                            <td>
+                                <a href="{{ doc.file_url }}" target="_blank">{{ doc.file_name }}</a>
+                                {% if doc.file_size %}
+                                <br><small class="text-muted">{{ "%.1f"|format(doc.file_size / 1024 / 1024) }} MB</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if doc.status == 'approved' %}
+                                    <span class="badge bg-success">Approved</span>
+                                {% elif doc.status == 'rejected' %}
+                                    <span class="badge bg-danger">Rejected</span>
+                                {% elif doc.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ doc.status.value|title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ doc.created_at.strftime('%Y-%m-%d') if doc.created_at else 'N/A' }}</td>
+                            <td>
+                                <a href="{{ doc.file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i> View
+                                </a>
+                                {% if doc.status == 'pending' %}
+                                <form method="POST" action="{{ url_for('accommodation.host_delete_document', document_id=doc.id) }}" class="d-inline" onsubmit="return confirm('Delete this document?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No documents uploaded yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

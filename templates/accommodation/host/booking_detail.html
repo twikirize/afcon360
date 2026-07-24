@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Booking #{{ booking.id }} - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+        <div>
+            <h2 class="mb-1">Booking {{ booking.booking_reference }}</h2>
+            <p class="text-muted mb-0">
+                {% if property %}{{ property.name }} — {{ property.city }}, {{ property.country }}{% endif %}
+            </p>
+        </div>
+        <a href="{{ url_for('accommodation.host_bookings') }}" class="btn btn-outline-secondary">
+            &larr; Back to Bookings
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Stay Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <small class="text-muted d-block">Check-in</small>
+                            <strong>{{ booking.check_in.strftime('%a, %b %d, %Y') }}</strong>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <small class="text-muted d-block">Check-out</small>
+                            <strong>{{ booking.check_out.strftime('%a, %b %d, %Y') }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Nights</small>
+                            <strong>{{ booking.num_nights }}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Guests</small>
+                            <strong>{{ booking.num_guests }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-user me-2"></i>Guest Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted d-block">Primary Guest</small>
+                            <strong>{{ booking.primary_guest_name or booking.guest_name or 'N/A' }}</strong>
+                            <br><small class="text-muted">{{ booking.primary_guest_email or booking.guest_email or '' }}</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <small class="text-muted d-block">Booked By</small>
+                            <strong>{{ booking.booked_by_user.username or 'N/A' }}</strong>
+                            <br><small class="text-muted">{{ booking.booked_by_user.email or '' }}</small>
+                        </div>
+                    </div>
+                    {% if booking.special_requests %}
+                    <div class="mt-2">
+                        <small class="text-muted d-block">Special Requests</small>
+                        <p class="mb-0">{{ booking.special_requests }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-receipt me-2"></i>Payment</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6 mb-2">
+                            <small class="text-muted d-block">Total</small>
+                            <strong>{{ booking.currency }} {{ "%.2f"|format(booking.total_amount) }}</strong>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <small class="text-muted d-block">Status</small>
+                            <span class="badge {% if booking.payment_status == 'paid' %}bg-success{% elif booking.payment_status == 'refunded' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                {{ booking.payment_status|replace('_', ' ')|title }}
+                            </span>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <small class="text-muted d-block">Method</small>
+                            <strong>{{ booking.payment_method|default('Wallet', true)|replace('_', ' ')|title }}</strong>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <small class="text-muted d-block">Transaction</small>
+                            <code class="small">{{ booking.wallet_txn_id or 'N/A' }}</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Actions</h5>
+                </div>
+                <div class="card-body d-grid gap-2">
+                    {% if booking.status == 'pending_approval' %}
+                    <form method="POST" action="{{ url_for('accommodation.host_approve_booking', booking_id=booking.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-check me-1"></i> Approve Booking
+                        </button>
+                    </form>
+                    <button class="btn btn-outline-danger w-100" type="button" data-bs-toggle="collapse" data-bs-target="#rejectForm">
+                        <i class="fas fa-times me-1"></i> Reject Booking
+                    </button>
+                    <div class="collapse mt-2" id="rejectForm">
+                        <form method="POST" action="{{ url_for('accommodation.host_reject_booking', booking_id=booking.id) }}" class="card card-body">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="mb-2">
+                                <label class="form-label">Rejection Reason</label>
+                                <input type="text" name="reason" class="form-control" value="Not available" required>
+                            </div>
+                            <button type="submit" class="btn btn-danger btn-sm w-100">Confirm Rejection</button>
+                        </form>
+                    </div>
+                    {% endif %}
+                    {% if booking.status == 'confirmed' %}
+                    <form method="POST" action="{{ url_for('accommodation.host_check_in', booking_id=booking.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-sign-in-alt me-1"></i> Check In Guest
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if booking.status == 'checked_in' %}
+                    <form method="POST" action="{{ url_for('accommodation.host_check_out', booking_id=booking.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-sign-out-alt me-1"></i> Check Out Guest
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {% if booking.payment_status == 'paid' and booking.status not in ['cancelled', 'checked_out'] %}
+                    <button class="btn btn-outline-danger w-100" type="button" data-bs-toggle="collapse" data-bs-target="#refundForm">
+                        <i class="fas fa-undo me-1"></i> Issue Refund
+                    </button>
+                    <div class="collapse mt-2" id="refundForm">
+                        <form method="POST" action="{{ url_for('accommodation.host_refund_booking', booking_id=booking.id) }}" class="card card-body">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="mb-2">
+                                <label class="form-label">Refund Amount ({{ booking.currency }})</label>
+                                <input type="number" name="refund_amount" class="form-control" value="{{ booking.total_amount }}" max="{{ booking.total_amount }}" step="0.01" required>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label">Reason</label>
+                                <input type="text" name="reason" class="form-control" value="Host issued refund" required>
+                            </div>
+                            <button type="submit" class="btn btn-danger btn-sm w-100">Confirm Refund</button>
+                        </form>
+                    </div>
+                    {% endif %}
+
+                    <a href="{{ url_for('accommodation.guest_detail', identifier=property.id if property else booking.property_id) }}" class="btn btn-outline-secondary w-100" target="_blank">
+                        <i class="fas fa-eye me-1"></i> View Property
+                    </a>
+                </div>
+            </div>
+
+            {% if commission %}
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Payout</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Total</span>
+                        <strong>{{ booking.currency }} {{ "%.2f"|format(commission.total_amount) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Commission</span>
+                        <span class="text-danger">{{ booking.currency }} {{ "%.2f"|format(commission.commission_amount) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Host Payout</span>
+                        <strong class="text-success">{{ booking.currency }} {{ "%.2f"|format(commission.host_payout) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Status</span>
+                        {% if commission.status == 'released' %}
+                            <span class="badge bg-success">Released</span>
+                        {% elif commission.status == 'refunded' %}
+                            <span class="badge bg-danger">Refunded</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">{{ commission.status|title }}</span>
+                        {% endif %}
+                    </div>
+                    {% if commission.released_at %}
+                    <div class="d-flex justify-content-between">
+                        <span>Released</span>
+                        <strong>{{ commission.released_at.strftime('%Y-%m-%d %H:%M') }}</strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

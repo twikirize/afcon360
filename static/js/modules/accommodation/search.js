@@ -11,7 +11,7 @@
             const q = input.value.trim();
             if (q.length < 2) { list.hidden = true; return; }
             try {
-                const res = await fetch(`/accommodation/api/autocomplete?q=${encodeURIComponent(q)}`);
+                const res = await fetch(`/accommodation/guest/api/autocomplete?q=${encodeURIComponent(q)}`);
                 const data = await res.json();
                 list.innerHTML = '';
                 if (!data.suggestions?.length) { list.hidden = true; return; }

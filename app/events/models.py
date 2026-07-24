@@ -32,6 +32,7 @@ from sqlalchemy.sql import func
 
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.id_kinds import IDKind
 from app.events.constants import (
     EventStatus,
     ALLOWED_TRANSITIONS,
@@ -175,9 +176,9 @@ class Event(BaseModel):
     organizer_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
 
     # ── Approval / rejection audit ─────────────────────────────────────────
-    approved_at      = Column(DateTime, nullable=True)
+    approved_at      = Column(DateTime(timezone=True), nullable=True)
     approved_by_id   = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    rejected_at      = Column(DateTime, nullable=True)
+    rejected_at      = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
     # Internal moderation notes (separate from rejection_reason which goes to organiser)
@@ -186,21 +187,21 @@ class Event(BaseModel):
     # ── Moderation enforcement ─────────────────────────────────────────────
     suspension_reason   = Column(Text,       nullable=True)
     suspension_duration = Column(String(20), nullable=True)
-    suspended_at        = Column(DateTime,   nullable=True)
+    suspended_at        = Column(DateTime(timezone=True),   nullable=True)
     suspended_by_id     = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     deactivation_reason = Column(Text,       nullable=True)
-    deactivated_at      = Column(DateTime,   nullable=True)
+    deactivated_at      = Column(DateTime(timezone=True),   nullable=True)
     deactivated_by_id   = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     takedown_reason   = Column(Text,       nullable=True)
     takedown_category = Column(String(50), nullable=True)
-    taken_down_at     = Column(DateTime,   nullable=True)
+    taken_down_at     = Column(DateTime(timezone=True),   nullable=True)
     taken_down_by_id  = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # ── Completion (auto-set by scheduler) ────────────────────────────────
-    completed_at = Column(DateTime, nullable=True)
-    published_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
     published_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # ── Soft delete ────────────────────────────────────────────────────────
@@ -503,8 +504,8 @@ class TicketType(BaseModel):
     capacity        = Column(Integer, default=0, nullable=False)
     available_seats = Column(Integer, nullable=True)
     version         = Column(Integer, default=0, nullable=False)
-    available_from  = Column(DateTime, nullable=True)
-    available_until = Column(DateTime, nullable=True)
+    available_from  = Column(DateTime(timezone=True), nullable=True)
+    available_until = Column(DateTime(timezone=True), nullable=True)
     is_active       = Column(Boolean, default=True)
 
     event         = relationship("Event", back_populates="ticket_types")
@@ -680,7 +681,7 @@ class EventRegistration(BaseModel):
     payment_status   = Column(String(30),    default="free")
     wallet_txn_id    = Column(String(255),   nullable=True)
     status           = Column(String(30),    default="confirmed", nullable=False, index=True)
-    checked_in_at    = Column(DateTime,      nullable=True)
+    checked_in_at    = Column(DateTime(timezone=True),      nullable=True)
     checked_in_by_id = Column(BigInteger,    ForeignKey("users.id"), nullable=True)
     discount_code_applied = Column(String(50), nullable=True)
     discount_amount  = Column(Numeric(10, 2), default=0, nullable=False)
@@ -796,8 +797,8 @@ class Waitlist(BaseModel):
     email               = Column(String(255), nullable=False)
     phone               = Column(String(50),  nullable=True)
     notes               = Column(Text,        nullable=True)
-    notified_at         = Column(DateTime,    nullable=True)
-    converted_at        = Column(DateTime,    nullable=True)
+    notified_at         = Column(DateTime(timezone=True),    nullable=True)
+    converted_at        = Column(DateTime(timezone=True),    nullable=True)
     notification_sent   = Column(Boolean,     default=False, nullable=False)
     conversion_attempts = Column(Integer,     default=0, nullable=False)
 
@@ -836,7 +837,7 @@ class EventRole(BaseModel):
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"),  nullable=True, index=True)
     permissions     = Column(JSON,       default=list)
     assigned_by_id  = Column(BigInteger, ForeignKey("users.id"),        nullable=True)
-    assigned_at     = Column(DateTime,   default=func.now())
+    assigned_at     = Column(DateTime(timezone=True),   default=func.now())
     is_active       = Column(Boolean,    default=True)
 
     event        = relationship("Event",        backref="staff_roles")
@@ -865,8 +866,8 @@ class DiscountCode(BaseModel):
     discount_type  = Column(String(20), nullable=False)
     discount_value = Column(Numeric(10, 2), nullable=False)
     currency       = Column(String(3),      default="USD")
-    valid_from     = Column(DateTime,       nullable=False, default=datetime.utcnow)
-    valid_until    = Column(DateTime,       nullable=True)
+    valid_from     = Column(DateTime(timezone=True),       nullable=False, default=datetime.utcnow)
+    valid_until    = Column(DateTime(timezone=True),       nullable=True)
     usage_limit    = Column(Integer,        nullable=True)
     used_count     = Column(Integer,        default=0, nullable=False)
     minimum_order  = Column(Numeric(10, 2), default=0)
@@ -916,8 +917,8 @@ class EventTransferRequest(BaseModel):
     )
     reason         = Column(Text,     nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    approved_at    = Column(DateTime, nullable=True)
-    expires_at     = Column(DateTime, nullable=True)
+    approved_at    = Column(DateTime(timezone=True), nullable=True)
+    expires_at     = Column(DateTime(timezone=True), nullable=True)
 
     event             = relationship("Event",        foreign_keys=[event_id])
     from_user         = relationship("User",         foreign_keys=[from_user_id])
@@ -982,7 +983,7 @@ class EventTransferLog(BaseModel):
     to_owner_type     = Column(String(20), nullable=False)
     to_owner_id       = Column(BigInteger, nullable=False)
     transferred_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    transferred_at    = Column(DateTime,   default=datetime.utcnow)
+    transferred_at    = Column(DateTime(timezone=True),   default=datetime.utcnow)
     extra_data        = Column(JSON,       default=dict)
 
     event          = relationship("Event", foreign_keys=[event_id])
@@ -1021,10 +1022,10 @@ class EventHostRegistration(BaseModel):
     special_instructions = Column(Text, nullable=True)
     
     # Timestamps
-    registered_at = Column(DateTime, default=datetime.utcnow)
-    approved_at = Column(DateTime, nullable=True)
+    registered_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    rejected_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
     
     # Relationships
@@ -1061,17 +1062,17 @@ class EventAssignment(BaseModel):
 
     event_id                  = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     attendee_id               = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    accommodation_booking_id  = Column(BigInteger, nullable=True)
-    transport_booking_id      = Column(BigInteger, nullable=True)
-    meal_booking_id           = Column(BigInteger, nullable=True)
-    community_host_id         = Column(BigInteger, nullable=True, index=True)
+    accommodation_booking_id  = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    transport_booking_id      = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    meal_booking_id           = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    community_host_id         = Column(BigInteger, nullable=True, index=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
     managed_by                = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     notes                     = Column(Text, nullable=True)
     schedule_json             = Column(JSON, default=dict)
     registration_id           = Column(BigInteger, ForeignKey("event_registrations.id", ondelete="SET NULL"), nullable=True)
     status                    = Column(String(30), default="active", nullable=False)
     assigned_by_id            = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    assigned_at               = Column(DateTime, default=func.now())
+    assigned_at               = Column(DateTime(timezone=True), default=func.now())
 
     event        = relationship("Event", foreign_keys=[event_id], backref="assignments")
     attendee     = relationship("User", foreign_keys=[attendee_id])

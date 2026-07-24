@@ -32,16 +32,16 @@ class ContentSubmission(BaseModel):
     submitted_by = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     submitted_by_org = Column(BigInteger, ForeignKey("organisations.id"), nullable=True)
 
-    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Phase 3: Claim / assignment fields
     assigned_to_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    claimed_at = Column(DateTime, nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
     processing_time_seconds = Column(Integer, nullable=True)  # seconds
 
     # SLA tracking
-    sla_due_at = Column(DateTime, nullable=True)  # When this submission should be reviewed by
+    sla_due_at = Column(DateTime(timezone=True), nullable=True)  # When this submission should be reviewed by
 
     # Internal moderation notes (separate from review_notes which go to submitter)
     moderation_notes = Column(Text, nullable=True)
@@ -109,14 +109,14 @@ class ContentFlag(BaseModel):
     
     # Resolution tracking
     resolved_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolution_action = Column(String(50), nullable=True)  # approved, rejected, suspended, banned, etc.
     resolution_notes = Column(Text, nullable=True)
     appeal_count = Column(Integer, default=0)
     final_resolution = Column(Boolean, default=False)
     
     # SLA tracking (enterprise feature)
-    sla_due_at = Column(DateTime, nullable=False, index=True)
+    sla_due_at = Column(DateTime(timezone=True), nullable=False, index=True)
     sla_breached = Column(Boolean, default=False)
     sla_priority = Column(String(20), default="normal")  # immediate, urgent, normal, low
     processing_time_seconds = Column(Integer, nullable=True)
@@ -139,8 +139,8 @@ class ContentFlag(BaseModel):
     regional_policy_applied = Column(Boolean, default=False)
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     extra_data = Column(JSON, default=dict)  # Additional context, evidence, etc.
 
     # Legacy fields for compatibility
@@ -148,7 +148,7 @@ class ContentFlag(BaseModel):
     escalated_to_role = Column(String(50), nullable=True)  # admin, compliance_officer, etc.
     auto_priority = Column(Boolean, default=False)
     referred_to_compliance = Column(Boolean, default=False)
-    referred_at = Column(DateTime, nullable=True)
+    referred_at = Column(DateTime(timezone=True), nullable=True)
     referred_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # Relationships
@@ -210,7 +210,7 @@ class ModerationLog(BaseModel):
     submission_id = Column(BigInteger, ForeignKey("content_submissions.id"), nullable=False, index=True)
     moderator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String(20), nullable=False)  # approve | reject | claim
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     notes = Column(Text, nullable=True)
 
     # Relationships

@@ -20,7 +20,7 @@
         <input type="file"
                id="fileInput"
                multiple
-               accept="{{ accepted_types|default('image/jpeg,image/png,image/webp,image/heic') }}">
+               accept="{{ accepted_types|default('image/jpeg,image/png,image/webp,image/heic') }}{% if allow_video|default('false') == 'true' %},video/*{% endif %}">
     </div>
 
     {# Upload Queue #}
@@ -28,18 +28,697 @@
 
     {# Progress Bar #}
     <div class="upload-progress" id="uploadProgress" style="display: none;">
-        <div class="progress-bar" style="width: 0%"></div>
+        <div class="progress-bar" style="width: 0%">0%</div>
+    </div>
+
+    {# Stats #}
+    <div class="media-stats">
+        <span class="media-count">0 / {{ max_files|default(20) }}</span>
+        <span class="media-hint">{{ media_hint|default('Upload images for your listing') }}</span>
     </div>
 
     {# Gallery Grid #}
     <div class="media-grid" id="mediaGrid">
         {# Existing media displayed here by MediaManager JS #}
+        <div class="media-loading">Loading media...</div>
     </div>
 </div>
 
 {# Lightbox Modal #}
 <div class="media-lightbox" id="mediaLightbox">
     <div class="media-lightbox-content">
-        {# Content injected by JS #}
+        <button class="media-lightbox-close" data-action="close-lightbox">&times;</button>
+        <div class="lightbox-media"></div>
+        <button class="media-lightbox-nav media-lightbox-prev" data-action="prev">&#10094;</button>
+        <button class="media-lightbox-nav media-lightbox-next" data-action="next">&#10095;</button>
+        <div class="lightbox-info"></div>
     </div>
 </div>
+
+{# CSS Styles #}
+<style>
+/* ================================
+   Media Uploader Styles
+   ================================ */
+
+.media-uploader {
+    background: var(--bg-card, #ffffff);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color, #e5e7eb);
+}
+
+/* Drop Zone */
+.drop-zone {
+    border: 2px dashed var(--border-color, #d1d5db);
+    border-radius: 10px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--bg-dropzone, #f9fafb);
+    margin-bottom: 20px;
+}
+
+.drop-zone:hover {
+    border-color: var(--primary-color, #2563eb);
+    background: var(--bg-dropzone-hover, #eff6ff);
+}
+
+.drop-zone.drag-over {
+    border-color: var(--primary-color, #2563eb);
+    background: var(--bg-dropzone-hover, #eff6ff);
+    transform: scale(1.02);
+}
+
+.drop-zone-content {
+    pointer-events: none;
+}
+
+.drop-zone-content i {
+    font-size: 48px;
+    color: var(--primary-color, #2563eb);
+    display: block;
+    margin-bottom: 10px;
+}
+
+.drop-zone-content h5 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary, #1f2937);
+    margin: 0 0 5px 0;
+}
+
+.drop-zone-content p {
+    font-size: 14px;
+    color: var(--text-secondary, #6b7280);
+    margin: 0 0 10px 0;
+}
+
+.drop-zone-content .btn {
+    pointer-events: none;
+}
+
+.drop-zone input[type="file"] {
+    display: none;
+}
+
+/* Upload Progress */
+.upload-progress {
+    height: 6px;
+    background: var(--bg-progress, #e5e7eb);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 10px 0 20px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color, #2563eb), var(--primary-light, #60a5fa));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    width: 0%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: white;
+    font-weight: 600;
+}
+
+/* Upload Queue */
+.upload-queue {
+    margin-bottom: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.upload-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: var(--bg-item, #f9fafb);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.upload-item-preview {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg-muted, #e5e7eb);
+}
+
+.upload-item-preview img,
+.upload-item-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.upload-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.upload-item-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary, #1f2937);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upload-item-size {
+    font-size: 12px;
+    color: var(--text-secondary, #6b7280);
+}
+
+.upload-item-status {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.upload-item-status.uploading {
+    color: var(--primary-color, #2563eb);
+    background: var(--bg-primary-light, #eff6ff);
+}
+
+.upload-item-status.success {
+    color: var(--success-color, #16a34a);
+    background: var(--bg-success-light, #f0fdf4);
+}
+
+.upload-item-status.error {
+    color: var(--danger-color, #dc2626);
+    background: var(--bg-danger-light, #fef2f2);
+}
+
+.upload-item-remove {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-muted, #9ca3af);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.upload-item-remove:hover {
+    color: var(--danger-color, #dc2626);
+    background: var(--bg-danger-light, #fef2f2);
+}
+
+/* Media Stats */
+.media-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 14px;
+    color: var(--text-secondary, #6b7280);
+}
+
+.media-count {
+    font-weight: 500;
+}
+
+.media-hint {
+    font-size: 12px;
+    color: var(--text-muted, #9ca3af);
+}
+
+/* Gallery Grid */
+.media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    min-height: 100px;
+}
+
+.media-loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 30px;
+    color: var(--text-secondary, #6b7280);
+}
+
+.media-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary, #6b7280);
+}
+
+.media-empty .empty-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 10px;
+}
+
+.media-empty p {
+    margin: 0;
+    font-size: 16px;
+}
+
+.media-empty small {
+    font-size: 13px;
+    color: var(--text-muted, #9ca3af);
+}
+
+.media-error {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 30px;
+    color: var(--danger-color, #dc2626);
+    background: var(--bg-danger-light, #fef2f2);
+    border-radius: 8px;
+}
+
+/* Media Item */
+.media-item {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-muted, #e5e7eb);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.media-item:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1;
+}
+
+.media-item img,
+.media-item video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.media-item.deleting {
+    opacity: 0.5;
+    animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.media-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--text-muted, #9ca3af);
+}
+
+.media-cover-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: var(--primary-color, #2563eb);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 12px;
+    z-index: 2;
+    letter-spacing: 0.3px;
+}
+
+.media-item-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 10px;
+}
+
+.media-item:hover .media-item-overlay {
+    opacity: 1;
+}
+
+.media-item-info {
+    margin-bottom: 8px;
+}
+
+.media-item-name {
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.media-item-btn {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    backdrop-filter: blur(4px);
+}
+
+.media-item-btn:hover {
+    background: rgba(255,255,255,0.4);
+    transform: scale(1.05);
+}
+
+.media-item-btn.delete:hover {
+    background: rgba(220,38,38,0.8);
+}
+
+.media-item-btn.cover:hover {
+    background: rgba(37,99,235,0.8);
+}
+
+.media-item-btn.view:hover {
+    background: rgba(255,255,255,0.5);
+}
+
+/* Lightbox */
+.media-lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.media-lightbox.active {
+    display: flex;
+}
+
+.media-lightbox-content {
+    position: relative;
+    width: 100%;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.media-lightbox-close {
+    position: absolute;
+    top: -50px;
+    right: 0;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 32px;
+    cursor: pointer;
+    padding: 10px;
+    z-index: 10;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.media-lightbox-close:hover {
+    opacity: 1;
+}
+
+.lightbox-media {
+    width: 100%;
+    max-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lightbox-media img,
+.lightbox-media video {
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.media-placeholder-large {
+    font-size: 80px;
+    color: rgba(255,255,255,0.3);
+}
+
+.media-lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    font-size: 32px;
+    padding: 20px 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s;
+    backdrop-filter: blur(4px);
+}
+
+.media-lightbox-nav:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.media-lightbox-prev {
+    left: -60px;
+}
+
+.media-lightbox-next {
+    right: -60px;
+}
+
+.lightbox-info {
+    margin-top: 15px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    color: rgba(255,255,255,0.8);
+    font-size: 14px;
+}
+
+.lightbox-filename {
+    font-weight: 500;
+}
+
+.lightbox-counter {
+    opacity: 0.6;
+}
+
+.lightbox-cover-badge {
+    background: var(--primary-color, #2563eb);
+    color: white;
+    padding: 2px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Notifications */
+.media-notification {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 500;
+    z-index: 10000;
+    animation: slideUp 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    max-width: 400px;
+}
+
+.media-notification.success {
+    background: var(--success-color, #16a34a);
+}
+
+.media-notification.error {
+    background: var(--danger-color, #dc2626);
+}
+
+.media-notification.info {
+    background: var(--primary-color, #2563eb);
+}
+
+.media-notification.fade-out {
+    animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .media-uploader {
+        padding: 12px;
+    }
+
+    .drop-zone {
+        padding: 24px 16px;
+    }
+
+    .drop-zone-content i {
+        font-size: 32px;
+    }
+
+    .drop-zone-content h5 {
+        font-size: 16px;
+    }
+
+    .media-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 8px;
+    }
+
+    .media-lightbox-nav {
+        padding: 12px 10px;
+        font-size: 24px;
+    }
+
+    .media-lightbox-prev {
+        left: 10px;
+    }
+
+    .media-lightbox-next {
+        right: 10px;
+    }
+
+    .lightbox-info {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .media-notification {
+        bottom: 20px;
+        right: 20px;
+        left: 20px;
+        max-width: none;
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .media-grid {
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    }
+
+    .media-item-actions {
+        gap: 4px;
+    }
+
+    .media-item-btn {
+        font-size: 12px;
+        padding: 3px 6px;
+    }
+
+    .media-cover-badge {
+        font-size: 9px;
+        padding: 1px 8px;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .media-uploader {
+        --bg-card: #1f2937;
+        --bg-dropzone: #374151;
+        --bg-dropzone-hover: #4b5563;
+        --bg-item: #374151;
+        --bg-progress: #4b5563;
+        --border-color: #4b5563;
+        --text-primary: #f9fafb;
+        --text-secondary: #d1d5db;
+        --text-muted: #9ca3af;
+        --bg-muted: #4b5563;
+        --bg-primary-light: #1e3a5f;
+        --bg-success-light: #1a3a2a;
+        --bg-danger-light: #3a1a1a;
+    }
+
+    .drop-zone {
+        border-color: #4b5563;
+        background: #374151;
+    }
+
+    .drop-zone:hover {
+        background: #4b5563;
+    }
+
+    .upload-item {
+        background: #374151;
+    }
+
+    .media-item {
+        background: #4b5563;
+    }
+
+    .drop-zone-content p {
+        color: #9ca3af;
+    }
+}
+</style>

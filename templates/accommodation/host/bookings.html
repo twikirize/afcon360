@@ -22,8 +22,16 @@
             <tbody>
                 {% for booking in bookings %}
                 <tr>
-                    <td>{{ booking.guest_name }}</td>
-                    <td>{{ booking.accommodation_property.title if booking.accommodation_property else 'N/A' }}</td>
+                    <td>
+                        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}">
+                            {{ booking.primary_guest_name or booking.guest_name or 'N/A' }}
+                        </a>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}">
+                            {{ booking.accommodation_property.title if booking.accommodation_property else 'N/A' }}
+                        </a>
+                    </td>
                     <td>{{ booking.check_in.strftime('%b %d') }} - {{ booking.check_out.strftime('%b %d, %Y') }}</td>
                     <td>${{ "%.2f"|format(booking.total_amount) }}</td>
                     <td>
@@ -32,6 +40,19 @@
                         </span>
                     </td>
                     <td>
+                        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}" class="btn btn-sm btn-outline-primary">
+                            View
+                        </a>
+                        {% if booking.status == 'pending_approval' %}
+                        <form method="POST" action="{{ url_for('accommodation.host_approve_booking', booking_id=booking.id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-sm btn-success">Approve</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('accommodation.host_reject_booking', booking_id=booking.id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-sm btn-danger">Reject</button>
+                        </form>
+                        {% endif %}
                         {% if booking.status == 'confirmed' %}
                         <form method="POST" action="{{ url_for('accommodation.host_check_in', booking_id=booking.id) }}" class="d-inline">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

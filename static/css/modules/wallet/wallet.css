@@ -57,7 +57,7 @@
 }
 
 .wallet-title {
-  font-size: 2.5rem;
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
   font-weight: 700;
   color: var(--wallet-text-primary);
   margin-bottom: var(--wallet-spacing-xs);
@@ -134,7 +134,7 @@
 }
 
 .wallet-balance-amount {
-  font-size: 3rem;
+  font-size: clamp(1.8rem, 5vw, 3rem);
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.025em;
@@ -273,6 +273,17 @@
 
 .wallet-grid-cols-4 {
   grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .wallet-grid-cols-2,
+  .wallet-grid-cols-3,
+  .wallet-grid-cols-4 {
+    grid-template-columns: 1fr;
+  }
+  .wallet-grid-cols-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {

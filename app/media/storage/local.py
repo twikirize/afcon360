@@ -4,6 +4,8 @@ import os
 import shutil
 from pathlib import Path
 
+from app.media.storage import StorageBackend
+
 
 class LocalStorageBackend(StorageBackend):
     """

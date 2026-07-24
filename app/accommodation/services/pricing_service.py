@@ -18,8 +18,6 @@ class PricingService:
     """
 
     # Platform fees (configurable)
-    PLATFORM_SERVICE_FEE_PERCENT = Decimal('10.0')  # 10%
-
     @staticmethod
     def calculate_total(
             property: Property,

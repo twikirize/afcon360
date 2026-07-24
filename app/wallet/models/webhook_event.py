@@ -16,9 +16,9 @@ class WebhookEvent(ProtectedModel):
     signature = Column(String(512), nullable=True)
     status = Column(String(32), nullable=False, default="queued", index=True)
     retry_count = Column(Integer, default=0, nullable=False)
-    next_retry_at = Column(DateTime, nullable=True, index=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_error = Column(Text, nullable=True)
-    processed_at = Column(DateTime, nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
 
     def mark_processed(self, session=None):
         self.status = "processed"

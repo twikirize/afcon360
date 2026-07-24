@@ -81,7 +81,7 @@ class Review(BaseModel):
     # -------------------------------
     comment = Column(Text, nullable=True)
     host_response = Column(Text, nullable=True)
-    responded_at = Column(DateTime, nullable=True)
+    responded_at = Column(DateTime(timezone=True), nullable=True)
 
     # -------------------------------
     # Moderation
@@ -89,13 +89,13 @@ class Review(BaseModel):
     status = Column(String(50), default="pending", nullable=False, index=True)
     moderated_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     moderation_reason = Column(Text, nullable=True)
-    moderated_at = Column(DateTime, nullable=True)
+    moderated_at = Column(DateTime(timezone=True), nullable=True)
 
     # -------------------------------
     # Publishing
     # -------------------------------
     is_published = Column(Boolean, default=False, index=True)
-    published_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
 
 
     # -------------------------------

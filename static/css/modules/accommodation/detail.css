@@ -42,6 +42,13 @@
 }
 .sbb-cta:hover { background: #00224f; color: white; }
 
+@media (max-width: 768px) {
+  .sbb-cta {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 /* Urgency */
 .urgency-bar { padding: 8px 14px; border-radius: 6px; font-size: 13px;
     font-weight: 600; margin: 8px 0; display: flex; align-items: center; gap: 6px; }

@@ -288,9 +288,9 @@ def moderation_settings():
     from app.accommodation.models.review import Review, AccommodationReviewStatus
     
     # Get moderation queue counts
-    pending_properties = Property.query.filter_by(status=AccommodationPropertyStatus.PENDING_REVIEW).count()
+    pending_properties = Property.query.filter_by(status=AccommodationPropertyStatus.PENDING_REVIEW.value).count()
     pending_bookings = AccommodationBooking.query.filter_by(status='pending').count()
-    pending_reviews = Review.query.filter_by(status=AccommodationReviewStatus.PENDING).count()
+    pending_reviews = Review.query.filter_by(status=AccommodationReviewStatus.PENDING.value).count()
     
     # Recent moderation activity
     from datetime import datetime, timedelta
@@ -298,11 +298,11 @@ def moderation_settings():
     
     recent_moderations = {
         'properties_approved': Property.query.filter(
-            Property.status == AccommodationPropertyStatus.ACTIVE,
+            Property.status == AccommodationPropertyStatus.ACTIVE.value,
             Property.verified_at >= last_24h
         ).count(),
         'reviews_approved': Review.query.filter(
-            Review.status == AccommodationReviewStatus.APPROVED,
+            Review.status == AccommodationReviewStatus.APPROVED.value,
             Review.moderated_at >= last_24h
         ).count(),
     }

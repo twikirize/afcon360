@@ -9,7 +9,7 @@ from typing import Any, Optional, Dict
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db, cache
-from app.admin.owner.models import SystemSetting
+from app.models.system_config import SystemConfig
 from app.config import Config
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class SecuritySettingsService:
             return cached
 
         # Try database
-        setting = SystemSetting.query.filter_by(key=key).first()
+        setting = SystemConfig.query.filter_by(key=key).first()
         if setting:
             # Convert value based on type
             if setting.value_type == 'bool':
@@ -88,10 +88,10 @@ class SecuritySettingsService:
         """Set a system setting and clear cache"""
         try:
             # Get old value for audit
-            old_setting = SystemSetting.query.filter_by(key=key).first()
+            old_setting = SystemConfig.query.filter_by(key=key).first()
             old_value = old_setting.value if old_setting else None
 
-            setting = SystemSetting.set(
+            setting = SystemConfig.set(
                 key=key,
                 value=value,
                 value_type=value_type,
@@ -155,7 +155,7 @@ class SecuritySettingsService:
         flags = {}
 
         # Database flags
-        db_flags = SystemSetting.query.filter_by(category='feature').all()
+        db_flags = SystemConfig.query.filter_by(category='feature').all()
         for flag in db_flags:
             flags[flag.key] = bool(flag.get(flag.key))
 

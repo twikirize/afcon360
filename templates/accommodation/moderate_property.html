@@ -30,7 +30,8 @@
   <div class="panel">
     <div class="panel-header">
       <div class="panel-title">Property Details</div>
-      <span class="badge badge-pending">{{ property.status.value }}</span>
+      {% set status_text = property.status.value if property.status and property.status.value else property.status %}
+      <span class="badge badge-{% if status_text == 'active' %}approved{% elif status_text == 'pending_review' %}pending{% elif status_text == 'suspended' or status_text == 'rejected' %}rejected{% else %}pending{% endif %}">{{ status_text | replace('_',' ') | title }}</span>
     </div>
     <div class="panel-body">
       <div class="info-grid">
@@ -48,7 +49,7 @@
         </div>
         <div class="info-item">
           <span class="info-label">Property Type</span>
-          <span class="info-value">{{ property.property_type.value }}</span>
+          <span class="info-value">{{ (property.property_type.value if property.property_type and property.property_type.value else property.property_type) | replace('_',' ') | title }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">Location</span>
@@ -56,11 +57,27 @@
         </div>
         <div class="info-item">
           <span class="info-label">Max Guests</span>
-          <span class="info-value">{{ property.max_capacity }}</span>
+          <span class="info-value">{{ property.max_guests }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">Price/Night</span>
-          <span class="info-value">{{ property.base_price }} {{ property.currency }}</span>
+          <span class="info-value">${{ "{:,.0f}".format(property.base_price_per_night) }} {{ property.currency }}</span>
+        </div>
+        <div class="info-item" style="grid-column: span 2;">
+          <span class="info-label">Photos</span>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;">
+            {% if property.main_image %}
+              <img src="{{ property.main_image }}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
+            {% endif %}
+            {% if property.gallery %}
+              {% for img in property.gallery %}
+                <img src="{{ img }}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
+              {% endfor %}
+            {% endif %}
+            {% if not property.main_image and not property.gallery %}
+              <span class="text-muted">No photos</span>
+            {% endif %}
+          </div>
         </div>
         <div class="info-item">
           <span class="info-label">Created</span>
@@ -74,17 +91,60 @@
     </div>
 
     <div class="action-bar">
-      <form method="POST" action="{{ safe_url('accommodation.admin.moderate_action', entity_type='property', id=property.id, action='approve') }}" style="display: inline;">
+      <form method="POST" action="{{ url_for('accommodation.moderate_property_approve', property_id=property.id) }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-approve">
           <i class="fas fa-check"></i> Approve Property
         </button>
       </form>
+      {% set status_text = property.status.value if property.status and property.status.value else property.status %}
+      {% if status_text == 'active' %}
+      <form method="POST" action="{{ url_for('accommodation.moderate_property_suspend', property_id=property.id) }}" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="reason" value="Suspended by moderator">
+        <button type="submit" class="btn btn-reject">
+          <i class="fas fa-pause"></i> Suspend
+        </button>
+      </form>
+      {% endif %}
       <button onclick="document.getElementById('reject-form').style.display='block'" class="btn btn-reject">
         <i class="fas fa-times"></i> Reject
       </button>
-      <button onclick="document.getElementById('flag-form').style.display='block'" class="btn btn-flag">
-        <i class="fas fa-flag"></i> Flag
+      <button onclick="document.getElementById('change-form').style.display='block'" class="btn btn-warning">
+        <i class="fas fa-edit"></i> Request Changes
       </button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Moderation History</div>
+    </div>
+    <div class="panel-body">
+      <table class="table">
+        <thead>
+            <tr>
+                <th>Action</th>
+                <th>Previous Status</th>
+                <th>New Status</th>
+                <th>Reason/Notes</th>
+                <th>Moderated By</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in history %}
+            <tr>
+                <td>{{ record.action }}</td>
+                <td>{{ record.previous_status }}</td>
+                <td>{{ record.new_status }}</td>
+                <td>{{ record.reason or record.notes or '' }}</td>
+                <td>{{ record.moderator.username if record.moderator else 'System' }}</td>
+                <td>{{ record.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
     </div>
   </div>
 
@@ -93,7 +153,8 @@
       <div class="panel-title">Reject Property</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('accommodation.admin.moderate_action', entity_type='property', id=property.id, action='reject') }}">
+      <form method="POST" action="{{ url_for('accommodation.moderate_property_reject', property_id=property.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label class="form-label">Rejection Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this property is being rejected..."></textarea>
@@ -106,28 +167,20 @@
     </div>
   </div>
 
-  <div id="flag-form" class="panel" style="display: none;">
+  <div id="change-form" class="panel" style="display: none;">
     <div class="panel-header">
-      <div class="panel-title">Flag for Review</div>
+      <div class="panel-title">Request Changes</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('accommodation.admin.moderate_action', entity_type='property', id=property.id, action='flag') }}">
+      <form method="POST" action="{{ url_for('accommodation.moderate_property_request_changes', property_id=property.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
-          <label class="form-label">Reason *</label>
-          <textarea name="reason" class="form-textarea" required placeholder="Explain why this property needs further review..."></textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Priority</label>
-          <select name="priority" class="form-select">
-            <option value="low">Low</option>
-            <option value="normal" selected>Normal</option>
-            <option value="high">High</option>
-            <option value="critical">Critical</option>
-          </select>
+          <label class="form-label">Requested Changes *</label>
+          <textarea name="changes" class="form-textarea" required placeholder="Specify what changes are needed..."></textarea>
         </div>
         <div style="display: flex; gap: 12px;">
-          <button type="submit" class="btn btn-flag">Flag Property</button>
-          <button type="button" onclick="document.getElementById('flag-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-warning">Request Changes</button>
+          <button type="button" onclick="document.getElementById('change-form').style.display='none'" class="btn btn-ghost">Cancel</button>
         </div>
       </form>
     </div>

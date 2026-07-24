@@ -49,6 +49,7 @@ class User(UserMixin, ProtectedModel):
 
 Before implementing any feature or fix, consult these:
 - **`DATABASE_SCALABILITY_ROADMAP.md`** — Complete ENUM migration plan, current database state, and scalability principles
+- **`static/MOBILE_OPTIMIZATION.md`** — Mobile responsive refactor record: file tree, per-file change log, preserved colors/branding, future isolation plan
 - **`app/Documentation/IDENTITY_POLICIES.md`** — Identity separation rules, BIGINT vs UUID enforcement, and security requirements
 - **`app/Documentation/`** — Additional architectural documentation
 - **`Readme's/`** — Implementation reports and system analysis
@@ -546,9 +547,30 @@ All sensitive actions must be logged using the forensic audit service:
 
 ## 18. UI/Templates Standards
 
+### Mobile-First Responsive Design (MANDATORY)
+All HTML, Jinja templates, and CSS must be optimized for mobile devices (phones ≤480px, tablets 481px–1024px) before submission. This is not optional.
+- **No fixed-width layouts** that overflow on 320px viewports
+- **No fixed `min-width` constraints** on interactive components that cause horizontal scroll
+- **All touch targets** must be ≥44×44px (WCAG minimum)
+- **Use `clamp()`** for fluid typography and spacing instead of fixed `px` values
+- **Use `repeat(auto-fit, minmax(...))`** for responsive grids instead of hardcoded column counts
+- **Safe-area insets**: Use `env(safe-area-inset-bottom)` on fixed/sticky elements for notched phones
+- **Inline styles are forbidden** on layout containers; extract to CSS classes
+
+### Template Conventions
 - Use `{{ csrf_token() }}` for CSRF protection in all forms
 - For AJAX/Pane loads, check for `?_pane=1` conditionals in `base.html`
 - Avoid `overflow: hidden` on containers that hold dropdowns (causes clipping issues)
+
+### Frontend Documentation Update (MANDATORY)
+When adding or modifying **any** HTML template, Jinja template, or CSS file:
+1. Open `static/MOBILE_OPTIMIZATION.md`
+2. Update the **File Tree** section if you added new files
+3. Add an entry under **Change Log by File** for every file you changed
+4. Update the **Verification Checklist** if you changed verification state
+5. If you added a new module CSS file, add it to the **Future Optimization Isolation Plan**
+
+**Failure to update `static/MOBILE_OPTIMIZATION.md` is a blocking review item.**
 
 ---
 
@@ -605,6 +627,8 @@ Before submitting any work, verify:
 - [ ] Code follows existing patterns in the module (subtree focus)
 - [ ] No circular imports introduced
 - [ ] Wallet logic maintains double-entry ledger constraints
+- [ ] **Frontend changes are mobile-responsive** (phones ≤480px, tablets ≤1024px)
+- [ ] **`static/MOBILE_OPTIMIZATION.md` updated** if any HTML/CSS/Jinja files were modified
 
 ---
 
@@ -612,11 +636,12 @@ Before submitting any work, verify:
 
 Before writing any code:
 1. Read the relevant section of `DATABASE_SCALABILITY_ROADMAP.md` if touching database schema
-2. Read `app/Documentation/IDENTITY_POLICIES.md` if working with user/organisation data
-3. Check for existing `backref` names in the target model file
-4. Verify the module's existing patterns and conventions
-5. Confirm no circular imports will be introduced
-6. Plan migration strategy if schema changes are needed
+2. Read `static/MOBILE_OPTIMIZATION.md` if working on any HTML, Jinja, or CSS file
+3. Read `app/Documentation/IDENTITY_POLICIES.md` if working with user/organisation data
+4. Check for existing `backref` names in the target model file
+5. Verify the module's existing patterns and conventions
+6. Confirm no circular imports will be introduced
+7. Plan migration strategy if schema changes are needed
 
 ---
 
@@ -629,7 +654,8 @@ After completing work:
 4. Check that no new ENUM types were introduced
 5. Validate that migrations are reversible
 6. Ensure code follows the module's existing patterns
-7. Document rollback plan in PR/commit message
+7. **If frontend files were touched, update `static/MOBILE_OPTIMIZATION.md`** (file tree, change log, isolation plan)
+8. Document rollback plan in PR/commit message
 
 ---
 
@@ -638,9 +664,12 @@ After completing work:
 After every implementation, always provide:
 - **Files changed:** list every file modified
 - **What was done:** 2–3 sentence summary
-- **Migration needed?** yes/no — if yes: `flask db migrate -m 'description'` ; `flask db upgrade`
-- **Manual steps:** env vars, server restarts, seed scripts
-- **Risks/conflicts:** anything that could break existing behavior
+- **What changed / improved:** explicitly state what behavior changed, what bug was fixed, or what feature was added
+- **Migration needed?** yes/no — if yes: propose the exact `flask db migrate` / `flask db upgrade` commands, but do NOT run them automatically
+- **Manual steps:** anything that cannot be automated (env vars, server restarts, seed scripts, etc.)
+- **Risks/conflicts:** flag anything that could break existing behavior, circular imports, or convention violations
+- **Verification:** how to confirm the fix works (test command, manual steps, or both)
+- **Frontend documentation:** if HTML/CSS/Jinja was touched, confirm `static/MOBILE_OPTIMIZATION.md` was updated
 
 ---
 

@@ -15,9 +15,19 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         
                         <!-- ============================================================ -->
-                        <!-- STEP 1: WHO IS THIS BOOKING FOR? -->
+                        <!-- STEP 1: WHO IS BOOKING? (always the logged-in user) -->
                         <!-- ============================================================ -->
-                        <h5 class="mb-3">Who is this booking for?</h5>
+                        <div class="alert alert-info mb-4">
+                            <i class="fas fa-user-circle me-2"></i>
+                            <strong>Booking as:</strong> {{ current_user.username or current_user.email }}
+                            <br>
+                            <small class="text-muted">You are the booker and payer for this reservation.</small>
+                        </div>
+
+                        <!-- ============================================================ -->
+                        <!-- STEP 2: WHO IS STAYING? -->
+                        <!-- ============================================================ -->
+                        <h5 class="mb-3">Who is staying?</h5>
                         <div class="mb-4">
                             <div class="row">
                                 <div class="col-md-4">
@@ -39,7 +49,7 @@
                                                 <i class="fas fa-users"></i> Someone Else
                                             </label>
                                         </div>
-                                        <p class="small text-muted mt-2 mb-0">I'm booking for family/friend</p>
+                                        <p class="small text-muted mt-2 mb-0">I'm booking for a guest (no account needed)</p>
                                     </div>
                                 </div>
                                 <div class="col-md-4">
@@ -123,7 +133,86 @@
                         </div>
                         
                         <!-- ============================================================ -->
-                        <!-- STEP 5: BOOKING DETAILS (from property) -->
+                        <!-- STEP 5: PAYMENT METHOD -->
+                        <!-- ============================================================ -->
+                        <h5 class="mb-3">Payment Method</h5>
+                        <div class="mb-4">
+                            {% if payment_options and payment_options.allowed_methods %}
+                            <div class="row">
+                                {% for method_id in payment_options.allowed_methods %}
+                                <div class="col-md-4 mb-2">
+                                    <div class="payment-method-card" onclick="selectPaymentMethod('{{ method_id }}')">
+                                        <div class="form-check">
+                                            <input type="radio" name="payment_method" value="{{ method_id }}" id="pm_{{ method_id }}" class="form-check-input" {{ 'checked' if loop.first else '' }}>
+                                            <label class="form-check-label fw-bold" for="pm_{{ method_id }}">
+                                                {% if method_id == 'wallet' %}
+                                                <i class="fas fa-wallet"></i> Wallet
+                                                {% elif method_id == 'mobile_money' %}
+                                                <i class="fas fa-mobile-alt"></i> Mobile Money
+                                                {% elif method_id == 'card' %}
+                                                <i class="fas fa-credit-card"></i> Card
+                                                {% elif method_id == 'invoice' %}
+                                                <i class="fas fa-file-invoice"></i> Invoice
+                                                {% else %}
+                                                Method {{ method_id }}
+                                                {% endif %}
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <div class="alert alert-warning">No payment methods available for this property.</div>
+                            {% endif %}
+                        </div>
+
+                        <!-- ============================================================ -->
+                        <!-- STEP 6: PAYMENT TIMING -->
+                        <!-- ============================================================ -->
+                        <h5 class="mb-3">Payment Timing</h5>
+                        <div class="mb-4">
+                            <div class="row">
+                                {% if payment_options and payment_options.allowed_timings %}
+                                {% for timing in payment_options.allowed_timings %}
+                                <div class="col-md-3 mb-2">
+                                    <div class="timing-card" onclick="selectTiming('{{ timing }}')">
+                                        <div class="form-check">
+                                            <input type="radio" name="payment_timing" value="{{ timing }}" id="timing_{{ timing }}" class="form-check-input" {{ 'checked' if loop.first else '' }}>
+                                            <label class="form-check-label fw-bold" for="timing_{{ timing }}">
+                                                {% if timing == 'pay_now' %}
+                                                <i class="fas fa-check-circle"></i> Pay Now
+                                                {% elif timing == 'deposit' %}
+                                                <i class="fas fa-hand-holding-usd"></i> Deposit
+                                                {% elif timing == 'pay_on_arrival' %}
+                                                <i class="fas fa-hotel"></i> Pay on Arrival
+                                                {% elif timing == 'invoice' %}
+                                                <i class="fas fa-file-invoice-dollar"></i> Invoice
+                                                {% else %}
+                                                {{ timing }}
+                                                {% endif %}
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="alert alert-warning">No payment timing options available.</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Deposit percentage (shown when deposit selected) -->
+                        <div id="depositSection" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">Deposit Percentage</label>
+                                <input type="number" name="deposit_percentage" class="form-control" value="{{ payment_options.default_deposit_percentage or 0 }}" min="0" max="100" step="0.01">
+                                <small class="text-muted">Percentage of total to pay now. Balance due before check-in.</small>
+                            </div>
+                        </div>
+
+                        <!-- ============================================================ -->
+                        <!-- STEP 7: BOOKING DETAILS (from property) -->
                         <!-- ============================================================ -->
                         <h5 class="mb-3">Booking Details</h5>
                         <div class="bg-light p-3 rounded mb-4">
@@ -202,7 +291,7 @@
                         <strong>Total</strong>
                         <strong class="text-primary">${{ "%.2f"|format(booking.total) }}</strong>
                     </div>
-                    <small class="text-muted">Paid from your AFCON360 wallet</small>
+                    <small class="text-muted" id="payment-method-label">Select a payment method</small>
                 </div>
             </div>
         </div>
@@ -229,6 +318,26 @@ function selectBookingType(type) {
     }
 }
 
+function selectPaymentMethod(methodId) {
+    document.querySelectorAll('[name="payment_method"]').forEach(el => el.checked = (el.value === methodId));
+    const labels = {
+        'wallet': 'Paid from your AFCON360 wallet',
+        'mobile_money': 'Paid via Mobile Money',
+        'card': 'Paid by Credit/Debit Card',
+        'invoice': 'Invoice (payment on arrival)'
+    };
+    const labelEl = document.getElementById('payment-method-label');
+    if (labelEl && labels[methodId]) {
+        labelEl.textContent = labels[methodId];
+    }
+}
+
+function selectTiming(timing) {
+    document.querySelectorAll('[name="payment_timing"]').forEach(el => el.checked = (el.value === timing));
+    // Show/hide deposit percentage section
+    document.getElementById('depositSection').style.display = timing === 'deposit' ? 'block' : 'none';
+}
+
 // Update guest count display
 document.querySelector('[name="num_guests"]')?.addEventListener('change', function() {
     document.getElementById('guestCountDisplay').innerText = this.value;
@@ -245,6 +354,18 @@ document.getElementById('totalRooms')?.addEventListener('change', function() {
     }
     roomNumberInput.max = totalRooms;
     roomNumberInput.readOnly = false;
+});
+
+// Initialize deposit section visibility and payment method label
+document.addEventListener('DOMContentLoaded', function() {
+    const selectedTiming = document.querySelector('[name="payment_timing"]:checked');
+    if (selectedTiming) {
+        document.getElementById('depositSection').style.display = selectedTiming.value === 'deposit' ? 'block' : 'none';
+    }
+    const selectedPayment = document.querySelector('[name="payment_method"]:checked');
+    if (selectedPayment) {
+        selectPaymentMethod(selectedPayment.value);
+    }
 });
 </script>
 
@@ -263,6 +384,21 @@ document.getElementById('totalRooms')?.addEventListener('change', function() {
 .booking-type-card:has(input:checked) {
     border-color: #667eea;
     background-color: #f0f4ff;
+}
+.payment-method-card, .timing-card {
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.payment-method-card:hover, .timing-card:hover {
+    border-color: #28a745;
+    background-color: #f8fff9;
+}
+.payment-method-card:has(input:checked), .timing-card:has(input:checked) {
+    border-color: #28a745;
+    background-color: #e8f5e9;
 }
 </style>
 {% endblock %}

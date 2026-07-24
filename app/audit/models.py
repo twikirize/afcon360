@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 
 from app.extensions import db
+from app.utils.id_kinds import IDKind
 from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
@@ -27,12 +28,12 @@ class AuditLog(BaseModel):
 
     action = Column(String(128), nullable=False, index=True)
     resource_type = Column(String(64), index=True)
-    resource_id = Column(String(128), index=True)
+    resource_id = Column(String(128), index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
 
     # Named 'ip_address' to match all callers (previously used user.py which had ip_address)
     ip_address = Column(String(64), index=True)
     user_agent = Column(String(512))
-    device_id = Column(String(128), index=True)
+    device_id = Column(String(128), index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     meta = Column(JSON, nullable=False, default=dict)
 
     # Relationships

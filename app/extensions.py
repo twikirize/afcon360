@@ -7,6 +7,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from flask_mail import Mail
+from flask_socketio import SocketIO
 import redis
 import os
 
@@ -24,6 +25,7 @@ csrf = CSRFProtect()
 
 # Email sending
 mail = Mail()
+socketio = SocketIO()
 
 # Redis URL from environment - will be validated in create_app
 # Use a placeholder that will be replaced when app is initialized

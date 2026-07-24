@@ -62,9 +62,9 @@ class EmergencyAccess(BaseModel):
     allowed_actions = Column(db.JSON, nullable=True)  # Specific actions allowed
     
     # Time controls (strictly enforced)
-    expires_at = Column(DateTime, nullable=False, index=True)  # Max 4 hours
-    started_at = Column(DateTime, nullable=True)  # When access was first used
-    ended_at = Column(DateTime, nullable=True)  # When access ended (auto or manual)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)  # Max 4 hours
+    started_at = Column(DateTime(timezone=True), nullable=True)  # When access was first used
+    ended_at = Column(DateTime(timezone=True), nullable=True)  # When access ended (auto or manual)
     
     # Status tracking
     is_active = Column(Boolean, default=True, nullable=False, index=True)

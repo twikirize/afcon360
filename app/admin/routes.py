@@ -167,7 +167,7 @@ def super_dashboard():
                 logger.warning(f"Could not load event statistics: {e}")
 
         # Owner authorization for super_admin module toggles
-        from app.admin.owner.models import SystemSetting
+        from app.models.system_config import SystemConfig as SystemSetting
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
         
         # Get role management permissions
@@ -1070,7 +1070,7 @@ def toggle_module(module):
         if not current_user.is_super_admin():
             flash("Owner access required for this action.", "danger")
             return redirect(url_for("admin.super_dashboard"))
-        from app.admin.owner.models import SystemSetting
+            from app.models.system_config import SystemConfig as SystemSetting
         if not SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False):
             flash("Module toggling is restricted to the platform owner.", "danger")
             return redirect(url_for("admin.super_dashboard"))

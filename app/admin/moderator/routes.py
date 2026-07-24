@@ -165,9 +165,9 @@ def _build_moderation_stats():
         from app.accommodation.models.property import Property, AccommodationPropertyStatus
         from app.accommodation.models.booking import AccommodationBooking
         from app.accommodation.models.review import Review, AccommodationReviewStatus
-        properties = Property.query.filter_by(status=AccommodationPropertyStatus.PENDING_REVIEW).count()
+        properties = Property.query.filter_by(status=AccommodationPropertyStatus.PENDING_REVIEW.value).count()
         bookings = AccommodationBooking.query.filter_by(status='pending').count()
-        reviews = Review.query.filter_by(status=AccommodationReviewStatus.PENDING).count()
+        reviews = Review.query.filter_by(status=AccommodationReviewStatus.PENDING.value).count()
         stats['accommodation'] = properties + bookings + reviews
     except Exception:
         stats['accommodation'] = 0

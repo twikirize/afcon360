@@ -14,6 +14,7 @@ from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.id_kinds import IDKind
 import secrets
 import enum
 
@@ -25,12 +26,16 @@ import enum
 class AccommodationBookingStatus(enum.Enum):
     """Booking status - stored as string in DB"""
     PENDING = "pending"
+    PENDING_PAYMENT = "pending_payment"
+    PAYMENT_PARTIAL = "payment_partial"
+    PENDING_APPROVAL = "pending_approval"
     CONFIRMED = "confirmed"
     CHECKED_IN = "checked_in"
     CHECKED_OUT = "checked_out"
     CANCELLED = "cancelled"
     REFUNDED = "refunded"
     NO_SHOW = "no_show"
+    EXPIRED = "expired"
 
 
 class AccommodationPaymentStatus(enum.Enum):
@@ -131,14 +136,14 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     payment_method = Column(String(50), nullable=True)
     payment_status = Column(String(50), default=AccommodationPaymentStatus.PENDING.value, nullable=False)
-    wallet_txn_id = Column(String(255), nullable=True)
-    paid_at = Column(DateTime, nullable=True)
+    wallet_txn_id = Column(String(255), nullable=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
+    paid_at = Column(DateTime(timezone=True), nullable=True)
 
     # -------------------------------
     # Refund
     # -------------------------------
     refund_amount = Column(Numeric(10, 2), default=0)
-    refunded_at = Column(DateTime, nullable=True)
+    refunded_at = Column(DateTime(timezone=True), nullable=True)
 
     # -------------------------------
     # Booking Status (String storage)
@@ -148,12 +153,15 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     # Cancellation / Host Approval
     # -------------------------------
-    cancelled_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
     cancelled_by_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     cancellation_reason = Column(Text, nullable=True)
-    host_approved_at = Column(DateTime, nullable=True)
-    host_rejected_at = Column(DateTime, nullable=True)
+    host_approved_at = Column(DateTime(timezone=True), nullable=True)
+    host_rejected_at = Column(DateTime(timezone=True), nullable=True)
     host_rejection_reason = Column(Text, nullable=True)
+    approval_reason = Column(Text, nullable=True)
+    approved_by_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    approved_by_user = relationship("User", foreign_keys=[approved_by_user_id])
 
     # -------------------------------
     # Guest Snapshot
@@ -168,22 +176,22 @@ class AccommodationBooking(BaseModel):
     # Context Fields (String storage)
     # -------------------------------
     context_type = Column(String(50), default=BookingContextType.NONE.value, nullable=False, index=True)  # ✅ Has default
-    context_id = Column(String(100), nullable=True, index=True)
+    context_id = Column(String(100), nullable=True, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     context_metadata = Column(JSON, default=dict)
 
     # -------------------------------
     # Event Orchestration
     # -------------------------------
-    event_id = Column(BigInteger, nullable=True, index=True)
-    event_participation_id = Column(BigInteger, nullable=True, index=True)
+    event_id = Column(BigInteger, nullable=True, index=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    event_participation_id = Column(BigInteger, nullable=True, index=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
 
     # -------------------------------
     # Check-in/out Tracking
     # -------------------------------
-    checked_in_at = Column(DateTime, nullable=True)
-    checked_out_at = Column(DateTime, nullable=True)
+    checked_in_at = Column(DateTime(timezone=True), nullable=True)
+    checked_out_at = Column(DateTime(timezone=True), nullable=True)
 
-    expires_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
     # ==========================================
     # NEW: Multi-guest / Third-party booking fields
@@ -197,12 +205,15 @@ class AccommodationBooking(BaseModel):
 
     # Who paid/booked (always the logged-in user who created the booking)
     booked_by_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    booked_by_user = relationship("User", foreign_keys=[booked_by_user_id])
+    booked_by_name_snapshot = Column(String(255), nullable=True)
+    booked_by_email_snapshot = Column(String(255), nullable=True)
 
     # Booking type classification
     booking_type = Column(String(30), nullable=False, default='self')  # self, third_party, group, event_assigned
 
     # Group bookings (multiple rooms for same trip)
-    group_booking_id = Column(String(100), nullable=True, index=True)  # UUID shared across multiple bookings
+    group_booking_id = Column(String(100), nullable=True, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})  # UUID shared across multiple bookings
     group_size = Column(Integer, nullable=True)  # Total people in group
     room_number = Column(Integer, nullable=True)  # Which room in group (1,2,3...)
 
@@ -220,6 +231,33 @@ class AccommodationBooking(BaseModel):
 
     is_checked_in = Column(Boolean, default=False, nullable=False)
     is_checked_out = Column(Boolean, default=False, nullable=False)
+
+    # ==========================================
+    # NEW: Payment Timing & Amounts
+    # ==========================================
+    payment_timing = Column(String(30), nullable=True)  # pay_now, deposit, pay_on_arrival, invoice
+    amount_paid = Column(Numeric(10, 2), default=0)
+    amount_due = Column(Numeric(10, 2), default=0)
+    deposit_amount = Column(Numeric(10, 2), default=0)
+    balance_due_date = Column(Date, nullable=True)
+
+    # ==========================================
+    # NEW: Payment Guarantee
+    # ==========================================
+    payment_guaranteed = Column(Boolean, default=False)
+    guarantee_type = Column(String(30), nullable=True)  # wallet_balance, card_authorization, deposit, none
+
+    # ==========================================
+    # NEW: Policy Snapshot (JSON)
+    # ==========================================
+    policy_snapshot = Column(JSON, default=dict)
+
+    # ==========================================
+    # NEW: Guest Identity
+    # ==========================================
+    guest_identity_id = Column(BigInteger, ForeignKey("accommodation_guest_identity_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    guest_identity = relationship("GuestIdentityProfile", foreign_keys=[guest_identity_id])
+    commission = relationship("BookingCommission", back_populates="booking", uselist=False, cascade="all, delete-orphan")
 
     # -------------------------------
     # Relationships (continued)
@@ -273,6 +311,8 @@ class AccommodationBooking(BaseModel):
         self.payment_status = AccommodationPaymentStatus.PAID.value
         self.paid_at = datetime.now(timezone.utc)
         self.wallet_txn_id = transaction_id
+        if not self.payment_method:
+            self.payment_method = "wallet"
 
     def confirm(self):
         self.status = AccommodationBookingStatus.CONFIRMED.value
@@ -316,17 +356,6 @@ class AccommodationBooking(BaseModel):
             if days_until >= 7:
                 return True, "50% refund", self.total_amount * Decimal("0.5")
         return False, "Non-refundable", 0
-
-    def is_available(self) -> bool:
-        """Check if all dates in this booking are available"""
-        from app.accommodation.models.availability import is_date_available
-
-        current_date = self.check_in
-        while current_date < self.check_out:
-            if not is_date_available(self.property_id, current_date):
-                return False
-            current_date += timedelta(days=1)
-        return True
 
 
 # ==========================================

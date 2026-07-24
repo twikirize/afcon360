@@ -74,8 +74,8 @@ def get_audit_log():
         return jsonify({'error': 'Unauthorized'}), 403
     
     try:
-        from app.admin.owner.models import SystemSetting
-        history = SystemSetting.get_history('MODULE_FLAGS', limit=50)
+        from app.models.system_config import SystemConfig
+        history = SystemConfig.get_history('MODULE_FLAGS', limit=50)
         return jsonify({'history': history}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

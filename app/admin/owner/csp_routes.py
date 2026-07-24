@@ -2,7 +2,7 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.admin.owner.models import SystemSetting
+from app.models.system_config import SystemConfig
 from app.admin.owner.decorators import owner_required
 
 csp_bp = Blueprint('csp', __name__, url_prefix='/owner/csp')
@@ -13,7 +13,7 @@ csp_bp = Blueprint('csp', __name__, url_prefix='/owner/csp')
 @owner_required
 def get_status():
     """Get current CSP upgrade-insecure-requests status"""
-    setting = SystemSetting.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
+    setting = SystemConfig.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
     return jsonify({
         'enabled': setting and setting.value == 'true',
         'description': setting.description if setting else ''
@@ -28,9 +28,9 @@ def toggle():
     data = request.get_json()
     enabled = data.get('enabled', False)
 
-    setting = SystemSetting.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
+    setting = SystemConfig.query.filter_by(key='CSP_UPGRADE_INSECURE').first()
     if not setting:
-        setting = SystemSetting(
+        setting = SystemConfig(
             key='CSP_UPGRADE_INSECURE',
             value='false',
             value_type='bool',

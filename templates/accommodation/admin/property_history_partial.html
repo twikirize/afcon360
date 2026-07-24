@@ -1,0 +1,26 @@
+<table class="table">
+    <thead>
+        <tr>
+            <th>Action</th>
+            <th>Previous Status</th>
+            <th>New Status</th>
+            <th>Reason/Notes</th>
+            <th>Moderated By</th>
+            <th>Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% set PropertyModerationHistory = namespace(cls=PropertyModerationHistory) %}
+        {% set history = PropertyModerationHistory.cls.query.filter_by(property_id=property.id).order_by(PropertyModerationHistory.cls.created_at.desc()).all() %}
+        {% for record in history %}
+        <tr>
+            <td>{{ record.action }}</td>
+            <td>{{ record.previous_status }}</td>
+            <td>{{ record.new_status }}</td>
+            <td>{{ record.reason or record.notes or '' }}</td>
+            <td>{{ record.moderator.username if record.moderator else 'System' }}</td>
+            <td>{{ record.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

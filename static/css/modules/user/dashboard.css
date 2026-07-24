@@ -39,7 +39,7 @@
 
 /* ── Typography & Spacing ────────────────────── */
 .greeting-text {
-    font-size: 24px;
+    font-size: clamp(1.25rem, 4vw, 2rem);
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--color-text-primary);
@@ -85,6 +85,14 @@
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1.5rem;
     margin-bottom: 2.5rem;
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
 }
 
 .stat-card {
@@ -136,7 +144,7 @@
 .section-card {
     background: var(--card-bg);
     border-radius: 12px;
-    padding: 2rem;
+    padding: clamp(1rem, 3vw, 2rem);
     border: 1px solid var(--border-dim);
     margin-bottom: 2.5rem;
     box-shadow: var(--shadow-soft);

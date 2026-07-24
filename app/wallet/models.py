@@ -76,9 +76,9 @@ class Wallet(ProtectedModel):
     tags = Column(JSON, nullable=True)  # Wallet tags for organization
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    last_activity = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    last_activity = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
@@ -162,9 +162,9 @@ class WalletTransaction(ProtectedModel):
     
     # Status and timing
     status = Column(String(20), default="pending", nullable=False, index=True)
-    initiated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    processed_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    initiated_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Fees
     fee_amount = Column(Float, default=0.0, nullable=False)
@@ -237,10 +237,10 @@ class WalletLimit(ProtectedModel):
     max_daily_transactions = Column(Integer, nullable=True)  # Maximum number of transactions per day
     
     # Timing
-    effective_from = Column(DateTime, nullable=True)
-    effective_to = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    effective_to = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     __table_args__ = (
         Index('ix_wallet_limits_type_currency', 'wallet_type', 'currency'),
@@ -271,7 +271,7 @@ class WalletAuditLog(ProtectedModel):
     session_id = Column(String(128), nullable=True)
     
     # Timing
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     
     # Relationships
     wallet = relationship("Wallet", foreign_keys=[wallet_id])
@@ -303,8 +303,8 @@ class WalletSettings(ProtectedModel):
     
     # Versioning
     version = Column(Integer, default=1, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     updated_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     
     # Relationships

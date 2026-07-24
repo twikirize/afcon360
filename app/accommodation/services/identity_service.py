@@ -228,3 +228,84 @@ class AccommodationIdentityService:
                         'role': 'admin' if member.has_permission("org.accommodation.manage") else 'member'
                     })
         return orgs
+
+    @staticmethod
+    def get_or_create_host_profile(user_id: int) -> Optional['HostProfile']:
+        """
+        Get or create an individual host profile for a user.
+        """
+        from app.accommodation.models.host_profile import HostProfile
+        profile = HostProfile.query.filter_by(user_id=user_id).first()
+        if not profile:
+            profile = HostProfile(user_id=user_id)
+            db.session.add(profile)
+            db.session.commit()
+        return profile
+
+    @staticmethod
+    def get_or_create_org_host_profile(org_id: int) -> Optional['HostOrganisationProfile']:
+        """
+        Get or create an organisation host profile.
+        """
+        from app.accommodation.models.host_profile import HostOrganisationProfile
+        profile = HostOrganisationProfile.query.filter_by(org_id=org_id).first()
+        if not profile:
+            profile = HostOrganisationProfile(org_id=org_id)
+            db.session.add(profile)
+            db.session.commit()
+        return profile
+
+    @staticmethod
+    def register_host(user_id: int, org_id: Optional[int] = None) -> Tuple[bool, Optional[str], Optional[dict]]:
+        """
+        Register a user or organisation as a host.
+        Creates the host profile and returns the identity dict.
+
+        Returns:
+            (success, error_message, host_identity)
+        """
+        try:
+            if org_id:
+                # Organisation host
+                org = Organisation.query.get(org_id)
+                if not org:
+                    return False, "Organisation not found", None
+
+                profile = AccommodationIdentityService.get_or_create_org_host_profile(org_id)
+                host_identity = {
+                    'type': 'organisation',
+                    'id': org.id,
+                    'display_name': org.legal_name,
+                    'member_role': 'admin',
+                    'profile': profile,
+                }
+            else:
+                # Individual host
+                user = User.query.get(user_id)
+                if not user:
+                    return False, "User not found", None
+
+                can_host, reason = AccommodationIdentityService.can_host(user)
+                if not can_host:
+                    return False, reason, None
+
+                profile = AccommodationIdentityService.get_or_create_host_profile(user_id)
+                profile.onboarding_completed = True
+                profile.onboarding_step = "listing"
+                db.session.commit()
+
+                host_identity = {
+                    'type': 'individual',
+                    'id': user.id,
+                    'display_name': user.username or user.email,
+                    'member_role': None,
+                    'profile': profile,
+                }
+
+            return True, None, host_identity
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to register host: {e}", exc_info=True)
+            return False, str(e), None
+

@@ -78,7 +78,15 @@ class MediaService:
             raise ValueError(error)
 
         # 2. Check quota
-        file_size = file.content_length or 0
+        if file.content_length is not None:
+            file_size = file.content_length
+        else:
+            try:
+                file.seek(0, 2)
+                file_size = file.tell()
+                file.seek(0)
+            except Exception:
+                file_size = 0
         QuotaManager.enforce_quota(uploader_user_id, file_size, module)
 
         # 3. Virus scan
@@ -99,6 +107,7 @@ class MediaService:
         existing = db.session.query(Media).filter(
             Media.sha256_hash == sha256,
             Media.module == module,
+            Media.entity_id == entity_id,
             Media.is_deleted == False
         ).first()
         if existing:
@@ -116,6 +125,7 @@ class MediaService:
                 [m.perceptual_hash for m in
                  db.session.query(Media).filter(
                      Media.module == module,
+                     Media.entity_id == entity_id,
                      Media.is_deleted == False,
                      Media.perceptual_hash != None
                  ).all() if m.perceptual_hash]

@@ -36,6 +36,7 @@
 
   <!-- Global Custom CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/mobile-utilities.css') }}">
   <link rel="stylesheet" href="/static/css/global/home.css">
   <!-- Dashboard CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
@@ -60,12 +61,13 @@
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
   <meta name="theme-color" content="#667eea">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="AFCON360">
 </head>
 <body class="afcon-root">
   {% if session.get('profile_incomplete') %}
-  <div style="background: linear-gradient(90deg, #ff9800 0%, #ffb74d 100%); color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 9998; font-weight: bold; border-bottom: 2px solid rgba(0,0,0,0.1); box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);">
+  <div class="banner-incomplete" style="--banner-offset: 0px;">
     <div class="container-fluid">
       <div class="row align-items-center">
         <div class="col-md-9">
@@ -73,7 +75,7 @@
           <strong>Your profile is incomplete.</strong> Complete it now to unlock booking and wallet features.
         </div>
         <div class="col-md-3 text-end">
-          <a href="{{ url_for('auth.complete_profile') }}" class="btn btn-light btn-sm" style="font-size: 12px; padding: 4px 12px; font-weight: bold; color: #ff9800; border: none;">
+          <a href="{{ url_for('auth.complete_profile') }}" class="btn btn-light btn-sm btn-banner-cta">
             <i class="bi bi-person-check me-1"></i> Complete Profile
           </a>
         </div>
@@ -83,14 +85,14 @@
   {% endif %}
 
   {% if is_impersonating %}
-  <div id="impersonation-banner" style="background: linear-gradient(90deg, #dc3545 0%, #e74c3c 100%); color: white; padding: 15px; text-align: center; position: sticky; top: {% if session.get('profile_incomplete') %}40px{% else %}0{% endif %}; z-index: 10000; font-weight: bold; border-bottom: 4px solid #8b0000; box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4); animation: pulse-red 2s infinite;">
+  <div id="impersonation-banner" class="banner-impersonation" style="--banner-offset: {% if session.get('profile_incomplete') %}40px{% else %}0px{% endif %};">
     <div class="container-fluid">
       <div class="row align-items-center">
         <div class="col-md-7">
           <div class="d-flex align-items-center">
-            <i class="bi bi-exclamation-triangle-fill me-3" style="font-size: 1.5em;"></i>
+            <i class="bi bi-exclamation-triangle-fill me-3 banner-icon"></i>
             <div>
-              <strong style="font-size: 1.1em;">⚠️ SECURITY ALERT: IMPERSONATION MODE ACTIVE ⚠️</strong>
+              <strong class="banner-title">⚠️ SECURITY ALERT: IMPERSONATION MODE ACTIVE ⚠️</strong>
               <div class="mt-1">
                 {% if effective_user %}
                   Impersonating: <strong>{{ effective_user.email or effective_user.username or ('User #' ~ effective_user.public_id) }}</strong>
@@ -108,18 +110,18 @@
           </div>
         </div>
         <div class="col-md-5 text-end">
-          <div id="impersonation-timer" class="mb-2" style="font-size: 0.9em;">
+          <div id="impersonation-timer" class="mb-2 banner-timer">
             <i class="bi bi-clock-fill me-1"></i>
             <span id="time-remaining">--:--</span> remaining
           </div>
           <div>
             <form action="{{ url_for('admin.owner.exit_impersonation') }}" method="POST" style="display: inline;">
               <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
-              <button type="submit" class="btn btn-light btn-sm me-2" style="font-size: 11px; padding: 6px 15px; font-weight: bold; color: #dc3545; border: none;">
+              <button type="submit" class="btn btn-light btn-sm btn-banner-exit me-2">
                 <i class="bi bi-box-arrow-right me-1"></i> EXIT NOW
               </button>
             </form>
-            <button class="btn btn-warning btn-sm" onclick="showImpersonationRestrictions()" style="font-size: 11px; padding: 6px 15px; font-weight: bold;">
+            <button class="btn btn-warning btn-sm btn-banner-restrict" onclick="showImpersonationRestrictions()">
               <i class="bi bi-shield-fill me-1"></i> RESTRICTIONS
             </button>
           </div>

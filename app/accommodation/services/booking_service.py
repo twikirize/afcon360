@@ -4,11 +4,15 @@ Booking Service - Production-grade booking creation, confirmation, and cancellat
 Includes: Idempotency, anti-abuse, temporary holds, state management, and audit logging
 """
 
+from flask import current_app
+import secrets
 from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from typing import Union, Optional, List, Tuple
 import enum
 import logging
+
+from sqlalchemy import select
 
 from app.extensions import db
 from app.admin.models import ContentFlag
@@ -38,12 +42,7 @@ def _assert_no_open_flags(entity_type: str, entity_id: int):
             f"Cannot activate {entity_type} {entity_id}: open flags must be resolved first."
         )
 
-def enum_value(val):
-    """
-    Helper to safely convert Enum to string for DB or service calls.
-    If `val` is an enum, returns its `.value`, else returns val as-is.
-    """
-    return val.value if isinstance(val, enum.Enum) else val
+from app.accommodation.utils import enum_value  # single source of truth
 
 
 class BookingService:
@@ -115,7 +114,9 @@ class BookingService:
             if check_out <= check_in:
                 return None, "Check-out must be after check-in"
 
-            property = Property.query.get(property_id)
+            property = db.session.execute(
+                select(Property).where(Property.id == property_id).with_for_update()
+            ).scalar_one()
             if not property:
                 return None, "Property not found"
 
@@ -175,7 +176,18 @@ class BookingService:
             except ValueError as e:
                 return None, str(e)
 
-            # 6. CREATE BOOKING (PENDING STATE)
+            # 6. CREATE BOOKING (PENDING OR PENDING_APPROVAL STATE)
+            # Determine initial status based on property settings
+            initial_status = AccommodationBookingStatus.PENDING.value
+            if not property.instant_book or property.require_host_approval:
+                initial_status = AccommodationBookingStatus.PENDING_APPROVAL.value
+
+            # Resolve booker identity for snapshots
+            from app.identity.models.user import User
+            booker_user = User.query.get(booked_by_user_id or guest_user_id)
+            booker_name_snapshot = booker_user.username if booker_user else (primary_guest_name or guest_name)
+            booker_email_snapshot = booker_user.email if booker_user else (primary_guest_email or guest_email)
+
             booking = AccommodationBooking(
                 property_id=property_id,
                 room_type_id=room_type_id,
@@ -198,11 +210,15 @@ class BookingService:
                 context_id=context_id,
                 context_metadata=context_metadata or {},
                 idempotency_key=idempotency_key,
-                status=AccommodationBookingStatus.PENDING.value,
+                status=initial_status,
                 payment_status=AccommodationPaymentStatus.PENDING.value,
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),  # 15 min hold
+                expires_at=datetime.now(timezone.utc) + timedelta(
+                    minutes=current_app.config.get('BOOKING_HOLD_MINUTES', 15)
+                ),  # Configurable hold duration
                 # NEW FIELDS
                 booked_by_user_id=booked_by_user_id or guest_user_id,  # Default to guest if not specified
+                booked_by_name_snapshot=booker_name_snapshot,
+                booked_by_email_snapshot=booker_email_snapshot,
                 primary_guest_id=primary_guest_id,
                 primary_guest_name=primary_guest_name or guest_name,
                 primary_guest_email=primary_guest_email or guest_email,
@@ -226,6 +242,20 @@ class BookingService:
                 booking_id=booking.id,
                 created_by=guest_user_id
             )
+
+            # 8. UPDATE GUEST PROFILE (create if not exists)
+            from app.accommodation.models.guest_profile import GuestProfile
+            profile = GuestProfile.query.filter_by(guest_user_id=guest_user_id).first()
+            if not profile:
+                profile = GuestProfile(
+                    guest_user_id=guest_user_id,
+                    preferred_currency=property.currency,
+                )
+                db.session.add(profile)
+            # Update preferences from booking data
+            profile.preferred_currency = property.currency
+            profile.email_notifications = True  # default
+            profile.sms_notifications = True    # default
 
             db.session.commit()
 
@@ -372,7 +402,9 @@ class BookingService:
         Confirm a booking after successful payment.
         Converts temporary hold to permanent booked status.
         """
-        booking = AccommodationBooking.query.get(booking_id)
+        booking = db.session.execute(
+            select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
+        ).scalar_one()
 
         if not booking:
             return False, "Booking not found"
@@ -383,8 +415,13 @@ class BookingService:
         if booking.status != AccommodationBookingStatus.PENDING.value:
             return False, f"Cannot confirm booking in {booking.status!r} state"
 
-        if booking.expires_at and booking.expires_at < datetime.now(timezone.utc):
-            return False, "Booking has expired. Please create a new booking."
+        expires_at = booking.expires_at
+        if expires_at:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            if expires_at < datetime.now(timezone.utc):
+                return False, "Booking has expired. Please create a new booking."
 
         try:
             # 1. RE-VERIFY AVAILABILITY (Exclude own hold)
@@ -451,6 +488,159 @@ class BookingService:
             return False, "Unable to confirm booking. Please contact support."
 
     # -------------------------
+    # HOST APPROVAL
+    # -------------------------
+    @staticmethod
+    def approve_booking(
+        booking_id: int,
+        approved_by_user_id: int,
+        reason: str = None,
+        ip_address: str = None,
+        user_agent: str = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Approve a booking that is in PENDING_APPROVAL state.
+        Transitions to CONFIRMED.
+        """
+        booking = db.session.execute(
+            select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
+        ).scalar_one()
+
+        if not booking:
+            return False, "Booking not found"
+
+        if booking.status != AccommodationBookingStatus.PENDING_APPROVAL.value:
+            return False, f"Cannot approve booking in {booking.status!r} state"
+
+        try:
+            booking.approved_by_user_id = approved_by_user_id
+            booking.approval_reason = reason
+            booking.host_approved_at = datetime.now(timezone.utc)
+
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.CONFIRMED,
+                changed_by_user_id=approved_by_user_id,
+                reason=reason or "Approved by host",
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+            # Convert temporary hold to permanent booked
+            from app.accommodation.models.availability import BlockedDate
+            BlockedDate.query.filter_by(booking_id=booking.id).update(
+                {"reason": enum_value(AccommodationBlockedReason.BOOKED)}
+            )
+
+            db.session.commit()
+            logger.info(
+                f"Booking approved: {booking.booking_reference} | "
+                f"By: {approved_by_user_id} | Reason: {reason}"
+            )
+            return True, None
+
+        except InvalidStateTransition as e:
+            db.session.rollback()
+            logger.error(f"Invalid state transition for approval {booking_id}: {e}")
+            return False, str(e)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Approve booking failed for {booking_id}: {e}", exc_info=True)
+            return False, "Unable to approve booking. Please contact support."
+
+    @staticmethod
+    def reject_booking(
+        booking_id: int,
+        rejected_by_user_id: int,
+        reason: str = None,
+        ip_address: str = None,
+        user_agent: str = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Reject a booking that is in PENDING_APPROVAL state.
+        Transitions to CANCELLED.
+        """
+        booking = db.session.execute(
+            select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
+        ).scalar_one()
+
+        if not booking:
+            return False, "Booking not found"
+
+        if booking.status != AccommodationBookingStatus.PENDING_APPROVAL.value:
+            return False, f"Cannot reject booking in {booking.status!r} state"
+
+        try:
+            from app.accommodation.models.availability import BlockedDate
+
+            # Release blocked dates
+            BlockedDate.query.filter_by(booking_id=booking.id).delete()
+
+            booking.host_rejected_at = datetime.now(timezone.utc)
+            booking.host_rejection_reason = reason
+
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.CANCELLED,
+                changed_by_user_id=rejected_by_user_id,
+                reason=reason or "Rejected by host",
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+            booking.cancelled_at = datetime.now(timezone.utc)
+            booking.cancelled_by_user_id = rejected_by_user_id
+            booking.cancellation_reason = reason
+
+            db.session.commit()
+            logger.info(
+                f"Booking rejected: {booking.booking_reference} | "
+                f"By: {rejected_by_user_id} | Reason: {reason}"
+            )
+            return True, None
+
+        except InvalidStateTransition as e:
+            db.session.rollback()
+            logger.error(f"Invalid state transition for rejection {booking_id}: {e}")
+            return False, str(e)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Reject booking failed for {booking_id}: {e}", exc_info=True)
+            return False, "Unable to reject booking. Please contact support."
+
+    @staticmethod
+    def record_policy_violation(
+        property_id: int,
+        reason: str = "Policy violation",
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Record a policy violation for a property and auto-suspend if threshold exceeded.
+        """
+        try:
+            prop = Property.query.get(property_id)
+            if not prop:
+                return False, "Property not found"
+
+            prop.policy_violations = (prop.policy_violations or 0) + 1
+
+            if prop.policy_violations >= (prop.auto_suspend_threshold or 5):
+                prop.is_suspended = True
+                prop.status = "suspended"
+                prop.is_active = False
+                prop.suspension_reason = f"Auto-suspended after {prop.policy_violations} policy violations: {reason}"
+                logger.warning(
+                    f"Property {property_id} auto-suspended after {prop.policy_violations} violations"
+                )
+
+            db.session.commit()
+            return True, None
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to record policy violation for property {property_id}: {e}", exc_info=True)
+            return False, str(e)
+
+    # -------------------------
     # CANCEL BOOKING
     # -------------------------
     @staticmethod
@@ -464,7 +654,9 @@ class BookingService:
         """
         Cancel a booking and process refund if applicable.
         """
-        booking = AccommodationBooking.query.get(booking_id)
+        booking = db.session.execute(
+            select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
+        ).scalar_one()
 
         if not booking:
             return False, "Booking not found", None
@@ -493,6 +685,17 @@ class BookingService:
             booking.cancelled_at = datetime.now(timezone.utc)
             booking.cancelled_by_user_id = cancelled_by_user_id
             booking.cancellation_reason = reason
+
+            # Record host policy violation if host cancels a confirmed/active booking
+            if (cancelled_by_user_id == booking.host_user_id and
+                booking.status in [
+                    AccommodationBookingStatus.CONFIRMED.value,
+                    AccommodationBookingStatus.CHECKED_IN.value,
+                ]):
+                BookingService.record_policy_violation(
+                    property_id=booking.property_id,
+                    reason=f"Host cancelled booking {booking.booking_reference}: {reason}",
+                )
 
             # 3. PROCESS REFUND IF APPLICABLE
             if refund and refund > 0:
@@ -567,7 +770,10 @@ class BookingService:
     @staticmethod
     def get_pending_expired_bookings() -> list:
         return AccommodationBooking.query.filter(
-            AccommodationBooking.status == AccommodationBookingStatus.PENDING.value,
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.PENDING.value,
+                AccommodationBookingStatus.PENDING_APPROVAL.value,
+            ]),
             AccommodationBooking.expires_at < datetime.now(timezone.utc)
         ).all()
 

@@ -39,6 +39,82 @@ body.afcon-root {
 
 .container { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }
 
+/* ── BANNERS ─────────────────────────────────────────────────── */
+.banner-incomplete {
+  background: linear-gradient(90deg, #ff9800 0%, #ffb74d 100%);
+  color: white;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  position: sticky;
+  top: var(--banner-offset, 0px);
+  z-index: 9998;
+  font-weight: bold;
+  border-bottom: 2px solid rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+}
+.banner-incomplete .btn-banner-cta {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.85rem;
+  font-weight: bold;
+  color: #ff9800;
+  border: none;
+}
+
+.banner-impersonation {
+  background: linear-gradient(90deg, #dc3545 0%, #e74c3c 100%);
+  color: white;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  position: sticky;
+  top: var(--banner-offset, 0px);
+  z-index: 10000;
+  font-weight: bold;
+  border-bottom: 4px solid #8b0000;
+  box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+  animation: pulse-red 2s infinite;
+}
+.banner-impersonation .banner-icon {
+  font-size: 1.25rem;
+}
+.banner-impersonation .banner-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.banner-impersonation .banner-timer {
+  font-size: 0.85rem;
+}
+.banner-impersonation .btn-banner-exit {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.9rem;
+  font-weight: bold;
+  color: #dc3545;
+  border: none;
+}
+.banner-impersonation .btn-banner-restrict {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.9rem;
+  font-weight: bold;
+}
+
+@media (max-width: 768px) {
+  .banner-incomplete .container-fluid .row {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  .banner-incomplete .col-md-3 {
+    text-align: center;
+  }
+  .banner-impersonation .container-fluid .row {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  .banner-impersonation .col-md-5 {
+    text-align: center;
+  }
+}
+
 /* ── HEADER ─────────────────────────────────────────────────── */
 .site-header {
   background: linear-gradient(90deg, #1a3a1a 0%, #2d5a2d 70%, #3a6b3a 100%);
@@ -79,6 +155,36 @@ body.afcon-root {
 .hamburger.active span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
 .hamburger.active span:nth-child(2) { opacity: 0; transform: scaleX(0); }
 .hamburger.active span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* Touch targets for interactive nav elements */
+@media (max-width: 1024px) {
+  .menu-item > a,
+  .hamburger,
+  .drawer-link,
+  .drawer-close,
+  .drawer-accordion-toggle {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Tablet-specific refinements */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .site-header {
+    padding: 0 1.25rem;
+    gap: 0.85rem;
+  }
+  .brand-link {
+    font-size: 1.15rem;
+  }
+  .menu-item > a {
+    font-size: 0.75rem;
+    padding: 0.32rem 0.5rem;
+  }
+  main#main {
+    padding: clamp(1.25rem, 3vw, 2rem);
+  }
+}
 
 /* ── DESKTOP NAV ────────────────────────────────────────────── */
 .desktop-nav { flex: 1; display: flex; justify-content: flex-end; align-items: center; }
@@ -165,14 +271,14 @@ body.afcon-root {
 /* ── MAIN (non-homepage pages) ──────────────────────────────── */
 main#main {
   background: var(--white); margin: 1rem auto 2rem;
-  max-width: 100%; padding: 2.5rem 2.5rem 3rem;
+  max-width: 100%; padding: clamp(1rem, 4vw, 2.5rem);
   border-radius: var(--radius); box-shadow: var(--shadow-sm);
 }
 /* Homepage gets full-width transparent main */
 body.page-home main#main { background: transparent; margin: 0; padding: 0; max-width: 100%; border-radius: 0; box-shadow: none; }
 
 /* ── FOOTER ─────────────────────────────────────────────────── */
-.site-footer { background: #111; color: #999; font-family: var(--font-body); font-size: 0.875rem; width: 100%; }
+.site-footer { background: #111; color: #999; font-family: var(--font-body); font-size: 0.875rem; width: 100%; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .footer-inner { max-width: 1280px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; }
 .footer-inner .links a { color: #999; text-decoration: none; margin-left: 0.75rem; transition: color 0.2s; }
 .footer-inner .links a:hover { color: var(--gold); }

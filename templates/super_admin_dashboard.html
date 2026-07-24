@@ -204,6 +204,58 @@ function eventModerationAction(action, slug, extraData = {}) {
     </div>
   </nav>
 
+  <!-- ════════ MOBILE DRAWER ════════ -->
+  <div class="sad-mobile-drawer-overlay" id="sadDrawerOverlay"></div>
+  <div class="sad-mobile-drawer" id="sadMobileDrawer" aria-label="Mobile navigation" aria-hidden="true">
+    <div class="sad-mobile-header">
+      <div class="sad-logo-text">Admin Panel</div>
+      <button class="sad-mobile-close" id="sadDrawerClose" aria-label="Close menu">&times;</button>
+    </div>
+    <nav class="sad-mobile-nav">
+      <a href="#" class="sad-mobile-nav-item active">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/></svg>
+        Dashboard
+      </a>
+      <a href="{{ url_for('admin.manage_users') }}" class="sad-mobile-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5.5" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 13c0-2.5 2-4.5 4.5-4.5h1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="11" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+        Users
+      </a>
+      <a href="{{ url_for('admin.manage_orgs') }}" class="sad-mobile-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.4"/></svg>
+        Organizations
+      </a>
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="sad-mobile-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/></svg>
+        Events
+      </a>
+      <a href="{{ url_for('admin.content_dashboard') }}" class="sad-mobile-nav-item">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M4 4h5M4 6.5h5M4 9h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Content Mgmt
+      </a>
+      <a href="{{ url_for('admin_settings.system_settings') }}" class="sad-mobile-nav-item">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 4.5l4 4M4.5 8.5l4-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Settings
+      </a>
+      <a href="{{ url_for('admin_settings.impersonation_control') }}" class="sad-mobile-nav-item">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 11c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Impersonate
+      </a>
+      <a href="{{ url_for('auth.switch_role') }}" class="sad-mobile-nav-item">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="4.5" cy="4.5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="8.5" cy="4.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 11c0-1.7 1.3-3 3-3h1M7 11c0-1.7 1.3-3 3-3h1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        {% if active_global_role %}
+          Persona: {{ active_global_role|title }}
+        {% else %}
+          Switch Persona
+        {% endif %}
+      </a>
+      {% if current_user.roles | selectattr('role') | selectattr('role.name', 'equalto', 'owner') | list %}
+      <a href="{{ url_for('admin.owner.dashboard') }}" class="sad-mobile-nav-item">
+        👑 Owner Panel
+      </a>
+      {% endif %}
+    </nav>
+  </div>
+
   <!-- ════════ MAIN ════════ -->
   <div class="sad-main">
 
@@ -214,6 +266,9 @@ function eventModerationAction(action, slug, extraData = {}) {
         <div class="sad-page-sub">Manage modules, users, and system settings</div>
       </div>
       <div class="sad-topbar-actions">
+        <button class="sad-mobile-menu-btn" id="sadMobileMenuBtn" aria-label="Open menu" style="display:none; background:var(--sad-surface2); border:1px solid var(--sad-border2); color:var(--sad-text); width:36px; height:36px; border-radius:8px; cursor:pointer; align-items:center; justify-content:center; font-size:1.2rem;">
+          &#9776;
+        </button>
         <a href="{{ url_for('admin.manage_users') }}" class="sad-btn">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="4.5" cy="3.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 11c0-1.93 1.57-3.5 3.5-3.5h.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="9.5" cy="9" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
           Users
@@ -1062,6 +1117,53 @@ function prepareModuleToggle(moduleName, checkbox) {
         }
     }
 }
+
+// ── Mobile Drawer ─────────────────────────────────────
+(function() {
+  const btn = document.getElementById('sadMobileMenuBtn');
+  const drawer = document.getElementById('sadMobileDrawer');
+  const overlay = document.getElementById('sadDrawerOverlay');
+  const close = document.getElementById('sadDrawerClose');
+  if (!btn || !drawer || !overlay || !close) return;
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  btn.addEventListener('click', openDrawer);
+  close.addEventListener('click', closeDrawer);
+  overlay.addEventListener('click', closeDrawer);
+
+  // Show/hide hamburger based on viewport
+  function updateHamburger() {
+    if (window.innerWidth <= 768) {
+      btn.style.display = 'flex';
+    } else {
+      btn.style.display = 'none';
+      closeDrawer();
+    }
+  }
+
+  updateHamburger();
+  window.addEventListener('resize', updateHamburger);
+
+  // Close drawer on nav link click
+  drawer.querySelectorAll('.sad-mobile-nav-item').forEach(function(link) {
+    link.addEventListener('click', function() {
+      closeDrawer();
+    });
+  });
+})();
 
 </script>
 

@@ -6,8 +6,8 @@ from app.models.base import ProtectedModel
 class ReconciliationRun(ProtectedModel):
     __tablename__ = "reconciliation_runs"
 
-    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     summary = Column(JSON, nullable=True)
     status = Column(String(32), default="running", nullable=False)
     notes = Column(Text, nullable=True)

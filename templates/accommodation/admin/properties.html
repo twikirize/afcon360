@@ -215,29 +215,30 @@
           </td>
           <td>
             <div class="action-cell">
-              <a href="{{ url_for('accommodation.guest_detail', identifier=prop.id) }}"
-                 target="_blank" class="btn-sm-act btn-view-sm">
-                <i class="bi bi-eye"></i>
+              <a href="{{ url_for('accommodation.moderate_property', property_id=prop.id) }}"
+                 class="btn-sm-act btn-view-sm" title="Review">
+                <i class="bi bi-clipboard-check"></i>
               </a>
               <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}"
                  class="btn-sm-act btn-edit-sm">
                 <i class="bi bi-pencil"></i>
               </a>
-              <form method="POST"
-                    action="{{ url_for('accommodation.admin_property_toggle', property_id=prop.id) }}"
-                    style="display:inline;"
-                    onsubmit="return confirm('Toggle active status for this property?');">
+              {% set prop_status = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
+              {% if prop_status == 'pending_review' %}
+              <form action="{{ url_for('accommodation.moderate_property_approve', property_id=prop.id) }}" method="POST" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {% set sv2 = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
-                <button type="submit"
-                        class="btn-sm-act {{ 'btn-activate' if sv2 == 'suspended' else 'btn-suspend' }}">
-                  {% if sv2 == 'suspended' %}
-                  <i class="bi bi-play-fill"></i>
-                  {% else %}
-                  <i class="bi bi-pause-fill"></i>
-                  {% endif %}
+                <button type="submit" class="btn-sm-act btn-activate" title="Approve">
+                  <i class="bi bi-check-lg"></i>
                 </button>
               </form>
+              <form action="{{ url_for('accommodation.moderate_property_reject', property_id=prop.id) }}" method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="reason" value="Please review and resubmit">
+                <button type="submit" class="btn-sm-act btn-suspend" title="Reject">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </form>
+              {% endif %}
             </div>
           </td>
         </tr>

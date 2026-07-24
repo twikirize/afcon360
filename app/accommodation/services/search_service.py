@@ -10,7 +10,8 @@ from sqlalchemy import func, and_, or_, text
 from sqlalchemy.orm import selectinload, joinedload
 # FIX 1: Was `PropertyStatus` - that name does not exist. Correct name is AccommodationPropertyStatus.
 # This bad import was the root cause of the duplicate-table crash on startup.
-from app.accommodation.models.property import Property, AccommodationPropertyStatus
+from app.accommodation.models.property import Property, AccommodationPropertyStatus, PropertyAmenity
+from app import db
 import logging
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,9 @@ def search_properties(params: dict = None) -> dict:
     try:
         # BASE QUERY — eager load to eliminate N+1 queries
         q = Property.query.options(
-            selectinload(Property.photos),    # photos relationship exists
-            selectinload(Property.reviews),   # reviews relationship exists
+            selectinload(Property.photos),
+            selectinload(Property.reviews),
+            selectinload(Property.amenities).selectinload(PropertyAmenity.amenity),
         ).filter(
             Property.status == "active",
             Property.is_verified == True,
@@ -209,23 +211,30 @@ def search_properties_legacy(city: Optional[str] = None,
 
 def get_property_by_identifier(identifier: str) -> Optional[Dict]:
     """
-    Get a single property by ID or slug.
+    Get a single property by public_id, ID, or slug.
     """
     try:
-        # Try to get from database
-        if identifier.isdigit():
+        prop = None
+
+        # Try public_id first (UUID strings)
+        prop = Property.query.filter_by(public_id=identifier).first()
+
+        # Try numeric ID
+        if not prop and identifier.isdigit():
             prop = Property.query.get(int(identifier))
-        else:
+
+        # Try slug
+        if not prop:
             prop = Property.query.filter_by(slug=identifier).first()
 
-        if prop and prop.status == "active" and prop.is_verified:  # FIX 1 applied here
+        if prop is not None:
             return _property_to_dict(prop)
 
     except Exception as e:
         db.session.rollback()
         logger.warning(f"DB lookup failed, using hardcoded: {e}")
 
-    # Fallback to hardcoded
+    # Fallback to hardcoded only when no DB property was found
     for p in HARDCODED_PROPERTIES:
         if str(p["id"]) == identifier or p["slug"] == identifier:
             return p.copy()
@@ -252,7 +261,7 @@ def _property_to_dict(property: Property) -> Dict:
         "bedrooms": property.bedrooms,
         "beds": property.beds,
         "bathrooms": property.bathrooms,
-        "images": property.gallery or [property.main_image] if property.main_image else [],
+        "images": property.gallery_images,
         "rating": float(property.overall_rating) if property.overall_rating else None,
         "reviews": property.total_reviews,
         "amenities": [a.amenity.name for a in property.amenities] if property.amenities else [],

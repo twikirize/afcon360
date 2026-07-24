@@ -14,7 +14,9 @@ from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
 from app.models.base import BaseModel
+from app.accommodation.models.review import Review
 import enum
+import uuid as uuid_lib
 
 
 # ==========================================
@@ -111,6 +113,10 @@ class Property(BaseModel):
     # -------------------------------
     # Identity
     # -------------------------------
+    public_id = Column(
+        String(64), unique=True, nullable=False, index=True,
+        default=lambda: str(uuid_lib.uuid4()),
+    )
     title = Column(String(200), nullable=False)
     slug = Column(String(220), nullable=False, unique=True)
     description = Column(Text, nullable=False)
@@ -158,6 +164,15 @@ class Property(BaseModel):
     check_in_time = Column(String(20), default="14:00")
     check_out_time = Column(String(20), default="11:00")
     instant_book = Column(Boolean, default=False)
+    require_host_approval = Column(Boolean, default=False)
+
+    # -------------------------------
+    # Policy Violation Tracking
+    # -------------------------------
+    policy_violations = Column(Integer, default=0, nullable=False)
+    auto_suspend_threshold = Column(Integer, default=5, nullable=False)
+    is_suspended = Column(Boolean, default=False, nullable=False, index=True)
+    suspension_reason = Column(Text, nullable=True)
 
     # -------------------------------
     # House Rules
@@ -185,7 +200,7 @@ class Property(BaseModel):
     # Verification
     # -------------------------------
     verification_status = Column(String(50), default="unverified")
-    verified_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     verified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     verification_notes = Column(Text, nullable=True)
 
@@ -203,7 +218,7 @@ class Property(BaseModel):
     # -------------------------------
     host_response_rate = Column(Numeric(5, 2), nullable=True)  # e.g. 95.5 = 95.5%
     host_response_time_hours = Column(Integer, nullable=True)   # avg hours to respond
-    last_booked_at = Column(DateTime, nullable=True)
+    last_booked_at = Column(DateTime(timezone=True), nullable=True)
     total_bookings = Column(Integer, default=0, server_default='0')
     views_last_24h = Column(Integer, default=0, server_default='0')
 
@@ -241,6 +256,19 @@ class Property(BaseModel):
     blocked_dates = relationship("BlockedDate", back_populates="property", cascade="all, delete-orphan")
     availability_rules = relationship("AvailabilityRule", back_populates="property", cascade="all, delete-orphan")
 
+    booking_policy = relationship(
+        "PropertyBookingPolicy",
+        back_populates="property",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    payment_methods = relationship(
+        "PropertyPaymentMethod",
+        back_populates="property",
+        cascade="all, delete-orphan",
+    )
+
     # -------------------------------
     # Core Methods
     # -------------------------------
@@ -268,6 +296,59 @@ class Property(BaseModel):
         parts.append(f"{self.city}, {self.state}" if self.state else self.city)
         parts.append(self.country)
         return ", ".join(parts)
+
+    # -------------------------------
+    # Unified Media (source of truth: app/media)
+    # -------------------------------
+    def media_photos(self, media_type: str = None):
+        """
+        Return all media for this property from the unified media hub
+        (module='accommodation', entity_id=self.public_id).
+        This is the canonical source of truth for property/room images.
+        """
+        from app.media.service import MediaService
+        return MediaService.get_for_entity(
+            module="accommodation",
+            entity_id=self.public_id,
+            media_type=media_type,
+        )
+
+    @property
+    def cover_image_url(self):
+        """
+        Cover image URL from the unified media hub (source of truth).
+        Falls back to the legacy main_image column for backward compatibility.
+        """
+        from app.media.service import MediaService
+        media = self.media_photos()
+        cover = next((m for m in media if getattr(m, "is_cover", False)), None)
+        if cover:
+            url = MediaService.get_display_url(cover)
+            if url:
+                return url
+        # Fallback to legacy column if no unified media exists yet
+        return self.main_image or MediaService.PLACEHOLDER_IMAGE
+
+    @property
+    def gallery_images(self):
+        """
+        List of gallery image URLs from the unified media hub (source of truth).
+        Falls back to the legacy `gallery` JSON column for backward
+        compatibility when no unified media exists yet.
+        """
+        from app.media.service import MediaService
+        media = self.media_photos()
+        if media:
+            urls = [
+                MediaService.get_display_url(m)
+                for m in media
+                if MediaService.get_display_url(m)
+            ]
+            if urls:
+                return urls
+        # Fallback to legacy column
+        legacy = self.gallery or []
+        return list(legacy) if isinstance(legacy, (list, tuple)) else []
 
     def is_owner(self, user_id=None, org_id=None):
         if user_id and self.owner_user_id == user_id:
@@ -480,7 +561,19 @@ class InventoryBlock(BaseModel):
 
 
 # Add relationship to Property
+from app.accommodation.models.room import RoomCategory, Room  # noqa: E402
+
 Property.room_types = relationship("RoomType", back_populates="listing", cascade="all, delete-orphan")
 Property.room_categories = relationship("RoomCategory", back_populates="listing", cascade="all, delete-orphan")
 Property.rooms = relationship("Room", back_populates="listing", cascade="all, delete-orphan")
 RoomType.inventory_blocks = relationship("InventoryBlock", back_populates="room_type", cascade="all, delete-orphan")
+
+
+# Guarantee every Property has a public_id (UUID) before insert, including
+# rows that predate the column. Mirrors the User model's public_id guarantee.
+from sqlalchemy import event  # noqa: E402
+
+@event.listens_for(Property, 'before_insert')
+def _ensure_property_public_id(mapper, connection, target):
+    if not target.public_id:
+        target.public_id = str(uuid_lib.uuid4())

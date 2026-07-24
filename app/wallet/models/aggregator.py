@@ -63,9 +63,9 @@ class Aggregator(db.Model):
     company_name = Column(String(255), nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
     
     def to_dict(self, exclude_secret=True):
         """Convert to dictionary for JSON serialization"""

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Rooms - {{ property.title }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+        <div>
+            <h2 class="mb-1">Room Management</h2>
+            <p class="text-muted mb-0">
+                <a href="{{ url_for('accommodation.host_edit_listing', property_id=property.id) }}">{{ property.title }}</a>
+                &middot; {{ property.city }}, {{ property.country }}
+            </p>
+        </div>
+        <a href="{{ url_for('accommodation.host_bookings') }}" class="btn btn-outline-secondary">
+            &larr; Back to Bookings
+        </a>
+    </div>
+
+    {# ── ADD ROOM CATEGORY ─────────────────────────────────────────── #}
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-light fw-semibold">Add Room Category / Type</div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('accommodation.host_room_category_add', property_id=property.id) }}" class="row g-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-md-3">
+                    <label class="form-label">Name *</label>
+                    <input type="text" name="name" class="form-control" placeholder="Deluxe King" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Short Code</label>
+                    <input type="text" name="short_code" class="form-control" placeholder="DLX">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Base Price / Night</label>
+                    <input type="number" step="0.01" name="base_price_per_night" class="form-control" value="0">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Currency</label>
+                    <input type="text" name="currency" class="form-control" value="{{ property.currency or 'USD' }}">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Max Guests</label>
+                    <input type="number" name="max_guests" class="form-control" value="2">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Bedrooms</label>
+                    <input type="number" name="bedrooms" class="form-control" value="1">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Beds</label>
+                    <input type="number" name="beds" class="form-control" value="1">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_active" checked id="cat_active">
+                        <label class="form-check-label" for="cat_active">Active</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    <input type="text" name="description" class="form-control" placeholder="Optional description">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Add Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if not categories %}
+    <div class="alert alert-info">
+        No room categories yet. Add a category above to start managing individual rooms.
+    </div>
+    {% endif %}
+
+    {# ── CATEGORIES + ROOMS ────────────────────────────────────────── #}
+    {% for category in categories %}
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center bg-light">
+            <div>
+                <span class="fw-semibold">{{ category.name }}</span>
+                <span class="badge bg-secondary ms-1">{{ category.rooms|length }} room(s)</span>
+                {% if not category.is_active %}<span class="badge bg-warning ms-1">Inactive</span>{% endif %}
+                <small class="text-muted ms-2">
+                    {{ category.currency }} {{ "%.2f"|format(category.base_price_per_night) }}/night
+                    &middot; max {{ category.max_guests }} guests
+                </small>
+            </div>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#add-room-{{ category.id }}">
+                + Add Rooms
+            </button>
+        </div>
+
+        {# Bulk add rooms #}
+        <div class="collapse" id="add-room-{{ category.id }}">
+            <div class="card-body border-bottom bg-light-subtle">
+                <form method="POST" action="{{ url_for('accommodation.host_room_add', property_id=property.id) }}" class="row g-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="category_id" value="{{ category.id }}">
+                    <div class="col-md-4">
+                        <label class="form-label">Room Numbers *</label>
+                        <input type="text" name="room_numbers" class="form-control"
+                               placeholder="101, 102, 103 or 101-105 (one per line ok)" required>
+                        <small class="text-muted">Comma, space, or newline separated. e.g. 201,202,203</small>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Prefix</label>
+                        <input type="text" name="room_prefix" class="form-control" placeholder="A-">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Floor</label>
+                        <input type="text" name="floor" class="form-control" placeholder="2">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" name="name" class="form-control" placeholder="Ocean View">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Add Rooms</button>
+                    </div>
+                    <div class="col-12">
+                        <input type="text" name="notes" class="form-control" placeholder="Optional notes">
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {# Room grid #}
+        <div class="card-body">
+            {% if category.rooms_sorted %}
+            <div class="row g-2">
+                {% for room in category.rooms_sorted %}
+                <div class="col-auto">
+                    <div class="card border {% if room.is_maintenance %}border-warning{% elif room.status == 'booked' %}border-danger{% else %}border-success{% endif %}" style="min-width: 150px;">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>{{ room.display_name }}</strong>
+                                {% if room.floor %}<small class="text-muted">Fl {{ room.floor }}</small>{% endif %}
+                            </div>
+                            <span class="badge {% if room.is_maintenance %}bg-warning text-dark{% elif room.status == 'booked' %}bg-danger{% else %}bg-success{% endif %} mt-1">
+                                {{ 'Maintenance' if room.is_maintenance else room.status }}
+                            </span>
+                            <div class="mt-2 d-flex gap-1">
+                                <form method="POST" action="{{ url_for('accommodation.host_room_maintenance', room_id=room.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    {% if room.is_maintenance %}
+                                    <input type="hidden" name="action" value="release">
+                                    <button class="btn btn-sm btn-outline-success" title="Release from maintenance">Release</button>
+                                    {% else %}
+                                    <input type="hidden" name="maintenance_reason" value="Maintenance">
+                                    <button class="btn btn-sm btn-outline-warning" title="Set to maintenance">Maint.</button>
+                                    {% endif %}
+                                </form>
+                                <form method="POST" action="{{ url_for('accommodation.host_room_delete', room_id=room.id) }}" class="d-inline"
+                                      onsubmit="return confirm('Delete room {{ room.room_number }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-sm btn-outline-danger" title="Delete room" {% if not room.is_available %}disabled{% endif %}>&times;</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No rooms in this category yet. Use "Add Rooms" above.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

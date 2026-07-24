@@ -50,7 +50,7 @@ class PaymentMethodConfig(BaseModel):
     config_json = Column(JSON, default=dict)
     
     # Status and audit
-    last_tested_at = Column(DateTime, nullable=True)
+    last_tested_at = Column(DateTime(timezone=True), nullable=True)
     last_test_result = Column(String(20), nullable=True)
     last_error_message = Column(Text, nullable=True)
     

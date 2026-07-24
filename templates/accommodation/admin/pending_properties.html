@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Properties{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center">
+        <h2>Pending Properties</h2>
+        <span class="badge bg-primary">{{ pending_count }} Pending</span>
+    </div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Host</th>
+                <th>Submission Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for prop in properties.items %}
+            <tr>
+                <td>{{ prop.title }}</td>
+                <td>{{ prop.host.username }}</td>
+                <td>{{ prop.created_at.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    <a href="{{ url_for('accommodation.moderate_property', property_id=prop.id) }}" class="btn btn-primary btn-sm">Review</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <nav>
+        <ul class="pagination">
+            {% for page_num in properties.iter_pages() %}
+            <li class="page-item {% if page_num == properties.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('accommodation.pending_properties', page=page_num) }}">{{ page_num }}</a>
+            </li>
+            {% endfor %}
+        </ul>
+    </nav>
+</div>
+{% endblock %}

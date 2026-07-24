@@ -982,4 +982,110 @@
   font-size: 0.55rem;
   margin-top: 0;
 }
+
+/* ── MOBILE DRAWER ────────────────────────────────────── */
+.sad-mobile-drawer {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 1100;
+  background: var(--sad-bg, #0d0f14);
+  overflow-y: auto;
+  padding: 1.5rem;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+.sad-mobile-drawer.open {
+  display: block;
+  transform: translateX(0);
+}
+.sad-mobile-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1050;
+}
+.sad-mobile-drawer-overlay.open {
+  display: block;
+}
+.sad-mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--sad-border, rgba(255,255,255,0.07));
+  margin-bottom: 1rem;
+}
+.sad-mobile-header .sad-logo-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--sad-text, #e8eaf0);
+}
+.sad-mobile-close {
+  background: var(--sad-surface2, #1e222b);
+  border: 1px solid var(--sad-border2, rgba(255,255,255,0.13));
+  color: var(--sad-text, #e8eaf0);
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sad-mobile-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--sad-text2, #8a8fa8);
+  text-decoration: none;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.sad-mobile-nav-item:hover,
+.sad-mobile-nav-item.active {
+  background: var(--sad-surface2, #1e222b);
+  color: var(--sad-text, #e8eaf0);
+}
+.sad-mobile-nav-item.active::before {
+  content: '';
+  width: 3px; height: 24px;
+  background: var(--sad-accent, #6c8fff);
+  border-radius: 0 2px 2px 0;
+  margin-right: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .sad-sidebar {
+    display: none;
+  }
+  .sad-mobile-drawer,
+  .sad-mobile-drawer-overlay {
+    display: block;
+  }
+  .sad-main {
+    padding: 1rem;
+  }
+  .sad-stats {
+    grid-template-columns: 1fr;
+  }
+  .sad-twocol {
+    grid-template-columns: 1fr;
+  }
+  .sad-qa {
+    grid-template-columns: 1fr;
+  }
+  .sad-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .sad-topbar {
+    padding: 0.75rem 1rem;
+  }
+  .sad-content {
+    padding: 1rem;
+  }
+}
 </style>

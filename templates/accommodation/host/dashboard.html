@@ -478,7 +478,33 @@
                   ${{ "{:,.0f}".format(prop.base_price_per_night) }}
                   <small>/ night</small>
                 </div>
+                <div class="listing-status-modern mb-2">
+                    {% if prop.status == 'pending_review' %}
+                        <span class="badge bg-warning text-dark">Pending Review</span>
+                    {% elif prop.status == 'suspended' %}
+                        <span class="badge bg-danger">Suspended</span>
+                    {% elif prop.status == 'draft' and prop.verification_status == 'rejected' %}
+                        <span class="badge bg-danger">Rejected</span>
+                    {% elif prop.status == 'draft' and prop.verification_status == 'pending' %}
+                        <span class="badge bg-info text-dark">Changes Requested</span>
+                    {% else %}
+                        <span class="badge bg-success">{{ prop.status|title }}</span>
+                    {% endif %}
+                </div>
                 <div class="listing-actions-modern">
+                  <div class="listing-status-modern mb-2">
+                    {% if prop.status == 'pending_review' %}
+                        <span class="badge bg-warning text-dark">Pending Review</span>
+                    {% elif prop.status == 'suspended' %}
+                        <span class="badge bg-danger">Suspended</span>
+                    {% elif prop.status == 'draft' and prop.verification_status == 'rejected' %}
+                        <span class="badge bg-danger">Rejected</span>
+                    {% elif prop.status == 'draft' and prop.verification_status == 'pending' %}
+                        <span class="badge bg-info text-dark">Changes Requested</span>
+                    {% else %}
+                        <span class="badge bg-success">{{ prop.status|title }}</span>
+                    {% endif %}
+                  </div>
                   <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}" 
                      class="btn-outline-modern">
                     <i class="bi bi-pencil me-1"></i>Edit
@@ -490,6 +516,14 @@
                   <a href="{{ url_for('accommodation.guest_detail', identifier=prop.id) }}"
                      class="btn-outline-modern" target="_blank">
                     <i class="bi bi-eye me-1"></i>View
+                  </a>
+                  <a href="{{ url_for('accommodation.host_rooms', property_id=prop.id) }}"
+                     class="btn-outline-modern">
+                    <i class="bi bi-door-closed me-1"></i>Rooms
+                  </a>
+                  <a href="{{ url_for('accommodation.host_property_documents', property_id=prop.id) }}"
+                     class="btn-outline-modern">
+                    <i class="bi bi-file-earmark-text me-1"></i>Documents
                   </a>
                 </div>
               </div>

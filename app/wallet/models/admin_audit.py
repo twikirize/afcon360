@@ -49,7 +49,7 @@ class AdminAuditLog(db.Model):
     user_agent = Column(Text, nullable=True)
     
     # Metadata
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""

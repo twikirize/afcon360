@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">Booking Policy for {{ property.title }}</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                        <!-- Payment Timing -->
+                        <h5 class="mb-3">Payment Timing</h5>
+                        <div class="mb-4">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="allow_pay_now" id="allow_pay_now" class="form-check-input" {{ 'checked' if policy.allow_pay_now else '' }}>
+                                <label class="form-check-label" for="allow_pay_now">Allow Pay Now</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="allow_pay_on_arrival" id="allow_pay_on_arrival" class="form-check-input" {{ 'checked' if policy.allow_pay_on_arrival else '' }}>
+                                <label class="form-check-label" for="allow_pay_on_arrival">Allow Pay on Arrival</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="allow_deposit_payment" id="allow_deposit_payment" class="form-check-input" {{ 'checked' if policy.allow_deposit_payment else '' }}>
+                                <label class="form-check-label" for="allow_deposit_payment">Allow Deposit Payment</label>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Deposit Percentage (%)</label>
+                                    <input type="number" name="deposit_percentage" class="form-control" value="{{ policy.deposit_percentage or 0 }}" min="0" max="100" step="0.01">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Balance Due Days Before Check-in</label>
+                                    <input type="number" name="balance_due_days_before_checkin" class="form-control" value="{{ policy.balance_due_days_before_checkin or 0 }}" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Payment Guarantee -->
+                        <h5 class="mb-3">Payment Guarantee</h5>
+                        <div class="mb-4">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="require_payment_guarantee" id="require_payment_guarantee" class="form-check-input" {{ 'checked' if policy.require_payment_guarantee else '' }}>
+                                <label class="form-check-label" for="require_payment_guarantee">Require Payment Guarantee</label>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Reservation Hold (minutes)</label>
+                                    <input type="number" name="reservation_hold_minutes" class="form-control" value="{{ policy.reservation_hold_minutes or 30 }}" min="1">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cancellation -->
+                        <h5 class="mb-3">Cancellation Policy</h5>
+                        <div class="mb-4">
+                            <select name="cancellation_policy" class="form-select mb-2">
+                                <option value="flexible" {{ 'selected' if policy.cancellation_policy == 'flexible' else '' }}>Flexible</option>
+                                <option value="moderate" {{ 'selected' if policy.cancellation_policy == 'moderate' else '' }}>Moderate</option>
+                                <option value="strict" {{ 'selected' if policy.cancellation_policy == 'strict' else '' }}>Strict</option>
+                                <option value="non_refundable" {{ 'selected' if policy.cancellation_policy == 'non_refundable' else '' }}>Non-Refundable</option>
+                            </select>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Free Cancel (hours before check-in)</label>
+                                    <input type="number" name="free_cancel_hours" class="form-control" value="{{ policy.free_cancel_hours or 24 }}" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- No Show -->
+                        <h5 class="mb-3">No Show Policy</h5>
+                        <div class="mb-4">
+                            <select name="no_show_charge_type" class="form-select mb-2">
+                                <option value="none" {{ 'selected' if policy.no_show_charge_type == 'none' else '' }}>No Charge</option>
+                                <option value="first_night" {{ 'selected' if policy.no_show_charge_type == 'first_night' else '' }}>Charge First Night</option>
+                                <option value="full_booking" {{ 'selected' if policy.no_show_charge_type == 'full_booking' else '' }}>Charge Full Booking</option>
+                            </select>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">No Show Charge Amount ($)</label>
+                                    <input type="number" name="no_show_charge_amount" class="form-control" value="{{ policy.no_show_charge_amount or 0 }}" min="0" step="0.01">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Payment Methods -->
+                        <h5 class="mb-3">Accepted Payment Methods</h5>
+                        <div class="mb-4">
+                            {% for m in payment_options.payment_methods %}
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="payment_methods" value="{{ m.id }}" id="method_{{ m.id }}" class="form-check-input"
+                                {% set pm = policy.property_payment_methods|selectattr('wallet_method_id', 'equalto', m.id)|first %}
+                                {{ 'checked' if pm and pm.enabled else '' }}>
+                                <label class="form-check-label" for="method_{{ m.id }}">
+                                    <i class="fas fa-{{ m.icon }}"></i> {{ m.display_name }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <!-- Status -->
+                        <h5 class="mb-3">Policy Status</h5>
+                        <div class="mb-4">
+                            <div class="form-check">
+                                <input type="checkbox" name="is_active" id="is_active" class="form-check-input" {{ 'checked' if policy.is_active else '' }}>
+                                <label class="form-check-label" for="is_active">Active</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Save Policy</button>
+                        <a href="{{ url_for('accommodation.host_dashboard') }}" class="btn btn-secondary">Cancel</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

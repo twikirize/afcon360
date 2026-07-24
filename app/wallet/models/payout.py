@@ -15,9 +15,9 @@ class PayoutRequest(BaseModel):
     payment_details = Column(db.JSON, nullable=False)
     status = Column(String(20), nullable=False, default='pending', index=True)
     approved_by = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-    approved_at = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
     paid_by = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-    paid_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
 

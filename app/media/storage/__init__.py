@@ -26,6 +26,25 @@ class StorageBackend:
         """Return file-like object for reading (used by image processor)."""
         raise NotImplementedError
 
+    def create_presigned_upload(self, storage_key: str, content_type: str,
+                                expires_in: int = 900):
+        """
+        Return a dict with a direct-to-storage upload target so the client can
+        PUT/POST bytes straight to the bucket, bypassing the app server.
+
+        Returns:
+            {
+                'url': str,            # direct upload URL
+                'method': 'PUT'|'POST',
+                'fields': dict,        # extra form fields (presigned POST)
+                'headers': dict,       # required request headers (presigned PUT)
+            }
+
+        Backends without presigning support (e.g. local filesystem) raise
+        NotImplementedError so callers fall back to server-streamed uploads.
+        """
+        raise NotImplementedError
+
 
 def get_storage_backend() -> StorageBackend:
     """

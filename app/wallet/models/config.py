@@ -44,12 +44,12 @@ class PaymentProviderConfig(BaseModel):
     is_enabled = Column(Boolean, default=True, nullable=False)  # Kill switch
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(BigInteger, nullable=True)  # User ID who last updated
     
     # Audit
-    last_tested_at = Column(DateTime, nullable=True)
+    last_tested_at = Column(DateTime(timezone=True), nullable=True)
     last_test_result = Column(String(20), nullable=True)  # success, failed
     last_error_message = Column(Text, nullable=True)
     
@@ -286,7 +286,7 @@ class WalletSystemConfig(BaseModel):
     require_kyc_for_transfers = Column(Boolean, default=False)
     
     # Audit
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(BigInteger, nullable=True)
     
     @classmethod
