@@ -117,7 +117,7 @@ class TestNoDoubleSpend:
         def withdraw_attempt(thread_id):
             try:
                 result = service.withdraw(
-                    user_id=user_id,
+                    account_id=str(account_id),
                     amount=Decimal('100'),
                     currency='USD',
                     client_request_id=f"withdraw_{thread_id}_{uuid4().hex}"
@@ -162,7 +162,7 @@ class TestNoDoubleSpend:
         Expected: Sender balance == 0, never negative.
         """
         # Create recipient accounts
-        recipient_ids = []
+        recipient_account_ids = []
         for i in range(50):
             from app.identity.models.user import User
             recipient = User(
@@ -172,7 +172,8 @@ class TestNoDoubleSpend:
             )
             db.session.add(recipient)
             db.session.commit()
-            recipient_ids.append(recipient.id)
+            recipient_account = AccountRepository().get_or_create(recipient.id, 'USD')
+            recipient_account_ids.append(recipient_account.id)
         
         successful_transfers = []
         failed_transfers = []
@@ -180,8 +181,8 @@ class TestNoDoubleSpend:
         def transfer_attempt(thread_id):
             try:
                 result = service.transfer(
-                    from_user_id=funded_account.user_id,
-                    to_user_id=recipient_ids[thread_id],
+                    from_account_id=str(funded_account.id),
+                    to_account_id=str(recipient_account_ids[thread_id]),
                     amount=Decimal('50'),
                     currency='USD',
                     client_request_id=f"transfer_{thread_id}_{uuid4().hex}"
@@ -256,8 +257,8 @@ class TestTransferAtomicity:
         # Attempt transfer
         try:
             service.transfer(
-                from_user_id=funded_account.user_id,
-                to_user_id=recipient.id,
+                from_account_id=str(funded_account.id),
+                to_account_id=str(recipient_account.id),
                 amount=Decimal('100'),
                 currency='USD',
                 client_request_id=f"atomic_test_{uuid4().hex}"

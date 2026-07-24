@@ -168,15 +168,32 @@ class SecuritySettingsService:
     @staticmethod
     def get_security_status() -> Dict[str, Any]:
         """Get comprehensive security status"""
+        try:
+            from app.admin.owner.rate_limit_service import RateLimitService
+            rate_limit_status = RateLimitService.get_security_status()
+            rate_limit_status['timestamp'] = datetime.now(timezone.utc).isoformat()
+        except Exception:
+            rate_limit_status = {
+                'enabled': SecuritySettingsService.is_feature_enabled('RATE_LIMIT_ENABLED', True),
+                'strategy': 'fixed-window',
+                'default_limits': ['500 per minute', '2000 per hour', '10000 per day'],
+                'block_duration_minutes': 15,
+                'progressive_blocking': False,
+                'key_sources': ['ip', 'user_id'],
+                'edge_rate_limiting': False,
+                'logging_enabled': True,
+                'alert_on_breach': False,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+            }
+
         return {
             'lockdown': SecuritySettingsService.is_feature_enabled('EMERGENCY_LOCKDOWN', False),
             'maintenance': SecuritySettingsService.is_feature_enabled('MAINTENANCE_MODE', False),
-            'rate_limiting': SecuritySettingsService.is_feature_enabled('RATE_LIMIT_ENABLED', True),
+            'rate_limiting': rate_limit_status,
             'security_headers': SecuritySettingsService.is_feature_enabled('SECURITY_HEADERS_ENABLED', True),
             'audit_logging': SecuritySettingsService.is_feature_enabled('AUDIT_LOGGING_ENABLED', True),
             'wallet_enabled': SecuritySettingsService.is_feature_enabled('ENABLE_WALLET', True),
             'payment_processing': SecuritySettingsService.is_feature_enabled('PAYMENT_PROCESSING_ENABLED', False),
-            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     @staticmethod

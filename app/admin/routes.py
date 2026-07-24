@@ -2138,19 +2138,19 @@ def role_dashboard(role_name):
         from app.auth.decorators import require_role
         if not require_role(role_name):
             flash(f"You don't have permission to access {role_name} dashboard.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
+            return redirect(url_for('admin.dashboard'))
         
         template = dashboard_templates.get(role_name)
         if template:
             return render_template(template)
         else:
             flash("Dashboard not found for this role.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
+            return redirect(url_for('admin.dashboard'))
             
     except Exception as e:
         logger.error(f"Error loading role dashboard: {e}")
         flash("Error loading dashboard.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
+        return redirect(url_for('admin.dashboard'))
 
 
 @admin_bp.route("/settings/role/<string:role_name>", endpoint="role_settings")
@@ -2173,16 +2173,16 @@ def role_settings(role_name):
         from app.auth.decorators import require_role
         if not require_role(role_name):
             flash(f"You don't have permission to access {role_name} settings.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
+            return redirect(url_for('admin.dashboard'))
         
         template = settings_templates.get(role_name)
         if template:
             return render_template(template)
         else:
             flash("Settings not found for this role.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
+            return redirect(url_for('admin.dashboard'))
             
     except Exception as e:
         logger.error(f"Error loading role settings: {e}")
         flash("Error loading settings.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
+        return redirect(url_for('admin.dashboard'))

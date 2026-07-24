@@ -596,6 +596,24 @@ def create_app(config_object=None) -> Flask:
     else:
         logger.warning("IDGuard not available - skipping ID mixing protection")
 
+    # Dynamic rate limit settings wiring (after DB init)
+    try:
+        from app.admin.owner.rate_limit_service import RateLimitService
+
+        with app.app_context():
+            default_limits = RateLimitService.get_default_limits()
+            limiter.default_limits = default_limits
+
+        @app.before_request
+        def _apply_dynamic_rate_limits():
+            """Dynamically enable/disable rate limiter based on owner settings"""
+            try:
+                limiter.enabled = RateLimitService.is_enabled()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Rate limit settings wiring failed: {e}")
+
     # ------------------------------------------------------------------
     # SESSION SECURITY
     # SESSION_COOKIE_SECURE is set by config.py from .env.{APP_ENV} — do NOT
@@ -917,6 +935,14 @@ def create_app(config_object=None) -> Flask:
         app.logger.info("✅ Wallet module registered")
     except Exception as e:
         app.logger.error(f"❌ Failed to register wallet module: {e}")
+
+    # CSP Status Routes
+    try:
+        from app.admin.owner.csp_routes import csp_bp
+        app.register_blueprint(csp_bp, url_prefix='/owner/csp')
+        app.logger.info("✅ CSP status routes registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register CSP routes: {e}")
 
     # JSON PIN API
     try:
@@ -1438,11 +1464,16 @@ def create_app(config_object=None) -> Flask:
         _cache_key = f"user:{public_id}"
         _cached = cache.get(_cache_key)
         if _cached is not None:
-            # Reconstruct user from cached dict — we need a live DB object for Flask-Login,
-            # so we query by public_id but use the cache to skip if session is valid.
-            # For true cross-request caching, we return a lightweight proxy or requery.
-            # Here we requery but the cache hit means we skip the expensive joins.
-            pass  # Fall through to DB query; cache will be populated below
+            # Reconstruct user from cached dict — query by PK only (no expensive joins)
+            try:
+                user = User.query.get(_cached['id'])
+                if user:
+                    _g._cached_user = user
+                    _g._cached_user_pubid = str(user.public_id)
+                    current_app.logger.debug(f"USER_LOADER cache hit for {public_id}")
+                    return user
+            except Exception:
+                pass  # Fall through to full query on cache reconstruction failure
         
         try:
             user = (

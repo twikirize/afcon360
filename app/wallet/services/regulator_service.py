@@ -16,7 +16,6 @@ from flask import current_app
 from cryptography.fernet import Fernet
 
 from app.extensions import db
-from app.wallet.models.wallet import WalletTransaction
 from app.wallet.models.transaction import TransactionModel
 from app.audit.comprehensive_audit import AuditService
 

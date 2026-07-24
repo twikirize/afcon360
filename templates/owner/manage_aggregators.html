@@ -16,28 +16,52 @@
     </div>
 
     <!-- Create Aggregator Form -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Add New Aggregator</h5>
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Add New Aggregator (Sandbox / Live Setup)</h5>
         </div>
         <div class="card-body">
             <form method="POST" class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Name *</label>
-                    <input type="text" name="name" class="form-control" required placeholder="Unique identifier (e.g., payroll_service)">
+                <div class="col-md-4">
+                    <label class="form-label font-weight-bold">System Name *</label>
+                    <input type="text" name="name" class="form-control" required placeholder="e.g., airtel_money, flutterwave">
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">Display Name *</label>
-                    <input type="text" name="display_name" class="form-control" required placeholder="Human-readable name">
+                <div class="col-md-4">
+                    <label class="form-label font-weight-bold">Display Name *</label>
+                    <input type="text" name="display_name" class="form-control" required placeholder="e.g., Airtel Money Uganda">
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">API Key *</label>
-                    <input type="text" name="api_key" class="form-control" required placeholder="API key for authentication">
+                <div class="col-md-4">
+                    <label class="form-label font-weight-bold">Initial Operating Mode</label>
+                    <select name="mode" class="form-select border-info">
+                        <option value="testing" selected>Testing / Sandbox (Safe Trial)</option>
+                        <option value="live">Live / Production (Real Transactions)</option>
+                    </select>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">API Secret *</label>
-                    <input type="password" name="api_secret" class="form-control" required placeholder="API secret (will be encrypted)">
+
+                <div class="col-md-6 bg-light p-3 rounded border">
+                    <h6 class="text-secondary"><i class="bi bi-bug"></i> Sandbox / Testing Credentials</h6>
+                    <div class="mb-2">
+                        <label class="form-label">Sandbox API Key</label>
+                        <input type="text" name="sandbox_api_key" class="form-control" placeholder="Sandbox Key">
+                    </div>
+                    <div>
+                        <label class="form-label">Sandbox API Secret</label>
+                        <input type="password" name="sandbox_api_secret" class="form-control" placeholder="Sandbox Secret">
+                    </div>
                 </div>
+
+                <div class="col-md-6 bg-light p-3 rounded border">
+                    <h6 class="text-success"><i class="bi bi-shield-check"></i> Live / Production Credentials</h6>
+                    <div class="mb-2">
+                        <label class="form-label">Live API Key</label>
+                        <input type="text" name="live_api_key" class="form-control" placeholder="Live Key">
+                    </div>
+                    <div>
+                        <label class="form-label">Live API Secret</label>
+                        <input type="password" name="live_api_secret" class="form-control" placeholder="Live Secret">
+                    </div>
+                </div>
+
                 <div class="col-md-6">
                     <label class="form-label">Tier</label>
                     <select name="tier" class="form-select">
@@ -47,12 +71,12 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Description</label>
-                    <textarea name="description" class="form-control" rows="1" placeholder="Description of aggregator"></textarea>
+                    <label class="form-label">Description / Notes</label>
+                    <textarea name="description" class="form-control" rows="1" placeholder="Gateway notes or instructions"></textarea>
                 </div>
                 <div class="col-12">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-plus-circle"></i> Add Aggregator
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-check-circle"></i> Save and Register Aggregator
                     </button>
                 </div>
             </form>
@@ -73,6 +97,7 @@
                             <th>ID</th>
                             <th>Name</th>
                             <th>Display Name</th>
+                            <th>Mode</th>
                             <th>Status</th>
                             <th>Tier</th>
                             <th>Rate Limits</th>
@@ -87,6 +112,11 @@
                             <td>{{ aggregator.name }}</td>
                             <td>{{ aggregator.display_name }}</td>
                             <td>
+                                <span class="badge bg-{% if aggregator.mode == 'live' %}danger{% else %}info{% endif %}">
+                                    <i class="bi bi-{% if aggregator.mode == 'live' %}broadcast{% else %}bug{% endif %}"></i> {{ aggregator.mode | upper }}
+                                </span>
+                            </td>
+                            <td>
                                 <span class="badge bg-{% if aggregator.status == 'active' %}success{% elif aggregator.status == 'suspended' %}warning{% else %}secondary{% endif %}">
                                     {{ aggregator.status }}
                                 </span>
@@ -97,26 +127,45 @@
                                 <small>{{ aggregator.rate_limit_per_hour }}/hr</small>
                             </td>
                             <td>
-                                {% if aggregator.allow_bulk_deposits %}<span class="badge bg-info">Deposits</span>{% endif %}
-                                {% if aggregator.allow_bulk_withdrawals %}<span class="badge bg-info">Withdrawals</span>{% endif %}
-                                {% if aggregator.allow_bulk_transfers %}<span class="badge bg-info">Transfers</span>{% endif %}
+                                {% if aggregator.allow_bulk_deposits %}<span class="badge bg-light text-dark">Deposits</span>{% endif %}
+                                {% if aggregator.allow_bulk_withdrawals %}<span class="badge bg-light text-dark">Withdrawals</span>{% endif %}
                             </td>
                             <td>
-                                {% if aggregator.status == 'active' %}
-                                <form method="POST" action="{{ url_for('owner.suspend_aggregator', aggregator_id=aggregator.id) }}" class="d-inline">
-                                    <input type="hidden" name="reason" value="Admin suspension">
-                                    <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Suspend this aggregator?')">
-                                        <i class="bi bi-pause-circle"></i> Suspend
-                                    </button>
-                                </form>
-                                {% elif aggregator.status == 'suspended' %}
-                                <form method="POST" action="{{ url_for('owner.activate_aggregator', aggregator_id=aggregator.id) }}" class="d-inline">
-                                    <input type="hidden" name="reason" value="Admin activation">
-                                    <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Activate this aggregator?')">
-                                        <i class="bi bi-play-circle"></i> Activate
-                                    </button>
-                                </form>
-                                {% endif %}
+                                <div class="btn-group" role="group">
+                                    {% if aggregator.mode == 'testing' %}
+                                    <form method="POST" action="{{ url_for('admin.owner.set_aggregator_mode', aggregator_id=aggregator.id) }}" class="d-inline">
+                                        <input type="hidden" name="mode" value="live">
+                                        <input type="hidden" name="reason" value="Promoted to live production by admin">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Promote {{ aggregator.display_name }} to LIVE production mode?')">
+                                            <i class="bi bi-broadcast"></i> Go Live
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <form method="POST" action="{{ url_for('admin.owner.set_aggregator_mode', aggregator_id=aggregator.id) }}" class="d-inline">
+                                        <input type="hidden" name="mode" value="testing">
+                                        <input type="hidden" name="reason" value="Reverted to testing/sandbox mode by admin">
+                                        <button type="submit" class="btn btn-sm btn-outline-info" onclick="return confirm('Switch {{ aggregator.display_name }} back to TESTING/Sandbox mode?')">
+                                            <i class="bi bi-bug"></i> Test Mode
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
+                                    {% if aggregator.status == 'active' %}
+                                    <form method="POST" action="{{ url_for('admin.owner.suspend_aggregator', aggregator_id=aggregator.id) }}" class="d-inline ms-1">
+                                        <input type="hidden" name="reason" value="Admin suspension">
+                                        <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Suspend this aggregator?')">
+                                            <i class="bi bi-pause-circle"></i> Suspend
+                                        </button>
+                                    </form>
+                                    {% elif aggregator.status == 'suspended' %}
+                                    <form method="POST" action="{{ url_for('admin.owner.activate_aggregator', aggregator_id=aggregator.id) }}" class="d-inline ms-1">
+                                        <input type="hidden" name="reason" value="Admin activation">
+                                        <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Activate this aggregator?')">
+                                            <i class="bi bi-play-circle"></i> Activate
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

@@ -35,7 +35,7 @@ def wallet_admin_dashboard():
     try:
         # Import wallet modules
         from app.wallet.models import Wallet, Transaction, PaymentMethod
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         # Get wallet statistics
         wallet_stats = WalletService.get_admin_dashboard_data()
@@ -109,6 +109,14 @@ def wallet_admin_transactions():
         return redirect(url_for('admin.wallet_admin_dashboard'))
 
 
+@admin_bp.route("/wallet-admin/adjustments", endpoint="wallet_admin_adjustments")
+@login_required
+@require_role("wallet_admin")
+def wallet_admin_adjustments():
+    """Manage manual adjustment requests."""
+    return render_template("admin/wallet_adjustments.html")
+
+
 @admin_bp.route("/wallet-admin/transactions/<int:transaction_id>/approve", endpoint="wallet_admin_approve_transaction", methods=['POST'])
 @login_required
 @require_role("wallet_admin")
@@ -116,7 +124,7 @@ def wallet_admin_approve_transaction(transaction_id):
     """Approve pending transaction."""
     try:
         from app.wallet.models import Transaction
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         transaction = Transaction.query.get_or_404(transaction_id)
         
@@ -139,7 +147,7 @@ def wallet_admin_reject_transaction(transaction_id):
     """Reject pending transaction."""
     try:
         from app.wallet.models import Transaction
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         transaction = Transaction.query.get_or_404(transaction_id)
         reason = request.form.get('reason', 'No reason provided')
@@ -193,7 +201,7 @@ def wallet_admin_verify_payment(payment_id):
     """Verify payment method."""
     try:
         from app.wallet.models import PaymentMethod
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         payment_method = PaymentMethod.query.get_or_404(payment_id)
         
@@ -248,7 +256,7 @@ def wallet_admin_create_commission():
     try:
         if request.method == 'POST':
             from app.wallet.models import Commission
-            from app.wallet.services import WalletService
+            from app.wallet.services.wallet_service import WalletService
             
             # Process commission creation
             commission_data = {
@@ -283,7 +291,7 @@ def wallet_admin_payout_commission(commission_id):
     """Process commission payout."""
     try:
         from app.wallet.models import AgentCommission
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         commission = AgentCommission.query.get_or_404(commission_id)
         
@@ -308,7 +316,7 @@ def wallet_admin_payout_commission(commission_id):
 def wallet_admin_reconciliation():
     """Balance accounts and reconcile transactions."""
     try:
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         # Get reconciliation data
         reconciliation_data = WalletService.get_reconciliation_data()
@@ -330,7 +338,7 @@ def wallet_admin_reconciliation():
 def wallet_admin_process_reconciliation():
     """Process account reconciliation."""
     try:
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         reconciliation_date = request.form.get('reconciliation_date')
         
@@ -378,7 +386,7 @@ def wallet_admin_toggle_gateway(gateway_id):
     """Toggle payment gateway status."""
     try:
         from app.wallet.models import PaymentGateway
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         gateway = PaymentGateway.query.get_or_404(gateway_id)
         
@@ -405,7 +413,7 @@ def wallet_admin_toggle_gateway(gateway_id):
 def wallet_admin_analytics():
     """Wallet analytics and financial reports."""
     try:
-        from app.wallet.services import WalletService
+        from app.wallet.services.wallet_service import WalletService
         
         # Get analytics data
         analytics = WalletService.get_analytics_data()

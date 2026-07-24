@@ -24,21 +24,32 @@ def require_owner_role(f):
     """Decorator to require owner role"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check if user has owner role or delegation permission
-        user_role = getattr(request, 'user_role', 'user')
-        
-        if user_role != 'owner':
-            # Check delegation
-            delegation_service = DelegationService()
-            if not delegation_service.check_delegation_permission(
-                getattr(request, 'user_id', 1), 
-                DelegationScope.SYSTEM_SETTINGS
-            ):
-                return jsonify({
-                    'success': False,
-                    'error': 'Owner access required',
-                    'error_code': 'INSUFFICIENT_PERMISSIONS'
-                }), 403
+        from flask_login import current_user
+        from flask import jsonify, redirect, url_for, flash
+
+        is_owner = False
+
+        if hasattr(current_user, 'has_role'):
+            try:
+                is_owner = current_user.has_role('owner')
+            except Exception:
+                pass
+
+        if not is_owner and hasattr(current_user, 'roles'):
+            try:
+                for ur in current_user.roles:
+                    if ur.role and ur.role.name == 'owner':
+                        is_owner = True
+                        break
+            except Exception:
+                pass
+
+        if not is_owner:
+            return jsonify({
+                'success': False,
+                'error': 'Owner access required',
+                'error_code': 'INSUFFICIENT_PERMISSIONS'
+            }), 403
         
         return f(*args, **kwargs)
     

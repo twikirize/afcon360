@@ -65,7 +65,7 @@ def org_member_dashboard():
     except Exception as e:
         logger.error(f"Error loading org member dashboard: {e}")
         flash("Error loading dashboard.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
+        return redirect(url_for('admin.dashboard'))
 
 
 # -----------------------------

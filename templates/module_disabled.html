@@ -22,7 +22,7 @@
       </a>
       
       {% if current_user and current_user.is_app_owner %}
-      <a href="{{ url_for('owner.dashboard') }}" class="btn btn-outline-secondary" style="margin-left: 1rem;">
+      <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary" style="margin-left: 1rem;">
         ⚙️ Enable Module (Admin)
       </a>
       {% endif %}

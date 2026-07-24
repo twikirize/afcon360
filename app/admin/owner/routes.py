@@ -16,6 +16,7 @@ from app.extensions import db
 from app.identity.models.organisation import Organisation
 from app.identity.models.roles_permission import Role
 from app.identity.models import User, UserRole
+from app.models.system_config import SystemConfig as SystemSetting
 from sqlalchemy import func
 from app.admin.owner.decorators import owner_required
 from app.admin.owner.utils import log_owner_action, get_system_health
@@ -113,14 +114,24 @@ def manage_aggregators():
             api_secret = request.form.get('api_secret')
             description = request.form.get('description')
             tier = request.form.get('tier', 'standard')
+            mode = request.form.get('mode', 'testing')
+            sandbox_api_key = request.form.get('sandbox_api_key')
+            sandbox_api_secret = request.form.get('sandbox_api_secret')
+            live_api_key = request.form.get('live_api_key')
+            live_api_secret = request.form.get('live_api_secret')
             
             AggregatorService.create_aggregator(
                 name=name,
                 display_name=display_name,
-                api_key=api_key,
-                api_secret=api_secret,
+                api_key=api_key or sandbox_api_key or live_api_key,
+                api_secret=api_secret or sandbox_api_secret or live_api_secret,
                 description=description,
                 tier=tier,
+                mode=mode,
+                sandbox_api_key=sandbox_api_key,
+                sandbox_api_secret=sandbox_api_secret,
+                live_api_key=live_api_key,
+                live_api_secret=live_api_secret,
                 admin_id=current_user.id,
                 admin_name=current_user.username,
                 admin_role='owner'
@@ -185,6 +196,33 @@ def activate_aggregator(aggregator_id):
     except Exception as e:
         current_app.logger.error(f"Activate aggregator error: {e}")
         flash('Error activating aggregator', 'error')
+        return redirect(url_for('admin.owner.manage_aggregators'))
+
+@owner_bp.route('/aggregator/<int:aggregator_id>/set-mode', methods=['POST'])
+@owner_login_required
+def set_aggregator_mode(aggregator_id):
+    """Switch aggregator operating mode between testing and live"""
+    try:
+        from app.wallet.services.aggregator_service import AggregatorService
+        from flask_login import current_user
+        
+        mode = request.form.get('mode', 'testing')
+        reason = request.form.get('reason', f'Switched mode to {mode}')
+        
+        AggregatorService.set_aggregator_mode(
+            aggregator_id=aggregator_id,
+            mode=mode,
+            admin_id=current_user.id,
+            admin_name=current_user.username,
+            admin_role='owner',
+            reason=reason
+        )
+        
+        flash(f'Aggregator mode successfully switched to {mode.upper()}', 'success')
+        return redirect(url_for('admin.owner.manage_aggregators'))
+    except Exception as e:
+        current_app.logger.error(f"Set aggregator mode error: {e}")
+        flash('Error switching aggregator mode', 'error')
         return redirect(url_for('admin.owner.manage_aggregators'))
 
 @owner_bp.route('/configure-fraud-detection', methods=['GET', 'POST'])
@@ -327,6 +365,51 @@ def configure_travel_rule():
     except Exception as e:
         current_app.logger.error(f"Configure travel rule error: {e}")
         flash('Error configuring travel rule', 'error')
+        return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/configure-rate-limiting', methods=['GET', 'POST'])
+@owner_login_required
+def configure_rate_limiting():
+    """Configure rate limiting (Owner only)"""
+    try:
+        from app.admin.owner.rate_limit_service import RateLimitService
+        from flask_login import current_user
+
+        if request.method == 'POST':
+            updates = {
+                'enabled': request.form.get('enabled') == 'on',
+                'strategy': request.form.get('strategy', 'fixed-window'),
+                'default_per_minute': int(request.form.get('default_per_minute', 500)),
+                'default_per_hour': int(request.form.get('default_per_hour', 2000)),
+                'default_per_day': int(request.form.get('default_per_day', 10000)),
+                'block_duration_minutes': int(request.form.get('block_duration_minutes', 15)),
+                'progressive_blocking_enabled': request.form.get('progressive_blocking_enabled') == 'on',
+                'max_violations_before_block': int(request.form.get('max_violations_before_block', 10)),
+                'key_sources': request.form.get('key_sources', 'ip,user_id'),
+                'logging_enabled': request.form.get('logging_enabled') == 'on',
+                'alert_on_breach': request.form.get('alert_on_breach') == 'on',
+                'alert_threshold_per_minute': int(request.form.get('alert_threshold_per_minute', 100)),
+                'edge_rate_limiting_enabled': request.form.get('edge_rate_limiting_enabled') == 'on',
+            }
+
+            success = RateLimitService.update_settings(
+                updates=updates,
+                updated_by=current_user.id
+            )
+
+            if success:
+                flash('Rate limiting configuration updated successfully', 'success')
+            else:
+                flash('Error updating rate limiting configuration', 'error')
+
+            return redirect(url_for('admin.owner.configure_rate_limiting'))
+
+        # GET request - show current configuration
+        settings = RateLimitService.get_all_settings()
+        return render_template('owner/configure_rate_limiting.html', settings=settings)
+    except Exception as e:
+        current_app.logger.error(f"Configure rate limiting error: {e}")
+        flash('Error configuring rate limiting', 'error')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/add-payment-gateway', methods=['GET', 'POST'])
@@ -861,13 +944,20 @@ def settings():
         except Exception:
             media_settings = None
 
+        # Load Wallet Adjustment Settings
+        from app.models.system_config import SystemConfig
+        wallet_adjustment_workflow = SystemConfig.get('wallet_adjustment_workflow_enabled', True)
+        wallet_adjustment_threshold = SystemConfig.get('wallet_adjustment_auto_approve_threshold', 1000)
+
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
                              media_settings=media_settings,
                              require_owner_mfa=require_mfa,
                              super_admin_can_toggle_modules=super_admin_can_toggle_modules,
-                             org_registration_mode=org_registration_mode)
+                             org_registration_mode=org_registration_mode,
+                             wallet_adjustment_workflow=wallet_adjustment_workflow,
+                             wallet_adjustment_threshold=wallet_adjustment_threshold)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"
@@ -921,6 +1011,39 @@ def toggle_org_registration_mode():
         flash('Error updating registration mode', 'error')
     
     return redirect(url_for('admin.owner.settings'))
+
+
+@owner_bp.route('/settings/wallet-adjustments', methods=['POST'])
+@owner_login_required
+@audit_owner_action('updated_wallet_adjustment_settings', 'settings')
+def update_wallet_adjustment_settings():
+    """Update wallet adjustment security settings"""
+    try:
+        from app.models.system_config import SystemConfig
+        
+        workflow_enabled = request.form.get('workflow_enabled') == 'on'
+        threshold = request.form.get('threshold', type=int, default=1000)
+        
+        SystemConfig.set('wallet_adjustment_workflow_enabled', workflow_enabled, value_type='bool', category='wallet')
+        SystemConfig.set('wallet_adjustment_auto_approve_threshold', threshold, value_type='int', category='wallet')
+        
+        db.session.commit()
+        
+        log_owner_action(
+            action='updated_wallet_adjustment_settings',
+            category='settings',
+            details={
+                'workflow_enabled': workflow_enabled,
+                'threshold': threshold
+            }
+        )
+        
+        flash("✅ Wallet adjustment security settings updated", "success")
+        return redirect(url_for('admin.owner.settings'))
+    except Exception as e:
+        logger.error(f"Error updating wallet adjustment settings: {e}")
+        flash("❌ Error updating wallet adjustment settings", "danger")
+        return redirect(url_for('admin.owner.settings'))
 
 
 @owner_bp.route('/settings/toggle-super-admin-module-access', methods=['POST'])
@@ -1062,17 +1185,22 @@ def assign_role():
             flash("User ID and Role ID are required", "danger")
             return redirect(url_for('admin.owner.manage_roles'))
 
-        user = User.query.get_or_404(user_id)
+        user = User.query.filter_by(public_id=user_id).first()
+        if not user:
+            flash("User not found", "danger")
+            return redirect(url_for('admin.owner.manage_roles'))
+
+        internal_user_id = user.id
         role = Role.query.get_or_404(role_id)
 
         # Check if user already has this role
-        existing = UserRole.query.filter_by(user_id=user_id, role_id=role_id).first()
+        existing = UserRole.query.filter_by(user_id=internal_user_id, role_id=role_id).first()
         if existing:
             flash(f"{user.username} already has the {role.name} role", "warning")
             return redirect(url_for('admin.owner.manage_roles'))
 
         # Assign the role
-        user_role = UserRole(user_id=user_id, role_id=role_id)
+        user_role = UserRole(user_id=internal_user_id, role_id=role_id)
         db.session.add(user_role)
         db.session.commit()
 
@@ -1103,7 +1231,12 @@ def revoke_role():
             flash("User ID and Role ID are required", "danger")
             return redirect(url_for('admin.owner.manage_roles'))
 
-        user = User.query.get_or_404(user_id)
+        user = User.query.filter_by(public_id=user_id).first()
+        if not user:
+            flash("User not found", "danger")
+            return redirect(url_for('admin.owner.manage_roles'))
+
+        internal_user_id = user.id
         role = Role.query.get_or_404(role_id)
 
         # Prevent revoking owner role from the only owner
@@ -1114,7 +1247,7 @@ def revoke_role():
                 return redirect(url_for('admin.owner.manage_roles'))
 
         # Revoke the role
-        user_role = UserRole.query.filter_by(user_id=user_id, role_id=role_id).first()
+        user_role = UserRole.query.filter_by(user_id=internal_user_id, role_id=role_id).first()
         if user_role:
             db.session.delete(user_role)
             db.session.commit()
@@ -1981,6 +2114,109 @@ def auth_settings_preview():
 # ============================================================================
 # END AUTH SETTINGS ROUTES
 # ============================================================================
+
+# ============================================================================
+# AML/KYC Configuration Routes
+# ============================================================================
+
+@owner_bp.route('/configure-aml-kyc', methods=['GET', 'POST'])
+@owner_login_required
+def configure_aml_kyc():
+    """Configure AML/KYC screening settings (Owner only)"""
+    try:
+        from app.wallet.models.config import WalletSystemConfig
+        from flask_login import current_user
+
+        config = WalletSystemConfig.get_config()
+
+        if request.method == 'POST':
+            config.aml_screening_enabled = request.form.get('aml_screening_enabled', 'on') == 'on'
+            config.sanctions_screening = request.form.get('sanctions_screening', 'on') == 'on'
+            config.country_specific_kyc = request.form.get('country_specific_kyc', 'on') == 'on'
+            config.transaction_monitoring = request.form.get('transaction_monitoring', 'on') == 'on'
+            config.aml_threshold = int(request.form.get('aml_threshold', 10000))
+            config.kyc_tier_required = request.form.get('kyc_tier_required', 'tier_2')
+            db.session.add(config)
+            db.session.commit()
+            flash('AML/KYC configuration updated successfully', 'success')
+            return redirect(url_for('admin.owner.configure_aml_kyc'))
+
+        return render_template('owner/configure_aml_kyc.html', config=config)
+    except Exception as e:
+        logger.error(f"AML/KYC configuration error: {e}")
+        flash('Error loading AML/KYC configuration', 'error')
+        return redirect(url_for('admin.owner.wallet_capabilities'))
+
+
+# ============================================================================
+# Regulatory Reporting Routes
+# ============================================================================
+
+@owner_bp.route('/regulatory-reports', methods=['GET', 'POST'])
+@owner_login_required
+def regulatory_reports():
+    """Generate and view regulatory reports (Owner only)"""
+    try:
+        from app.wallet.services.regulatory_reporting import RegulatoryReportingService
+        from flask_login import current_user
+
+        report_data = None
+        if request.method == 'POST':
+            report_type = request.form.get('report_type', 'str')
+            period_start = request.form.get('period_start')
+            period_end = request.form.get('period_end')
+
+            service = RegulatoryReportingService()
+            if report_type == 'ctr':
+                report_data = service.generate_ctr_report(period_start, period_end)
+            else:
+                report_data = service.generate_str_report(period_start, period_end)
+
+            flash('Report generated successfully', 'success')
+
+        return render_template('owner/regulatory_reports.html', report_data=report_data)
+    except Exception as e:
+        logger.error(f"Regulatory reports error: {e}")
+        flash('Error loading regulatory reports', 'error')
+        return redirect(url_for('admin.owner.wallet_capabilities'))
+
+
+# ============================================================================
+# Regulator Access Management Routes
+# ============================================================================
+
+@owner_bp.route('/manage-regulator-access', methods=['GET', 'POST'])
+@owner_login_required
+def manage_regulator_access():
+    """Manage regulator API access (Owner only)"""
+    try:
+        from app.wallet.services.regulator_service import RegulatorAccessService
+        from flask_login import current_user
+
+        if request.method == 'POST':
+            action = request.form.get('action')
+            if action == 'create_access_code':
+                regulator_id = request.form.get('regulator_id', '')
+                permissions = request.form.getlist('permissions')
+                expires_days = int(request.form.get('expires_days', 30))
+                code = RegulatorAccessService.generate_access_code(
+                    regulator_id=regulator_id,
+                    permissions=permissions,
+                    expires_days=expires_days
+                )
+                db.session.commit()
+                flash(f'Access code generated: {code}', 'success')
+            return redirect(url_for('admin.owner.manage_regulator_access'))
+
+        service = RegulatorAccessService()
+        access_codes = service._access_codes if hasattr(service, '_access_codes') else []
+        return render_template('owner/manage_regulator_access.html',
+                               access_codes=access_codes)
+    except Exception as e:
+        logger.error(f"Regulator access management error: {e}")
+        flash('Error loading regulator access management', 'error')
+        return redirect(url_for('admin.owner.wallet_capabilities'))
+
 
 # ============================================================================
 # Initialize Security Dashboard Routes

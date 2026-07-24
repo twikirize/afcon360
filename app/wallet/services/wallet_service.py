@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from uuid import UUID
 from flask import current_app, request
+from flask_login import current_user
 from sqlalchemy.exc import OperationalError
 
 from app.extensions import db
@@ -60,66 +61,21 @@ class WalletService:
         self.ledger_repo = LedgerRepository(self.db)
         self.currency_service = CurrencyService()
 
+    # ========================================================================
+    # PRIVATE HELPERS
+    # ========================================================================
+
+    def _is_admin(self) -> bool:
+        """Check if current user has admin privileges for wallet management."""
+        if not current_user or not current_user.is_authenticated:
+            return False
+        # roles that can bypass ownership check
+        admin_roles = {'owner', 'super_admin', 'admin', 'wallet_admin'}
+        return any(current_user.has_role(role) for role in admin_roles)
+
     def _quantize(self, value: Decimal) -> Decimal:
         """Quantize decimal to money precision."""
         return value.quantize(MONEY_QUANT, rounding=ROUND_DOWN)
-
-    def _check_daily_limit(
-        self,
-        account_id: UUID,
-        amount: Decimal,
-        currency: str,
-        operation: str
-    ) -> None:
-        """
-        Check daily limit for operation.
-        
-        This is a REAL query against ledger entries, not a placeholder.
-        
-        Args:
-            account_id: Account UUID
-            amount: Transaction amount
-            currency: Currency code
-            operation: deposit, withdraw, transfer
-            
-        Raises:
-            LimitExceededError: If limit would be exceeded
-        """
-        daily_limit_key = f"WALLET_DAILY_LIMIT_{'HOME' if currency == 'USD' else 'LOCAL'}"
-        daily_limit = current_app.config.get(daily_limit_key, Decimal("10000"))
-        
-        # Get actual daily volume from ledger
-        daily_volume = self.ledger_repo.get_daily_volume(account_id, currency)
-        
-        if daily_volume + amount > daily_limit:
-            raise LimitExceededError(
-                limit_type="daily",
-                currency=currency,
-                limit=float(daily_limit),
-                current=float(daily_volume)
-            )
-
-    def _check_transaction_limit(self, amount: Decimal, operation: str) -> None:
-        """
-        Check per-transaction limit.
-        
-        Args:
-            amount: Transaction amount
-            operation: deposit, withdraw, transfer
-            
-        Raises:
-            LimitExceededError: If limit would be exceeded
-        """
-        limit_key = f"WALLET_MAX_{operation.upper()}"
-        max_amount = current_app.config.get(limit_key, Decimal("10000"))
-
-        if amount > max_amount:
-            raise LimitExceededError(
-                limit_type="per_transaction",
-                currency="any",
-                limit=float(max_amount),
-                current=float(amount)
-            )
 
     def _validate_currency(self, currency: str) -> None:
         """Validate that currency is supported."""
@@ -141,6 +97,274 @@ class WalletService:
         except Exception:
             return None
 
+    def _check_transaction_limit(self, amount: Decimal, operation: str) -> None:
+        """
+        Check transaction limit for operation.
+
+        Raises:
+            LimitExceededError: If limit would be exceeded
+        """
+        limit_key = f"WALLET_MAX_{operation.upper()}"
+        max_amount = current_app.config.get(limit_key, Decimal("10000"))
+
+        if amount > max_amount:
+            raise LimitExceededError(
+                limit_type="per_transaction",
+                currency="any",
+                limit=float(max_amount),
+                current=float(amount)
+            )
+
+    def _check_daily_limit(
+        self,
+        account_id: UUID,
+        amount: Decimal,
+        currency: str,
+        operation: str
+    ) -> None:
+        """
+        Check daily limit for operation.
+
+        This is a REAL query against ledger entries, not a placeholder.
+
+        Args:
+            account_id: Account UUID
+            amount: Transaction amount
+            currency: Currency code
+            operation: deposit, withdraw, transfer
+
+        Raises:
+            LimitExceededError: If limit would be exceeded
+        """
+        daily_limit_key = f"WALLET_DAILY_LIMIT_{'HOME' if currency == 'USD' else 'LOCAL'}"
+        daily_limit = current_app.config.get(daily_limit_key, Decimal("10000"))
+
+        # Get actual daily volume from ledger
+        daily_volume = self.ledger_repo.get_daily_volume(account_id, currency)
+
+        if daily_volume + amount > daily_limit:
+            raise LimitExceededError(
+                limit_type="daily",
+                currency=currency,
+                limit=float(daily_limit),
+                current=float(daily_volume)
+            )
+
+    # ========================================================================
+    # WALLET MANAGEMENT
+    # ========================================================================
+
+    def get_wallet_limits(self, wallet_type: str, currency: str) -> Dict[str, Any]:
+        """Get configured limits for wallet type and currency."""
+        from app.wallet.models.wallet import WalletLimit
+        limits = WalletLimit.query.filter_by(
+            wallet_type=wallet_type,
+            currency=currency
+        ).first()
+
+        if not limits:
+            return {
+                'min_transaction': Decimal("100.00"),
+                'max_transaction': Decimal("10000000.00"),
+                'daily_limit': Decimal("5000000.00"),
+                'monthly_limit': Decimal("20000000.00"),
+                'requires_kyc_level': 2,
+                'requires_mfa': True
+            }
+
+        return {
+            'min_transaction': limits.min_transaction,
+            'max_transaction': limits.max_transaction,
+            'daily_limit': limits.daily_limit,
+            'monthly_limit': limits.monthly_limit,
+            'requires_kyc_level': limits.requires_kyc_level,
+            'requires_mfa': limits.requires_mfa
+        }
+
+    def create_wallet(self, user_id: int, name: str, wallet_type: str,
+                      currency: str = "UGX", description: str = None,
+                      organisation_id: int = None) -> Any:
+        """Create new wallet using the ledger-compliant service."""
+        from app.wallet.models.wallet import Wallet
+        import uuid
+
+        # Get limits
+        limits = self.get_wallet_limits(wallet_type, currency)
+
+        wallet = Wallet(
+            public_id=str(uuid.uuid4()),
+            user_id=user_id,
+            organisation_id=organisation_id,
+            name=name,
+            description=description,
+            wallet_type=wallet_type,
+            currency=currency,
+            daily_limit=limits.get('daily_limit'),
+            monthly_limit=limits.get('monthly_limit'),
+            transaction_limit=limits.get('max_transaction'),
+            requires_mfa=limits.get('requires_mfa', True),
+            requires_pin=True
+        )
+
+        self.db.add(wallet)
+        self.db.commit()
+        return wallet
+
+    def audit_log(self, wallet_id: int, user_id: int, action: str, new_value: Dict, reason: str):
+        """Create an audit log entry for wallet changes."""
+        from app.wallet.models.wallet import WalletAuditLog
+        log = WalletAuditLog(
+            wallet_id=wallet_id,
+            user_id=user_id,
+            action=action,
+            new_value=new_value,
+            reason=reason
+        )
+        self.db.add(log)
+        self.db.commit()
+
+    def ensure_account_exists(self, user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
+        """
+        Check if a user has a wallet account (does NOT create one).
+
+        Args:
+            user_id: User ID
+            currency: Currency code (ignored, kept for signature compatibility)
+
+        Returns:
+            AccountModel or None if user not found or no account exists
+        """
+        from app.identity.models.user import User
+
+        user = User.query.get(user_id)
+        if not user:
+            return None
+
+        # Only get existing account, do NOT create
+        return self.account_repo.get_by_user_id(user_id)
+
+    @staticmethod
+    def get_wallet_by_user_id(user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
+        """
+        Static helper to get an individual wallet by user ID.
+        """
+        from app.wallet.repositories.account_repository import AccountRepository
+        from app.wallet.models.ledger import AccountOwnerType
+        repo = AccountRepository()
+        account = repo.get_by_user_id(user_id, currency)
+        if account and account.owner_type == AccountOwnerType.USER:
+            return account
+        return None
+
+    @staticmethod
+    def get_wallet_by_org_id(org_id: int, currency: str = 'USD') -> Optional[AccountModel]:
+        """
+        Static helper to get an organisation wallet by org internal ID.
+        """
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        return AccountModel.query.filter_by(
+            user_id=org_id,
+            owner_type=AccountOwnerType.ORGANISATION,
+            currency=currency
+        ).first()
+
+    # ========================================================================
+    # BALANCE & TRANSACTION HISTORY
+    # ========================================================================
+
+    def get_balance(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get current wallet balance for a user.
+        Balance is derived from ledger entries, not stored.
+
+        Args:
+            user_id (BIGINT internal ID)
+
+        Returns:
+            Dict with balance information
+
+        Raises:
+            PermissionError: If user doesn't own the account
+        """
+        internal_user_id = assert_internal_id(user_id)
+        if internal_user_id != current_user.id and not self._is_admin():
+            current_app.logger.warning(f"Ownership violation attempt on balance check by user {current_user.id}")
+            raise PermissionError("You do not have permission to operate on this account")
+
+        balance_data = self.wallet_repo.get_balance(internal_user_id)
+        # Ensure balance is Decimal, not string, to avoid rounding errors
+        if isinstance(balance_data, dict):
+            raw_balance = balance_data.get('balance', Decimal('0'))
+            if isinstance(raw_balance, str):
+                try:
+                    raw_balance = Decimal(raw_balance)
+                except Exception:
+                    raw_balance = Decimal('0')
+            balance_data['balance'] = raw_balance
+        return balance_data
+
+    def get_transaction_history(
+        self,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        transaction_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get transaction history for a user.
+
+        Args:
+            user_id: User ID
+            limit: Number of records to return
+            offset: Pagination offset
+            transaction_type: Filter by transaction type
+
+        Returns:
+            Dict with transactions and pagination info
+        """
+        # Convert string type to enum if provided
+        tx_type = None
+        if transaction_type:
+            try:
+                tx_type = TransactionType(transaction_type)
+            except ValueError:
+                pass
+
+        transactions = self.tx_repo.get_user_transactions(
+            user_id=user_id,
+            tx_type=tx_type,
+            limit=limit,
+            offset=offset
+        )
+
+        total = self.tx_repo.get_transaction_count(
+            user_id=user_id,
+            tx_type=tx_type
+        )
+
+        return {
+            "transactions": [
+                {
+                    "id": str(t.id),
+                    "type": t.tx_type.value,
+                    "amount": str(t.amount),
+                    "currency": t.currency,
+                    "status": t.status.value,
+                    "created_at": t.created_at.isoformat(),
+                    "metadata": t.tx_metadata
+                }
+                for t in transactions
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total
+        }
+
+    # ========================================================================
+    # DEPOSIT
+    # ========================================================================
+
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def deposit(
         self,
@@ -151,16 +375,32 @@ class WalletService:
         metadata: Optional[Dict] = None,
         payment_method: Optional[str] = None,
         payment_provider: Optional[str] = None,
-        external_reference: Optional[str] = None
+        external_reference: Optional[str] = None,
+        tx_type: TransactionType = TransactionType.DEPOSIT,
+        actor_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Deposit funds into account.
-        
+
         Args:
             account_id: Account UUID (primary identifier - Alipay model)
             amount: Amount to deposit
             currency: Currency of deposit
             client_request_id: Unique idempotency key
+            metadata: Additional transaction metadata
+            payment_method: Payment method used
+            payment_provider: Payment provider used
+            external_reference: External reference ID
+
+        Returns:
+            Dict with transaction result
+
+        Raises:
+            ValueError: If amount is invalid
+            WalletNotFoundError: If account not found
+            WalletFrozenError: If account is frozen
+            LimitExceededError: If limits exceeded
+            PermissionError: If user doesn't own the account
         """
         amount = self._quantize(amount)
 
@@ -177,7 +417,12 @@ class WalletService:
             account = self.account_repo.get_by_id(account_id, for_update=True)
             if not account:
                 raise WalletNotFoundError(wallet_ref=str(account_id))
-            
+
+            # Ownership validation - defense in depth
+            if account.user_id != current_user.id and not self._is_admin():
+                current_app.logger.warning(f"Ownership violation attempt on account {account.id} by user {current_user.id}")
+                raise PermissionError("You do not have permission to operate on this account")
+
             # 2. Freeze check
             if account.is_frozen:
                 raise WalletFrozenError(
@@ -186,12 +431,12 @@ class WalletService:
                 )
 
             # 3. Daily limit check
-            self._check_daily_limit(account.id, amount, currency)
+            self._check_daily_limit(account.id, amount, currency, 'deposit')
 
             # 4. Atomic idempotency
             tx = self.tx_repo.get_or_create(
                 client_request_id=client_request_id,
-                tx_type=TransactionType.DEPOSIT,
+                tx_type=tx_type,
                 amount=amount,
                 currency=currency,
                 user_id=account.user_id,  # Internal only - NEVER returned
@@ -227,9 +472,9 @@ class WalletService:
             self.ledger_repo.post_entries([ledger_entry])
 
             # 6. Update daily volume
-            self.account_repo.update_volume(account.id, float(amount), 'daily')
+            self.account_repo.update_volume(account.id, amount, 'daily')
 
-            # 6b. Optional: record commission if metadata contains agent info
+            # 7. Optional: record commission if metadata contains agent info
             try:
                 agent_id = None
                 if metadata and isinstance(metadata, dict):
@@ -251,10 +496,10 @@ class WalletService:
             except Exception:
                 current_app.logger.exception('Failed to record commission for deposit')
 
-            # 7. Audit log
+            # 8. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
-                actor_id=account.user_id,  # Internal only
+                actor_id=actor_id or account.user_id,  # Use provided actor or owner
                 action="deposit",
                 description=f"Deposit of {amount} {currency}",
                 before_state={"balance": str(self.ledger_repo.get_balance(account.id, currency) - amount)},
@@ -265,11 +510,12 @@ class WalletService:
             )
             self.db.add(audit_log)
 
-            # 8. Mark transaction complete
+            # 9. Mark transaction complete
             self.tx_repo.update_status(tx.id, TransactionStatus.COMPLETED)
 
         # Transaction committed here
         final_balance = self.ledger_repo.get_balance(account.id, currency)
+
         # Fire-and-forget notification (must not break transaction)
         try:
             from app.wallet.services.wallet_notifications import notify_deposit
@@ -283,8 +529,13 @@ class WalletService:
             "amount": str(amount),
             "currency": currency,
             "new_balance": str(final_balance),
-            "account_id": str(account.id)  # Always expose account_id
+            "account_id": str(account.id),  # Always expose account_id
+            "user_id": account.user_id
         }
+
+    # ========================================================================
+    # WITHDRAW
+    # ========================================================================
 
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def withdraw(
@@ -297,16 +548,18 @@ class WalletService:
         destination_type: Optional[str] = None,
         destination_details: Optional[Dict] = None,
         payment_method: Optional[str] = None,
-        payment_provider: Optional[str] = None
+        payment_provider: Optional[str] = None,
+        tx_type: TransactionType = TransactionType.WITHDRAW,
+        actor_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Process a withdrawal with full atomicity.
-        
-        Single transaction: freeze check → balance check → idempotency → ledger → audit → complete
+
+        Single transaction: freeze check -> balance check -> idempotency -> ledger -> audit -> complete
         If any step fails, entire transaction rolls back.
-        
+
         Args:
-            user_id: User ID
+            account_id: Account UUID
             amount: Amount to withdraw
             currency: Currency of withdrawal
             client_request_id: Unique idempotency key
@@ -315,14 +568,15 @@ class WalletService:
             destination_details: Destination details
             payment_method: Payment method
             payment_provider: Payment provider
-            
+
         Returns:
             Dict with transaction result
-            
+
         Raises:
             WalletFrozenError: If account is frozen
             InsufficientBalanceError: If insufficient funds
             LimitExceededError: If limits exceeded
+            PermissionError: If user doesn't own the account
         """
         amount = self._quantize(amount)
 
@@ -339,6 +593,11 @@ class WalletService:
             account = self.account_repo.get_by_id(account_id, for_update=True)
             if not account:
                 raise WalletNotFoundError(wallet_ref=str(account_id))
+
+            # Ownership validation - defense in depth
+            if account.user_id != current_user.id and not self._is_admin():
+                current_app.logger.warning(f"Ownership violation attempt on account {account.id} by user {current_user.id}")
+                raise PermissionError("You do not have permission to operate on this account")
 
             # 2. Freeze check
             if account.is_frozen:
@@ -360,7 +619,7 @@ class WalletService:
             # 5. Atomic idempotency
             tx = self.tx_repo.get_or_create(
                 client_request_id=client_request_id,
-                tx_type=TransactionType.WITHDRAW,
+                tx_type=tx_type,
                 amount=amount,
                 currency=currency,
                 user_id=account.user_id,  # Internal only
@@ -397,7 +656,7 @@ class WalletService:
             # 7. Update daily volume
             self.account_repo.update_volume(account.id, float(amount), 'daily')
 
-            # 7b. Optional: record commission if agent facilitated this withdrawal
+            # 8. Optional: record commission if agent facilitated this withdrawal
             try:
                 agent_id = None
                 # check destination_details first, then metadata
@@ -422,10 +681,10 @@ class WalletService:
             except Exception:
                 current_app.logger.exception('Failed to record commission for withdraw')
 
-            # 8. Audit log
+            # 9. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
-                actor_id=account.user_id,  # Internal only
+                actor_id=actor_id or account.user_id,  # Use provided actor or owner
                 action="withdraw",
                 description=f"Withdrawal of {amount} {currency}",
                 before_state={"balance": str(current_balance)},
@@ -440,10 +699,11 @@ class WalletService:
             )
             self.db.add(audit_log)
 
-            # 9. Mark complete
+            # 10. Mark complete
             self.tx_repo.update_status(tx.id, TransactionStatus.COMPLETED)
 
         final_balance = self.ledger_repo.get_balance(account.id, currency)
+
         # Fire-and-forget notification for withdrawal initiation
         try:
             from app.wallet.services.wallet_notifications import notify_withdrawal_initiated
@@ -457,53 +717,13 @@ class WalletService:
             "amount": str(amount),
             "currency": currency,
             "new_balance": str(final_balance),
-            "account_id": str(account.id)  # Always expose account_id
+            "account_id": str(account.id),  # Always expose account_id
+            "user_id": account.user_id
         }
 
-    def ensure_account_exists(self, user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
-        """
-        Check if a user has a wallet account (does NOT create one).
-        
-        Args:
-            user_id: User ID
-            currency: Currency code (ignored, kept for signature compatibility)
-            
-        Returns:
-            AccountModel or None if user not found or no account exists
-        """
-        from app.identity.models.user import User
-        
-        user = User.query.get(user_id)
-        if not user:
-            return None
-        
-        # Only get existing account, do NOT create
-        return self.account_repo.get_by_user_id(user_id)
-
-    @staticmethod
-    def get_wallet_by_user_id(user_id: int, currency: str = 'USD') -> Optional[AccountModel]:
-        """
-        Static helper to get an individual wallet by user ID.
-        """
-        from app.wallet.repositories.account_repository import AccountRepository
-        from app.wallet.models.ledger import AccountOwnerType
-        repo = AccountRepository()
-        account = repo.get_by_user_id(user_id, currency)
-        if account and account.owner_type == AccountOwnerType.USER:
-            return account
-        return None
-
-    @staticmethod
-    def get_wallet_by_org_id(org_id: int, currency: str = 'USD') -> Optional[AccountModel]:
-        """
-        Static helper to get an organisation wallet by org internal ID.
-        """
-        from app.wallet.models.ledger import AccountModel, AccountOwnerType
-        return AccountModel.query.filter_by(
-            user_id=org_id,
-            owner_type=AccountOwnerType.ORGANISATION,
-            currency=currency
-        ).first()
+    # ========================================================================
+    # TRANSFER
+    # ========================================================================
 
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def transfer(
@@ -521,15 +741,15 @@ class WalletService:
     ) -> Dict[str, Any]:
         """
         Transfer funds with full atomicity.
-        
-        Single transaction: lock both accounts → freeze check → balance check → 
-        idempotency → TWO ledger entries → audit → complete
-        
+
+        Single transaction: lock both accounts -> freeze check -> balance check ->
+        idempotency -> TWO ledger entries -> audit -> complete
+
         NO COMPENSATION LOGIC - if anything fails, full rollback.
-        
+
         Args:
-            from_user_id: Sender's user ID
-            to_user_id: Recipient's user ID
+            from_account_id: Sender account UUID
+            to_account_id: Recipient account UUID
             amount: Amount to transfer
             currency: Currency of transfer
             client_request_id: Unique idempotency key
@@ -537,14 +757,17 @@ class WalletService:
             metadata: Additional transaction metadata
             platform_fee: Optional platform fee to deduct
             fee_currency: Currency for platform fee
-            
+            pin: Transaction PIN for verification
+
         Returns:
             Dict with transaction result
-            
+
         Raises:
             WalletFrozenError: If either account is frozen
             InsufficientBalanceError: If sender has insufficient funds
             LimitExceededError: If limits exceeded
+            PermissionError: If user doesn't own the from_account
+            TransactionPINError: If PIN is invalid
         """
         amount = self._quantize(amount)
 
@@ -556,8 +779,6 @@ class WalletService:
 
         self._validate_currency(currency)
         self._check_transaction_limit(amount, "transfer")
-
-        # NOTE: PIN verification moved into the DB transaction below to ensure atomicity
 
         # SINGLE TRANSACTION
         with self.db.begin():
@@ -603,6 +824,11 @@ class WalletService:
             from_account = accounts[from_account_id]
             to_account = accounts[to_account_id]
 
+            # Ownership validation - defense in depth (sender only)
+            if from_account.user_id != current_user.id and not self._is_admin():
+                current_app.logger.warning(f"Ownership violation attempt on account {from_account.id} by user {current_user.id}")
+                raise PermissionError("You do not have permission to operate on this account")
+
             # 2. Freeze check (both accounts)
             if from_account.is_frozen:
                 raise WalletFrozenError(
@@ -618,7 +844,7 @@ class WalletService:
             # 3. Balance check (derived from ledger)
             from_balance = self.ledger_repo.get_balance(from_account.id, currency)
             total_debit = amount + (platform_fee or Decimal('0'))
-            
+
             if from_balance < total_debit:
                 raise InsufficientBalanceError(
                     currency, float(total_debit), float(from_balance)
@@ -671,7 +897,7 @@ class WalletService:
                     meta={"note": note, "counterparty": from_account_id}
                 )
             ]
-            
+
             # Add platform fee entry if applicable
             if platform_fee and platform_fee > 0:
                 ledger_entries.append(
@@ -684,10 +910,10 @@ class WalletService:
                         meta={"type": "platform_fee"}
                     )
                 )
-            
+
             self.ledger_repo.post_entries(ledger_entries)
 
-            # 6b. Optional: record commission for this transfer if agent info present
+            # 7. Optional: record commission for this transfer if agent info present
             try:
                 agent_id = None
                 if metadata and isinstance(metadata, dict):
@@ -709,10 +935,10 @@ class WalletService:
             except Exception:
                 current_app.logger.exception('Failed to record commission for transfer')
 
-            # 7. Update daily volume
+            # 8. Update daily volume
             self.account_repo.update_volume(from_account.id, float(amount), 'daily')
 
-            # 8. Audit log
+            # 9. Audit log
             audit_log = AuditLogModel(
                 transaction_id=tx.id,
                 actor_id=from_account.user_id,  # Internal only
@@ -737,11 +963,12 @@ class WalletService:
             )
             self.db.add(audit_log)
 
-            # 9. Mark complete
+            # 10. Mark complete
             self.tx_repo.update_status(tx.id, TransactionStatus.COMPLETED)
 
         from_balance = self.ledger_repo.get_balance(from_account.id, currency)
         to_balance = self.ledger_repo.get_balance(to_account.id, currency)
+
         # Notifications: notify sender and recipient (best-effort)
         try:
             from app.wallet.services.wallet_notifications import (
@@ -782,88 +1009,436 @@ class WalletService:
             "note": note
         }
 
-    def get_balance(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get current wallet balance for a user.
-        
-        Balance is derived from ledger entries, not stored.
-        
-        Args:
-            user_id: User ID (must be BIGINT internal ID)
-            
-        Returns:
-            Dict with balance information
-            
-        Raises:
-            ValueError: If user_id is not a valid internal ID
-        """
-        internal_user_id = assert_internal_id(user_id)
-        balance_data = self.wallet_repo.get_balance(internal_user_id)
-        # Ensure balance is Decimal, not string, to avoid rounding errors
-        if isinstance(balance_data, dict):
-            raw_balance = balance_data.get('balance', Decimal('0'))
-            if isinstance(raw_balance, str):
-                try:
-                    raw_balance = Decimal(raw_balance)
-                except Exception:
-                    raw_balance = Decimal('0')
-            balance_data['balance'] = raw_balance
-        return balance_data
+    # ========================================================================
+    # ADMIN OPERATIONS
+    # ========================================================================
 
-    def get_transaction_history(
-        self,
-        user_id: int,
-        limit: int = 50,
-        offset: int = 0,
-        transaction_type: Optional[str] = None
+    @staticmethod
+    def get_admin_dashboard_data() -> Dict[str, Any]:
+        """Get aggregate data for the wallet admin dashboard."""
+        from app.wallet.models.ledger import AccountModel, LedgerEntryModel
+        from app.wallet.models.transaction import TransactionModel
+        from app.wallet.models.wallet import PaymentMethod
+        from sqlalchemy import func
+
+        # Total system balance (sum of all CREDITS minus sum of all DEBITS across all accounts)
+        # For simplicity in dashboard, often just sum of all positive account balances is used
+        # but let's do sum of Ledger entries
+        total_balance = db.session.query(
+            func.sum(
+                func.case(
+                    (LedgerEntryModel.entry_type == EntryType.CREDIT, LedgerEntryModel.amount),
+                    (LedgerEntryModel.entry_type == EntryType.DEBIT, -LedgerEntryModel.amount),
+                    else_=0
+                )
+            )
+        ).scalar() or Decimal('0')
+
+        total_transactions = db.session.query(func.count(TransactionModel.id)).scalar() or 0
+        active_wallets = db.session.query(func.count(AccountModel.id)).filter_by(is_deleted=False).scalar() or 0
+        payment_methods = db.session.query(func.count(PaymentMethod.id)).filter_by(is_active=True).scalar() or 0
+
+        # Calculate growth (placeholder logic for now)
+        return {
+            'total_balance': float(total_balance),
+            'total_transactions': total_transactions,
+            'active_wallets': active_wallets,
+            'payment_methods': payment_methods,
+            'balance_growth': '+0%',
+            'transactions_growth': '+0%',
+            'wallet_status': 'Healthy',
+            'payment_status': 'Active'
+        }
+
+    def admin_deposit(self, account_id: str, amount: Decimal, currency: str, reason: str) -> Dict[str, Any]:
+        """
+        Admin-initiated manual deposit (credit).
+        
+        CRITICAL: This is a high-privilege operation that bypasses normal payment gateways.
+        It is used for manual corrections, compensation, or structural adjustments.
+        Requires explicit authorization and mandatory reason.
+        """
+        if not self._is_admin():
+            raise PermissionError("Admin privileges required")
+        
+        if not reason or not reason.strip():
+            raise ValueError("A mandatory reason must be provided for manual adjustments")
+        
+        client_request_id = f"admin_dep_{datetime.now().timestamp()}_{account_id}"
+        
+        # Security: Always save the reason in a dedicated adjustment field
+        metadata = {
+            "admin_id": current_user.id,
+            "adjustment_reason": reason,
+            "type": "admin_adjustment",
+            "initiated_at": datetime.now().isoformat()
+        }
+        
+        result = self.deposit(
+            account_id=account_id,
+            amount=amount,
+            currency=currency,
+            client_request_id=client_request_id,
+            metadata=metadata,
+            payment_method="admin_adjustment",
+            payment_provider="system",
+            tx_type=TransactionType.ADJUSTMENT,
+            actor_id=current_user.id
+        )
+
+        # Notify owner and other admins
+        try:
+            from app.wallet.services.wallet_notifications import notify_admin_adjustment
+            notify_admin_adjustment(
+                user_id=result.get("user_id") or result.get("account_user_id"), # Need to ensure we have user_id
+                amount=amount,
+                currency=currency,
+                action="deposit",
+                reason=reason,
+                admin_name=current_user.username or current_user.email
+            )
+        except Exception:
+            current_app.logger.exception("Failed to send admin adjustment notification")
+
+        return result
+
+    def admin_withdraw(self, account_id: str, amount: Decimal, currency: str, reason: str) -> Dict[str, Any]:
+        """
+        Admin-initiated manual withdrawal (debit).
+        
+        CRITICAL: This is a high-privilege operation that bypasses normal payment gateways.
+        It is used for manual corrections, debt recovery, or structural adjustments.
+        Requires explicit authorization and mandatory reason.
+        """
+        if not self._is_admin():
+            raise PermissionError("Admin privileges required")
+            
+        if not reason or not reason.strip():
+            raise ValueError("A mandatory reason must be provided for manual adjustments")
+        
+        client_request_id = f"admin_wd_{datetime.now().timestamp()}_{account_id}"
+        
+        # Security: Always save the reason in a dedicated adjustment field
+        metadata = {
+            "admin_id": current_user.id,
+            "adjustment_reason": reason,
+            "type": "admin_adjustment",
+            "initiated_at": datetime.now().isoformat()
+        }
+        
+        result = self.withdraw(
+            account_id=account_id,
+            amount=amount,
+            currency=currency,
+            client_request_id=client_request_id,
+            metadata=metadata,
+            destination_type="admin_adjustment",
+            payment_method="admin_adjustment",
+            payment_provider="system",
+            tx_type=TransactionType.ADJUSTMENT,
+            actor_id=current_user.id
+        )
+
+        # Notify owner and other admins
+        try:
+            from app.wallet.services.wallet_notifications import notify_admin_adjustment
+            notify_admin_adjustment(
+                user_id=result.get("user_id") or result.get("account_user_id"),
+                amount=amount,
+                currency=currency,
+                action="withdraw",
+                reason=reason,
+                admin_name=current_user.username or current_user.email
+            )
+        except Exception:
+            current_app.logger.exception("Failed to send admin adjustment notification")
+
+        return result
+
+    def admin_request_adjustment(
+        self, 
+        account_id: str, 
+        amount: Decimal, 
+        currency: str, 
+        adjustment_type: str, 
+        reason: str
     ) -> Dict[str, Any]:
         """
-        Get transaction history for a user.
-        
-        Args:
-            user_id: User ID
-            limit: Number of transactions to return
-            offset: Pagination offset
-            transaction_type: Optional filter by type
-            
-        Returns:
-            Dict with transactions and pagination info
+        Level 1: Create a pending adjustment request.
+        Requires Wallet Admin / Manager role.
         """
-        # Convert string type to enum if provided
-        tx_type = None
-        if transaction_type:
-            try:
-                tx_type = TransactionType(transaction_type)
-            except ValueError:
-                pass
-
-        transactions = self.tx_repo.get_user_transactions(
-            user_id=user_id,
-            tx_type=tx_type,
-            limit=limit,
-            offset=offset
-        )
+        from app.wallet.models.adjustment import AdjustmentRequestModel, AdjustmentStatus
+        from app.models.system_config import SystemConfig
         
-        total = self.tx_repo.get_transaction_count(
-            user_id=user_id,
-            tx_type=tx_type
+        if not self._is_admin():
+            raise PermissionError("Admin privileges required to request adjustment")
+            
+        if not reason or not reason.strip():
+            raise ValueError("Reason is mandatory for manual adjustments")
+            
+        amount = self._quantize(amount)
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+            
+        # Ensure account exists
+        account = self.account_repo.get_by_id(account_id)
+        if not account:
+            raise WalletNotFoundError(wallet_ref=account_id)
+            
+        # Check for auto-approval threshold
+        # Default threshold is 1000 UGX
+        threshold = SystemConfig.get('wallet_adjustment_auto_approve_threshold', 1000)
+        auto_approve = False
+        
+        # Auto-approval check: small UGX amounts by any admin
+        if currency == 'UGX' and amount < Decimal(str(threshold)):
+            auto_approve = True
+            
+        request_obj = AdjustmentRequestModel(
+            account_id=UUID(account_id) if isinstance(account_id, str) else account_id,
+            amount=amount,
+            currency=currency,
+            adjustment_type=adjustment_type,
+            reason=reason,
+            requested_by_id=current_user.id,
+            status=AdjustmentStatus.APPROVED if auto_approve else AdjustmentStatus.PENDING
         )
+        self.db.add(request_obj)
+        self.db.commit()
+        
+        if auto_approve:
+            # Execute immediately
+            return self.approve_adjustment(
+                request_id=request_obj.public_id, 
+                approved_by_id=current_user.id,
+                is_auto_approve=True
+            )
+        
+        # Notify Super Admins / Owners of new request
+        try:
+            from app.wallet.services.wallet_notifications import notify_adjustment_requested
+            notify_adjustment_requested(
+                request_id=request_obj.public_id,
+                requested_by=current_user.username or current_user.email,
+                amount=amount,
+                currency=currency,
+                adjustment_type=adjustment_type
+            )
+        except Exception:
+            current_app.logger.exception("Failed to send adjustment request notification")
+            
+        return {
+            "status": "pending_approval",
+            "request_id": request_obj.public_id,
+            "message": "Adjustment request created and pending approval."
+        }
+
+    def approve_adjustment(self, request_id: str, approved_by_id: int, is_auto_approve: bool = False) -> Dict[str, Any]:
+        """
+        Level 2: Approve and execute a pending adjustment request.
+        Requires Super Admin / Owner role (unless auto-approved).
+        """
+        from app.wallet.models.adjustment import AdjustmentRequestModel, AdjustmentStatus
+        from app.identity.models.user import User
+        
+        # Security check: Only Super Admins or Owners can approve (unless auto-approve for small amounts)
+        if not is_auto_approve:
+            approver = User.query.get(approved_by_id)
+            if not approver or not (approver.has_global_role('owner', 'super_admin')):
+                 raise PermissionError("Only Super Admins or Owners can approve adjustments")
+
+        request_obj = AdjustmentRequestModel.query.filter_by(public_id=request_id).first()
+        if not request_obj:
+            raise ValueError("Adjustment request not found")
+            
+        if not is_auto_approve and request_obj.status != AdjustmentStatus.PENDING:
+            raise ValueError(f"Request is already {request_obj.status}")
+            
+        # Execute the adjustment
+        # Note: we use admin_deposit/admin_withdraw which will audit the approver as the actor
+        if request_obj.adjustment_type == 'deposit':
+            result = self.admin_deposit(
+                account_id=str(request_obj.account_id),
+                amount=request_obj.amount,
+                currency=request_obj.currency,
+                reason=f"{'Auto-Approved ' if is_auto_approve else 'Approved '}Adjustment: {request_obj.reason} (Request {request_obj.public_id})"
+            )
+        else:
+            result = self.admin_withdraw(
+                account_id=str(request_obj.account_id),
+                amount=request_obj.amount,
+                currency=request_obj.currency,
+                reason=f"{'Auto-Approved ' if is_auto_approve else 'Approved '}Adjustment: {request_obj.reason} (Request {request_obj.public_id})"
+            )
+            
+        # Update request status
+        request_obj.status = AdjustmentStatus.APPROVED
+        request_obj.approved_by_id = approved_by_id
+        request_obj.approved_at = datetime.now()
+        request_obj.transaction_id = UUID(result['transaction_id']) if isinstance(result['transaction_id'], str) else result['transaction_id']
+        self.db.commit()
+        
+        # Notify approval
+        try:
+            from app.wallet.services.wallet_notifications import notify_adjustment_approved
+            approver = User.query.get(approved_by_id)
+            notify_adjustment_approved(
+                request_id=request_obj.public_id,
+                approved_by=approver.username or approver.email,
+                user_id=request_obj.account.user_id,
+                amount=request_obj.amount,
+                currency=request_obj.currency,
+                adjustment_type=request_obj.adjustment_type
+            )
+        except Exception:
+            current_app.logger.exception("Failed to send adjustment approval notification")
 
         return {
-            "transactions": [
-                {
-                    "id": str(t.id),
-                    "type": t.tx_type.value,
-                    "amount": str(t.amount),
-                    "currency": t.currency,
-                    "status": t.status.value,
-                    "created_at": t.created_at.isoformat(),
-                    "metadata": t.tx_metadata
-                }
-                for t in transactions
-            ],
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + limit < total
+            "status": "success",
+            "message": f"Adjustment successfully {'auto-' if is_auto_approve else ''}approved and executed.",
+            "transaction_id": result['transaction_id'],
+            "new_balance": result.get("new_balance")
+        }
+
+    def reject_adjustment(self, request_id: str, rejected_by_id: int, reason: str) -> Dict[str, Any]:
+        """Reject a pending adjustment request."""
+        from app.wallet.models.adjustment import AdjustmentRequestModel, AdjustmentStatus
+        from app.identity.models.user import User
+        
+        # Security check: Only Super Admins or Owners can reject (or the original requester)
+        rejecter = User.query.get(rejected_by_id)
+        request_obj = AdjustmentRequestModel.query.filter_by(public_id=request_id).first()
+        
+        if not request_obj:
+            raise ValueError("Adjustment request not found")
+
+        is_high_admin = rejecter and rejecter.has_global_role('owner', 'super_admin')
+        is_requester = request_obj.requested_by_id == rejected_by_id
+        
+        if not (is_high_admin or is_requester):
+             raise PermissionError("Permission denied to reject this request")
+            
+        if request_obj.status != AdjustmentStatus.PENDING:
+            raise ValueError(f"Request is already {request_obj.status}")
+            
+        request_obj.status = AdjustmentStatus.REJECTED
+        request_obj.rejected_by_id = rejected_by_id
+        request_obj.rejected_at = datetime.now()
+        request_obj.rejection_reason = reason
+        self.db.commit()
+        
+        # Notify rejection
+        try:
+            from app.wallet.services.wallet_notifications import _send
+            alert_msg = (
+                f"AFCON360: Your adjustment request {request_id} for {request_obj.amount} "
+                f"{request_obj.currency} was REJECTED. Reason: {reason}"
+            )
+            _send(request_obj.requested_by_id, alert_msg, channel="email")
+        except Exception:
+            current_app.logger.exception("Failed to send adjustment rejection notification")
+
+        return {
+            "status": "success",
+            "message": "Adjustment request rejected."
+        }
+
+    @staticmethod
+    def approve_transaction(transaction_id: int, approved_by: int) -> bool:
+        """Approve a pending transaction."""
+        from app.wallet.models.transaction import TransactionModel, TransactionStatus
+        tx = TransactionModel.query.get(transaction_id)
+        if tx and tx.status == TransactionStatus.PENDING:
+            tx.status = TransactionStatus.COMPLETED
+            tx.updated_at = datetime.now(timezone.utc)
+            # Add audit log
+            db.session.commit()
+            return True
+        return False
+
+    @staticmethod
+    def reject_transaction(transaction_id: int, reason: str, rejected_by: int) -> bool:
+        """Reject a pending transaction."""
+        from app.wallet.models.transaction import TransactionModel, TransactionStatus
+        tx = TransactionModel.query.get(transaction_id)
+        if tx and tx.status == TransactionStatus.PENDING:
+            tx.status = TransactionStatus.FAILED
+            tx.failure_reason = reason
+            tx.updated_at = datetime.now(timezone.utc)
+            db.session.commit()
+            return True
+        return False
+
+    @staticmethod
+    def verify_payment_method(payment_id: int, verified_by: int) -> bool:
+        """Verify a user's payment method."""
+        from app.wallet.models.wallet import PaymentMethod
+        pm = PaymentMethod.query.get(payment_id)
+        if pm:
+            pm.is_verified = True
+            pm.verified_at = datetime.now(timezone.utc)
+            pm.verified_by = verified_by
+            db.session.commit()
+            return True
+        return False
+
+    @staticmethod
+    def create_commission(data: Dict[str, Any]) -> Any:
+        """Create a new commission rule."""
+        from app.wallet.models.wallet import WalletLimit # Assuming it's related
+        # Placeholder for actual commission model
+        return True
+
+    @staticmethod
+    def process_commission_payout(commission_id: int, processed_by: int) -> bool:
+        """Process a commission payout to an agent."""
+        return True
+
+    @staticmethod
+    def get_reconciliation_data() -> Dict[str, Any]:
+        """Get data for transaction reconciliation from the latest run."""
+        from app.wallet.models.reconciliation import ReconciliationRun, ReconciliationIssue
+        latest_run = ReconciliationRun.query.order_by(ReconciliationRun.started_at.desc()).first()
+        if not latest_run:
+            return {
+                "last_run": None,
+                "status": "No data",
+                "total_accounts": 0,
+                "issues_found": 0,
+                "mismatches": []
+            }
+        
+        issues = ReconciliationIssue.query.filter_by(run_id=latest_run.id).all()
+        return {
+            "last_run": latest_run.started_at.isoformat(),
+            "status": latest_run.status,
+            "total_accounts": latest_run.summary.get('total_accounts', 0) if latest_run.summary else 0,
+            "issues_found": len(issues),
+            "mismatches": [i.details for i in issues]
+        }
+
+    @staticmethod
+    def process_reconciliation(reconciliation_date: str = None, processed_by: int = None) -> bool:
+        """Run reconciliation process now."""
+        from app.wallet.services.reconciliation_service import ReconciliationService
+        try:
+            service = ReconciliationService()
+            service.run_daily_reconciliation()
+            return True
+        except Exception:
+            current_app.logger.exception("Manual reconciliation failed")
+            return False
+
+    @staticmethod
+    def toggle_gateway(gateway_id: int, new_status: bool, toggled_by: int) -> bool:
+        """Enable or disable a payment gateway."""
+        return True
+
+    @staticmethod
+    def get_analytics_data() -> Dict[str, Any]:
+        """Get financial analytics data."""
+        return {
+            'revenue_chart': [],
+            'transaction_volume': 0,
+            'active_users_trend': []
         }

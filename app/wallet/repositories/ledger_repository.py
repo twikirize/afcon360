@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import List, Optional, Dict
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, desc, case
 from sqlalchemy.orm import Session
 from app.extensions import db
 from app.wallet.models.ledger import LedgerEntryModel, AccountModel, EntryType
@@ -57,7 +57,7 @@ class LedgerRepository:
         """
         credit_sum = func.coalesce(
             func.sum(
-                func.case(
+                case(
                     (LedgerEntryModel.entry_type == EntryType.CREDIT, LedgerEntryModel.amount),
                     else_=Decimal('0')
                 )
@@ -67,7 +67,7 @@ class LedgerRepository:
         
         debit_sum = func.coalesce(
             func.sum(
-                func.case(
+                case(
                     (LedgerEntryModel.entry_type == EntryType.DEBIT, LedgerEntryModel.amount),
                     else_=Decimal('0')
                 )
@@ -99,7 +99,7 @@ class LedgerRepository:
             select(
                 LedgerEntryModel.currency,
                 func.sum(
-                    func.case(
+                    case(
                         (LedgerEntryModel.entry_type == EntryType.CREDIT, LedgerEntryModel.amount),
                         else_=-LedgerEntryModel.amount
                     )

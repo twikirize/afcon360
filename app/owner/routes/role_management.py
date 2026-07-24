@@ -14,6 +14,8 @@ from functools import wraps
 
 from app.extensions import db
 from app.identity.models.user import User
+from app.identity.models.roles_permission import Role
+from app.identity.models.user import UserRole
 from app.auth.delegation import DelegationService, DelegationScope
 from app.audit.comprehensive_audit import AuditService
 from flask_login import login_required
@@ -21,25 +23,34 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-role_management = Blueprint('owner_role_management', __name__, url_prefix='/owner/role-management')
+role_management = Blueprint('owner_role_management', __name__, url_prefix='/role-management')
 
 
 def require_owner_role(f):
     """Decorator to require owner role"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check if user has owner role or delegation permission
-        user_role = getattr(request, 'user_role', 'user')
-        
-        if user_role != 'owner':
-            # Check delegation
-            delegation_service = DelegationService()
-            if not delegation_service.check_delegation_permission(
-                getattr(request, 'user_id', 1), 
-                DelegationScope.SYSTEM_SETTINGS
-            ):
-                flash('Owner access required', 'danger')
-                return redirect(url_for('dashboard.dashboard'))
+        from flask_login import current_user
+        is_owner = False
+
+        if hasattr(current_user, 'has_role'):
+            try:
+                is_owner = current_user.has_role('owner')
+            except Exception:
+                pass
+
+        if not is_owner and hasattr(current_user, 'roles'):
+            try:
+                for ur in current_user.roles:
+                    if ur.role and ur.role.name == 'owner':
+                        is_owner = True
+                        break
+            except Exception:
+                pass
+
+        if not is_owner:
+            flash('Owner access required', 'danger')
+            return redirect(url_for('admin.owner.dashboard'))
         
         return f(*args, **kwargs)
     
@@ -66,7 +77,11 @@ def role_management_dashboard():
                 'tourism_admin', 'org_admin', 'org_member', 'user']
         
         for role in roles:
-            role_stats[role] = User.query.filter_by(role=role).count()
+            role_obj = Role.query.filter_by(name=role, scope='global').first()
+            if role_obj:
+                role_stats[role] = UserRole.query.filter_by(role_id=role_obj.id).count()
+            else:
+                role_stats[role] = 0
         
         # Get recent role changes
         audit_service = AuditService()
@@ -81,7 +96,7 @@ def role_management_dashboard():
     except Exception as e:
         logger.error(f"Error loading role management dashboard: {e}")
         flash('Error loading role management dashboard', 'danger')
-        return redirect(url_for('owner.settings'))
+        return redirect(url_for('admin.owner.settings'))
 
 
 @role_management.route('/toggle-admin-access', methods=['POST'])
@@ -153,10 +168,10 @@ def assign_role():
     """Assign a role to a user"""
     try:
         user_id = request.form.get('user_id')
-        role = request.form.get('role')
+        role_name = request.form.get('role')
         reason = request.form.get('reason', 'Role assignment by owner')
         
-        if not user_id or not role:
+        if not user_id or not role_name:
             flash('User ID and role are required', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
@@ -165,27 +180,25 @@ def assign_role():
             flash('User not found', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        # Store old role for audit
-        old_role = user.role
+        role = Role.query.filter_by(name=role_name, scope='global').first()
+        if not role:
+            flash('Role not found', 'danger')
+            return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        # Update user role
-        user.role = role
+        existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
+        if existing:
+            flash(f'{user.username} already has the {role.name} role', 'warning')
+            return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
+        
+        user_role = UserRole(user_id=user.id, role_id=role.id)
+        db.session.add(user_role)
         db.session.commit()
         
-        # Log the action
-        audit_service = AuditService()
-        audit_service.log_role_change(
-            user_id=user.id,
-            old_role=old_role,
-            new_role=role,
-            changed_by=getattr(request, 'user_id', 1),
-            reason=reason
-        )
-        
-        flash(f'Role assigned successfully: {user.username} is now {role}', 'success')
+        flash(f'Role assigned successfully: {user.username} is now {role.name}', 'success')
         
     except Exception as e:
         logger.error(f"Error assigning role: {e}")
+        db.session.rollback()
         flash('Error assigning role', 'danger')
     
     return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
@@ -209,27 +222,21 @@ def revoke_role():
             flash('User not found', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        # Store old role for audit
-        old_role = user.role
+        user_role = UserRole.query.filter_by(user_id=user.id).first()
+        if not user_role:
+            flash(f'{user.username} does not have any assigned role', 'warning')
+            return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        # Reset to user role
-        user.role = 'user'
+        old_role = user_role.role.name if user_role.role else 'unknown'
+        
+        db.session.delete(user_role)
         db.session.commit()
-        
-        # Log the action
-        audit_service = AuditService()
-        audit_service.log_role_change(
-            user_id=user.id,
-            old_role=old_role,
-            new_role='user',
-            changed_by=getattr(request, 'user_id', 1),
-            reason=reason
-        )
         
         flash(f'Role revoked successfully: {user.username} is now a regular user', 'success')
         
     except Exception as e:
         logger.error(f"Error revoking role: {e}")
+        db.session.rollback()
         flash('Error revoking role', 'danger')
     
     return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
@@ -255,7 +262,9 @@ def manage_users():
             )
         
         if role_filter:
-            query = query.filter_by(role=role_filter)
+            query = query.join(UserRole, User.id == UserRole.user_id)\
+                         .join(Role, UserRole.role_id == Role.id)\
+                         .filter(Role.name == role_filter)
         
         # Paginate
         users = query.order_by(User.created_at.desc()).paginate(

@@ -109,6 +109,106 @@ class OwnerSettings(ProtectedModel):
     owner = db.relationship('User', foreign_keys=[owner_id])
 
 
+class RateLimitSettings(ProtectedModel):
+    """Global rate limiting configuration (singleton row)"""
+    __tablename__ = 'rate_limit_settings'
+
+    # Global toggle
+    enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Algorithm strategy (fixed-window | sliding-window | token-bucket)
+    strategy = db.Column(db.String(20), default='fixed-window', nullable=False)
+
+    # Global default limits
+    default_per_minute = db.Column(db.Integer, default=500, nullable=False)
+    default_per_hour = db.Column(db.Integer, default=2000, nullable=False)
+    default_per_day = db.Column(db.Integer, default=10000, nullable=False)
+
+    # Blocking behavior
+    block_duration_minutes = db.Column(db.Integer, default=15, nullable=False)
+    progressive_blocking_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    max_violations_before_block = db.Column(db.Integer, default=10, nullable=False)
+
+    # Key diversity (comma-separated identity sources)
+    key_sources = db.Column(db.String(200), default='ip,user_id', nullable=False)
+
+    # Monitoring
+    logging_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    alert_on_breach = db.Column(db.Boolean, default=False, nullable=False)
+    alert_threshold_per_minute = db.Column(db.Integer, default=100, nullable=False)
+
+    # Edge / WAF
+    edge_rate_limiting_enabled = db.Column(db.Boolean, default=False, nullable=False)
+
+    updated_by = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
+    # created_at, updated_at inherited from ProtectedModel
+    updated_by_user = db.relationship('User', foreign_keys=[updated_by])
+
+    @staticmethod
+    def get_settings():
+        """Get singleton settings row, create default if missing"""
+        settings = RateLimitSettings.query.first()
+        if not settings:
+            settings = RateLimitSettings(
+                enabled=True,
+                strategy='fixed-window',
+                default_per_minute=500,
+                default_per_hour=2000,
+                default_per_day=10000,
+                block_duration_minutes=15,
+                progressive_blocking_enabled=False,
+                max_violations_before_block=10,
+                key_sources='ip,user_id',
+                logging_enabled=True,
+                alert_on_breach=False,
+                alert_threshold_per_minute=100,
+                edge_rate_limiting_enabled=False,
+            )
+            db.session.add(settings)
+            db.session.commit()
+        return settings
+
+    @staticmethod
+    def update_settings(updates: dict, updated_by: int = None):
+        """Update singleton settings row"""
+        settings = RateLimitSettings.get_settings()
+        for key, value in updates.items():
+            if hasattr(settings, key):
+                setattr(settings, key, value)
+        settings.updated_by = updated_by
+        db.session.commit()
+        return settings
+
+
+class RateLimitBreach(ProtectedModel):
+    """Tracks rate limit breach events for alerting and audit"""
+    __tablename__ = 'rate_limit_breaches'
+
+    identity_type = db.Column(db.String(20), nullable=False)
+    identity_value = db.Column(db.String(200), nullable=False)
+    endpoint = db.Column(db.String(200), nullable=True)
+    method = db.Column(db.String(10), nullable=True)
+    limit_exceeded = db.Column(db.String(100), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    user_agent = db.Column(db.Text, nullable=True)
+    country = db.Column(db.String(5), nullable=True)
+
+    blocked = db.Column(db.Boolean, default=False, nullable=False)
+    block_duration_minutes = db.Column(db.Integer, nullable=True)
+
+    notified = db.Column(db.Boolean, default=False, nullable=False)
+    notified_at = db.Column(db.DateTime, nullable=True)
+
+    owner_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    owner = db.relationship('User', foreign_keys=[owner_id])
+
+    # created_at, updated_at inherited from ProtectedModel
+
+    def __repr__(self):
+        return f'<RateLimitBreach {self.identity_type}:{self.identity_value} {self.limit_exceeded}>'
+
+
 # Also add a before_insert listener for belt-and-suspenders safety
 @event.listens_for(OwnerAuditLog, 'before_insert')
 def validate_before_insert(mapper, connection, target):

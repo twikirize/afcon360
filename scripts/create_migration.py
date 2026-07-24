@@ -53,7 +53,7 @@ def create_migration(message):
     """Create a migration with a short revision ID, merging heads if needed."""
 
     heads = _get_heads()
-    print(f"ℹ️ Current heads: {heads}")
+    # print(f"ℹ️ Current heads: {heads}")
 
     if len(heads) > 1:
         if not AUTO_MERGE_HEADS:

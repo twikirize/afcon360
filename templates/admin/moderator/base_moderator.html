@@ -797,7 +797,7 @@
       <i class="fas fa-id-card"></i> KYC
       {% if moderation_stats is defined and moderation_stats.kyc_pending %}<span class="nav-badge amber">{{ moderation_stats.kyc_pending }}</span>{% endif %}
     </a>
-    <a href="{{ safe_url('accommodation.admin.moderate') }}"
+    <a href="{{ safe_url('accommodation.admin_moderate') }}"
        class="nav-item {% if 'accommodation' in request.endpoint and 'moderate' in request.endpoint %}active{% endif %}">
       <i class="fas fa-bed"></i> Accommodation
       {% if moderation_stats is defined and moderation_stats.accommodation_properties %}<span class="nav-badge amber">{{ moderation_stats.accommodation_properties }}</span>{% endif %}

@@ -376,7 +376,7 @@ def admin_process_payout(req_id):
 
 @admin_api_bp.route('/wallets', methods=['GET'])
 @login_required
-@require_any_role('admin', 'super_admin', 'auditor', 'regulator')
+@require_any_role('owner', 'super_admin', 'admin', 'auditor', 'regulator')
 def list_wallets():
     """List all wallets with basic info."""
     page = request.args.get('page', 1, type=int)
@@ -417,6 +417,108 @@ def list_wallets():
             "pages": pagination.pages,
         }
     })
+
+
+@admin_api_bp.route('/wallets/<string:account_id>/adjustment', methods=['POST'])
+@login_required
+@require_any_role('owner', 'super_admin', 'admin', 'wallet_admin')
+def admin_wallet_adjustment(account_id):
+    """Level 1: Admin initiates a manual adjustment request."""
+    data = request.get_json() or {}
+    amount = data.get('amount')
+    currency = data.get('currency', 'UGX')
+    action = data.get('action') # 'deposit' or 'withdraw'
+    reason = data.get('reason')
+    
+    if not amount or not action or not reason:
+        return jsonify({"error": "amount, action, and reason are required"}), 400
+        
+    if action not in ('deposit', 'withdraw'):
+        return jsonify({"error": "action must be 'deposit' or 'withdraw'"}), 400
+        
+    try:
+        from decimal import Decimal
+        amount_dec = Decimal(str(amount))
+        
+        service = WalletService()
+        result = service.admin_request_adjustment(
+            account_id=account_id,
+            amount=amount_dec,
+            currency=currency,
+            adjustment_type=action,
+            reason=reason
+        )
+            
+        return jsonify(result)
+    except Exception as e:
+        current_app.logger.error(f"Admin wallet adjustment request error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@admin_api_bp.route('/adjustments/requests', methods=['GET'])
+@login_required
+@require_any_role('owner', 'super_admin', 'admin', 'wallet_admin')
+def list_adjustment_requests():
+    """List manual adjustment requests."""
+    from app.wallet.models.adjustment import AdjustmentRequestModel
+    status = request.args.get('status')
+    
+    query = AdjustmentRequestModel.query
+    if status:
+        query = query.filter_by(status=status)
+        
+    requests = query.order_by(AdjustmentRequestModel.created_at.desc()).all()
+    
+    return jsonify({
+        "status": "success",
+        "data": [
+            {
+                "public_id": r.public_id,
+                "account_id": str(r.account_id),
+                "amount": str(r.amount),
+                "currency": r.currency,
+                "type": r.adjustment_type,
+                "reason": r.reason,
+                "status": r.status,
+                "requested_by": r.requested_by_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "approved_by": r.approved_by_id,
+                "approved_at": r.approved_at.isoformat() if r.approved_at else None,
+            }
+            for r in requests
+        ]
+    })
+
+
+@admin_api_bp.route('/adjustments/requests/<string:request_id>/approve', methods=['POST'])
+@login_required
+@require_any_role('owner', 'super_admin')
+def approve_adjustment_request(request_id):
+    """Level 2: Super Admin / Owner approves an adjustment request."""
+    try:
+        service = WalletService()
+        result = service.approve_adjustment(request_id, current_user.id)
+        return jsonify(result)
+    except Exception as e:
+        current_app.logger.error(f"Approve adjustment error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@admin_api_bp.route('/adjustments/requests/<string:request_id>/reject', methods=['POST'])
+@login_required
+@require_any_role('owner', 'super_admin', 'admin', 'wallet_admin')
+def reject_adjustment_request(request_id):
+    """Reject an adjustment request."""
+    data = request.get_json() or {}
+    reason = data.get('reason', 'Rejected by admin')
+    
+    try:
+        service = WalletService()
+        result = service.reject_adjustment(request_id, current_user.id, reason)
+        return jsonify(result)
+    except Exception as e:
+        current_app.logger.error(f"Reject adjustment error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 __all__ = ['admin_api_bp']

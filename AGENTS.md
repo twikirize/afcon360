@@ -733,6 +733,28 @@ When exploring the project, ignore these to avoid context pollution:
 
 **Note**: This is the authoritative consolidated AGENTS.md. A copy is maintained in `.junie/AGENTS.md` for tool-specific integration. Both reference the same standards.
 
+---
+
+## 28. Command Success Evaluation
+
+When running Python/Flask verification commands:
+- **Exit code 0 = SUCCESS**, regardless of stderr content
+- Only treat as failure if: exit code != 0, OR stderr contains "ERROR", "Exception", "Traceback"
+- INFO/WARNING/DEBUG logs in stderr do not indicate failure
+
+**Canonical database verification command:**
+```powershell
+& .venv/Scripts/python.exe verify_db.py
+```
+
+Success criteria:
+- Output contains `DB_VERIFY_OK`
+- Exit code is `0`
+
+Ignore all Flask startup INFO/WARNING/DEBUG logs.
+
+
+
 
 
 

@@ -76,6 +76,9 @@ class Property(BaseModel):
         Index("idx_property_price_range", "base_price_per_night"),
         Index("idx_property_geolocation", "latitude", "longitude"),
         Index("idx_property_owner", "owner_user_id", "owner_org_id"),
+        Index("idx_property_status", "status"),
+        Index("idx_property_verified", "is_verified"),
+        Index("idx_property_owner_status", "owner_user_id", "status"),
         CheckConstraint(
             "(owner_user_id IS NOT NULL) OR (owner_org_id IS NOT NULL)",
             name="ck_property_has_owner"

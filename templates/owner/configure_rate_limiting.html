@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">Rate Limiting Configuration</h1>
+            <p class="text-muted">Control request throttling, abuse prevention, and security defense</p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <form method="POST" class="row g-3">
+        <!-- Global Controls -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-globe"></i> Global Controls</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="enabled" id="enabled"
+                                       {% if settings.enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="enabled">
+                                    <strong>Enable Rate Limiting</strong>
+                                </label>
+                                <small class="text-muted d-block">Master switch for all rate limiting</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="edge_rate_limiting_enabled" id="edge_rate_limiting_enabled"
+                                       {% if settings.edge_rate_limiting_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="edge_rate_limiting_enabled">
+                                    <strong>Edge-Layer Rate Limiting</strong>
+                                </label>
+                                <small class="text-muted d-block">Enable Nginx/WAF limit_req (requires server config)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Strategy</label>
+                            <select name="strategy" class="form-select">
+                                <option value="fixed-window" {% if settings.strategy == 'fixed-window' %}selected{% endif %}>Fixed Window</option>
+                                <option value="sliding-window" {% if settings.strategy == 'sliding-window' %}selected{% endif %}>Sliding Window</option>
+                                <option value="token-bucket" {% if settings.strategy == 'token-bucket' %}selected{% endif %}>Token Bucket</option>
+                            </select>
+                            <small class="text-muted">Sliding Window and Token Bucket require app restart</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Default Limits -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-speedometer2"></i> Default Limits</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Per Minute</label>
+                            <input type="number" name="default_per_minute" class="form-control"
+                                   value="{{ settings.default_per_minute }}" min="1">
+                            <small class="text-muted">Global requests per minute</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Per Hour</label>
+                            <input type="number" name="default_per_hour" class="form-control"
+                                   value="{{ settings.default_per_hour }}" min="1">
+                            <small class="text-muted">Global requests per hour</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Per Day</label>
+                            <input type="number" name="default_per_day" class="form-control"
+                                   value="{{ settings.default_per_day }}" min="1">
+                            <small class="text-muted">Global requests per day</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blocking Behavior -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Blocking Behavior</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Block Duration (minutes)</label>
+                            <input type="number" name="block_duration_minutes" class="form-control"
+                                   value="{{ settings.block_duration_minutes }}" min="1">
+                            <small class="text-muted">How long to block after violations</small>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" name="progressive_blocking_enabled" id="progressive_blocking_enabled"
+                                       {% if settings.progressive_blocking_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="progressive_blocking_enabled">
+                                    <strong>Progressive Blocking</strong>
+                                </label>
+                                <small class="text-muted d-block">Increase block duration with each violation</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Max Violations Before Block</label>
+                            <input type="number" name="max_violations_before_block" class="form-control"
+                                   value="{{ settings.max_violations_before_block }}" min="1">
+                            <small class="text-muted">Temporary block after this many 429s</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Diversity -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-fingerprint"></i> Identity Keys</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Key Sources</label>
+                            <input type="text" name="key_sources" class="form-control"
+                                   value="{{ settings.key_sources }}">
+                            <small class="text-muted">Comma-separated: ip, user_id, api_key, device_id, jwt_sub, org_id</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monitoring -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Monitoring & Alerting</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="logging_enabled" id="logging_enabled"
+                                       {% if settings.logging_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="logging_enabled">
+                                    <strong>Enable Breach Logging</strong>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="alert_on_breach" id="alert_on_breach"
+                                       {% if settings.alert_on_breach %}checked{% endif %}>
+                                <label class="form-check-label" for="alert_on_breach">
+                                    <strong>Alert on Breach</strong>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Alert Threshold (per minute)</label>
+                            <input type="number" name="alert_threshold_per_minute" class="form-control"
+                                   value="{{ settings.alert_threshold_per_minute }}" min="1">
+                            <small class="text-muted">Alert when breaches exceed this rate</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+            <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary btn-lg ms-2">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

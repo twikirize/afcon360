@@ -6,6 +6,7 @@ Account repository with atomic operations and proper locking.
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -236,7 +237,7 @@ class AccountRepository:
     def update_volume(
         self,
         account_id: UUID,
-        amount: float,
+        amount: Decimal,
         volume_type: str = 'daily'
     ) -> bool:
         """

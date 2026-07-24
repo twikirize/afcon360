@@ -5,7 +5,7 @@ from app.extensions import db
 from app.models.system_config import SystemConfig
 from app.admin.owner.decorators import owner_required
 
-csp_bp = Blueprint('csp', __name__, url_prefix='/owner/csp')
+csp_bp = Blueprint('csp', __name__, url_prefix='')
 
 
 @csp_bp.route('/status', methods=['GET'])

@@ -1,7 +1,7 @@
 import os
 from flask import Blueprint, jsonify, request, render_template, current_app, send_from_directory
 from flask_login import login_required, current_user
-from app.extensions import db
+from app.extensions import db, cache
 from app.models.theme import UserThemePreference, GlobalTheme
 from app.tools.theme_service import ThemeService
 from app.identity.models.user import User
@@ -39,6 +39,13 @@ def get_user_preferences():
         resp.headers['Cache-Control'] = 'public, max-age=300'
         return resp
 
+    cache_key = f"theme_preferences_{current_user.id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        resp = make_response(jsonify(cached))
+        resp.headers['Cache-Control'] = 'private, max-age=60'
+        return resp
+
     pref = UserThemePreference.query.get(current_user.id)
     data = pref.settings if pref else {
         "font_scale": 1.0,
@@ -50,8 +57,8 @@ def get_user_preferences():
         "reading_width": "full",
         "compact_mode": False
     }
+    cache.set(cache_key, data, timeout=3600)
     resp = make_response(jsonify(data))
-    # Private 60s cache — browser won't re-fetch on every navigation
     resp.headers['Cache-Control'] = 'private, max-age=60'
     return resp
 
@@ -66,6 +73,10 @@ def save_user_preferences():
 
     pref.settings = data
     db.session.commit()
+
+    # Clear theme cache so next fetch gets fresh data
+    cache_key = f"theme_preferences_{current_user.id}"
+    cache.delete(cache_key)
 
     # Update the generated CSS file
     try:

@@ -72,7 +72,7 @@ These templates will crash if modules are disabled:
 
 **accommodation templates:**
 - `{{ url_for('accommodation.detail') }}`
-- `{{ url_for('accommodation.admin.moderate') }}`
+- `{{ url_for('accommodation.admin_moderate') }}`
 - `{{ url_for('accommodation.guest.search') }}`
 
 **wallet templates:**

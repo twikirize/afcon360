@@ -1,0 +1,83 @@
+{% extends "admin/admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2">AML/KYC Configuration</h1>
+            <p class="text-muted">Configure AML screening, KYC requirements, and sanctions compliance</p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Capabilities
+            </a>
+        </div>
+    </div>
+
+    <!-- Configuration Form -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">AML/KYC Settings</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="row g-3">
+                {{ csrf_token() }}
+
+                <!-- Screening Settings -->
+                <div class="col-12">
+                    <h6 class="text-primary mb-3">Screening Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="aml_screening_enabled" id="aml_screening_enabled" {{ 'checked' if config.aml_screening_enabled else '' }}>
+                        <label class="form-check-label" for="aml_screening_enabled">AML Transaction Monitoring</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="sanctions_screening" id="sanctions_screening" {{ 'checked' if config.sanctions_screening else '' }}>
+                        <label class="form-check-label" for="sanctions_screening">Sanctions Screening (OFAC/UN)</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="country_specific_kyc" id="country_specific_kyc" {{ 'checked' if config.country_specific_kyc else '' }}>
+                        <label class="form-check-label" for="country_specific_kyc">Country-Specific KYC Rules</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="transaction_monitoring" id="transaction_monitoring" {{ 'checked' if config.transaction_monitoring else '' }}>
+                        <label class="form-check-label" for="transaction_monitoring">Real-Time Transaction Monitoring</label>
+                    </div>
+                </div>
+
+                <!-- Threshold Settings -->
+                <div class="col-12 mt-4">
+                    <h6 class="text-primary mb-3">Threshold Settings</h6>
+                </div>
+                <div class="col-md-6">
+                    <label for="aml_threshold" class="form-label">AML Transaction Threshold (UGX)</label>
+                    <input type="number" class="form-control" id="aml_threshold" name="aml_threshold" value="{{ config.aml_threshold }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="kyc_tier_required" class="form-label">Minimum KYC Tier Required</label>
+                    <select class="form-select" id="kyc_tier_required" name="kyc_tier_required">
+                        <option value="tier_1" {{ 'selected' if config.kyc_tier_required == 'tier_1' }}>Tier 1 - Basic</option>
+                        <option value="tier_2" {{ 'selected' if config.kyc_tier_required == 'tier_2' }}>Tier 2 - Standard</option>
+                        <option value="tier_3" {{ 'selected' if config.kyc_tier_required == 'tier_3' }}>Tier 3 - Enhanced</option>
+                    </select>
+                </div>
+
+                <!-- Submit -->
+                <div class="col-12 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

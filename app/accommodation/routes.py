@@ -16,6 +16,7 @@ from flask import (
     current_app,
     flash,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -180,11 +181,12 @@ from app.utils.module_guard import require_module_enabled
 @require_module_enabled("accommodation")
 def home():
     """Accommodation home page - Public access, no login required"""
-    # Fetch featured properties
+    # Fetch featured properties (requiring verified and active properties)
     featured_properties = Property.query.filter(
         Property.status == "active",
         Property.is_verified == True,
-        Property.is_active == True
+        Property.is_active == True,
+        Property.is_deleted == False
     ).order_by(Property.views_last_24h.desc()).limit(8).all()
 
     # Fetch popular destinations
@@ -196,7 +198,8 @@ def home():
     ).filter(
         Property.status == "active",
         Property.is_verified == True,
-        Property.is_active == True
+        Property.is_active == True,
+        Property.is_deleted == False
     ).group_by(Property.city, Property.country) \
         .order_by(func.count(Property.id).desc()) \
         .limit(6).all()
@@ -408,12 +411,14 @@ def admin_verification():
         ).count(),
     }
 
-    return render_template(
+    response = make_response(render_template(
         "accommodation/admin/verification.html",
         properties=pending_page,
         counts=counts,
         filter_status=filter_status,
-    )
+    ))
+    response.headers['Cache-Control'] = 'private, max-age=300'
+    return response
 
 
 @accommodation_bp.route("/admin/verification/<int:property_id>/approve", methods=['POST'],
@@ -720,6 +725,7 @@ def guest_autocomplete():
         Property.status == 'active',
         Property.is_verified == True,
         Property.is_active == True,
+        Property.is_deleted == False,
         func.lower(Property.city).like(f'{q.lower()}%')
     ).group_by(Property.city, Property.country)\
      .order_by(func.count(Property.id).desc())\
@@ -729,6 +735,7 @@ def guest_autocomplete():
         Property.status == 'active',
         Property.is_verified == True,
         Property.is_active == True,
+        Property.is_deleted == False,
         func.lower(Property.title).like(f'%{q.lower()}%')
     ).limit(3).all()
 
@@ -2923,16 +2930,16 @@ def admin_moderate_action(entity_type, id, action):
     """Approve, reject, or flag accommodation items"""
     if entity_type == 'property':
         item = Property.query.get_or_404(id)
-        redirect_url = url_for('accommodation.admin.moderate_property', id=id)
+        redirect_url = url_for('accommodation.admin_moderate_property', id=id)
     elif entity_type == 'booking':
         item = AccommodationBooking.query.get_or_404(id)
-        redirect_url = url_for('accommodation.admin.moderate_booking', id=id)
+        redirect_url = url_for('accommodation.admin_moderate_booking', id=id)
     elif entity_type == 'review':
         item = Review.query.get_or_404(id)
-        redirect_url = url_for('accommodation.admin.moderate_review', id=id)
+        redirect_url = url_for('accommodation.admin_moderate_review', id=id)
     else:
         flash('Invalid entity type.', 'danger')
-        return redirect(url_for('accommodation.admin.moderate'))
+        return redirect(url_for('accommodation.admin_moderate'))
 
     if action == 'approve':
         if entity_type == 'property':
@@ -3012,7 +3019,7 @@ def admin_flag_property(id):
 
     if not reason:
         flash('Flag reason is required.', 'warning')
-        return redirect(url_for('accommodation.admin.moderate_property', id=id))
+        return redirect(url_for('accommodation.admin_moderate_property', id=id))
 
     from app.admin.services import create_flag
     ok, flag = create_flag(current_user, 'accommodation_property', id, reason, priority)
@@ -3022,7 +3029,7 @@ def admin_flag_property(id):
     else:
         flash(f'Failed to flag: {flag}', 'danger')
 
-    return redirect(url_for('accommodation.admin.moderate_property', id=id))
+    return redirect(url_for('accommodation.admin_moderate_property', id=id))
 
 
 @accommodation_bp.route("/admin/moderate/review/<int:id>/flag", methods=['POST'], endpoint="admin_flag_review")
@@ -3036,7 +3043,7 @@ def admin_flag_review(id):
 
     if not reason:
         flash('Flag reason is required.', 'warning')
-        return redirect(url_for('accommodation.admin.moderate_review', id=id))
+        return redirect(url_for('accommodation.admin_moderate_review', id=id))
 
     from app.admin.services import create_flag
     ok, flag = create_flag(current_user, 'accommodation_review', id, reason, priority)
@@ -3046,7 +3053,7 @@ def admin_flag_review(id):
     else:
         flash(f'Failed to flag: {flag}', 'danger')
 
-    return redirect(url_for('accommodation.admin.moderate_review', id=id))
+    return redirect(url_for('accommodation.admin_moderate_review', id=id))
 
 
 # ============================================================================

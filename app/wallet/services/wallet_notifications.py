@@ -187,3 +187,162 @@ def notify_kyc_status_change(user_id: int, new_status: str, tier: int):
     }
     message = messages.get(new_status, f"AFCON360: Your KYC status has been updated to {new_status}.")
     _send(user_id, message, channel="both")
+
+
+def notify_admin_adjustment(
+    user_id: int,
+    amount: Decimal,
+    currency: str,
+    action: str,
+    reason: str,
+    admin_name: str
+):
+    """
+    Notify user and administrators of a manual balance adjustment.
+    
+    This is a high-security notification for audit transparency.
+    """
+    # 1. Notify the user (Wallet Owner)
+    action_verb = "credited to" if action == "deposit" else "deducted from"
+    user_message = (
+        f"AFCON360 Security Alert: A manual adjustment of {amount} {currency} was {action_verb} "
+        f"your wallet. Reason: {reason}. If you did not expect this, contact support immediately."
+    )
+    _send(user_id, user_message, channel="both")
+
+    # 2. Notify other admins (for multi-eye oversight)
+    try:
+        from app.identity.models.user import User, UserRole
+        from app.identity.models.roles_permission import Role
+        from app.extensions import db
+        
+        # Find all admins, super_admins, and owners
+        admin_roles = ['owner', 'super_admin', 'wallet_admin']
+        admin_users = (
+            db.session.query(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(Role.name.in_(admin_roles))
+            .filter(User.is_deleted == False)
+            .all()
+        )
+        
+        admin_alert = (
+            f"AFCON360 AUDIT: Admin {admin_name} performed a manual {action} of "
+            f"{amount} {currency} on User ID {user_id}. Reason: {reason}."
+        )
+        
+        for admin in admin_users:
+            # Don't notify the admin who performed the action (they already know)
+            # but usually it's good for audit if everyone gets it. 
+            # We'll skip the actor if we had their ID here, but for now we notify all.
+            _send(admin.id, admin_alert, channel="email") # Use email for admins to avoid SMS costs
+            
+    except Exception as e:
+        logger.warning(f"Failed to notify other admins of adjustment: {e}")
+
+
+def notify_adjustment_requested(
+    request_id: str,
+    requested_by: str,
+    amount: Decimal,
+    currency: str,
+    adjustment_type: str
+):
+    """Notify Super Admins/Owners that a new adjustment request needs review."""
+    try:
+        from app.identity.models.user import User, UserRole
+        from app.identity.models.roles_permission import Role
+        from app.extensions import db
+        
+        # Target only higher level admins
+        admin_roles = ['owner', 'super_admin']
+        admin_users = (
+            db.session.query(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(Role.name.in_(admin_roles))
+            .filter(User.is_deleted == False)
+            .all()
+        )
+        
+        alert_msg = (
+            f"AFCON360 APPROVAL REQUIRED: Admin {requested_by} requested a manual {adjustment_type} "
+            f"of {amount} {currency}. Request ID: {request_id}. Please review in Admin Dashboard."
+        )
+        
+        for admin in admin_users:
+            _send(admin.id, alert_msg, channel="email")
+            
+    except Exception as e:
+        logger.warning(f"Failed to send adjustment request notification: {e}")
+
+
+def notify_adjustment_approved(
+    request_id: str,
+    approved_by: str,
+    user_id: int,
+    amount: Decimal,
+    currency: str,
+    adjustment_type: str
+):
+    """Notify involved parties that an adjustment was approved."""
+    try:
+        from app.identity.models.user import User, UserRole
+        from app.identity.models.roles_permission import Role
+        from app.extensions import db
+        
+        # 1. Notify the owner (this is also done by notify_admin_adjustment, 
+        # but we can add more specific info here if needed)
+        # For now, we rely on notify_admin_adjustment for the owner to avoid double notifications
+        
+        # 2. Notify Super Admins / Owners
+        admin_roles = ['owner', 'super_admin']
+        admin_users = (
+            db.session.query(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(Role.name.in_(admin_roles))
+            .filter(User.is_deleted == False)
+            .all()
+        )
+        
+        alert_msg = (
+            f"AFCON360 AUDIT: Adjustment Request {request_id} ({amount} {currency} {adjustment_type}) "
+            f"was APPROVED by {approved_by} and executed."
+        )
+        
+        for admin in admin_users:
+            _send(admin.id, alert_msg, channel="email")
+            
+    except Exception as e:
+        logger.warning(f"Failed to send adjustment approval notification: {e}")
+
+
+def notify_reconciliation_alert(mismatches: list):
+    """Notify admins about reconciliation mismatches."""
+    try:
+        from app.identity.models.user import User, UserRole
+        from app.identity.models.roles_permission import Role
+        from app.extensions import db
+        
+        admin_roles = ['owner', 'super_admin', 'wallet_admin']
+        admin_users = (
+            db.session.query(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(Role.name.in_(admin_roles))
+            .filter(User.is_deleted == False)
+            .all()
+        )
+        
+        alert_msg = (
+            f"AFCON360 CRITICAL: Wallet reconciliation found {len(mismatches)} balance mismatches! "
+            f"Please check reconciliation logs immediately."
+        )
+        
+        for admin in admin_users:
+            _send(admin.id, alert_msg, channel="email")
+            
+    except Exception as e:
+        logger.warning(f"Failed to send reconciliation alert: {e}")

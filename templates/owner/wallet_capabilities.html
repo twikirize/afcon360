@@ -207,7 +207,7 @@
                                     <h6 class="card-title">Nonce Replay Protection</h6>
                                     <p class="card-text small text-muted">User-specific nonce counter</p>
                                     <span class="badge bg-warning">Not Implemented</span>
-                                    <a href="{{ url_for('owner.configure_nonce_protection') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                    <a href="{{ url_for('admin.owner.configure_nonce_protection') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
                                 </div>
                                 <i class="bi bi-shield-exclamation text-warning fs-4"></i>
                             </div>
@@ -236,7 +236,7 @@
                                     <h6 class="card-title">AML/KYC Screening</h6>
                                     <p class="card-text small text-muted">OFAC, UN sanctions, country-specific KYC</p>
                                     <span class="badge bg-success">Implemented</span>
-                                    <a href="{{ url_for('owner.configure_aml_kyc') }}" class="btn btn-sm btn-outline-primary mt-2">Manage</a>
+                                    <a href="{{ url_for('admin.owner.configure_aml_kyc') }}" class="btn btn-sm btn-outline-primary mt-2">Manage</a>
                                 </div>
                                 <i class="bi bi-file-earmark-check text-success fs-4"></i>
                             </div>
@@ -251,7 +251,7 @@
                                     <h6 class="card-title">Regulatory Reporting</h6>
                                     <p class="card-text small text-muted">STR, CTR, LTR generation</p>
                                     <span class="badge bg-success">Implemented</span>
-                                    <a href="{{ url_for('owner.regulatory_reports') }}" class="btn btn-sm btn-outline-primary mt-2">View Reports</a>
+                                    <a href="{{ url_for('admin.owner.regulatory_reports') }}" class="btn btn-sm btn-outline-primary mt-2">View Reports</a>
                                 </div>
                                 <i class="bi bi-file-text text-success fs-4"></i>
                             </div>
@@ -266,7 +266,7 @@
                                     <h6 class="card-title">Regulator API</h6>
                                     <p class="card-text small text-muted">Read-only audit access for regulators</p>
                                     <span class="badge bg-success">Implemented</span>
-                                    <a href="{{ url_for('owner.manage_regulator_access') }}" class="btn btn-sm btn-outline-primary mt-2">Manage Access</a>
+                                    <a href="{{ url_for('admin.owner.manage_regulator_access') }}" class="btn btn-sm btn-outline-primary mt-2">Manage Access</a>
                                 </div>
                                 <i class="bi bi-shield-shaded text-success fs-4"></i>
                             </div>
@@ -281,7 +281,7 @@
                                     <h6 class="card-title">Travel Rule Compliance</h6>
                                     <p class="card-text small text-muted">FATF Travel Rule for crypto/fiat transfers</p>
                                     <span class="badge bg-warning">Not Implemented</span>
-                                    <a href="{{ url_for('owner.configure_travel_rule') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                    <a href="{{ url_for('admin.owner.configure_travel_rule') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
                                 </div>
                                 <i class="bi bi-airplane text-warning fs-4"></i>
                             </div>
@@ -310,7 +310,7 @@
                                     <h6 class="card-title">Fraud Detection Algorithm</h6>
                                     <p class="card-text small text-muted">ML-based real-time transaction scoring</p>
                                     <span class="badge bg-warning">Not Implemented</span>
-                                    <a href="{{ url_for('owner.configure_fraud_detection') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                    <a href="{{ url_for('admin.owner.configure_fraud_detection') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
                                 </div>
                                 <i class="bi bi-robot text-warning fs-4"></i>
                             </div>
@@ -325,7 +325,7 @@
                                     <h6 class="card-title">Admin Audit Log</h6>
                                     <p class="card-text small text-muted">System-level audit for admin actions</p>
                                     <span class="badge bg-warning">Not Implemented</span>
-                                    <a href="{{ url_for('owner.admin_audit_log') }}" class="btn btn-sm btn-outline-primary mt-2">View Logs</a>
+                                    <a href="{{ url_for('admin.owner.admin_audit_log') }}" class="btn btn-sm btn-outline-primary mt-2">View Logs</a>
                                 </div>
                                 <i class="bi bi-clipboard-data text-warning fs-4"></i>
                             </div>
@@ -354,7 +354,7 @@
                                     <h6 class="card-title">Flutterwave</h6>
                                     <p class="card-text small text-muted">African payment gateway</p>
                                     <span class="badge bg-success">Integrated</span>
-                                    <a href="{{ url_for('owner.edit_provider', provider='flutterwave') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                    <a href="{{ url_for('admin.owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
                                 </div>
                                 <i class="bi bi-credit-card text-success fs-4"></i>
                             </div>
@@ -369,7 +369,7 @@
                                     <h6 class="card-title">Paystack</h6>
                                     <p class="card-text small text-muted">Nigeria payment gateway</p>
                                     <span class="badge bg-success">Integrated</span>
-                                    <a href="{{ url_for('owner.edit_provider', provider='paystack') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                    <a href="{{ url_for('admin.owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
                                 </div>
                                 <i class="bi bi-credit-card text-success fs-4"></i>
                             </div>
@@ -384,7 +384,7 @@
                                     <h6 class="card-title">MTN Mobile Money</h6>
                                     <p class="card-text small text-muted">Mobile money integration</p>
                                     <span class="badge bg-success">Integrated</span>
-                                    <a href="{{ url_for('owner.edit_provider', provider='mtn') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+                                    <a href="{{ url_for('admin.owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
                                 </div>
                                 <i class="bi bi-phone text-success fs-4"></i>
                             </div>
@@ -399,7 +399,7 @@
                                     <h6 class="card-title">Visa Direct</h6>
                                     <p class="card-text small text-muted">Visa card-to-card transfers</p>
                                     <span class="badge bg-warning">Not Integrated</span>
-                                    <a href="{{ url_for('owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Add Gateway</a>
+                                    <a href="{{ url_for('admin.owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Add Gateway</a>
                                 </div>
                                 <i class="bi bi-credit-card text-warning fs-4"></i>
                             </div>
@@ -414,7 +414,7 @@
                                     <h6 class="card-title">MasterCard Send</h6>
                                     <p class="card-text small text-muted">MasterCard real-time payments</p>
                                     <span class="badge bg-warning">Not Integrated</span>
-                                    <a href="{{ url_for('owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Add Gateway</a>
+                                    <a href="{{ url_for('admin.owner.add_payment_gateway') }}" class="btn btn-sm btn-outline-primary mt-2">Add Gateway</a>
                                 </div>
                                 <i class="bi bi-credit-card text-warning fs-4"></i>
                             </div>
@@ -443,7 +443,7 @@
                                     <h6 class="card-title">Aggregator API</h6>
                                     <p class="card-text small text-muted">Bulk deposit/withdraw/transfer operations</p>
                                     <span class="badge bg-warning">Not Implemented</span>
-                                    <a href="{{ url_for('owner.manage_aggregators') }}" class="btn btn-sm btn-outline-primary mt-2">Manage Aggregators</a>
+                                    <a href="{{ url_for('admin.owner.manage_aggregators') }}" class="btn btn-sm btn-outline-primary mt-2">Manage Aggregators</a>
                                 </div>
                                 <i class="bi bi-layers text-warning fs-4"></i>
                             </div>
@@ -458,7 +458,7 @@
                                     <h6 class="card-title">Bulk Reconciliation</h6>
                                     <p class="card-text small text-muted">Automated bulk transaction reconciliation</p>
                                     <span class="badge bg-info">Partial</span>
-                                    <a href="{{ url_for('owner.bulk_reconciliation') }}" class="btn btn-sm btn-outline-primary mt-2">Run Reconciliation</a>
+                                    <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-sm btn-outline-primary mt-2">Run Reconciliation</a>
                                 </div>
                                 <i class="bi bi-arrow-repeat text-info fs-4"></i>
                             </div>
@@ -484,10 +484,9 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <h6 class="card-title">Database Sharding</h6>
-                                    <p class="card-text small text-muted">Horizontal scaling with read replicas</p>
-                                    <span class="badge bg-secondary">Not Implemented</span>
-                                    <a href="{{ url_for('owner.configure_sharding') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+<h6 class="card-title">Database Sharding</h6>
+                                <p class="card-text small text-muted">Horizontal scaling with read replicas</p>
+                                <span class="badge bg-secondary">Not Implemented</span>
                                 </div>
                                 <i class="bi bi-diagram-3 text-secondary fs-4"></i>
                             </div>
@@ -499,10 +498,9 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <h6 class="card-title">Circuit Breakers</h6>
-                                    <p class="card-text small text-muted">Automatic protection for large transfers</p>
-                                    <span class="badge bg-secondary">Not Implemented</span>
-                                    <a href="{{ url_for('owner.configure_circuit_breakers') }}" class="btn btn-sm btn-outline-primary mt-2">Configure</a>
+<h6 class="card-title">Circuit Breakers</h6>
+                                <p class="card-text small text-muted">Automatic protection for large transfers</p>
+                                <span class="badge bg-secondary">Not Implemented</span>
                                 </div>
                                 <i class="bi bi-lightning text-secondary fs-4"></i>
                             </div>

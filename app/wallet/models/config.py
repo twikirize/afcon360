@@ -284,7 +284,15 @@ class WalletSystemConfig(BaseModel):
     require_kyc_for_deposits = Column(Boolean, default=False)
     require_kyc_for_withdrawals = Column(Boolean, default=True)
     require_kyc_for_transfers = Column(Boolean, default=False)
-    
+
+    # AML/KYC Screening settings
+    aml_screening_enabled = Column(Boolean, default=True, nullable=False)
+    sanctions_screening = Column(Boolean, default=True, nullable=False)
+    country_specific_kyc = Column(Boolean, default=True, nullable=False)
+    transaction_monitoring = Column(Boolean, default=True, nullable=False)
+    aml_threshold = Column(BigInteger, default=10000, nullable=False)
+    kyc_tier_required = Column(String(20), default='tier_2', nullable=False)
+
     # Audit
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(BigInteger, nullable=True)
@@ -319,6 +327,12 @@ class WalletSystemConfig(BaseModel):
             "require_kyc_for_deposits": self.require_kyc_for_deposits,
             "require_kyc_for_withdrawals": self.require_kyc_for_withdrawals,
             "require_kyc_for_transfers": self.require_kyc_for_transfers,
+            "aml_screening_enabled": self.aml_screening_enabled,
+            "sanctions_screening": self.sanctions_screening,
+            "country_specific_kyc": self.country_specific_kyc,
+            "transaction_monitoring": self.transaction_monitoring,
+            "aml_threshold": float(self.aml_threshold),
+            "kyc_tier_required": self.kyc_tier_required,
         }
 
 

@@ -13,7 +13,7 @@
     <span class="mod-badge">MODERATOR</span>
     <span class="mod-title">Review Review</span>
   </div>
-  <a href="{{ safe_url('accommodation.admin.moderate') }}" class="btn-ghost">
+  <a href="{{ safe_url('accommodation.admin_moderate') }}" class="btn-ghost">
     <i class="fas fa-arrow-left"></i> Back to Queue
   </a>
 </div>
@@ -22,7 +22,7 @@
   <div class="breadcrumb-row">
     <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
     <span class="sep">/</span>
-    <a href="{{ safe_url('accommodation.admin.moderate') }}">Accommodation</a>
+    <a href="{{ safe_url('accommodation.admin_moderate') }}">Accommodation</a>
     <span class="sep">/</span>
     <span class="active">Review #{{ review.id }}</span>
   </div>
@@ -68,7 +68,7 @@
     </div>
 
     <div class="action-bar">
-      <form method="POST" action="{{ safe_url('accommodation.admin.moderate_action', entity_type='review', id=review.id, action='approve') }}" style="display: inline;">
+      <form method="POST" action="{{ safe_url('accommodation.admin_moderate_action', entity_type='review', id=review.id, action='approve') }}" style="display: inline;">
         <button type="submit" class="btn btn-approve">
           <i class="fas fa-check"></i> Approve Review
         </button>
@@ -87,7 +87,7 @@
       <div class="panel-title">Reject Review</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('accommodation.admin.moderate_action', entity_type='review', id=review.id, action='reject') }}">
+      <form method="POST" action="{{ safe_url('accommodation.admin_moderate_action', entity_type='review', id=review.id, action='reject') }}">
         <div class="form-group">
           <label class="form-label">Rejection Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this review is being rejected..."></textarea>
@@ -105,7 +105,7 @@
       <div class="panel-title">Flag for Review</div>
     </div>
     <div class="panel-body">
-      <form method="POST" action="{{ safe_url('accommodation.admin.moderate_action', entity_type='review', id=review.id, action='flag') }}">
+      <form method="POST" action="{{ safe_url('accommodation.admin_moderate_action', entity_type='review', id=review.id, action='flag') }}">
         <div class="form-group">
           <label class="form-label">Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this review needs further review..."></textarea>

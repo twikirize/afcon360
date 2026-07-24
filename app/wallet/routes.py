@@ -433,7 +433,7 @@ def wallet_create():
         return redirect(url_for('wallet.wallet_create_page'))
 
 
-@wallet_bp.route('/deposit')
+@wallet_bp.route('/deposit', endpoint='deposit')
 @login_required
 @require_deposit_access
 def deposit_page():
@@ -507,7 +507,7 @@ def deposit_form():
 # SEND / TRANSFER ROUTES
 # =============================================================================
 
-@wallet_bp.route('/send')
+@wallet_bp.route('/send', endpoint='send')
 @login_required
 @require_send_access
 def send_page():
@@ -611,7 +611,7 @@ def send_funds():
 # WITHDRAW ROUTES
 # =============================================================================
 
-@wallet_bp.route('/withdraw')
+@wallet_bp.route('/withdraw', endpoint='withdraw')
 @login_required
 @require_withdraw_access
 def withdraw_page():
@@ -1157,3 +1157,13 @@ def api_transactions():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@wallet_bp.route('/fx-convert', endpoint='fx_convert')
+@login_required
+def fx_convert_page():
+    """GET: Show FX conversion form"""
+    account = get_account(current_user.id)
+    if not account:
+        flash('You need to create a wallet first.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
+    return render_template('wallet/fx_convert.html', account=account, balance=Decimal('0'))

@@ -519,11 +519,11 @@ accommodation.host.earnings: /accommodation/host/earnings
 accommodation.admin.dashboard: /accommodation/admin/dashboard
 accommodation.admin.listings: /accommodation/admin/listings
 accommodation.admin.hosts: /accommodation/admin/hosts
-accommodation.admin.moderate: /accommodation/admin/moderate
-accommodation.admin.moderate_property: /accommodation/admin/moderate/property/<int:id>
-accommodation.admin.moderate_booking: /accommodation/admin/moderate/booking/<int:id>
-accommodation.admin.moderate_review: /accommodation/admin/moderate/review/<int:id>
-accommodation.admin.moderate_action: /accommodation/admin/moderate/<entity_type>/<int:id>/<action>
+accommodation.admin_moderate: /accommodation/admin/moderate
+accommodation.admin_moderate_property: /accommodation/admin/moderate/property/<int:id>
+accommodation.admin_moderate_booking: /accommodation/admin/moderate/booking/<int:id>
+accommodation.admin_moderate_review: /accommodation/admin/moderate/review/<int:id>
+accommodation.admin_moderate_action: /accommodation/admin/moderate/<entity_type>/<int:id>/<action>
 index: /
 csp_report: /csp-report
 where_am_i: /where-am-i

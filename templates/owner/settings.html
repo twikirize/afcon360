@@ -252,6 +252,49 @@ document.addEventListener('DOMContentLoaded', function() {
   <!-- Wallet Section -->
   <h3 class="section-title">Wallet & Financial</h3>
   <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #10b981;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">🛡️</div>
+        <span class="card-badge badge-wallet">Security</span>
+      </div>
+      <div class="card-title">Manual Adjustment Security</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        Configure multi-layer approval for manual balance adjustments.
+      </div>
+      
+      <form method="POST" action="{{ url_for('admin.owner.update_wallet_adjustment_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        
+        <div style="margin-bottom:1rem;">
+          <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+            <input type="checkbox" name="workflow_enabled" 
+                   {{ 'checked' if wallet_adjustment_workflow else '' }}
+                   style="width:18px;height:18px;cursor:pointer;">
+            <span style="font-weight:600;color:#1a1a1a;">Require Multi-Layer Approval</span>
+          </label>
+          <small class="text-muted d-block mt-1">
+            When enabled, adjustments must be requested by one admin and approved by another (Super Admin/Owner).
+          </small>
+        </div>
+
+        <div style="margin-bottom:1.5rem;">
+          <label class="form-label" style="font-weight:600;color:#1a1a1a;">Auto-Approval Threshold (UGX)</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">UGX</span>
+            <input type="number" name="threshold" class="form-control" 
+                   value="{{ wallet_adjustment_threshold }}" min="0" step="100">
+          </div>
+          <small class="text-muted">
+            Adjustments below this amount are automatically approved.
+          </small>
+        </div>
+
+        <button type="submit" class="btn btn-sm btn-primary w-100">
+          Save Adjustment Settings
+        </button>
+      </form>
+    </div>
+
     <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="settings-card">
       <div class="card-icon">💰</div>
       <div class="card-title">Wallet Capabilities</div>
@@ -454,6 +497,15 @@ document.addEventListener('DOMContentLoaded', function() {
         Configure image optimization, virus scanning, content moderation, and storage quotas
       </div>
       <span class="card-badge badge-system">Media</span>
+    </a>
+
+    <a href="{{ url_for('admin.owner.configure_rate_limiting') }}" class="settings-card" style="border-left:4px solid #dc2626;">
+      <div class="card-icon">🚦</div>
+      <div class="card-title">Rate Limiting</div>
+      <div class="card-description">
+        Configure request throttling, identity-based keys, blocking rules, and abuse prevention
+      </div>
+      <span class="card-badge badge-security">Security</span>
     </a>
 
     <!-- Owner-only: Authorize roles to manage media settings -->

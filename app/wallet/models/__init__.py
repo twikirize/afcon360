@@ -13,6 +13,7 @@ from .audit import AuditLogModel
 from .fx import FXRateModel, FXTransactionModel
 from .commission import AgentCommission
 from .payout import PayoutRequest
+from .adjustment import AdjustmentRequestModel
 
 __all__ = [
     'LedgerEntryModel',
@@ -23,4 +24,5 @@ __all__ = [
     'FXTransactionModel',
     'AgentCommission',
     'PayoutRequest',
+    'AdjustmentRequestModel',
 ]

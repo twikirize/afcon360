@@ -22,6 +22,11 @@ class AggregatorService:
         api_secret: str,
         description: Optional[str] = None,
         tier: str = 'standard',
+        mode: str = 'testing',
+        sandbox_api_key: Optional[str] = None,
+        sandbox_api_secret: Optional[str] = None,
+        live_api_key: Optional[str] = None,
+        live_api_secret: Optional[str] = None,
         admin_id: Optional[int] = None,
         admin_name: Optional[str] = None,
         admin_role: Optional[str] = None
@@ -32,10 +37,15 @@ class AggregatorService:
         Args:
             name: Unique identifier for aggregator
             display_name: Human-readable name
-            api_key: API key for authentication
+            api_key: API key for authentication (fallback/primary)
             api_secret: API secret (will be encrypted)
             description: Description of aggregator
             tier: Aggregator tier (standard, premium, enterprise)
+            mode: Operating mode ('testing' or 'live')
+            sandbox_api_key: Sandbox API key
+            sandbox_api_secret: Sandbox API secret
+            live_api_key: Live API key
+            live_api_secret: Live API secret
             admin_id: ID of admin creating aggregator
             admin_name: Name of admin
             admin_role: Role of admin
@@ -49,8 +59,13 @@ class AggregatorService:
                 display_name=display_name,
                 description=description,
                 api_key=api_key,
-                api_secret=api_secret,  # Should be encrypted at storage time
+                api_secret=api_secret,
                 tier=tier,
+                mode=mode,
+                sandbox_api_key=sandbox_api_key or api_key,
+                sandbox_api_secret=sandbox_api_secret or api_secret,
+                live_api_key=live_api_key,
+                live_api_secret=live_api_secret,
                 status='active'
             )
             
@@ -208,6 +223,54 @@ class AggregatorService:
                 target_type='aggregator',
                 target_id=str(aggregator.id),
                 target_name=aggregator.display_name,
+                reason=reason
+            )
+            
+            return aggregator
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def set_aggregator_mode(
+        aggregator_id: int,
+        mode: str,
+        admin_id: int,
+        admin_name: str,
+        admin_role: str,
+        reason: str
+    ) -> Aggregator:
+        """Switch aggregator operating mode between 'testing' (sandbox) and 'live'"""
+        try:
+            if mode not in ('testing', 'live'):
+                raise ValueError("Invalid mode. Must be 'testing' or 'live'.")
+            
+            aggregator = Aggregator.query.get(aggregator_id)
+            if not aggregator:
+                raise ValueError(f"Aggregator {aggregator_id} not found")
+            
+            old_mode = aggregator.mode
+            aggregator.mode = mode
+            
+            # If switching to live, ensure live credentials exist or copy primary if set
+            if mode == 'live' and not aggregator.live_api_key and aggregator.api_key:
+                aggregator.live_api_key = aggregator.api_key
+                aggregator.live_api_secret = aggregator.api_secret
+            
+            db.session.commit()
+            
+            # Log the action
+            AdminAuditService.log_action(
+                admin_id=admin_id,
+                admin_name=admin_name,
+                admin_role=admin_role,
+                action_type='set_mode',
+                action_category='aggregator',
+                target_type='aggregator',
+                target_id=str(aggregator.id),
+                target_name=aggregator.display_name,
+                old_value=old_mode,
+                new_value=mode,
                 reason=reason
             )
             

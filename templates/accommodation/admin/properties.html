@@ -119,6 +119,44 @@
     </nav>
   </div>
 
+  {# ── Lifecycle & Public Visibility Guide Box ── #}
+  <div class="card mb-4 border-0 shadow-sm" style="border-radius: 12px; background: #f8fafc; border-left: 5px solid var(--brand-primary, #047857) !important;">
+    <div class="card-body p-4">
+      <h5 class="fw-bold text-dark mb-2"><i class="bi bi-info-circle-fill text-success me-2"></i>Property Verification & Public Visibility Workflow</h5>
+      <p class="text-muted small mb-3">To ensure safety and compliance, listings must pass through strict lifecycle stages before appearing on the public accommodation selection page (<a href="{{ url_for('accommodation.home') }}" target="_blank">/accommodation/</a>).</p>
+      <div class="row g-3 text-center">
+        <div class="col-md-3">
+          <div class="p-3 bg-white rounded border">
+            <span class="badge bg-secondary mb-1">Stage 1</span>
+            <h6 class="fw-bold mb-1">Draft / Created</h6>
+            <p class="text-muted mb-0" style="font-size: .78rem;">Host fills out property details, rooms & photos. Next: Submit for review.</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="p-3 bg-white rounded border" style="border-left: 3px solid #f59e0b !important;">
+            <span class="badge bg-warning text-dark mb-1">Stage 2</span>
+            <h6 class="fw-bold mb-1">Pending Review</h6>
+            <p class="text-muted mb-0" style="font-size: .78rem;">Awaiting admin moderation. Next: Admin inspects & clicks Approve.</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="p-3 bg-white rounded border" style="border-left: 3px solid #10b981 !important;">
+            <span class="badge bg-success mb-1">Stage 3</span>
+            <h6 class="fw-bold mb-1">Verified & Active 🛡️</h6>
+            <p class="text-muted mb-0" style="font-size: .78rem;">Admin approved with <code>is_verified=True</code>. Appears with ⭐ and tick!</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="p-3 bg-white rounded border" style="border-left: 3px solid #ef4444 !important;">
+            <span class="badge bg-danger mb-1">⚠️ Active Only</span>
+            <h6 class="fw-bold mb-1">Unverified Active</h6>
+            <p class="text-muted mb-0" style="font-size: .78rem;">Status is active but <code>is_verified=False</code>. <strong>Hidden from public search</strong> until verified.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# ── Flash messages ── #}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
