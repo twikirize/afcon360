@@ -54,16 +54,22 @@ class MarketplaceService:
         repo = AccountRepository(db.session)
         account = repo.get_or_create(int(platform_org_id), currency)
         if not account:
-            raise RuntimeError(f"Failed to get/create platform escrow account for org {platform_org_id}")
+            raise RuntimeError(
+                f"Platform escrow account not found for org {platform_org_id}. "
+                "Please create it during system setup."
+            )
         return str(account.id)
 
     @staticmethod
     def _get_account_for_user(user_id: int, currency: str = 'USD') -> str:
-        """Get or create a wallet account for a user."""
+        """Get wallet account for a user. Returns error if not found."""
         repo = AccountRepository(db.session)
         account = repo.get_or_create(user_id, currency)
         if not account:
-            raise RuntimeError(f"Failed to get/create wallet account for user {user_id}")
+            raise RuntimeError(
+                f"Wallet account not found for user {user_id}. "
+                "Please create a wallet first."
+            )
         return str(account.id)
 
     @staticmethod

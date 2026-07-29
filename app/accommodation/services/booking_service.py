@@ -23,6 +23,7 @@ from app.accommodation.models.booking import (
     BookingContextType
 )
 from app.accommodation.models.availability import AccommodationBlockedReason
+from app.accommodation.models.room import InventoryBlock
 from app.accommodation.services.availability_service import AvailabilityService
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
@@ -88,16 +89,22 @@ class BookingService:
         room_number: int = None,
         guest_instructions: str = None,
         room_type_id: Optional[int] = None,
+        skip_hold_creation: bool = False,
     ) -> Tuple[Optional[AccommodationBooking], Optional[str]]:
 
 
         """
         Create a new booking with temporary hold.
 
+        Args:
+            skip_hold_creation: If True, assumes dates are already held (e.g., pre-payment hold)
+                and will update existing temporary holds to 'booked' instead of creating new ones.
+
         Returns:
             (booking, error_message) - booking is None if error
         """
-        from app.accommodation.models.property import Property, RoomType
+        from app.accommodation.models.property import Property
+        from app.accommodation.models.room import RoomType
 
         try:
             # 1. IDEMPOTENCY CHECK
@@ -156,17 +163,21 @@ class BookingService:
 
             # 4. AVAILABILITY CHECK
             # Verify counter-based availability if room_type_id is set
-            if room_type_id:
+            if room_type_id and not skip_hold_creation:
                 from app.accommodation.services.host_service import HostService
                 avail = HostService.available_units(room_type_id, check_in, check_out)
                 if avail <= 0:
                     return None, "Selected dates are not available for this room type"
 
-            is_available, blocked_dates, error = AvailabilityService.is_range_available(
-                property_id, check_in, check_out
-            )
-            if not is_available:
-                return None, error or "Selected dates are not available"
+            if not skip_hold_creation:
+                is_available, blocked_dates, error = AvailabilityService.is_range_available(
+                    property_id, check_in, check_out
+                )
+                if not is_available:
+                    return None, error or "Selected dates are not available"
+            else:
+                # When skipping hold creation, we already have a hold. Just verify the property exists.
+                is_available = True
 
             # 5. PRICE CALCULATION
             try:
@@ -234,14 +245,63 @@ class BookingService:
             db.session.flush()  # Get booking ID before blocking dates
 
             # 7. TEMPORARY HOLD ON DATES
-            AvailabilityService.block_dates(
-                property_id=booking.property_id,
-                check_in=booking.check_in,
-                check_out=booking.check_out,
-                reason=enum_value(AccommodationBlockedReason.TEMPORARY_HOLD),
-                booking_id=booking.id,
-                created_by=guest_user_id
-            )
+            if skip_hold_creation:
+                # Update existing temporary holds to booked (payment already succeeded)
+                from app.accommodation.models.availability import BlockedDate
+                existing_holds = BlockedDate.query.filter(
+                    BlockedDate.property_id == booking.property_id,
+                    BlockedDate.blocked_date.between(
+                        booking.check_in,
+                        booking.check_out - timedelta(days=1)
+                    ),
+                    BlockedDate.reason == enum_value(AccommodationBlockedReason.TEMPORARY_HOLD)
+                ).all()
+
+                for hold in existing_holds:
+                    hold.reason = enum_value(AccommodationBlockedReason.BOOKED)
+                    hold.booking_id = booking.id
+
+                # Also update InventoryBlock holds for room type bookings
+                if booking.room_type_id:
+                    InventoryBlock.query.filter(
+                        InventoryBlock.room_type_id == booking.room_type_id,
+                        InventoryBlock.date_range_start == booking.check_in,
+                        InventoryBlock.date_range_end == booking.check_out,
+                        InventoryBlock.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
+                        InventoryBlock.booking_id.is_(None),
+                    ).update(
+                        {"reason": AccommodationBlockedReason.BOOKED.value, "booking_id": booking.id},
+                        synchronize_session=False,
+                    )
+
+                logger.info(
+                    f"Converted {len(existing_holds)} temporary holds to booked for booking {booking.booking_reference}"
+                )
+            else:
+                # Use unit-based blocking when room_type_id is set
+                if booking.room_type_id:
+                    success, err = AvailabilityService.block_room_type_units(
+                        room_type_id=booking.room_type_id,
+                        check_in=booking.check_in,
+                        check_out=booking.check_out,
+                        units_to_block=booking.num_guests,
+                        reason=AccommodationBlockedReason.TEMPORARY_HOLD.value,
+                        booking_id=booking.id,
+                        created_by=guest_user_id,
+                    )
+                    if not success:
+                        logger.warning(
+                            f"Could not block room type units for booking {booking.booking_reference}: {err}"
+                        )
+                else:
+                    AvailabilityService.block_dates(
+                        property_id=booking.property_id,
+                        check_in=booking.check_in,
+                        check_out=booking.check_out,
+                        reason=enum_value(AccommodationBlockedReason.TEMPORARY_HOLD),
+                        booking_id=booking.id,
+                        created_by=guest_user_id
+                    )
 
             # 8. UPDATE GUEST PROFILE (create if not exists)
             from app.accommodation.models.guest_profile import GuestProfile
@@ -257,6 +317,18 @@ class BookingService:
             profile.email_notifications = True  # default
             profile.sms_notifications = True    # default
 
+            db.session.commit()
+
+            # 9. CREATE PAYMENT LEDGER RECORD (thin wallet-linked index)
+            from app.accommodation.models.booking_payment import AccommodationBookingPayment
+            payment_event = AccommodationBookingPayment(
+                booking_id=booking.id,
+                wallet_txn_id=None,
+                payment_reference=AccommodationBookingPayment.generate_payment_reference(),
+                payment_status="pending",
+                payment_method="pending",
+            )
+            db.session.add(payment_event)
             db.session.commit()
 
             logger.info(
@@ -454,10 +526,35 @@ class BookingService:
                 {"reason": enum_value(AccommodationBlockedReason.BOOKED)}
             )
 
+            # Also update InventoryBlock for room type bookings
+            if booking.room_type_id:
+                InventoryBlock.query.filter(
+                    InventoryBlock.room_type_id == booking.room_type_id,
+                    InventoryBlock.date_range_start == booking.check_in,
+                    InventoryBlock.date_range_end == booking.check_out,
+                    InventoryBlock.booking_id == booking.id,
+                ).update(
+                    {"reason": AccommodationBlockedReason.BOOKED.value},
+                    synchronize_session=False,
+                )
+
             # 3. UPDATE PAYMENT STATUS
             booking.payment_status = AccommodationPaymentStatus.PAID.value
             booking.wallet_txn_id = wallet_transaction_id
             booking.paid_at = datetime.now(timezone.utc)
+
+            # Update payment event ledger (thin wallet-linked index)
+            try:
+                BookingService.update_payment_event(
+                    booking_id=booking.id,
+                    payment_status="success",
+                    payment_method=booking.payment_method,
+                    payment_gateway="wallet" if booking.payment_method == "wallet" else booking.payment_method,
+                    gateway_transaction_id=wallet_transaction_id,
+                    wallet_txn_id=wallet_transaction_id,
+                )
+            except Exception as ledger_error:
+                logger.warning(f"Failed to update payment event for booking {booking_id}: {ledger_error}")
 
             # 4. STATE TRANSITION (PENDING → CONFIRMED)
             BookingStateMachine.transition(
@@ -532,6 +629,18 @@ class BookingService:
                 {"reason": enum_value(AccommodationBlockedReason.BOOKED)}
             )
 
+            # Also update InventoryBlock for room type bookings
+            if booking.room_type_id:
+                InventoryBlock.query.filter(
+                    InventoryBlock.room_type_id == booking.room_type_id,
+                    InventoryBlock.date_range_start == booking.check_in,
+                    InventoryBlock.date_range_end == booking.check_out,
+                    InventoryBlock.booking_id == booking.id,
+                ).update(
+                    {"reason": AccommodationBlockedReason.BOOKED.value},
+                    synchronize_session=False,
+                )
+
             db.session.commit()
             logger.info(
                 f"Booking approved: {booking.booking_reference} | "
@@ -575,6 +684,15 @@ class BookingService:
 
             # Release blocked dates
             BlockedDate.query.filter_by(booking_id=booking.id).delete()
+
+            # Also release InventoryBlock for room type bookings
+            if booking.room_type_id:
+                AvailabilityService.release_room_type_blocks(
+                    room_type_id=booking.room_type_id,
+                    check_in=booking.check_in,
+                    check_out=booking.check_out,
+                    booking_id=booking.id,
+                )
 
             booking.host_rejected_at = datetime.now(timezone.utc)
             booking.host_rejection_reason = reason
@@ -671,6 +789,15 @@ class BookingService:
             # 1. RELEASE ALL BLOCKED DATES
             BlockedDate.query.filter_by(booking_id=booking.id).delete()
             logger.debug(f"Released dates for booking {booking.booking_reference}")
+
+            # Also release InventoryBlock for room type bookings
+            if booking.room_type_id:
+                AvailabilityService.release_room_type_blocks(
+                    room_type_id=booking.room_type_id,
+                    check_in=booking.check_in,
+                    check_out=booking.check_out,
+                    booking_id=booking.id,
+                )
 
             # 2. STATE TRANSITION (→ CANCELLED)
             BookingStateMachine.transition(
@@ -838,3 +965,61 @@ class BookingService:
             query = query.limit(limit)
 
         return query.all()
+
+    # -------------------------
+    # PAYMENT LEDGER HELPERS
+    # -------------------------
+    @staticmethod
+    def get_payment_event(booking_id: int, wallet_txn_id: str = None):
+        """Get the payment event for a booking."""
+        from app.accommodation.models.booking_payment import AccommodationBookingPayment
+        query = AccommodationBookingPayment.query.filter_by(booking_id=booking_id)
+        if wallet_txn_id:
+            query = query.filter_by(wallet_txn_id=wallet_txn_id)
+        return query.order_by(AccommodationBookingPayment.created_at.desc()).first()
+
+    @staticmethod
+    def update_payment_event(
+        booking_id: int,
+        payment_status: str,
+        wallet_txn_id: str = None,
+        payment_method: str = None,
+        payment_gateway: str = None,
+        gateway_transaction_id: str = None,
+        failure_reason: str = None,
+    ) -> Optional['AccommodationBookingPayment']:
+        """Create or update the thin payment event index for a booking."""
+        from app.accommodation.models.booking_payment import AccommodationBookingPayment
+        event = AccommodationBookingPayment.query.filter_by(
+            booking_id=booking_id,
+        ).order_by(AccommodationBookingPayment.created_at.desc()).first()
+
+        if not event:
+            event = AccommodationBookingPayment(
+                booking_id=booking_id,
+                wallet_txn_id=wallet_txn_id,
+                payment_reference=AccommodationBookingPayment.generate_payment_reference(),
+                payment_status=payment_status,
+                payment_method=payment_method or "unknown",
+            )
+            db.session.add(event)
+        else:
+            if payment_status:
+                event.payment_status = payment_status
+            if wallet_txn_id:
+                event.wallet_txn_id = wallet_txn_id
+            if payment_method:
+                event.payment_method = payment_method
+            if payment_gateway:
+                event.payment_gateway = payment_gateway
+            if gateway_transaction_id:
+                event.gateway_transaction_id = gateway_transaction_id
+            if failure_reason:
+                event.failure_reason = failure_reason
+
+        if payment_status == "failed":
+            event.retry_count = (event.retry_count or 0) + 1
+
+        db.session.commit()
+        return event
+

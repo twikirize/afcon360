@@ -2219,6 +2219,191 @@ def manage_regulator_access():
 
 
 # ============================================================================
+# Platform Account Management Routes (Owner Only)
+# ============================================================================
+
+@owner_bp.route('/platform-accounts')
+@owner_login_required
+def platform_accounts_index():
+    """List all platform accounts."""
+    try:
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        from app.wallet.repositories.ledger_repository import LedgerRepository
+        
+        accounts = AccountModel.query.filter_by(
+            platform_account=True
+        ).order_by(AccountModel.account_number).all()
+        
+        ledger_repo = LedgerRepository(db.session)
+        balances = {}
+        for acc in accounts:
+            balances[acc.id] = ledger_repo.get_balance(acc.id, acc.currency)
+        
+        return render_template('owner/platform_accounts/index.html',
+                               accounts=accounts,
+                               balances=balances)
+    except Exception as e:
+        logger.error(f"Platform accounts error: {e}")
+        flash("Error loading platform accounts", "danger")
+        return redirect(url_for('admin.owner.dashboard'))
+
+
+@owner_bp.route('/platform-accounts/<uuid:account_id>')
+@owner_login_required
+def platform_accounts_detail(account_id):
+    """View a specific platform account."""
+    try:
+        from app.wallet.models.ledger import AccountModel, LedgerEntryModel, EntryType
+        from app.wallet.repositories.ledger_repository import LedgerRepository
+        
+        account = AccountModel.query.get_or_404(account_id)
+        
+        if not account.platform_account:
+            flash('This is not a platform account.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_index'))
+        
+        ledger_repo = LedgerRepository(db.session)
+        balance = ledger_repo.get_balance(account.id, account.currency)
+        
+        transactions = (
+            LedgerEntryModel.query
+            .filter_by(account_id=account.id, currency=account.currency)
+            .order_by(LedgerEntryModel.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        
+        accounts = AccountModel.query.filter_by(
+            platform_account=True
+        ).order_by(AccountModel.account_number).all()
+        
+        return render_template('owner/platform_accounts/detail.html',
+                               account=account,
+                               balance=balance,
+                               transactions=transactions,
+                               accounts=accounts)
+    except Exception as e:
+        logger.error(f"Platform account detail error: {e}")
+        flash("Error loading platform account", "danger")
+        return redirect(url_for('admin.owner.platform_accounts_index'))
+
+
+@owner_bp.route('/platform-accounts/<uuid:account_id>/toggle-status', methods=['POST'])
+@owner_login_required
+def platform_accounts_toggle_status(account_id):
+    """Freeze or unfreeze a platform account."""
+    try:
+        from app.wallet.models.ledger import AccountModel
+        
+        account = AccountModel.query.get_or_404(account_id)
+        
+        if not account.platform_account:
+            flash('This is not a platform account.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_index'))
+        
+        action = request.form.get('action')
+        reason = request.form.get('reason', '').strip()
+        
+        if action == 'freeze':
+            if not reason:
+                flash('Reason is required to freeze an account.', 'danger')
+                return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+            account.freeze(reason, current_user.id)
+            flash(f'Account {account.account_number} frozen.', 'warning')
+        elif action == 'unfreeze':
+            account.unfreeze()
+            flash(f'Account {account.account_number} unfrozen.', 'success')
+        else:
+            flash('Invalid action.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+        
+        db.session.commit()
+        
+        log_owner_action(
+            action=f'platform_account_{action}d',
+            category='financial',
+            details={
+                'account_number': account.account_number,
+                'account_id': str(account.id),
+                'action': action,
+                'reason': reason if action == 'freeze' else None
+            }
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Platform account toggle status error: {e}")
+        flash("Error updating account status", "danger")
+    
+    return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+
+
+@owner_bp.route('/platform-accounts/<uuid:account_id>/transfer', methods=['POST'])
+@owner_login_required
+def platform_accounts_transfer(account_id):
+    """Transfer from platform account to another account."""
+    try:
+        from app.wallet.models.ledger import AccountModel
+        from app.wallet.services.wallet_service import WalletService
+        from app.audit.forensic_audit import ForensicAuditService
+        from decimal import Decimal
+        
+        account = AccountModel.query.get_or_404(account_id)
+        
+        if not account.platform_account:
+            flash('This is not a platform account.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_index'))
+        
+        to_account_id = request.form.get('to_account_id')
+        amount = request.form.get('amount')
+        description = request.form.get('description', '').strip()
+        
+        if not to_account_id or not amount:
+            flash('Missing required fields.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+        
+        try:
+            amount_decimal = Decimal(amount)
+            if amount_decimal <= 0:
+                flash('Amount must be positive.', 'danger')
+                return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+        except:
+            flash('Invalid amount.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+        
+        to_account = AccountModel.query.get(to_account_id)
+        if not to_account:
+            flash('Destination account not found.', 'danger')
+            return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+        
+        if account.require_dual_authorization:
+            flash('This account requires dual authorization. Transfer submitted for approval.', 'warning')
+            return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+        
+        wallet_service = WalletService()
+        result = wallet_service.transfer(
+            from_account_id=str(account.id),
+            to_account_id=str(to_account.id),
+            amount=amount_decimal,
+            currency=account.currency,
+            client_request_id=f"owner-transfer-{account.id}-{to_account.id}-{datetime.now(timezone.utc).timestamp()}",
+            note=description or f"Transfer from {account.account_number} to {to_account.account_number}"
+        )
+        
+        if result.get('success'):
+            flash(f'Transfer of {amount} completed.', 'success')
+        else:
+            flash(f"Transfer failed: {result.get('error', 'Unknown error')}", 'danger')
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Platform account transfer error: {e}")
+        flash("Error processing transfer", "danger")
+    
+    return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+
+
+# ============================================================================
 # Initialize Security Dashboard Routes
 # ============================================================================
 

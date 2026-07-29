@@ -7,6 +7,8 @@
     {% set is_pane = false %}
 {% endif %}
 
+{% from "macros/booking_macros.html" import booking_type_badge %}
+
 {% if not is_pane %}
     {% block title %}My Bookings - AFCON360{% endblock %}
 
@@ -57,6 +59,9 @@
                                 </span>
                                 <p class="mt-2 mb-0">
                                     <strong>${{ "%.2f"|format(booking.total_amount) }}</strong>
+                                </p>
+                                <p class="mt-1 mb-0">
+                                    {{ booking_type_badge(booking) }}
                                 </p>
                             </div>
                             <div class="col-md-2 text-end">

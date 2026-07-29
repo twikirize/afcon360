@@ -8,7 +8,8 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 from app.accommodation.models.booking_policy import PropertyBookingPolicy
 from app.accommodation.models.property_payment_method import PropertyPaymentMethod
-from app.events.payment_config import PaymentMethodConfig
+from app.accommodation.models.platform_override import PlatformBookingPolicyOverride
+from app.wallet import PaymentMethodConfig
 from app.extensions import db
 import logging
 
@@ -95,6 +96,28 @@ class PaymentPolicyService:
                 'minimum_age': policy.minimum_age,
             }
         }
+
+        # Enforce platform-wide booking policy overrides
+        platform_override = PlatformBookingPolicyOverride.query.first()
+        if platform_override:
+            if platform_override.afcon_pay_on_arrival_disabled and 'pay_on_arrival' in options['allowed_timings']:
+                options['allowed_timings'] = [t for t in options['allowed_timings'] if t != 'pay_on_arrival']
+                options['timing']['pay_on_arrival'] = False
+
+            if platform_override.minimum_deposit_percentage and options['timing']['deposit']:
+                min_deposit = float(platform_override.minimum_deposit_percentage)
+                current_deposit = options['timing'].get('deposit_percentage', 0)
+                if current_deposit < min_deposit:
+                    options['timing']['deposit_percentage'] = min_deposit
+
+            if platform_override.require_vip_verification:
+                options['guest_requirements']['require_vip_verification'] = True
+
+            if platform_override.maximum_pay_on_arrival_days is not None:
+                options['timing']['maximum_pay_on_arrival_days'] = platform_override.maximum_pay_on_arrival_days
+
+            if platform_override.afcon_restrictions_active:
+                options['timing']['afcon_restrictions_active'] = True
 
         return options
 

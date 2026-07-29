@@ -44,15 +44,17 @@ class WalletRepository:
     def get_or_create_by_user_id(
         self, 
         user_id: int
-    ) -> AccountModel:
+    ) -> Optional[AccountModel]:
         """
-        Get or create wallet for user.
+        Get existing wallet for user. Returns None if not found.
+        
+        Accounts are no longer auto-created. Callers must handle missing accounts.
         
         Args:
             user_id: User ID
             
         Returns:
-            AccountModel (existing or newly created)
+            AccountModel or None
         """
         return self.account_repo.get_or_create(user_id)
 

@@ -9,7 +9,7 @@
 
 {% block content %}
 <div class="mod-header">
-  <div style="display: flex; align-items: center;">
+  <div class="d-flex align-items-center">
     <span class="mod-badge">MODERATOR</span>
     <span class="mod-title">Review Review</span>
   </div>
@@ -54,12 +54,12 @@
           <span class="info-label">Created</span>
           <span class="info-value">{{ review.created_at.strftime('%Y-%m-%d %H:%M') if review.created_at else '-' }}</span>
         </div>
-        <div class="info-item" style="grid-column: span 2;">
+        <div class="info-item info-span-2">
           <span class="info-label">Comment</span>
           <span class="info-value">{{ review.comment or 'No comment provided' }}</span>
         </div>
         {% if review.host_response %}
-        <div class="info-item" style="grid-column: span 2;">
+        <div class="info-item info-span-2">
           <span class="info-label">Host Response</span>
           <span class="info-value">{{ review.host_response }}</span>
         </div>
@@ -68,21 +68,21 @@
     </div>
 
     <div class="action-bar">
-      <form method="POST" action="{{ safe_url('accommodation.admin_moderate_action', entity_type='review', id=review.id, action='approve') }}" style="display: inline;">
+      <form method="POST" action="{{ safe_url('accommodation.admin_moderate_action', entity_type='review', id=review.id, action='approve') }}">
         <button type="submit" class="btn btn-approve">
           <i class="fas fa-check"></i> Approve Review
         </button>
       </form>
-      <button onclick="document.getElementById('reject-form').style.display='block'" class="btn btn-reject">
+      <button onclick="document.getElementById('reject-form').classList.remove('hidden')" class="btn btn-reject">
         <i class="fas fa-times"></i> Reject
       </button>
-      <button onclick="document.getElementById('flag-form').style.display='block'" class="btn btn-flag">
+      <button onclick="document.getElementById('flag-form').classList.remove('hidden')" class="btn btn-flag">
         <i class="fas fa-flag"></i> Flag
       </button>
     </div>
   </div>
 
-  <div id="reject-form" class="panel" style="display: none;">
+  <div id="reject-form" class="panel hidden">
     <div class="panel-header">
       <div class="panel-title">Reject Review</div>
     </div>
@@ -92,15 +92,15 @@
           <label class="form-label">Rejection Reason *</label>
           <textarea name="reason" class="form-textarea" required placeholder="Explain why this review is being rejected..."></textarea>
         </div>
-        <div style="display: flex; gap: 12px;">
+        <div class="form-actions">
           <button type="submit" class="btn btn-reject">Confirm Rejection</button>
-          <button type="button" onclick="document.getElementById('reject-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+          <button type="button" onclick="document.getElementById('reject-form').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
         </div>
       </form>
     </div>
   </div>
 
-  <div id="flag-form" class="panel" style="display: none;">
+  <div id="flag-form" class="panel hidden">
     <div class="panel-header">
       <div class="panel-title">Flag for Review</div>
     </div>
@@ -119,9 +119,9 @@
             <option value="critical">Critical</option>
           </select>
         </div>
-        <div style="display: flex; gap: 12px;">
+        <div class="form-actions">
           <button type="submit" class="btn btn-flag">Flag Review</button>
-          <button type="button" onclick="document.getElementById('flag-form').style.display='none'" class="btn btn-ghost">Cancel</button>
+          <button type="button" onclick="document.getElementById('flag-form').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
         </div>
       </form>
     </div>

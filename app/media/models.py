@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Integer, Text, JSON, Index, UniqueConstraint, ForeignKey
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import BaseModel
@@ -244,6 +245,18 @@ class Media(BaseModel):
     public_id = Column(String(64), unique=True, nullable=False, index=True,
                        default=lambda: str(uuid.uuid4()))
 
+    # Processing tracking - ✅ FIX: Add server_default for NOT NULL columns
+    processing_attempts = Column(Integer, default=0, nullable=False, server_default='0')
+    processing_started_at = Column(DateTime(timezone=True), nullable=True)
+    processing_completed_at = Column(DateTime(timezone=True), nullable=True)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    notified = Column(Boolean, default=False, nullable=False, server_default='false')
+    cleaned_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Processing metadata
+    processing_metadata = Column(JSONB, nullable=True)
+
     # Module context — which module and which entity this belongs to
     module = Column(String(50), nullable=False, index=True)
     # entity_id is the PUBLIC UUID of the owning entity (not BIGINT)
@@ -259,25 +272,25 @@ class Media(BaseModel):
     )
 
     # Storage
-    storage_key = Column(String(500), nullable=True)      # Path/key in storage backend
-    storage_backend = Column(String(20), nullable=False, default="local")  # local, oci, s3
+    storage_key = Column(String(500), nullable=True)
+    storage_backend = Column(String(20), nullable=False, default="local")
 
     # For video_url type: YouTube video ID
     video_url = Column(String(500), nullable=True)
 
     # File metadata
     original_filename = Column(String(255), nullable=True)
-    file_size = Column(Integer, nullable=True)            # bytes
+    file_size = Column(Integer, nullable=True)
     mime_type = Column(String(100), nullable=True)
-    sha256_hash = Column(String(64), nullable=True, index=True)  # deduplication
-    perceptual_hash = Column(String(64), nullable=True, index=True)  # near-duplicate detection
+    sha256_hash = Column(String(64), nullable=True, index=True)
+    perceptual_hash = Column(String(64), nullable=True, index=True)
 
     # Image/video dimensions
-    width = Column(Integer, nullable=True)                # pixels
-    height = Column(Integer, nullable=True)               # pixels
-    duration = Column(Integer, nullable=True)             # seconds (video)
-    thumbnail_url = Column(String(500), nullable=True)    # video thumbnail
-    is_animated = Column(Boolean, default=False)          # animated WebP/GIF
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    duration = Column(Integer, nullable=True)
+    thumbnail_url = Column(String(500), nullable=True)
+    is_animated = Column(Boolean, default=False)
 
     # Chunked upload session
     upload_session_id = Column(String(64), nullable=True, index=True)
@@ -286,11 +299,8 @@ class Media(BaseModel):
     status = Column(
         String(20), nullable=False, default="pending", index=True
     )
-    error_message = Column(Text, nullable=True)
 
     # Generated URLs — JSON dict of size variants
-    # Format: {"original": "url", "tiny": "url", "small": "url",
-    #          "medium": "url", "large": "url"}
     urls = Column(JSON, nullable=False, default=dict)
 
     # Display
@@ -300,7 +310,6 @@ class Media(BaseModel):
 
     # Access control
     is_public = Column(Boolean, default=True, nullable=False)
-    # Private media (KYC docs, identity) requires signed URL
 
     # Relationships
     processing_jobs = relationship("MediaProcessingJob", backref="media", cascade="all, delete-orphan")

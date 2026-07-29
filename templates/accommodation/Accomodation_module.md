@@ -559,14 +559,14 @@ The accommodation module now supports individual room management for hotels with
 
 **Models:**
 
-- `RoomCategory` - Groups rooms by type (VIP Suite, Deluxe King, Standard Twin)
-- `Room` - Individual physical rooms with room numbers, floors, maintenance status
+- `RoomType` - Groups rooms by type (VIP Suite, Deluxe King, Standard Twin)
+- `Room` - Individual physical rooms with room numbers, floors, maintenance status, linked to a `RoomType`
 - `RoomBooking` - Assignment records linking bookings to specific rooms
 
 **Features:**
 
 - Individual room numbering (101, A-12, Suite-1)
-- Room categories with per-category pricing
+- Room types with per-room-type pricing
 - Per-room maintenance tracking
 - Room availability status (available, booked, maintenance, cleaning)
 - Bulk room creation support
@@ -613,7 +613,7 @@ flask db upgrade
 
 New tables:
 
-- `accommodation_room_categories`
+- `accommodation_room_types`
 - `accommodation_rooms`
 - `accommodation_room_bookings`
 
@@ -668,6 +668,171 @@ New columns on `accommodation_bookings`:
 - `app/admin/moderator/routes.py`: Added `.value` to enum comparison in stats builder
 
 **Rule:** Always compare `String` columns to string literals or enum `.value`, never to raw enum members.
+
+---
+
+## Appendix A — Accommodation Architecture (Single Source of Truth)
+
+> All other accommodation architecture documents have been deprecated.
+> This appendix consolidates the architecture from `ACCOMMODATION_MODULE_SPEC.md`.
+
+### A.1 Data Model Architecture
+
+The accommodation data model follows a three-layer shape used by every major OTA
+(Booking.com, Expedia, Marriott):
+
+```
+Property (the physical building / listing)
+  └─ RoomType (the sellable SKU: "Deluxe King", "Standard Twin")
+       └─ Inventory (how many of this SKU exist, and how many are free per date)
+```
+
+**Property** — the container, not the sellable thing.
+- Keeps identity, location, policies, media, ownership
+- `property_kind`: `single_unit` (1 implicit RoomType) or `multi_unit` (multiple RoomTypes)
+- Stripped of `max_guests`, `base_price_per_night` (moved to RoomType)
+
+**RoomType** (replaces former `RoomCategory`) — the actual sellable SKU.
+- `name`, `max_guests`, `bedrooms`, `beds`, `bathrooms`
+- `base_price_per_night`, `currency`
+- `total_units` — count of interchangeable rooms of this type
+- `property_id` FK → `accommodation_properties`
+- Relationship: `Property.room_types`, `RoomType.rooms`, `RoomType.inventory_blocks`
+
+**Room** — physical room instance (optional)
+- `room_type_id` FK → `accommodation_room_types` (previously `category_id` → `accommodation_room_categories`)
+- Room number, floor, housekeeping status, out-of-service flag
+- Only needed for large operators tracking individual units
+
+**InventoryBlock** — sparse table for off-book dates (maintenance, seasonal, owner block)
+- `room_type_id`, `date_range_start`, `date_range_end`, `units_blocked`, `reason`
+- Availability = `total_units − confirmed_bookings − blocked_units` (range-query, not per-day rows)
+
+**Booking** targets a `RoomType`; physical `Room` assignment (if used) happens after confirmation via `RoomBooking` junction.
+
+### A.2 Trust & Identity Architecture (Four-Layer Model)
+
+| Layer | Question it answers | Controls |
+|---|---|---|
+| **Identity KYC/KYB** | "Who is this person or organisation?" | Identity verification, KYC/KYB gatekeeper |
+| **Property Verification** | "Is this accommodation listing legitimate and safe?" | Property verification engine, moderator review |
+| **Event Host Badge** | "Is this property allowed to participate in this event?" | Badge system, event organiser approval |
+| **Event Accommodation Matching** | "Which accommodation options should this event audience see?" | Discovery layer, combines all three layers |
+
+**Key rule:** No layer owns another layer's responsibility.
+- KYC does not approve properties
+- Property verification does not decide event participation
+- Event hosts do not verify identities
+- Badges do not replace accommodation approval
+
+**Property lifecycle:** DRAFT → SUBMITTED → UNDER_REVIEW → ACTIVE → SUSPENDED → ARCHIVED
+**Badge lifecycle:** CREATED → INVITED → ACCEPTED → VERIFIED → ACTIVE → EXPIRED
+
+### A.3 Implementation History
+
+Key completed phases:
+- Property model lifecycle expansion (visibility, trust_score, readiness_score)
+- Trust, readiness & automated verification engines
+- Event accommodation module (EventBadge, EventAccommodationOpportunity, EventVisibility)
+- Moderation & event host decoupling
+- Admin moderation dashboard redesign
+- Room/Property restructuring: RoomCategory → RoomType migration
+
+---
+
+## Appendix B — Payment System Integration & Key Fixes
+
+> Future reference: do NOT create a duplicate `BookingPayment` model in accommodation.
+> The wallet module owns `PaymentMethodConfig`; accommodation consumes it.
+> Transport already has `BookingPayment`; accommodation must use `AccommodationBookingPayment` or lazy imports.
+
+### B.1 Payment Architecture Alignment
+
+- `PaymentMethodConfig` lives in `app/wallet/models/payment_method.py`
+- Accommodation must import it via `from app.wallet import PaymentMethodConfig` (or via `app.events.payment_config` backward-compat shim, but direct wallet import is preferred)
+- `PropertyPaymentMethod` is the per-property mapping table: `property_id + wallet_method_id`
+- `PaymentPolicyService.get_allowed_options()` builds the final guest-facing options dict
+
+### B.2 Two Policy Layers (Do Not Merge)
+
+| Model | Scope | Purpose |
+|-------|-------|---------|
+| `PropertyBookingPolicy` | Property-level | per-listing rules: cancellation, deposit %, payment timing |
+| `PlatformBookingPolicyOverride` | Platform-level | admin rails: min deposit %, max pay-on-arrival days, AFCON restrictions |
+
+Both must remain separate. `PlatformBookingPolicyOverride` is now enforced inside `get_allowed_options()`.
+
+### B.3 Recent Checkout & Payment Fixes
+
+1. **Enum-to-string persistence bug** (`AccommodationBlockedReason`): fixed at the model layer with `@validates('reason')` on `BlockedDate` so Enum values are converted to strings automatically.
+
+2. **Property-detail booking form bridge**: `detail.html` posts to `/accommodation/guest/checkout` without `payment_method`. The route now detects the missing field, stores booking data in `session['pending_booking']`, and redirects to the full checkout page instead of creating a hold and immediately releasing it.
+
+3. **Template type safety**: `checkout.html` and the GET checkout handler now coerce session price fields to `Decimal`/`int`, preventing `TypeError: must be real number, not str` when the template uses `"%.2f"|format(...)`.
+
+4. **Host booking-policy template**: fixed `policy.property_payment_methods` → `property.payment_methods` so payment-method checkboxes pre-check correctly.
+
+5. **Auto-seed property payment methods**: `HostService.create_property()` now creates a default `PropertyPaymentMethod` row for the globally-enabled `wallet` method, so every new property is bookable from creation.
+
+6. **Payment event ledger**: `BookingService.create_booking()` now creates an `AccommodationBookingPayment` pending record; `confirm_booking()` and checkout update it to `success`. This provides full audit trail for reconciliation.
+
+### B.4 Database Seeding for Property 2
+
+Property 2 had zero payment methods. To fix:
+
+```python
+from app import create_app
+from app.wallet.models.payment_method import PaymentMethodConfig
+from app.accommodation.models.property_payment_method import PropertyPaymentMethod
+from app.extensions import db
+
+app = create_app()
+with app.app_context():
+    PaymentMethodConfig.initialize_defaults()
+    db.session.commit()
+
+    wallet = PaymentMethodConfig.query.filter_by(method_id='wallet', is_enabled=True, is_active=True).first()
+    if wallet:
+        pm = PropertyPaymentMethod(property_id=2, wallet_method_id=wallet.id, enabled=True)
+        db.session.add(pm)
+        db.session.commit()
+```
+
+Global defaults seeded: `wallet` (enabled/active), plus 5 mobile-money entries (disabled by default).
+
+### B.5 IDGuard / Windows Console Note
+
+- `IDGuard._log_violation()` no longer emits Unicode emojis on Windows, preventing `cp1252` `UnicodeEncodeError`.
+- `method_id`, `booking_reference`, `payment_reference`, `idempotency_key` are added to `NON_FK_STRING_IDS` because they are business identifiers, not UUIDs.
+
+### B.6 Migration Guidance (Do Not Run Automatically)
+
+If you need the new ledger table and any wallet-related columns in production:
+
+```bash
+flask db migrate -m "add accommodation_booking_payments"
+flask db upgrade
+```
+
+Per project rules, migrations are proposed, not executed automatically.
+
+---
+
+## Appendix C — Quick Decision Tree for Payment Issues
+
+```
+Guest sees no payment methods on checkout?
+├── Is there a PropertyPaymentMethod row for this property?
+│   ├── No → create one, preferably auto-seeded on property creation
+│   └── Yes ↓
+├── Is wallet_method_id enabled AND is_active in payment_method_configs?
+│   ├── No → enable it in admin or seed defaults
+│   └── Yes ↓
+├── Is payment_method in allowed_methods list?
+│   ├── No → check host booking policy + platform override
+│   └── Yes ↓
+└── Check PaymentPolicyService.get_allowed_options() logs for platform override stripping
+```
 
 ---
 

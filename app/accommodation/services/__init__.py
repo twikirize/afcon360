@@ -13,7 +13,6 @@ from app.accommodation.services.identity_service import AccommodationIdentitySer
 from app.accommodation.services.booking_service import BookingService
 from app.accommodation.services.availability_service import AvailabilityService
 from app.accommodation.services.pricing_service import PricingService
-from app.accommodation.services.wallet_service import WalletService
 from app.accommodation.services.abuse_prevention_service import AbusePreventionService
 from app.accommodation.services.payment_policy_service import PaymentPolicyService
 from app.accommodation.services.marketplace_service import MarketplaceService
@@ -29,7 +28,6 @@ __all__ = [
     'BookingService',
     'AvailabilityService',
     'PricingService',
-    'WalletService',
     'AbusePreventionService',
     'PaymentPolicyService',
     'MarketplaceService',

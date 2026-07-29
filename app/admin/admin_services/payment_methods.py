@@ -5,7 +5,7 @@ Admin API Routes for Payment Methods Configuration
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.events.payment_config import PaymentMethodConfig, EventPaymentPreference
+from app.wallet import PaymentMethodConfig, EventPaymentPreference
 from app.admin.decorators import admin_required
 import logging
 

@@ -1,0 +1,69 @@
+{% macro booking_type_badge(booking) %}
+<span class="badge bg-info text-dark">
+  {% if booking.booking_type == 'self' %}
+    <i class="fas fa-user"></i> Personal
+  {% elif booking.booking_type == 'third_party' %}
+    <i class="fas fa-users"></i> For Guest
+  {% elif booking.booking_type == 'group' %}
+    <i class="fas fa-hotel"></i> Group
+  {% elif booking.booking_type == 'event_assigned' %}
+    <i class="fas fa-calendar-alt"></i> Event
+  {% else %}
+    {{ booking.booking_type|replace('_', ' ')|title }}
+  {% endif %}
+  {% if booking.room_number %}
+    (Room {{ booking.room_number }})
+  {% endif %}
+</span>
+{% endmacro %}
+
+{% macro booking_type_label(booking) %}
+  {% if booking.booking_type == 'self' %}
+    Personal booking
+  {% elif booking.booking_type == 'third_party' %}
+    Booking for another guest
+  {% elif booking.booking_type == 'group' %}
+    Group accommodation
+  {% elif booking.booking_type == 'event_assigned' %}
+    Event assignment
+  {% else %}
+    {{ booking.booking_type|replace('_', ' ')|title }}
+  {% endif %}
+{% endmacro %}
+
+{% macro room_type_display(room_type_name, room_type_id) %}
+  {% if room_type_name %}
+    <p class="mb-1"><strong>🛏️ Room Type:</strong> {{ room_type_name }}</p>
+  {% elif room_type_id %}
+    <p class="mb-1"><strong>🛏️ Room Type ID:</strong> {{ room_type_id }}</p>
+  {% endif %}
+{% endmacro %}
+
+{% macro booking_status_badge(booking) %}
+  {% set status_colors = {
+    'pending': 'warning',
+    'pending_approval': 'warning',
+    'confirmed': 'success',
+    'checked_in': 'info',
+    'checked_out': 'secondary',
+    'cancelled': 'danger',
+    'refunded': 'dark'
+  } %}
+  <span class="badge bg-{{ status_colors.get(booking.status, 'secondary') }}">
+    {{ booking.status|replace('_', ' ')|title }}
+  </span>
+{% endmacro %}
+
+{% macro guest_contact_info(booking) %}
+  {% if booking.primary_guest_name or booking.guest_name %}
+    <div class="small">
+      <strong>Guest:</strong> {{ booking.primary_guest_name or booking.guest_name }}
+      <br>
+      <strong>Email:</strong> {{ booking.primary_guest_email or booking.guest_email }}
+      {% if booking.primary_guest_phone or booking.guest_phone %}
+        <br>
+        <strong>Phone:</strong> {{ booking.primary_guest_phone or booking.guest_phone }}
+      {% endif %}
+    </div>
+  {% endif %}
+{% endmacro %}

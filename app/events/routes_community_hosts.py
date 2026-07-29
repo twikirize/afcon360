@@ -229,11 +229,14 @@ def api_community_host_approve(slug, registration_id):
         registration.approved_at = datetime.now(timezone.utc)
         registration.approved_by_id = current_user.id
         
-        # Also update property status
-        property = registration.property
-        property.status = AccommodationPropertyStatus.ACTIVE
-        property.is_active = True
-        property.is_verified = True
+        # Also issue an event badge via BadgeService instead of mutating property status
+        from app.event_accommodation.services.badge_service import BadgeService
+        BadgeService.issue_badge(
+            event_id=event.id,
+            property_id=registration.property_id,
+            badge_type="community_host",
+            approved_by_id=current_user.id
+        )
         
         db.session.commit()
         

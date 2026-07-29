@@ -3,12 +3,13 @@
 Availability Service - Check date availability and block/unblock dates
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 from sqlalchemy import and_
 from app.extensions import db
 from app.accommodation.models.availability import BlockedDate, AccommodationBlockedReason
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
+from app.accommodation.models.room import RoomType, InventoryBlock
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class AvailabilityService:
             return False
 
         # Check RoomType availability if RoomTypes exist
-        from app.accommodation.models.property import RoomType
+        from app.accommodation.models.room import RoomType
         room_types = RoomType.query.filter_by(property_id=property_id, is_active=True).all()
         if room_types:
             from app.accommodation.services.host_service import HostService
@@ -138,10 +139,20 @@ class AvailabilityService:
             check_out: date,
             reason: AccommodationBlockedReason,
             booking_id: int = None,
-            created_by: int = None
+            created_by: int = None,
+            expires_at: datetime = None
     ) -> int:
         """
         Block a range of dates for a property.
+
+        Args:
+            property_id: The property ID
+            check_in: Start date
+            check_out: End date (exclusive)
+            reason: Block reason enum
+            booking_id: Optional booking ID to associate
+            created_by: User ID who created the block
+            expires_at: Optional expiration datetime for automatic cleanup
 
         Returns:
             Number of dates blocked
@@ -175,14 +186,134 @@ class AvailabilityService:
         return blocked_count
 
     @staticmethod
+    def create_hold(
+            property_id: int,
+            check_in: date,
+            check_out: date,
+            created_by: int,
+            hold_minutes: int = 15
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Create a temporary hold on dates (pre-booking hold).
+
+        Args:
+            property_id: The property ID
+            check_in: Start date
+            check_out: End date (exclusive)
+            created_by: User ID creating the hold
+            hold_minutes: How long the hold lasts before auto-release
+
+        Returns:
+            (success, error_message)
+        """
+        try:
+            from datetime import datetime, timezone
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=hold_minutes)
+
+            blocked_count = AvailabilityService.block_dates(
+                property_id=property_id,
+                check_in=check_in,
+                check_out=check_out,
+                reason=AccommodationBlockedReason.TEMPORARY_HOLD,
+                created_by=created_by,
+                expires_at=expires_at
+            )
+
+            if blocked_count == 0:
+                return False, "Dates are already on hold"
+
+            logger.info(
+                f"Temporary hold created for property {property_id} "
+                f"by user {created_by} ({check_in} → {check_out})"
+            )
+            return True, None
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to create hold for property {property_id}: {e}")
+            return False, "Could not hold dates. Please try again."
+
+    @staticmethod
+    def release_hold(
+            property_id: int,
+            check_in: date,
+            check_out: date,
+            created_by: int = None
+    ) -> int:
+        """
+        Release a temporary hold on dates.
+
+        Args:
+            property_id: The property ID
+            check_in: Start date
+            check_out: End date (exclusive)
+            created_by: Optional user ID who created the hold
+
+        Returns:
+            Number of dates released
+        """
+        query = BlockedDate.query.filter(
+            BlockedDate.property_id == property_id,
+            BlockedDate.blocked_date.between(check_in, check_out - timedelta(days=1)),
+            BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value
+        )
+
+        if created_by:
+            query = query.filter(BlockedDate.created_by == created_by)
+
+        result = query.delete(synchronize_session=False)
+        db.session.commit()
+
+        logger.info(f"Released {result} temporary holds for property {property_id}")
+        return result
+
+    @staticmethod
+    def release_expired_holds(hold_minutes: int = 15) -> int:
+        """
+        Release temporary holds that have expired.
+
+        Args:
+            hold_minutes: Maximum age of holds before they're considered expired
+
+        Returns:
+            Number of expired holds released
+        """
+        from datetime import datetime, timezone
+        expired_time = datetime.now(timezone.utc) - timedelta(minutes=hold_minutes)
+
+        expired_holds = BlockedDate.query.filter(
+            BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
+            BlockedDate.created_at < expired_time
+        ).all()
+
+        count = len(expired_holds)
+        for hold in expired_holds:
+            db.session.delete(hold)
+
+        db.session.commit()
+
+        if count > 0:
+            logger.info(f"Released {count} expired temporary holds")
+
+        return count
+
+    @staticmethod
     def unblock_dates(
             property_id: int,
             check_in: date,
             check_out: date,
-            booking_id: int = None
+            booking_id: int = None,
+            reason: str = None
     ) -> int:
         """
         Unblock a range of dates for a property.
+
+        Args:
+            property_id: The property ID
+            check_in: Start date
+            check_out: End date (exclusive)
+            booking_id: Optional booking ID to filter by
+            reason: Optional reason to filter by (e.g., 'temporary_hold')
 
         Returns:
             Number of dates unblocked
@@ -195,10 +326,13 @@ class AvailabilityService:
         if booking_id:
             query = query.filter(BlockedDate.booking_id == booking_id)
 
+        if reason:
+            query = query.filter(BlockedDate.reason == reason)
+
         result = query.delete(synchronize_session=False)
         db.session.commit()
 
-        logger.info(f"Unblocked {result} dates for property {property_id} (booking: {booking_id})")
+        logger.info(f"Unblocked {result} dates for property {property_id} (booking: {booking_id}, reason: {reason})")
         return result
 
     @staticmethod
@@ -221,3 +355,148 @@ class AvailabilityService:
             current_date += timedelta(days=1)
 
         return available_dates
+
+    @staticmethod
+    def get_available_units(
+            room_type_id: int,
+            check_in: date,
+            check_out: date,
+            exclude_booking_id: int = None,
+    ) -> int:
+        """
+        Calculate available units for a room type on a date range.
+
+        Formula: total_units - confirmed_bookings - inventory_blocks
+        """
+        room_type = RoomType.query.get(room_type_id)
+        if not room_type:
+            return 0
+
+        available = room_type.total_units
+
+        # Subtract confirmed/checked-in bookings overlapping the date range
+        booking_query = AccommodationBooking.query.filter(
+            AccommodationBooking.room_type_id == room_type_id,
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.CONFIRMED.value,
+                AccommodationBookingStatus.CHECKED_IN.value,
+            ]),
+            AccommodationBooking.check_in < check_out,
+            AccommodationBooking.check_out > check_in,
+        )
+        if exclude_booking_id:
+            booking_query = booking_query.filter(AccommodationBooking.id != exclude_booking_id)
+
+        booked = booking_query.count()
+        available -= booked
+
+        # Subtract inventory blocks (maintenance, seasonal, etc.)
+        blocks = InventoryBlock.query.filter(
+            InventoryBlock.room_type_id == room_type_id,
+            InventoryBlock.date_range_start < check_out,
+            InventoryBlock.date_range_end > check_in,
+        ).all()
+        for block in blocks:
+            available -= block.units_blocked
+
+        return max(0, available)
+
+    @staticmethod
+    def is_room_type_available(
+            room_type_id: int,
+            check_in: date,
+            check_out: date,
+            requested_units: int = 1,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Check if a room type has enough available units for a date range.
+        """
+        available = AvailabilityService.get_available_units(room_type_id, check_in, check_out)
+
+        if available >= requested_units:
+            return True, None
+
+        return False, f"Only {available} unit(s) available, but {requested_units} requested"
+
+    @staticmethod
+    def block_room_type_units(
+            room_type_id: int,
+            check_in: date,
+            check_out: date,
+            units_to_block: int = 1,
+            reason: str = AccommodationBlockedReason.BOOKED.value,
+            booking_id: Optional[int] = None,
+            created_by: Optional[int] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Block units for a room type for a date range.
+
+        Creates or updates an InventoryBlock record for the room type.
+        """
+        try:
+            room_type = RoomType.query.get(room_type_id)
+            if not room_type:
+                return False, "Room type not found"
+
+            # Check if enough units are available
+            available = AvailabilityService.get_available_units(room_type_id, check_in, check_out)
+            if available < units_to_block:
+                return False, f"Insufficient units: {available} available, {units_to_block} requested"
+
+            # Check for an existing block for the same room type and date range
+            existing_block = InventoryBlock.query.filter(
+                InventoryBlock.room_type_id == room_type_id,
+                InventoryBlock.date_range_start == check_in,
+                InventoryBlock.date_range_end == check_out,
+            ).first()
+
+            if existing_block:
+                existing_block.units_blocked += units_to_block
+            else:
+                block = InventoryBlock(
+                    room_type_id=room_type_id,
+                    booking_id=booking_id,
+                    date_range_start=check_in,
+                    date_range_end=check_out,
+                    units_blocked=units_to_block,
+                    reason=reason,
+                )
+                db.session.add(block)
+
+            db.session.commit()
+            return True, None
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to block room type units for room_type {room_type_id}: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def release_room_type_blocks(
+            room_type_id: int,
+            check_in: date,
+            check_out: date,
+            booking_id: Optional[int] = None,
+    ) -> int:
+        """
+        Release inventory blocks for a room type on a date range.
+
+        If booking_id is provided, only release blocks belonging to that booking.
+        Returns the number of blocks released.
+        """
+        query = InventoryBlock.query.filter(
+            InventoryBlock.room_type_id == room_type_id,
+            InventoryBlock.date_range_start == check_in,
+            InventoryBlock.date_range_end == check_out,
+        )
+
+        if booking_id:
+            query = query.filter(InventoryBlock.booking_id == booking_id)
+
+        result = query.delete(synchronize_session=False)
+        db.session.commit()
+
+        if result > 0:
+            logger.info(f"Released {result} inventory block(s) for room_type {room_type_id} on {check_in} to {check_out}")
+
+        return result

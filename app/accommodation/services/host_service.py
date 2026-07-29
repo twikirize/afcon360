@@ -9,21 +9,20 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from sqlalchemy import func, and_, desc
 
 from app.extensions import db
-from app.accommodation.models.property import AccommodationPropertyStatus
 from app.accommodation.utils import enum_value
 from app.accommodation.models.property import (
     AccommodationCancellationPolicy,
     AccommodationPropertyStatus,
     AccommodationPropertyType,
     Property,
-    RoomType,
-    InventoryBlock,
 )
-from app.accommodation.models.room import RoomCategory, Room
+from app.accommodation.models.room import Room, RoomType, InventoryBlock
 from app.accommodation.models.booking import (
     AccommodationBooking,
     AccommodationBookingStatus,
 )
+from app.accommodation.models.property_payment_method import PropertyPaymentMethod
+from app.wallet import PaymentMethodConfig
 
 # Active booking statuses for availability calculation
 ACTIVE_BOOKING_STATUSES = [
@@ -169,7 +168,29 @@ class HostService:
             is_active=True,
         )
         db.session.add(default_room_type)
-        
+
+        # Auto-create default property payment methods so every new property
+        # is immediately bookable. Start with wallet; additional methods are
+        # only enabled globally if PaymentMethodConfig.initialize_defaults()
+        # has run in the environment.
+        enabled_methods = PropertyPaymentMethod.query.filter_by(
+            property_id=prop.id, enabled=True
+        ).all()
+        if not enabled_methods:
+            wallet_method = PaymentMethodConfig.query.filter_by(
+                method_id='wallet',
+                is_enabled=True,
+                is_active=True,
+            ).first()
+            if wallet_method:
+                db.session.add(
+                    PropertyPaymentMethod(
+                        property_id=prop.id,
+                        wallet_method_id=wallet_method.id,
+                        enabled=True,
+                    )
+                )
+
         return prop
 
     @staticmethod
@@ -1543,46 +1564,10 @@ class HostService:
 
     @staticmethod
     def sync_room_type_inventory(property_id: int) -> None:
-        categories = RoomCategory.query.filter_by(property_id=property_id).all()
         room_types = RoomType.query.filter_by(property_id=property_id).all()
-        matched_rt_ids = set()
-
-        for category in categories:
-            rt = RoomType.query.filter_by(property_id=property_id, name=category.name).first()
-            if not rt:
-                rt = RoomType(
-                    property_id=property_id,
-                    name=category.name,
-                    description=category.description,
-                    max_guests=category.max_guests,
-                    bedrooms=category.bedrooms,
-                    beds=category.beds,
-                    bathrooms=category.bathrooms,
-                    base_price_per_night=category.base_price_per_night,
-                    currency=category.currency,
-                    cleaning_fee=category.cleaning_fee,
-                    total_units=0,
-                    is_active=category.is_active,
-                )
-                db.session.add(rt)
-                db.session.flush()
-            else:
-                rt.description = category.description
-                rt.max_guests = category.max_guests
-                rt.bedrooms = category.bedrooms
-                rt.beds = category.beds
-                rt.bathrooms = category.bathrooms
-                rt.base_price_per_night = category.base_price_per_night
-                rt.currency = category.currency
-                rt.cleaning_fee = category.cleaning_fee
-                rt.is_active = category.is_active
-                matched_rt_ids.add(rt.id)
-
-            count = Room.query.filter_by(property_id=property_id, category_id=category.id).count()
-            rt.total_units = count
 
         for rt in room_types:
-            if rt.id not in matched_rt_ids:
-                rt.total_units = 0
+            count = Room.query.filter_by(property_id=property_id, room_type_id=rt.id).count()
+            rt.total_units = count
 
         db.session.commit()

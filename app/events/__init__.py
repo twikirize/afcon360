@@ -18,13 +18,9 @@ print("Settings routes registered to events blueprint")  # Debug line
 # STEP 2: Now import routes (which will add the rest of the routes)
 from app.events import routes
 from app.events import routes_community_hosts
-from app.events.settings_model import EventSettings  # noqa: F401
 
 # IMPORTANT: Force Alembic to see these models so it doesn't drop the tables
 from app.events import payment_config  # noqa: F401
-
-# Expose service for easier imports
-from app.events.services import EventService
 
 # Import signal handlers and connect them
 try:
@@ -40,10 +36,10 @@ try:
             except Exception as e:
                 state.app.logger.error(f"Failed to connect event signal handlers: {e}")
 
-    __all__ = ['events_bp', 'EventService', 'routes', 'connect_event_signal_handlers']
+    __all__ = ['events_bp', 'routes', 'connect_event_signal_handlers']
 except ImportError as e:
     current_app.logger.error(f"Failed to import event signal handlers: {e}")
-    __all__ = ['events_bp', 'EventService', 'routes']
+    __all__ = ['events_bp', 'routes']
 
 try:
     from app.admin.moderator.registry import register_module

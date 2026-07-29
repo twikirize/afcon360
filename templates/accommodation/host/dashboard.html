@@ -2,462 +2,595 @@
 {% block title %}Host Dashboard | AFCON 360{% endblock %}
 
 {% block module_styles %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/host-dashboard.css') }}">
+<style>
+.host-dashboard-modern {
+  background: #f8fafc;
+  min-height: 100vh;
+  padding: 0;
+}
+
+/* ── Welcome Section ── */
+.host-welcome-modern {
+  background: linear-gradient(135deg, #1a2a3a 0%, #0f1a2a 100%);
+  color: #fff;
+  padding: 2rem 0 2rem;
+  margin-bottom: 2rem;
+}
+.host-greeting-modern h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.host-greeting-modern .highlight {
+  color: #10b981;
+}
+.quick-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+.quick-stat-item {
+  text-align: center;
+}
+.quick-stat-number {
+  font-size: 2rem;
+  font-weight: 800;
+  display: block;
+}
+.quick-stat-label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+/* ── Stats Grid ── */
+.stats-grid-modern {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.stat-card-modern {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+}
+.stat-header-modern {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.stat-icon-modern {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.stat-icon-modern.blue { background: #dbeafe; color: #1d4ed8; }
+.stat-icon-modern.green { background: #d1fae5; color: #065f46; }
+.stat-icon-modern.orange { background: #fef3c7; color: #92400e; }
+.stat-icon-modern.purple { background: #ede9fe; color: #7c3aed; }
+.stat-icon-modern.pink { background: #fce7f3; color: #db2777; }
+.stat-icon-modern.red { background: #fee2e2; color: #b91c1c; }
+
+.stat-change {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+}
+.stat-change.positive { background: #d1fae5; color: #065f46; }
+.stat-change.negative { background: #fee2e2; color: #b91c1c; }
+.stat-change.neutral { background: #f3f4f6; color: #6b7280; }
+
+.stat-value-modern {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #111;
+}
+.stat-label-modern {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.stat-card-modern small {
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+
+/* ── Listing Cards ── */
+.main-grid-modern {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 1.5rem;
+}
+.card-modern {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+.card-header-modern {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.card-header-modern h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+.card-header-modern .subtitle {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.card-body-modern {
+  padding: 1.5rem;
+}
+
+.btn-primary-modern {
+  background: #047857;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: background 0.2s;
+}
+.btn-primary-modern:hover {
+  background: #065f46;
+  color: #fff;
+}
+
+.listings-grid-modern {
+  display: grid;
+  gap: 1rem;
+}
+.listing-card-modern {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  transition: border-color 0.2s;
+}
+.listing-card-modern:hover {
+  border-color: #047857;
+}
+.listing-image-modern {
+  height: 140px;
+  background: #f3f4f6;
+  position: relative;
+  overflow: hidden;
+}
+.listing-image-modern img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.listing-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #fff;
+}
+.listing-badge.draft { background: #6b7280; }
+.listing-badge.pending_review { background: #f59e0b; }
+.listing-badge.submitted { background: #3b82f6; }
+.listing-badge.under_review { background: #f59e0b; }
+.listing-badge.approved { background: #8b5cf6; }
+.listing-badge.needs_information { background: #ef4444; }
+.listing-badge.active { background: #047857; }
+.listing-badge.published { background: #047857; }
+.listing-badge.suspended { background: #ef4444; }
+.listing-badge.archived { background: #6b7280; }
+
+.listing-body-modern {
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+.listing-title-modern {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.listing-location-modern {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+.listing-meta-modern {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: #6b7280;
+  margin: 0.25rem 0;
+}
+.listing-price-modern {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #047857;
+}
+.listing-price-modern small {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #6b7280;
+}
+.listing-actions-modern {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.btn-outline-modern {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #374151;
+  text-decoration: none;
+  transition: all 0.2s;
+  background: #fff;
+}
+.btn-outline-modern:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+.btn-outline-modern.danger:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+.btn-outline-modern.success:hover {
+  background: #d1fae5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+/* ── Status Alert Cards ── */
+.status-alert {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin: 0.25rem 0 0.5rem;
+}
+.status-alert.success {
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+.status-alert.warning {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+.status-alert.danger {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+}
+.status-alert.info {
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
+/* ── Widgets ── */
+.widget-modern {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.widget-header-modern {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.widget-header-modern h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0;
+}
+.widget-link {
+  font-size: 0.75rem;
+  color: #047857;
+  text-decoration: none;
+}
+
+.booking-item-modern {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.booking-item-modern:last-child {
+  border-bottom: none;
+}
+.booking-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.booking-info-modern {
+  flex: 1;
+}
+.booking-guest-modern {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.booking-dates-modern {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+.booking-status-modern {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+}
+.booking-status-modern.pending_approval { background: #fef3c7; color: #92400e; }
+.booking-status-modern.confirmed { background: #d1fae5; color: #065f46; }
+.booking-status-modern.checked_in { background: #dbeafe; color: #1d4ed8; }
+.booking-status-modern.checked_out { background: #f3f4f6; color: #6b7280; }
+.booking-amount-modern {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* ── Quick Actions ── */
+.quick-actions-modern {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.quick-action-modern {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 0.25rem;
+  border-radius: 8px;
+  text-decoration: none;
+  background: #f9fafb;
+  transition: background 0.2s;
+  border: 1px solid #f3f4f6;
+}
+.quick-action-modern:hover {
+  background: #f3f4f6;
+}
+.quick-action-modern i {
+  font-size: 1.3rem;
+  margin-bottom: 0.2rem;
+}
+.quick-action-modern .action-label {
+  font-size: 0.6rem;
+  color: #374151;
+  font-weight: 600;
+}
+
+/* ── Empty State ── */
+.empty-state-modern {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+.empty-icon {
+  font-size: 3rem;
+  color: #d1d5db;
+  margin-bottom: 1rem;
+}
+.empty-state-modern h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.empty-state-modern p {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .main-grid-modern {
+    grid-template-columns: 1fr;
+  }
+  .listing-card-modern {
+    grid-template-columns: 1fr;
+  }
+  .listing-image-modern {
+    height: 120px;
+  }
+}
+@media (max-width: 640px) {
+  .stats-grid-modern {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .quick-actions-modern {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="host-dashboard-modern">
 
-  {# ── WELCOME SECTION ──────────────────────────────────────────── #}
+  {# ── WELCOME SECTION ── #}
   <div class="host-welcome-modern">
     <div class="container-fluid px-4">
       <div class="host-greeting-modern">
-        <h1>
-          👋 Welcome back, 
-          <span class="highlight">{{ host_info.display_name }}</span>
-        </h1>
+        <h1>👋 Welcome back, <span class="highlight">{{ host_info.display_name }}</span></h1>
         <p style="opacity: 0.9; font-size: 1.1rem;">
-          Here's your performance overview for today.
           {% if host_info.type == 'organisation' %}
-          <span class="badge bg-light text-dark ms-2">🏢 Organisation</span>
+          🏢 Organisation Host
+          {% else %}
+          🏠 Individual Host
           {% endif %}
+          · {{ stats.total_listings }} listing{{ 's' if stats.total_listings != 1 }}
         </p>
       </div>
 
-      {# Quick Stats Row #}
       <div class="quick-stats-row">
         <div class="quick-stat-item">
-          <span class="quick-stat-number" data-stat="total_listings">{{ stats.total_listings }}</span>
-          <span class="quick-stat-label">Total Listings</span>
+          <span class="quick-stat-number">{{ stats.active_listings + stats.published_listings|default(0) }}</span>
+          <span class="quick-stat-label">Live Properties</span>
         </div>
         <div class="quick-stat-item">
-          <span class="quick-stat-number" data-stat="active_listings">{{ stats.active_listings }}</span>
-          <span class="quick-stat-label">Active</span>
+          <span class="quick-stat-number">{{ stats.pending_review + stats.submitted|default(0) + stats.under_review|default(0) }}</span>
+          <span class="quick-stat-label">Under Review</span>
         </div>
         <div class="quick-stat-item">
-          <span class="quick-stat-number" data-stat="total_bookings">{{ total_bookings_count }}</span>
+          <span class="quick-stat-number">{{ total_bookings_count }}</span>
           <span class="quick-stat-label">Total Bookings</span>
         </div>
         <div class="quick-stat-item">
-          <span class="quick-stat-number" data-stat="total_revenue">${{ "{:,.0f}".format(total_revenue) }}</span>
+          <span class="quick-stat-number">${{ "{:,.0f}".format(total_revenue) }}</span>
           <span class="quick-stat-label">Total Revenue</span>
         </div>
       </div>
     </div>
   </div>
 
-  {# ── MAIN CONTENT ─────────────────────────────────────────────── #}
+  {# ── FLASH MESSAGES ── #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="container-fluid px-4">
+      <div class="alert alert-{{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'danger') }} alert-dismissible fade show">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# ── MAIN CONTENT ── #}
   <div class="container-fluid px-4">
 
-    {# Stats Grid #}
+    {# ── Stats Grid ── #}
     <div class="stats-grid-modern">
-      <div class="stat-card-modern animate-in">
+      <div class="stat-card-modern">
         <div class="stat-header-modern">
           <span class="stat-icon-modern blue"><i class="bi bi-house-door"></i></span>
-          <span class="stat-change positive">▲ 12%</span>
+          <span class="stat-change positive">{{ stats.active_listings + stats.published_listings|default(0) }} live</span>
         </div>
-        <div class="stat-value-modern" data-stat="total_listings">{{ stats.total_listings }}</div>
-        <div class="stat-label-modern">Total Listings</div>
-        <small class="text-muted">{{ stats.active_listings }} active</small>
+        <div class="stat-value-modern">{{ stats.total_listings }}</div>
+        <div class="stat-label-modern">Total Properties</div>
+        <small>{{ stats.active_listings }} active, {{ stats.draft_listings }} drafts</small>
       </div>
 
-      <div class="stat-card-modern animate-in">
+      <div class="stat-card-modern">
         <div class="stat-header-modern">
-          <span class="stat-icon-modern green"><i class="bi bi-check-circle"></i></span>
-          <span class="stat-change positive">● Live</span>
+          <span class="stat-icon-modern orange"><i class="bi bi-clock-history"></i></span>
+          <span class="stat-change {% if stats.pending_review + stats.submitted|default(0) > 0 %}negative{% else %}positive{% endif %}">
+            {{ stats.pending_review + stats.submitted|default(0) + stats.under_review|default(0) }} pending
+          </span>
         </div>
-        <div class="stat-value-modern" data-stat="active_listings">{{ stats.active_listings }}</div>
-        <div class="stat-label-modern">Active Listings</div>
-        <small class="text-muted">{{ stats.pending_review }} pending review</small>
+        <div class="stat-value-modern">{{ stats.pending_review + stats.submitted|default(0) + stats.under_review|default(0) }}</div>
+        <div class="stat-label-modern">Under Review</div>
+        <small>{{ stats.pending_review }} pending, {{ stats.submitted|default(0) }} submitted</small>
       </div>
 
-      <div class="stat-card-modern animate-in">
+      <div class="stat-card-modern">
         <div class="stat-header-modern">
-          <span class="stat-icon-modern orange"><i class="bi bi-calendar-check"></i></span>
-          <span class="stat-change neutral">{{ bookings|length }} upcoming</span>
+          <span class="stat-icon-modern green"><i class="bi bi-calendar-check"></i></span>
+          <span class="stat-change positive">{{ total_bookings_count }} total</span>
         </div>
-        <div class="stat-value-modern" data-stat="total_bookings">{{ total_bookings_count }}</div>
-        <div class="stat-label-modern">Total Bookings</div>
-        <small class="text-muted">{{ stats.draft_listings }} drafts</small>
+        <div class="stat-value-modern">{{ bookings|length }}</div>
+        <div class="stat-label-modern">Upcoming Bookings</div>
+        <small>{{ total_bookings_count }} all-time bookings</small>
       </div>
 
-      <div class="stat-card-modern animate-in">
+      <div class="stat-card-modern">
         <div class="stat-header-modern">
           <span class="stat-icon-modern purple"><i class="bi bi-currency-dollar"></i></span>
-          <span class="stat-change positive">▲ 8%</span>
+          <span class="stat-change positive">${{ "{:,.0f}".format(total_revenue) }}</span>
         </div>
-        <div class="stat-value-modern" data-stat="total_revenue">${{ "{:,.0f}".format(total_revenue) }}</div>
-        <div class="stat-label-modern">Total Revenue</div>
-        <small class="text-muted">All time earnings</small>
+        <div class="stat-value-modern">{{ "%.0f"|format(total_revenue / (stats.total_listings or 1)) }}</div>
+        <div class="stat-label-modern">Avg per Listing</div>
+        <small>Total revenue: ${{ "{:,.0f}".format(total_revenue) }}</small>
       </div>
 
-      <div class="stat-card-modern animate-in">
+      <div class="stat-card-modern">
         <div class="stat-header-modern">
           <span class="stat-icon-modern pink"><i class="bi bi-star-fill"></i></span>
           <span class="stat-change positive">{{ avg_rating }} ★</span>
         </div>
-        <div class="stat-value-modern" data-stat="avg_rating">{{ avg_rating|round(1) }}</div>
-        <div class="stat-label-modern">Average Rating</div>
-        <small class="text-muted">{{ total_reviews }} reviews</small>
+        <div class="stat-value-modern">{{ avg_rating|round(1) }}</div>
+        <div class="stat-label-modern">Avg Rating</div>
+        <small>{{ total_reviews }} reviews</small>
       </div>
 
-      <div class="stat-card-modern animate-in">
+      <div class="stat-card-modern">
         <div class="stat-header-modern">
-          <span class="stat-icon-modern" style="background:var(--success-light);color:var(--success);"><i class="bi bi-eye"></i></span>
-          <span class="stat-change positive">{{ total_views }} views</span>
-        </div>
-        <div class="stat-value-modern" data-stat="total_views">{{ total_views }}</div>
-        <div class="stat-label-modern">Views (24h)</div>
-        <small class="text-muted">
-          {% if avg_response_rate %}
-          {{ "%.0f"|format(avg_response_rate) }}% response rate
-          {% else %}
-          No response data
-          {% endif %}
-        </small>
-      </div>
-    </div>
-
-    {# ── ADVANCED ANALYTICS SECTION ────────────────────────────────── #}
-    <div class="adv-section animate-in" id="advanced-analytics">
-      <div class="adv-section-header">
-        <h3>📊 Advanced Analytics</h3>
-        <span class="adv-subtitle">Deep booking performance insights</span>
-      </div>
-      <div class="adv-grid-4">
-        <div class="adv-card">
-          <div class="adv-card-icon adv-blue"><i class="bi bi-cash-stack"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Avg. Booking Value</span>
-            <span class="adv-value">${{ "{:,.0f}".format(advanced_metrics.get('avg_booking_value', 0)) }}</span>
-            {% set growth = advanced_metrics.get('revenue_growth', 0) %}
-            <span class="adv-trend {{ 'adv-positive' if growth >= 0 else 'adv-negative' }}">
-              {{ '↑' if growth >= 0 else '↓' }} {{ "{:.1f}".format(growth|abs) }}% MoM
-            </span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-green"><i class="bi bi-moon-stars"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Avg. Length of Stay</span>
-            <span class="adv-value">{{ "{:.1f}".format(advanced_metrics.get('avg_length_of_stay', 0)) }} nights</span>
-            <span class="adv-trend adv-neutral">Trailing average</span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-orange"><i class="bi bi-calendar-week"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Booking Distribution</span>
-            <span class="adv-value">{{ advanced_metrics.get('weekday_bookings', 0) }} / {{ advanced_metrics.get('weekend_bookings', 0) }}</span>
-            <span class="adv-trend adv-neutral">Weekday / Weekend</span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-purple"><i class="bi bi-rocket-takeoff"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Booking Velocity</span>
-            <span class="adv-value">{{ booking_velocity.get('daily', 0) }}/day</span>
-            <span class="adv-trend adv-neutral">{{ booking_velocity.get('weekly', 0) }}/week · {{ booking_velocity.get('monthly', 0) }}/month</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {# ── PERFORMANCE METRICS SECTION ────────────────────────────────── #}
-    <div class="adv-section animate-in" id="performance-metrics">
-      <div class="adv-section-header">
-        <h3>📈 Performance Metrics</h3>
-        <span class="adv-subtitle">Key hosting KPIs</span>
-      </div>
-      <div class="adv-grid-5">
-        <div class="adv-metric-card">
-          <div class="adv-metric-icon adv-blue"><i class="bi bi-currency-dollar"></i></div>
-          <span class="adv-label">Avg Daily Rate (ADR)</span>
-          <span class="adv-value">${{ "{:,.0f}".format(performance_metrics.get('avg_daily_rate', 0)) }}</span>
-          {% set adr = performance_metrics.get('avg_daily_rate', 0) %}
-          {% set mar = competitive_intelligence.get('market_avg_rate', 0) %}
-          {% if adr > 0 and mar > 0 %}
-            {% set diff = ((adr - mar) / mar * 100)|round %}
-            <span class="adv-trend {{ 'adv-positive' if diff >= 0 else 'adv-negative' }}">
-              {{ '↑' if diff >= 0 else '↓' }} {{ diff|abs }}% vs market
-            </span>
-          {% else %}
-            <span class="adv-trend adv-neutral">No market data</span>
-          {% endif %}
-        </div>
-        <div class="adv-metric-card">
-          <div class="adv-metric-icon adv-green"><i class="bi bi-graph-up-arrow"></i></div>
-          <span class="adv-label">RevPAR</span>
-          <span class="adv-value">${{ "{:,.0f}".format(performance_metrics.get('revenue_per_available_room', 0)) }}</span>
-          <span class="adv-trend adv-neutral">Per property</span>
-        </div>
-        <div class="adv-metric-card">
-          <div class="adv-metric-icon adv-orange"><i class="bi bi-clock-history"></i></div>
-          <span class="adv-label">Avg Lead Time</span>
-          <span class="adv-value">{{ "{:.0f}".format(performance_metrics.get('booking_lead_time', 0)) }} days</span>
-          <span class="adv-trend adv-neutral">Before check-in</span>
-        </div>
-        <div class="adv-metric-card">
-          {% set cr = performance_metrics.get('cancellation_rate', 0) %}
-          <div class="adv-metric-icon {{ 'adv-red' if cr > 10 else 'adv-green' }}"><i class="bi bi-x-circle"></i></div>
-          <span class="adv-label">Cancellation Rate</span>
-          <span class="adv-value">{{ "{:.1f}".format(cr) }}%</span>
-          <span class="adv-trend {{ 'adv-negative' if cr > 10 else 'adv-positive' }}">
-            {{ '⚠️ High' if cr > 10 else '✅ Low' }}
+          <span class="stat-icon-modern red"><i class="bi bi-exclamation-triangle"></i></span>
+          <span class="stat-change {% if stats.needs_information|default(0) > 0 %}negative{% else %}positive{% endif %}">
+            {{ stats.needs_information|default(0) }} need action
           </span>
         </div>
-        <div class="adv-metric-card">
-          <div class="adv-metric-icon adv-purple"><i class="bi bi-arrow-repeat"></i></div>
-          <span class="adv-label">Conversion Rate</span>
-          <span class="adv-value">{{ "{:.1f}".format(conversion_rate) }}%</span>
-          <span class="adv-trend adv-neutral">Views → Bookings</span>
-        </div>
+        <div class="stat-value-modern">{{ stats.needs_information|default(0) }}</div>
+        <div class="stat-label-modern">Needs Attention</div>
+        <small>Action required from you</small>
       </div>
     </div>
 
-    {# ── GUEST INTELLIGENCE SECTION ─────────────────────────────────── #}
-    <div class="adv-section animate-in" id="guest-intelligence">
-      <div class="adv-section-header">
-        <h3>👤 Guest Intelligence</h3>
-        <span class="adv-subtitle">Understanding your guests</span>
-      </div>
-      <div class="adv-grid-3">
-        <div class="adv-card">
-          <div class="adv-card-icon adv-green"><i class="bi bi-people-fill"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Repeat Guest Rate</span>
-            {% set rgr = guest_intelligence.get('repeat_guest_rate', 0) %}
-            <span class="adv-value">{{ "{:.1f}".format(rgr) }}%</span>
-            <span class="adv-trend {{ 'adv-positive' if rgr >= 20 else 'adv-neutral' }}">
-              {{ '✅ Strong retention' if rgr >= 20 else '💡 Room to grow' }}
-            </span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-purple"><i class="bi bi-currency-dollar"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Guest Lifetime Value</span>
-            <span class="adv-value">${{ "{:,.0f}".format(guest_intelligence.get('guest_lifetime_value', 0)) }}</span>
-            <span class="adv-trend adv-neutral">Avg per guest</span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-orange"><i class="bi bi-star-half"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Satisfaction Trend</span>
-            {% set sat = guest_intelligence.get('satisfaction_trend', {}) %}
-            <span class="adv-value">{{ sat.get('trend', 'stable')|title }}</span>
-            <span class="adv-trend {{ 'adv-positive' if sat.get('trend') == 'up' else ('adv-negative' if sat.get('trend') == 'down' else 'adv-neutral') }}">
-              {% if sat.get('change', 0) != 0 %}
-                {{ '↑' if sat.get('change', 0) > 0 else '↓' }} {{ "{:.2f}".format(sat.get('change', 0)|abs) }} stars
-              {% else %}
-                No change
-              {% endif %}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {# ── COMPETITIVE INTELLIGENCE SECTION ───────────────────────────── #}
-    <div class="adv-section animate-in" id="competitive-intelligence">
-      <div class="adv-section-header">
-        <h3>🏆 Competitive Intelligence</h3>
-        <span class="adv-subtitle">How you compare to the local market</span>
-      </div>
-      <div class="adv-grid-4">
-        <div class="adv-card">
-          <div class="adv-card-icon adv-blue"><i class="bi bi-building"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Competitors Nearby</span>
-            <span class="adv-value">{{ competitive_intelligence.get('competitor_count', 0) }}</span>
-            <span class="adv-trend adv-neutral">Active listings</span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-green"><i class="bi bi-cash"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Market Avg Rate</span>
-            <span class="adv-value">${{ "{:,.0f}".format(competitive_intelligence.get('market_avg_rate', 0)) }}</span>
-            <span class="adv-trend adv-neutral">Per night</span>
-          </div>
-        </div>
-        <div class="adv-card">
-          <div class="adv-card-icon adv-orange"><i class="bi bi-house-check"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Market Occupancy</span>
-            <span class="adv-value">{{ "{:.1f}".format(competitive_intelligence.get('market_occupancy', 0)) }}%</span>
-            <span class="adv-trend adv-neutral">Area average</span>
-          </div>
-        </div>
-        <div class="adv-card">
-          {% set demand = competitive_intelligence.get('market_demand_index', 0) %}
-          <div class="adv-card-icon {{ 'adv-green' if demand >= 70 else 'adv-orange' }}"><i class="bi bi-graph-up"></i></div>
-          <div class="adv-card-body">
-            <span class="adv-label">Demand Index</span>
-            <span class="adv-value">{{ demand }}/100</span>
-            <span class="adv-trend {{ 'adv-positive' if demand >= 70 else 'adv-neutral' }}">
-              {{ '🔥 High demand' if demand >= 70 else '📊 Moderate' }}
-            </span>
-          </div>
-        </div>
-      </div>
-      {% set pos = competitive_intelligence.get('price_positioning', {}) %}
-      {% if pos.get('description') %}
-      <div class="adv-positioning-banner adv-pos-{{ pos.get('position', 'unknown') }}">
-        <i class="bi bi-info-circle me-2"></i>
-        <strong>Price Positioning:</strong> {{ pos.get('description') }}
-      </div>
-      {% endif %}
-    </div>
-
-    {# ── AI INSIGHTS SECTION ─────────────────────────────────────────── #}
-    {% if ai_insights %}
-    <div class="adv-section animate-in" id="ai-insights">
-      <div class="adv-section-header">
-        <h3>🤖 AI-Powered Insights</h3>
-        <span class="adv-subtitle">Smart recommendations for your properties</span>
-      </div>
-      <div class="adv-insights-list">
-        {% for insight in ai_insights %}
-        <div class="adv-insight-card adv-insight-{{ insight.get('type', 'info') }}">
-          <div class="adv-insight-icon">{{ insight.get('icon', '💡') }}</div>
-          <div class="adv-insight-body">
-            <strong>{{ insight.get('title', '') }}</strong>
-            <p>{{ insight.get('description', '') }}</p>
-          </div>
-          {% if insight.get('action_url') and insight.get('action_text') %}
-          <a href="{{ url_for(insight.action_url) }}" class="adv-insight-action">
-            {{ insight.action_text }} →
-          </a>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    {# ── REVENUE FORECAST SECTION ────────────────────────────────────── #}
-    <div class="adv-section animate-in" id="revenue-forecast">
-      <div class="adv-section-header">
-        <h3>💰 Revenue Forecast</h3>
-        <span class="adv-subtitle">
-          Projected earnings · Confidence:
-          <span class="adv-confidence-badge adv-conf-{{ revenue_forecast.get('confidence', 'low') }}">
-            {{ revenue_forecast.get('confidence', 'low')|title }}
-          </span>
-        </span>
-      </div>
-      <div class="adv-forecast-grid">
-        <div class="adv-forecast-card">
-          <span class="adv-forecast-period">Next 30 Days</span>
-          <span class="adv-forecast-amount">${{ "{:,.0f}".format(revenue_forecast.get('next_30_days', 0)) }}</span>
-        </div>
-        <div class="adv-forecast-card">
-          <span class="adv-forecast-period">Next 60 Days</span>
-          <span class="adv-forecast-amount">${{ "{:,.0f}".format(revenue_forecast.get('next_60_days', 0)) }}</span>
-        </div>
-        <div class="adv-forecast-card">
-          <span class="adv-forecast-period">Next 90 Days</span>
-          <span class="adv-forecast-amount">${{ "{:,.0f}".format(revenue_forecast.get('next_90_days', 0)) }}</span>
-        </div>
-      </div>
-    </div>
-
-    {# ── CHANNEL PERFORMANCE SECTION ─────────────────────────────────── #}
-    {% if channel_performance %}
-    <div class="adv-section animate-in" id="channel-performance">
-      <div class="adv-section-header">
-        <h3>📱 Channel Performance</h3>
-        <span class="adv-subtitle">Booking source breakdown</span>
-      </div>
-      <div class="adv-channel-list">
-        {% set total_ch_rev = channel_performance | sum(attribute='revenue') or 1 %}
-        {% for ch in channel_performance %}
-        <div class="adv-channel-item">
-          <div class="adv-channel-meta">
-            <span class="adv-channel-name">{{ ch.channel }}</span>
-            <span class="adv-channel-stats">{{ ch.bookings }} booking{{ 's' if ch.bookings != 1 }} · ${{ "{:,.0f}".format(ch.revenue) }}</span>
-          </div>
-          <div class="adv-channel-bar-wrap">
-            <div class="adv-channel-bar" style="width: {{ ch.pct }}%;"></div>
-          </div>
-          <span class="adv-channel-pct">{{ ch.pct }}%</span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    {# ── SEASONAL TRENDS SECTION ─────────────────────────────────────── #}
-    <div class="adv-section animate-in" id="seasonal-trends">
-      <div class="adv-section-header">
-        <h3>🌤️ Seasonal Trends</h3>
-        <span class="adv-subtitle">Optimise your pricing strategy by season</span>
-      </div>
-      <div class="adv-seasons-grid">
-        {% if seasonal_trends.get('high_season') %}
-        <div class="adv-season-card adv-season-high">
-          <div class="adv-season-emoji">🔥</div>
-          <div class="adv-season-info">
-            <span class="adv-season-label">High Season</span>
-            <span class="adv-season-months">{{ seasonal_trends.high_season | join(', ') }}</span>
-            <span class="adv-season-tip">Peak demand — maximise your rates</span>
-          </div>
-        </div>
-        {% endif %}
-        {% if seasonal_trends.get('shoulder_season') %}
-        <div class="adv-season-card adv-season-shoulder">
-          <div class="adv-season-emoji">🌤️</div>
-          <div class="adv-season-info">
-            <span class="adv-season-label">Shoulder Season</span>
-            <span class="adv-season-months">{{ seasonal_trends.shoulder_season | join(', ') }}</span>
-            <span class="adv-season-tip">Good balance of demand &amp; pricing</span>
-          </div>
-        </div>
-        {% endif %}
-        {% if seasonal_trends.get('low_season') %}
-        <div class="adv-season-card adv-season-low">
-          <div class="adv-season-emoji">❄️</div>
-          <div class="adv-season-info">
-            <span class="adv-season-label">Low Season</span>
-            <span class="adv-season-months">{{ seasonal_trends.low_season | join(', ') }}</span>
-            <span class="adv-season-tip">Consider promotions &amp; special offers</span>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ── MAIN GRID ────────────────────────────────────────────────── #}
+    {# ── MAIN GRID ── #}
     <div class="main-grid-modern">
 
-      {# ── LEFT COLUMN: Listings ────────────────────────────────── #}
-      <div class="card-modern animate-in">
+      {# ── LEFT COLUMN: Listings ── #}
+      <div class="card-modern">
         <div class="card-header-modern">
           <div>
-            <h3>🏠 Your Listings</h3>
-            <span class="subtitle">Manage your properties</span>
+            <h3>🏠 Your Properties</h3>
+            <span class="subtitle">Manage all your listings</span>
           </div>
-          <a href="{{ url_for('accommodation.host_create_listing') }}" class="btn-primary-modern">
-            <i class="bi bi-plus-lg me-1"></i>Add Listing
-          </a>
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('accommodation.host_create_listing') }}" class="btn-primary-modern">
+              <i class="bi bi-plus-lg me-1"></i>Add Listing
+            </a>
+          </div>
         </div>
         <div class="card-body-modern">
           {% if listings %}
           <div class="listings-grid-modern">
             {% for prop in listings %}
+            {% set s = prop.status.value if prop.status and prop.status.value else prop.status %}
             <div class="listing-card-modern" data-listing-id="{{ prop.id }}">
               <div class="listing-image-modern">
                 {% if prop.main_image %}
                 <img src="{{ prop.main_image }}" alt="{{ prop.title }}" loading="lazy">
                 {% else %}
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;background:var(--bg-surface-alt);color:var(--text-muted);">
-                                   <i class="bi bi-image" style="font-size:3rem;"></i>
-                                 </div>
+                <div style="display:flex;align-items:center;justify-content:center;height:100%;background:#f3f4f6;color:#9ca3af;">
+                  <i class="bi bi-image" style="font-size:2.5rem;"></i>
+                </div>
                 {% endif %}
-                {% set s = prop.status.value if prop.status and prop.status.value else prop.status %}
-                <span class="listing-badge {{ s | default('draft') | lower }}">
+                <span class="listing-badge {{ s | lower }}">
                   {{ s | replace('_',' ') | title }}
                 </span>
               </div>
@@ -478,44 +611,77 @@
                   ${{ "{:,.0f}".format(prop.base_price_per_night) }}
                   <small>/ night</small>
                 </div>
-                <div class="listing-status-modern mb-2">
-                    {% if prop.status == 'pending_review' %}
-                        <span class="badge bg-warning text-dark">Pending Review</span>
-                    {% elif prop.status == 'suspended' %}
-                        <span class="badge bg-danger">Suspended</span>
-                    {% elif prop.status == 'draft' and prop.verification_status == 'rejected' %}
-                        <span class="badge bg-danger">Rejected</span>
-                    {% elif prop.status == 'draft' and prop.verification_status == 'pending' %}
-                        <span class="badge bg-info text-dark">Changes Requested</span>
-                    {% else %}
-                        <span class="badge bg-success">{{ prop.status|title }}</span>
-                    {% endif %}
+
+                {# ── STATUS ALERTS ── #}
+                {% if s == 'pending_review' or s == 'submitted' or s == 'under_review' %}
+                <div class="status-alert warning">
+                  <i class="bi bi-clock-history me-1"></i>
+                  <strong>Under Review</strong> — Your property is being reviewed by our team. You'll be notified when approved.
                 </div>
-                <div class="listing-actions-modern">
-                  <div class="listing-status-modern mb-2">
-                    {% if prop.status == 'pending_review' %}
-                        <span class="badge bg-warning text-dark">Pending Review</span>
-                    {% elif prop.status == 'suspended' %}
-                        <span class="badge bg-danger">Suspended</span>
-                    {% elif prop.status == 'draft' and prop.verification_status == 'rejected' %}
-                        <span class="badge bg-danger">Rejected</span>
-                    {% elif prop.status == 'draft' and prop.verification_status == 'pending' %}
-                        <span class="badge bg-info text-dark">Changes Requested</span>
-                    {% else %}
-                        <span class="badge bg-success">{{ prop.status|title }}</span>
-                    {% endif %}
+                {% endif %}
+
+                {% if s == 'approved' %}
+                <div class="status-alert success">
+                  <i class="bi bi-check-circle-fill me-1"></i>
+                  <strong>✅ Approved!</strong> Your property has been approved by our team.
+                  <strong>Click "Publish" to make it live!</strong>
+                  <form method="POST" action="{{ url_for('accommodation.host_publish_property', property_id=prop.id) }}" class="mt-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-sm btn-success w-100">
+                      <i class="bi bi-globe me-1"></i> Publish Now — Go Live!
+                    </button>
+                  </form>
+                </div>
+                {% endif %}
+
+                {% if s == 'published' or s == 'active' %}
+                <div class="status-alert success">
+                  <i class="bi bi-check-circle-fill me-1"></i>
+                  <strong>🎉 Live!</strong> Your property is publicly visible and bookable.
+                  <div class="mt-1">
+                    <a href="{{ url_for('accommodation.guest_detail', identifier=prop.public_id) }}" target="_blank" class="btn btn-sm btn-outline-success w-100">
+                      <i class="bi bi-eye me-1"></i> View Public Page
+                    </a>
                   </div>
-                  <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}" 
+                </div>
+                {% endif %}
+
+                {% if s == 'needs_information' %}
+                <div class="status-alert danger">
+                  <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                  <strong>⚠️ Changes Required!</strong>
+                  <p class="mb-1" style="font-size:0.8rem;">{{ prop.moderation_notes or 'Please update your listing based on moderator feedback.' }}</p>
+                  <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}" class="btn btn-sm btn-warning w-100">
+                    <i class="bi bi-pencil me-1"></i> Make Changes
+                  </a>
+                </div>
+                {% endif %}
+
+                {% if s == 'suspended' %}
+                <div class="status-alert danger">
+                  <i class="bi bi-ban-fill me-1"></i>
+                  <strong>⛔ Suspended!</strong> Your property has been suspended. Please contact support.
+                </div>
+                {% endif %}
+
+                {% if s == 'draft' %}
+                <div class="status-alert info">
+                  <i class="bi bi-file-earmark-text me-1"></i>
+                  <strong>📄 Draft</strong> — Complete your listing and submit for review.
+                  <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}" class="btn btn-sm btn-primary w-100 mt-1">
+                    <i class="bi bi-pencil me-1"></i> Complete Listing
+                  </a>
+                </div>
+                {% endif %}
+
+                <div class="listing-actions-modern">
+                  <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}"
                      class="btn-outline-modern">
                     <i class="bi bi-pencil me-1"></i>Edit
                   </a>
-                  <a href="{{ url_for('accommodation.host_calendar', property_id=prop.id) }}" 
+                  <a href="{{ url_for('accommodation.host_calendar', property_id=prop.id) }}"
                      class="btn-outline-modern">
                     <i class="bi bi-calendar3 me-1"></i>Calendar
-                  </a>
-                  <a href="{{ url_for('accommodation.guest_detail', identifier=prop.id) }}"
-                     class="btn-outline-modern" target="_blank">
-                    <i class="bi bi-eye me-1"></i>View
                   </a>
                   <a href="{{ url_for('accommodation.host_rooms', property_id=prop.id) }}"
                      class="btn-outline-modern">
@@ -523,7 +689,11 @@
                   </a>
                   <a href="{{ url_for('accommodation.host_property_documents', property_id=prop.id) }}"
                      class="btn-outline-modern">
-                    <i class="bi bi-file-earmark-text me-1"></i>Documents
+                    <i class="bi bi-file-earmark-text me-1"></i>Docs
+                  </a>
+                  <a href="{{ url_for('accommodation.host_booking_policy', property_id=prop.id) }}"
+                     class="btn-outline-modern">
+                    <i class="bi bi-shield-check me-1"></i>Policy
                   </a>
                 </div>
               </div>
@@ -543,10 +713,43 @@
         </div>
       </div>
 
-      {# ── RIGHT COLUMN: Sidebar ────────────────────────────────── #}
-      <div class="animate-in">
+      {# ── RIGHT COLUMN: Sidebar ── #}
+      <div>
 
-        {# Upcoming Bookings Widget #}
+        {# ── Quick Actions ── #}
+        <div class="widget-modern">
+          <div class="widget-header-modern">
+            <h4>⚡ Quick Actions</h4>
+          </div>
+          <div class="quick-actions-modern">
+            <a href="{{ url_for('accommodation.host_create_listing') }}" class="quick-action-modern">
+              <i class="bi bi-plus-circle" style="color:#047857;"></i>
+              <span class="action-label">New Listing</span>
+            </a>
+            <a href="{{ url_for('accommodation.host_calendar') }}" class="quick-action-modern">
+              <i class="bi bi-calendar3" style="color:#3b82f6;"></i>
+              <span class="action-label">Calendar</span>
+            </a>
+            <a href="{{ url_for('accommodation.host_bookings') }}" class="quick-action-modern">
+              <i class="bi bi-calendar-check" style="color:#10b981;"></i>
+              <span class="action-label">Bookings</span>
+            </a>
+            <a href="{{ url_for('accommodation.host_earnings') }}" class="quick-action-modern">
+              <i class="bi bi-graph-up-arrow" style="color:#f59e0b;"></i>
+              <span class="action-label">Earnings</span>
+            </a>
+            <a href="{{ url_for('accommodation.host_rooms', property_id=listings[0].id if listings else 0) }}" class="quick-action-modern">
+              <i class="bi bi-door-closed" style="color:#8b5cf6;"></i>
+              <span class="action-label">Manage Rooms</span>
+            </a>
+            <a href="#" class="quick-action-modern" onclick="showHelp()">
+              <i class="bi bi-question-circle" style="color:#ef4444;"></i>
+              <span class="action-label">Help</span>
+            </a>
+          </div>
+        </div>
+
+        {# ── Upcoming Bookings ── #}
         <div class="widget-modern">
           <div class="widget-header-modern">
             <h4>📅 Upcoming Bookings</h4>
@@ -555,7 +758,7 @@
           {% if bookings %}
           <div>
             {% for b in bookings %}
-            <div class="booking-item-modern" data-booking-id="{{ b.id }}">
+            <div class="booking-item-modern">
               <div class="booking-avatar">
                 {{ (b.guest_name or 'G')[0]|upper }}
               </div>
@@ -567,7 +770,7 @@
                   <span class="text-muted ms-2">{{ b.num_guests }} guest{{ 's' if b.num_guests != 1 }}</span>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:6px;">
                 <span class="booking-status-modern {{ b.status | lower }}">
                   {{ b.status | replace('_',' ') | title }}
                 </span>
@@ -577,152 +780,105 @@
             {% endfor %}
           </div>
           {% else %}
-          <div class="text-center py-4 text-muted">
+          <div class="text-center py-3 text-muted">
             <i class="bi bi-calendar-x fs-3 d-block mb-2"></i>
             <small>No upcoming bookings</small>
           </div>
           {% endif %}
         </div>
 
-        {# Occupancy Widget #}
-        <div class="widget-modern">
+        {# ── Blocked Dates / Temporary Holds ── #}
+        {% if blocked_dates %}
+        <div class="widget-modern" style="border-left: 3px solid #f59e0b;">
           <div class="widget-header-modern">
-            <h4>📊 Occupancy Rate</h4>
+            <h4 style="color:#92400e;"><i class="bi bi-lock-fill"></i> Blocked Dates (Temporary Holds)</h4>
           </div>
-          <div style="height: 200px; position: relative;">
-            <canvas id="occupancyChart"></canvas>
-          </div>
-          <div class="text-center mt-3">
-            <span class="badge bg-light text-dark">{{ stats.occupancy_rate }}% Occupied</span>
-          </div>
-        </div>
-
-        {# Revenue Widget #}
-        <div class="widget-modern">
-          <div class="widget-header-modern">
-            <h4>💰 Revenue Summary</h4>
-            <a href="{{ url_for('accommodation.host_earnings') }}" class="widget-link">Details →</a>
-          </div>
-          {% if revenue_summary %}
-          <div class="revenue-summary-modern">
-            {% for r in revenue_summary %}
-            <div class="revenue-item-modern">
-              <span class="revenue-currency-modern">{{ r.currency }}</span>
-              <span class="revenue-amount-modern">${{ "{:,.2f}".format(r.amount) }}</span>
-            </div>
-            {% endfor %}
-            <div style="border-top:2px solid var(--success);padding-top:12px;margin-top:4px;">
-               <div style="display:flex;justify-content:space-between;font-weight:700;color:var(--text-primary);">
-                 <span>Total</span>
-                 <span>${{ "{:,.2f}".format(total_revenue) }}</span>
-               </div>
-             </div>
-            <div style="height: 200px; margin-top: 15px;">
-              <canvas id="revenueChart"></canvas>
-            </div>
-          </div>
-          {% else %}
-          <div class="text-center py-3 text-muted">
-            <i class="bi bi-currency-dollar fs-3 d-block mb-2"></i>
-            <small>No revenue data yet</small>
-          </div>
-          {% endif %}
-        </div>
-
-        {# Quick Actions #}
-        <div class="widget-modern">
-          <div class="widget-header-modern">
-            <h4>⚡ Quick Actions</h4>
-          </div>
-          <div class="quick-actions-modern">
-             <a href="{{ url_for('accommodation.host_create_listing') }}" class="quick-action-modern">
-               <i class="bi bi-plus-circle" style="color:var(--brand-primary);"></i>
-               <span class="action-label">New Listing</span>
-             </a>
-             <a href="{{ url_for('accommodation.host_calendar') }}" class="quick-action-modern">
-               <i class="bi bi-calendar3" style="color:var(--blue);"></i>
-               <span class="action-label">Calendar</span>
-             </a>
-             <a href="{{ url_for('accommodation.host_bookings') }}" class="quick-action-modern">
-               <i class="bi bi-calendar-check" style="color:var(--success);"></i>
-               <span class="action-label">Bookings</span>
-             </a>
-             <a href="{{ url_for('accommodation.host_earnings') }}" class="quick-action-modern">
-               <i class="bi bi-graph-up-arrow" style="color:var(--orange);"></i>
-               <span class="action-label">Earnings</span>
-             </a>
-             <a href="#" class="quick-action-modern" onclick="showInsights()">
-               <i class="bi bi-lightbulb" style="color:#7C3AED;"></i>
-               <span class="action-label">Insights</span>
-             </a>
-             <a href="#" class="quick-action-modern" onclick="showAnalytics()">
-               <i class="bi bi-bar-chart" style="color:var(--danger);"></i>
-               <span class="action-label">Analytics</span>
-             </a>
-           </div>
-        </div>
-
-        {# Smart Insights Widget #}
-        {% if insights %}
-        <div class="widget-modern" style="background:linear-gradient(135deg,var(--brand-primary-dark) 0%,var(--brand-primary) 100%);color:white;border:none;">
-          <div style="display:flex;align-items:start;gap:12px;">
-            <i class="bi bi-lightbulb-fill" style="font-size:1.8rem;"></i>
-            <div>
-              <h5 style="font-weight:600;margin:0 0 4px;color:white;">Smart Insights</h5>
-              <div style="opacity:0.9;font-size:0.9rem;">
-                <ul style="padding-left:15px;margin:0;">
-                {% for insight in insights %}
-                  <li style="margin-bottom:8px;">
-                    <strong>{{ insight.icon }} {{ insight.title }}</strong>: {{ insight.description }}
-                    {% if insight.action_url and insight.action_url != '#' %}
-                    <br><a href="{{ url_for(insight.action_url) }}" style="color:var(--brand-accent);text-decoration:none;font-weight:600;">{{ insight.action_text }} →</a>
-                    {% endif %}
-                  </li>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Property</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for block in blocked_dates %}
+                <tr>
+                  <td>{{ block.blocked_date.strftime('%d %b %Y') }}</td>
+                  <td>
+                    {% set prop = listings | selectattr('id', 'equalto', block.property_id) | first %}
+                    {{ prop.title if prop else 'Property #' + block.property_id }}
+                  </td>
+                  <td>
+                    <span class="badge bg-warning text-dark">Pending Payment</span>
+                  </td>
+                  <td>
+                    <form method="POST" action="{{ url_for('accommodation.host_release_hold', block_id=block.id) }}" class="d-inline" onsubmit="return confirm('Release this hold? The dates will become available for booking.')">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-unlock"></i> Release
+                      </button>
+                    </form>
+                  </td>
+                </tr>
                 {% endfor %}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-        {% else %}
-        <div class="widget-modern" style="background:linear-gradient(135deg,var(--brand-primary-dark) 0%,var(--brand-primary) 100%);color:white;border:none;">
-          <div style="display:flex;align-items:start;gap:12px;">
-            <i class="bi bi-lightbulb-fill" style="font-size:1.8rem;"></i>
-            <div>
-              <h5 style="font-weight:600;margin:0 0 4px;color:white;">Smart Insights</h5>
-              <p style="opacity:0.9;margin:0;font-size:0.9rem;">
-                🚀 Create your first listing to start earning!
-              </p>
-            </div>
+              </tbody>
+            </table>
           </div>
         </div>
         {% endif %}
+
+        {# ── Need Attention ── #}
+        {% set attention_properties = listings | selectattr('status', 'equalto', 'needs_information') | list %}
+        {% if attention_properties %}
+        <div class="widget-modern" style="border-left: 3px solid #ef4444;">
+          <div class="widget-header-modern">
+            <h4 style="color:#b91c1c;"><i class="bi bi-exclamation-triangle"></i> Needs Attention</h4>
+          </div>
+          {% for prop in attention_properties %}
+          <div class="booking-item-modern">
+            <div class="booking-avatar" style="background:#fee2e2;color:#b91c1c;">
+              <i class="bi bi-exclamation" style="font-size:1rem;"></i>
+            </div>
+            <div class="booking-info-modern">
+              <div class="booking-guest-modern">{{ prop.title }}</div>
+              <div class="booking-dates-modern" style="font-size:0.7rem;color:#b91c1c;">
+                {{ prop.moderation_notes or 'Changes required' }}
+              </div>
+            </div>
+            <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}" class="btn btn-sm btn-warning">
+              <i class="bi bi-pencil"></i>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# ── Quick Tips ── #}
+        <div class="widget-modern" style="background:linear-gradient(135deg,#f8fafc,#eef2f8);">
+          <div style="display:flex;align-items:start;gap:10px;">
+            <i class="bi bi-lightbulb" style="font-size:1.5rem;color:#f59e0b;"></i>
+            <div>
+              <h5 style="font-weight:600;font-size:0.9rem;margin:0 0 4px;">💡 Host Tips</h5>
+              <ul style="font-size:0.75rem;color:#374151;padding-left:15px;margin:0;">
+                <li>Properties with photos get <strong>2x more bookings</strong></li>
+                <li>Respond to guests within <strong>24 hours</strong> for better ranking</li>
+                <li>Update your calendar to avoid double bookings</li>
+              </ul>
+            </div>
+          </div>
+        </div>
 
       </div>
     </div>
   </div>
 </div>
 
-<div id="notification-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;"></div>
-
-<!-- Pass backend data to JS -->
 <script>
-  window.initialDashboardData = {
-    monthly_revenue: {{ monthly_revenue | tojson }},
-    occupancy_rate: {{ stats.occupancy_rate | default(0) }}
-  };
-
-  function showInsights() {
-    alert('Smart Insights are available in your sidebar!');
-  }
-
-  function showAnalytics() {
-    alert('Advanced analytics dashboard is active and rendering in your sidebar!');
-  }
+function showHelp() {
+  alert('📖 Host Help Center\n\n1. Need to publish? → Click "Publish Now" on approved listings\n2. Need to edit? → Click "Edit" on any listing\n3. Need to manage rooms? → Click "Rooms" on any listing\n4. Need to check bookings? → Click "Bookings" in Quick Actions\n5. Need to see earnings? → Click "Earnings" in Quick Actions');
+}
 </script>
-{% endblock %}
-
-{% block module_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/modules/accommodation/host-dashboard-enhanced.js') }}"></script>
 {% endblock %}

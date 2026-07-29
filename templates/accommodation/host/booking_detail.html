@@ -1,3 +1,5 @@
+{% from "macros/booking_macros.html" import booking_type_badge %}
+
 {% extends "base.html" %}
 
 {% block title %}Booking #{{ booking.id }} - AFCON360{% endblock %}
@@ -67,6 +69,9 @@
                         <p class="mb-0">{{ booking.special_requests }}</p>
                     </div>
                     {% endif %}
+                    <div class="mt-2">
+                        {{ booking_type_badge(booking) }}
+                    </div>
                 </div>
             </div>
 

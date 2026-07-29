@@ -6,6 +6,8 @@ Consolidated accommodation routes - all routes in one file for optimization
 import calendar
 import logging
 import uuid
+import json
+import hashlib
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional
@@ -26,9 +28,11 @@ from flask import (
 from flask_login import login_required, current_user
 from app.auth.decorators import require_role
 from sqlalchemy import text, or_, and_
+from sqlalchemy.exc import OperationalError
 
 from app import db
 from app.extensions import limiter
+import time
 from app.accommodation import accommodation_bp
 from app.accommodation.forms import PropertyForm
 from app.accommodation.models.property import (
@@ -37,8 +41,8 @@ from app.accommodation.models.property import (
     AccommodationPropertyType,
     Property,
 )
-from app.accommodation.models.booking import AccommodationBooking
-from app.accommodation.models.room import Room, RoomBooking, RoomCategory
+from app.accommodation.models.booking import AccommodationBooking, AccommodationPaymentStatus
+from app.accommodation.models.room import Room, RoomBooking, RoomType
 from app.accommodation.models.review import Review, AccommodationReviewStatus
 from app.identity.models.user import User
 from app.events.models import EventAssignment, Event, EventHostRegistration
@@ -50,7 +54,6 @@ from app.accommodation.utils import enum_value
 from app.accommodation.services.identity_service import AccommodationIdentityService
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.services.urgency_service import urgency_service
-from app.accommodation.services.wallet_service import WalletService
 from app.accommodation.services.payment_policy_service import PaymentPolicyService
 from app.accommodation.services.marketplace_service import MarketplaceService
 from app.accommodation.models.booking_policy import PropertyBookingPolicy
@@ -60,18 +63,38 @@ from app.accommodation.services.payment_processors.wallet_processor import Walle
 from app.accommodation.services.payment_processors.mobile_money_processor import MobileMoneyProcessor
 from app.accommodation.services.payment_processors.card_processor import CardProcessor
 from app.accommodation.services.payment_processors.invoice_processor import InvoiceProcessor
+from app.accommodation.services.payment_processors.mock_gateway_processor import MockGatewayProcessor
 from app.accommodation.services.moderation_service import ModerationService
 from app.accommodation.models.moderation import PropertyModerationHistory
+
+def _increment_view_count(property_id, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            property_obj = Property.query.get(property_id)
+            if property_obj:
+                property_obj.views_last_24h = (property_obj.views_last_24h or 0) + 1
+                db.session.add(property_obj)
+                db.session.commit()
+                return True
+        except OperationalError as e:
+            db.session.rollback()
+            if 'could not serialize access' in str(e) and attempt < max_retries - 1:
+                time.sleep(0.1 * (attempt + 1))
+                continue
+            current_app.logger.warning(f"View count update failed after {attempt+1} attempts: {e}")
+            return False
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.warning(f"View count update error: {e}")
+            return False
+    return False
+
 
 @accommodation_bp.route('/admin/pending-properties')
 @login_required
 @require_role('admin', 'moderator', 'owner')
 def pending_properties():
-    page = request.args.get('page', 1, type=int)
-    pending_query = Property.query.filter_by(status='pending_review')
-    properties = pending_query.paginate(page=page, per_page=20)
-    pending_count = pending_query.count()
-    return render_template('accommodation/admin/pending_properties.html', properties=properties, pending_count=pending_count)
+    return redirect(url_for('accommodation.admin_properties', workflow_stage='under_review'))
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/approve', methods=['POST'])
 @login_required
@@ -83,7 +106,56 @@ def moderate_property_approve(property_id):
         flash("Property approved successfully.", "success")
     else:
         flash(f"Error: {error}", "danger")
-    return redirect(url_for('accommodation.pending_properties'))
+    return redirect(url_for('accommodation.admin_properties'))
+
+@accommodation_bp.route('/moderate/property/<int:property_id>/publish', methods=['POST'])
+@login_required
+@require_role('admin', 'moderator', 'owner')
+def moderate_property_publish(property_id):
+    notes = request.form.get('notes')
+    success, error = ModerationService.publish_property(property_id, current_user.id, notes)
+    if success:
+        flash("Property published successfully and is now publicly visible.", "success")
+    else:
+        flash(f"Error: {error}", "danger")
+    return redirect(url_for('accommodation.admin_properties'))
+
+@accommodation_bp.route('/host/property/<int:property_id>/publish', methods=['POST'], endpoint="host_publish_property")
+@login_required
+def host_publish_property(property_id):
+    """Host publishes their own approved property."""
+    host_info = _ensure_host_identity()
+    if not host_info:
+        return redirect(url_for('index'))
+    
+    prop = Property.query.get_or_404(property_id)
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+    
+    # Check if property is approved
+    if prop.status != 'approved':
+        flash('Property must be approved before publishing.', 'warning')
+        return redirect(url_for('accommodation.host_dashboard'))
+    
+    # Check readiness
+    from app.accommodation.services.readiness_service import AccommodationReadinessService
+    can_book, failures = AccommodationReadinessService.check_readiness(prop)
+    if not can_book:
+        flash(f'Cannot publish: {", ".join(failures)}', 'danger')
+        return redirect(url_for('accommodation.host_edit_listing', property_id=property_id))
+    
+    # Publish the property
+    success, error = ModerationService.publish_property(property_id, current_user.id, 'Host published')
+    if success:
+        flash('🎉 Your property is now live and publicly visible!', 'success')
+    else:
+        flash(f'Error: {error}', 'danger')
+    
+    return redirect(url_for('accommodation.host_dashboard'))
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/reject', methods=['POST'])
 @login_required
@@ -96,7 +168,7 @@ def moderate_property_reject(property_id):
         flash("Property rejected.", "success")
     else:
         flash(f"Error: {error}", "danger")
-    return redirect(url_for('accommodation.pending_properties'))
+    return redirect(url_for('accommodation.admin_properties'))
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/request-changes', methods=['POST'])
 @login_required
@@ -109,7 +181,7 @@ def moderate_property_request_changes(property_id):
         flash("Changes requested.", "success")
     else:
         flash(f"Error: {error}", "danger")
-    return redirect(url_for('accommodation.pending_properties'))
+    return redirect(url_for('accommodation.admin_properties'))
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/suspend', methods=['POST'])
 @login_required
@@ -122,7 +194,7 @@ def moderate_property_suspend(property_id):
         flash("Property suspended.", "success")
     else:
         flash(f"Error: {error}", "danger")
-    return redirect(url_for('accommodation.home'))
+    return redirect(url_for('accommodation.admin_properties'))
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/reinstate', methods=['POST'])
 @login_required
@@ -134,15 +206,157 @@ def moderate_property_reinstate(property_id):
         flash("Property reinstated to pending review.", "success")
     else:
         flash(f"Error: {error}", "danger")
-    return redirect(url_for('accommodation.home'))
+    return redirect(url_for('accommodation.admin_properties'))
 
-@accommodation_bp.route('/moderate/property/<int:property_id>/history')
+
+@accommodation_bp.route('/moderate/property/<int:property_id>/archive', methods=['POST'])
 @login_required
 @require_role('admin', 'moderator', 'owner')
-def property_moderation_history(property_id):
-    property = Property.query.get_or_404(property_id)
-    history = PropertyModerationHistory.query.filter_by(property_id=property_id).order_by(PropertyModerationHistory.created_at.desc()).all()
-    return render_template('accommodation/admin/property_history.html', property=property, history=history)
+def moderate_property_archive(property_id):
+    # Ensure property exists (admin-only route; internal id is intentional)
+    Property.query.get_or_404(property_id)
+    reason = request.form.get('reason') or 'Archived by moderator'
+    notes = request.form.get('notes')
+    success, error = ModerationService.archive_property(property_id, current_user.id, reason, notes)
+    if success:
+        flash("Property archived (soft-deleted). It can be restored from the moderation page.", "success")
+    else:
+        flash(f"Error: {error}", "danger")
+    return redirect(url_for('accommodation.admin_properties'))
+
+
+@accommodation_bp.route('/moderate/property/<int:property_id>/restore', methods=['POST'])
+@login_required
+@require_role('admin', 'moderator', 'owner')
+def moderate_property_restore(property_id):
+    """Restore an archived property back to draft (undo soft-delete)."""
+    Property.query.get_or_404(property_id)
+    notes = request.form.get('notes')
+    success, error = ModerationService.restore_archived_property(
+        property_id, current_user.id, notes
+    )
+    if success:
+        flash("Property restored to draft. Host can edit and resubmit.", "success")
+    else:
+        flash(f"Error: {error}", "danger")
+    return redirect(url_for('accommodation.admin_properties'))
+
+
+@accommodation_bp.route("/admin/property/<int:property_id>/edit", methods=["GET", "POST"], endpoint="admin_edit_property")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin')
+def admin_edit_property(property_id):
+    """Admin can edit ANY property directly."""
+    prop = Property.query.get_or_404(property_id)
+    
+    # Allow admins to edit ANY property - bypass ownership check
+    form = PropertyForm()
+    _populate_form_choices(form)
+    
+    if request.method == "GET":
+        form.process(
+            formdata=None,
+            data={
+                "title": prop.title,
+                "summary": prop.summary,
+                "description": prop.description,
+                "property_type": enum_value(prop.property_type) if prop.property_type else None,
+                "address_line1": prop.address_line1,
+                "address_line2": prop.address_line2,
+                "city": prop.city,
+                "state": prop.state,
+                "country": prop.country,
+                "postal_code": prop.postal_code,
+                "base_price_per_night": prop.base_price_per_night,
+                "currency": prop.currency,
+                "cleaning_fee": prop.cleaning_fee,
+                "service_fee_pct": prop.service_fee_pct,
+                "max_guests": prop.max_guests,
+                "bedrooms": prop.bedrooms,
+                "beds": prop.beds,
+                "bathrooms": prop.bathrooms,
+                "min_stay_nights": prop.min_stay_nights,
+                "max_stay_nights": prop.max_stay_nights,
+                "cancellation_policy": prop.cancellation_policy if prop.cancellation_policy else None,
+                "check_in_time": prop.check_in_time,
+                "check_out_time": prop.check_out_time,
+                "instant_book": prop.instant_book,
+                "allow_pets": prop.allow_pets,
+                "allow_smoking": prop.allow_smoking,
+                "allow_events": prop.allow_events,
+                "house_rules": prop.house_rules,
+                "main_image": prop.main_image,
+                "gallery_urls": "\n".join(prop.gallery or []),
+                "meta_title": prop.meta_title,
+                "meta_description": prop.meta_description,
+            },
+        )
+    
+    if form.validate_on_submit():
+        try:
+            # Update all fields
+            prop.title = form.title.data
+            prop.summary = form.summary.data
+            prop.description = form.description.data
+            prop.property_type = form.property_type.data
+            prop.address_line1 = form.address_line1.data
+            prop.address_line2 = form.address_line2.data
+            prop.city = form.city.data
+            prop.state = form.state.data
+            prop.country = form.country.data
+            prop.postal_code = form.postal_code.data
+            prop.base_price_per_night = form.base_price_per_night.data
+            prop.currency = form.currency.data
+            prop.cleaning_fee = form.cleaning_fee.data
+            prop.service_fee_pct = form.service_fee_pct.data
+            prop.max_guests = form.max_guests.data
+            prop.bedrooms = form.bedrooms.data
+            prop.beds = form.beds.data
+            prop.bathrooms = form.bathrooms.data
+            prop.min_stay_nights = form.min_stay_nights.data
+            prop.max_stay_nights = form.max_stay_nights.data
+            prop.cancellation_policy = form.cancellation_policy.data
+            prop.check_in_time = form.check_in_time.data
+            prop.check_out_time = form.check_out_time.data
+            prop.instant_book = form.instant_book.data
+            prop.allow_pets = form.allow_pets.data
+            prop.allow_smoking = form.allow_smoking.data
+            prop.allow_events = form.allow_events.data
+            prop.house_rules = form.house_rules.data
+            prop.main_image = form.main_image.data
+            prop.gallery = [url.strip() for url in form.gallery_urls.data.split('\n') if url.strip()]
+            prop.meta_title = form.meta_title.data
+            prop.meta_description = form.meta_description.data
+            prop.updated_at = datetime.now(timezone.utc)
+            
+            db.session.commit()
+            flash(f"✅ Property '{prop.title}' updated successfully.", "success")
+            return redirect(url_for('accommodation.admin_properties'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error updating property: {str(e)}", "danger")
+    
+    return render_template(
+        "accommodation/host/edit_listing.html",
+        form=form,
+        property=prop,
+        host_info={'display_name': 'Admin', 'type': 'individual'}
+    )
+
+
+def _moderate_property_template_context(property_obj):
+    """Shared template context for property moderation detail pages."""
+    history = PropertyModerationHistory.query.filter_by(
+        property_id=property_obj.id
+    ).order_by(PropertyModerationHistory.created_at.desc()).all()
+    return {
+        'property': property_obj,
+        'history': history,
+        'ModerationService': ModerationService,
+        'available_actions': ModerationService.get_available_actions(property_obj),
+        'status_display': ModerationService.get_property_status_display(property_obj),
+        'status_color': ModerationService.get_property_status_color(property_obj),
+    }
 
 
 @accommodation_bp.route('/moderate/property/<int:property_id>', endpoint="moderate_property")
@@ -150,12 +364,10 @@ def property_moderation_history(property_id):
 @require_role('admin', 'moderator', 'owner')
 def moderate_property(property_id):
     """Show property review page with moderation actions."""
-    property = Property.query.get_or_404(property_id)
-    history = PropertyModerationHistory.query.filter_by(property_id=property_id).order_by(PropertyModerationHistory.created_at.desc()).all()
+    property_obj = Property.query.get_or_404(property_id)
     return render_template(
         'accommodation/moderate_property.html',
-        property=property,
-        history=history
+        **_moderate_property_template_context(property_obj)
     )
 
 
@@ -181,11 +393,12 @@ from app.utils.module_guard import require_module_enabled
 @require_module_enabled("accommodation")
 def home():
     """Accommodation home page - Public access, no login required"""
-    # Fetch featured properties (requiring verified and active properties)
+    # Fetch featured properties - include both 'active' and 'published'
     featured_properties = Property.query.filter(
-        Property.status == "active",
+        Property.status.in_(['active', 'published']),  # ✅ Include published
         Property.is_verified == True,
         Property.is_active == True,
+        Property.is_publicly_visible == True,
         Property.is_deleted == False
     ).order_by(Property.views_last_24h.desc()).limit(8).all()
 
@@ -196,9 +409,10 @@ def home():
         Property.country,
         func.count(Property.id).label('property_count')
     ).filter(
-        Property.status == "active",
+        Property.status.in_(['active', 'published']),
         Property.is_verified == True,
         Property.is_active == True,
+        Property.is_publicly_visible == True,
         Property.is_deleted == False
     ).group_by(Property.city, Property.country) \
         .order_by(func.count(Property.id).desc()) \
@@ -319,6 +533,16 @@ def admin_analytics():
         for s, c in status_counts
     ]
 
+    # Booking type breakdown
+    type_counts = db.session.query(
+        AccommodationBooking.booking_type,
+        func.count(AccommodationBooking.id).label('count')
+    ).group_by(AccommodationBooking.booking_type).all()
+    booking_type_breakdown = [
+        {"type": t.replace('_', ' ').title(), "count": c}
+        for t, c in type_counts
+    ]
+
     # Property type breakdown
     type_counts = db.session.query(
         Property.property_type,
@@ -361,6 +585,7 @@ def admin_analytics():
         "accommodation/admin/analytics.html",
         monthly_revenue=monthly_revenue,
         booking_status_breakdown=booking_status_breakdown,
+        booking_type_breakdown=booking_type_breakdown,
         property_type_breakdown=property_type_breakdown,
         top_cities=top_cities_data,
         total_revenue=float(total_revenue),
@@ -471,20 +696,42 @@ def admin_verify_reject(property_id):
 # ── Admin: Properties ────────────────────────────────────────────────────────
 @accommodation_bp.route("/admin/properties", endpoint="admin_properties")
 @login_required
-@require_role('admin', 'owner', 'accommodation_admin')
+@require_role('admin', 'owner', 'accommodation_admin', 'moderator')
 def admin_properties():
-    """Browse and manage all property listings."""
+    """Browse and manage all property listings with workflow-aware filters."""
     page = request.args.get('page', 1, type=int)
-    status_filter = request.args.get('status', 'all')
+    workflow_stage = request.args.get('workflow_stage', 'all')
+    verification_status = request.args.get('verification_status', 'all')
+    visibility_filter = request.args.get('visibility', 'all')
+    property_type = request.args.get('property_type', 'all')
+    missing_info = request.args.get('missing_info', 'all')
     search_q = request.args.get('q', '').strip()
 
     q = Property.query.filter(Property.is_deleted.is_(False))
 
-    if status_filter != 'all':
-        try:
-            q = q.filter(Property.status == enum_value(status_filter))
-        except ValueError:
-            pass
+    if workflow_stage != 'all':
+        q = q.filter(Property.status == workflow_stage)
+
+    if verification_status != 'all':
+        q = q.filter(Property.verification_status == verification_status)
+
+    if visibility_filter != 'all':
+        q = q.filter(Property.visibility == visibility_filter)
+
+    if property_type != 'all':
+        q = q.filter(Property.property_type == property_type)
+
+    if missing_info == 'no_photos':
+        q = q.filter(or_(Property.main_image.is_(None), Property.main_image == ''))
+    elif missing_info == 'no_pricing':
+        q = q.filter(or_(Property.base_price_per_night.is_(None), Property.base_price_per_night <= 0))
+    elif missing_info == 'no_rooms':
+        q = q.filter(or_(Property.max_guests.is_(None), Property.max_guests < 1))
+    elif missing_info == 'no_kyc':
+        from app.identity.models.user import User
+        q = q.join(User, Property.owner_user_id == User.id).filter(
+            or_(User.kyc_level == 0, User.kyc_level.is_(None))
+        )
 
     if search_q:
         q = q.filter(
@@ -499,14 +746,24 @@ def admin_properties():
         page=page, per_page=25, error_out=False
     )
 
-    status_options = [s.value for s in AccommodationPropertyStatus]
+    workflow_stages = ['draft', 'submitted', 'under_review', 'approved', 'needs_information', 'active', 'suspended', 'archived']
+    verification_options = ['unverified', 'pending', 'verified', 'rejected']
+    visibility_options = ['public', 'event_only', 'hidden', 'private_invite']
+    property_types = ['entire_place', 'private_room', 'shared_room', 'hotel_room', 'lodge', 'hostel']
 
     return render_template(
         "accommodation/admin/properties.html",
         properties=properties,
-        status_filter=status_filter,
+        workflow_stage=workflow_stage,
+        verification_status=verification_status,
+        visibility_filter=visibility_filter,
+        property_type=property_type,
+        missing_info=missing_info,
         search_q=search_q,
-        status_options=status_options,
+        workflow_stages=workflow_stages,
+        verification_options=verification_options,
+        visibility_options=visibility_options,
+        property_types=property_types,
     )
 
 
@@ -722,7 +979,7 @@ def guest_autocomplete():
         Property.country,
         func.count(Property.id).label('cnt')
     ).filter(
-        Property.status == 'active',
+        Property.status.in_(['active', 'published']),
         Property.is_verified == True,
         Property.is_active == True,
         Property.is_deleted == False,
@@ -732,7 +989,7 @@ def guest_autocomplete():
      .limit(5).all()
 
     props = Property.query.filter(
-        Property.status == 'active',
+        Property.status.in_(['active', 'published']),
         Property.is_verified == True,
         Property.is_active == True,
         Property.is_deleted == False,
@@ -786,11 +1043,7 @@ def guest_detail(identifier):
             property_model = Property.query.filter_by(slug=identifier).first()
 
     if property_model:
-        db.session.execute(
-            text("UPDATE accommodation_properties SET views_last_24h = views_last_24h + 1 WHERE id = :id"),
-            {'id': property_model.id}
-        )
-        db.session.commit()
+        _increment_view_count(property_model.id)
 
     urgency = urgency_service.get_signals(property_model.id) if property_model else {}
 
@@ -961,11 +1214,40 @@ def host_booking_policy(property_id):
 def guest_checkout():
     """Enhanced checkout supporting self-booking, book-for-others, and multi-room"""
 
+    # ============================================================
+    # DEBUG: Log incoming data for troubleshooting
+    # ============================================================
+    if request.method == 'POST':
+        current_app.logger.info("=" * 60)
+        current_app.logger.info("CHECKOUT DEBUG - INCOMING POST DATA")
+        current_app.logger.info("=" * 60)
+        current_app.logger.info(f"FORM DATA: {dict(request.form)}")
+        current_app.logger.info(f"SESSION pending_booking: {session.get('pending_booking', 'None')}")
+        current_app.logger.info(f"USER ID: {current_user.id}")
+        current_app.logger.info("=" * 60)
+
     if request.method == 'GET':
         booking_data = session.get('pending_booking')
         if not booking_data:
             flash('No booking in progress', 'warning')
             return redirect(url_for('accommodation.guest_search'))
+
+        # Normalize session data types for template rendering
+        numeric_fields = ['nightly_rate', 'subtotal', 'cleaning_fee', 'service_fee', 'total']
+        for field in numeric_fields:
+            if field in booking_data and not isinstance(booking_data[field], Decimal):
+                try:
+                    booking_data[field] = Decimal(str(booking_data[field]))
+                except Exception:
+                    booking_data[field] = Decimal('0')
+
+        int_fields = ['num_guests', 'nights', 'property_id', 'room_type_id', 'host_user_id']
+        for field in int_fields:
+            if field in booking_data and not isinstance(booking_data[field], int):
+                try:
+                    booking_data[field] = int(booking_data[field])
+                except Exception:
+                    booking_data[field] = 0
 
         # Load payment options for the property
         property_id = booking_data.get('property_id')
@@ -1042,47 +1324,258 @@ def guest_checkout():
                 guest_user_id = None
 
         # ============================================================
-        # Validate required fields
+        # ERROR CHECKING BLOCK – Each check tells you exactly what's wrong
         # ============================================================
-        required = ['property_id', 'check_in', 'check_out', 'num_guests']
-        if booking_type == 'third_party':
-            required.extend(['primary_guest_name', 'primary_guest_email'])
 
-        for field in required:
+        # CHECK 1: Required fields
+        required_fields = ['property_id', 'check_in', 'check_out', 'num_guests']
+        if booking_type == 'third_party':
+            required_fields.extend(['primary_guest_name', 'primary_guest_email'])
+
+        for field in required_fields:
             if not data.get(field):
+                current_app.logger.error(f"❌ CHECKOUT FAILED: Missing required field '{field}'")
                 flash(f'Missing required field: {field}', 'danger')
                 return redirect(url_for('accommodation.guest_search'))
 
-        check_in = datetime.strptime(data['check_in'], '%Y-%m-%d').date()
-        check_out = datetime.strptime(data['check_out'], '%Y-%m-%d').date()
+        # CHECK 2: property_id is valid
+        property_id_str = data.get('property_id', '').strip()
+        if not property_id_str.isdigit():
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Invalid property_id '{property_id_str}'")
+            flash('Invalid property ID', 'danger')
+            return redirect(url_for('accommodation.guest_search'))
+        property_id = int(property_id_str)
 
-        # ============================================================
-        # VALIDATION: Check that dates are in the future
-        # ============================================================
+        # CHECK 3: Property exists in database
+        from app.accommodation.models.property import Property
+        property_obj = Property.query.get(property_id)
+        if not property_obj:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} not found in database")
+            flash('Property not found', 'danger')
+            return redirect(url_for('accommodation.guest_search'))
+
+        # CHECK 4: Property is bookable
+        if not property_obj.can_be_booked():
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} is NOT bookable. Status: {property_obj.status}, is_active: {property_obj.is_active}, is_verified: {property_obj.is_verified}, is_deleted: {property_obj.is_deleted}")
+            flash('This property is not currently available for booking', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+
+        # CHECK 5: Date validation
+        try:
+            check_in = datetime.strptime(data['check_in'], '%Y-%m-%d').date()
+            check_out = datetime.strptime(data['check_out'], '%Y-%m-%d').date()
+        except ValueError as e:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Invalid date format: {e}")
+            flash('Invalid date format', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+
         today = date.today()
         if check_in < today:
-            current_app.logger.warning(
-                f"Checkout attempted with past check_in date: {check_in} "
-                f"by user {current_user.id} for property {data.get('property_id')}"
-            )
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Check-in date {check_in} is in the past (today: {today})")
             flash('Check-in date cannot be in the past. Please select a future date.', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+            return redirect(url_for('accommodation.guest_detail', identifier=property_id))
 
         if check_out <= check_in:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Check-out {check_out} must be after check-in {check_in}")
             flash('Check-out date must be after check-in date.', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+            return redirect(url_for('accommodation.guest_detail', identifier=property_id))
 
         if check_out <= today:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Check-out date {check_out} is in the past")
             flash('Check-out date must be in the future.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+
+        # CHECK 6: Room type validation
+        room_type_id_raw = data.get('room_type_id', '').strip()
+        from app.accommodation.models.room import RoomType
+        active_room_types = RoomType.query.filter_by(property_id=property_obj.id, is_active=True).count()
+
+        if active_room_types > 0:
+            if not room_type_id_raw or room_type_id_raw == 'None':
+                current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} has {active_room_types} room types but no room_type_id provided")
+                flash('Please select a room type before proceeding to checkout.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+
+            try:
+                room_type_id = int(room_type_id_raw)
+                room_type = RoomType.query.filter_by(id=room_type_id, property_id=property_obj.id, is_active=True).first()
+                if not room_type:
+                    current_app.logger.error(f"❌ CHECKOUT FAILED: Invalid room_type_id {room_type_id} for property {property_id}")
+                    flash('Selected room type is not available.', 'danger')
+                    return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+            except ValueError:
+                current_app.logger.error(f"❌ CHECKOUT FAILED: Invalid room_type_id format '{room_type_id_raw}'")
+                flash('Invalid room type selected.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+        else:
+            room_type_id = None
+
+        # CHECK 7: Host resolution
+        if property_obj.owner_user_id:
+            host_user_id = property_obj.owner_user_id
+        elif property_obj.owner_org_id:
+            org_contact_id = getattr(property_obj.owner_org, "primary_contact_user_id", None)
+            if not org_contact_id:
+                current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} has owner_org_id {property_obj.owner_org_id} but no primary_contact_user_id")
+                flash('This property\'s organisation has no primary contact configured for bookings.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+            host_user_id = org_contact_id
+        else:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} has no owner_user_id or owner_org_id")
+            flash('Property has no valid owner configured.', 'danger')
+            return redirect(url_for('accommodation.guest_search'))
+
+        # CHECK 8: Availability check
+        from app.accommodation.services.availability_service import AvailabilityService
+        is_available, blocked_dates, error = AvailabilityService.is_range_available(
+            property_obj.id, check_in, check_out
+        )
+        if not is_available:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} not available from {check_in} to {check_out}. Error: {error}")
+            flash(f'Selected dates are not available: {error or "Please try different dates"}', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+
+        # ============================================================
+        # ALL CHECKS PASSED – Create hold, process payment, then book
+        # ============================================================
+        current_app.logger.info(f"✅ ALL CHECKS PASSED for property {property_id} - Proceeding with hold + payment")
+
+        # ============================================================
+        # CHECK 9: Payment method required (redirect to full checkout page if missing)
+        # ============================================================
+        payment_method = data.get('payment_method', '').strip()
+        if not payment_method:
+            session['pending_booking'] = {
+                'property_id': property_id,
+                'room_type_id': room_type_id,
+                'host_user_id': host_user_id,
+                'check_in': check_in.isoformat(),
+                'check_out': check_out.isoformat(),
+                'num_guests': int(data['num_guests']),
+                'nightly_rate': Decimal(data.get('nightly_rate', '0')),
+                'nights': int(data.get('nights', 0)),
+                'subtotal': Decimal(data.get('subtotal', '0')),
+                'cleaning_fee': Decimal(data.get('cleaning_fee', '0')),
+                'service_fee': Decimal(data.get('service_fee', '0')),
+                'total': Decimal(data.get('total', '0')),
+                'name': data.get('name', ''),
+                'city': data.get('city', ''),
+                'context_type': data.get('context_type', 'none'),
+                'context_id': data.get('context_id', ''),
+                'context_metadata': data.get('context_metadata', '{}'),
+            }
+            return redirect(url_for('accommodation.guest_checkout'))
+
+        # ============================================================
+        # STEP 1: Create temporary hold on dates (NOT a booking yet)
+        # ============================================================
+        from app.accommodation.services.availability_service import AvailabilityService
+        hold_success, hold_error = AvailabilityService.create_hold(
+            property_id=property_obj.id,
+            check_in=check_in,
+            check_out=check_out,
+            created_by=current_user.id,
+            hold_minutes=15
+        )
+
+        if not hold_success:
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Could not create hold - {hold_error}")
+            flash(hold_error or 'Could not hold dates. Please try again.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        current_app.logger.info(f"✅ Temporary hold created for property {property_id} ({check_in} → {check_out})")
+
+        # ============================================================
+        # STEP 2: Calculate pricing (before payment)
+        # ============================================================
+        from app.accommodation.services.pricing_service import PricingService
+        try:
+            pricing = PricingService.calculate_total(
+                property_obj, check_in, check_out, int(data['num_guests']), room_type_id=room_type_id
+            )
+        except ValueError as e:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash(f'Price calculation failed: {str(e)}', 'danger')
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         # ============================================================
-        # Create booking with enhanced fields
+        # STEP 3: Determine payment method and timing
         # ============================================================
-        import hashlib
-        import json
-        import uuid
+        payment_method = data.get('payment_method', '').strip()
+        payment_timing = data.get('payment_timing', 'pay_now')
 
+        if not payment_method:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('Please select a payment method to continue.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        payment_options = PaymentPolicyService.get_allowed_options(
+            property_id=property_id,
+            booking_amount=pricing['total'],
+            guest_type='normal'
+        )
+
+        if payment_method not in payment_options.get('allowed_methods', []):
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('Invalid payment method selected.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        # Check wallet requirements if wallet is selected
+        if payment_method == 'wallet':
+            from app.wallet.models import AccountModel
+            account = AccountModel.query.filter_by(user_id=current_user.id).first()
+            if not account:
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+                flash('You don\'t have a wallet account. Please choose another payment method or create a wallet first.', 'warning')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        # Resolve processor
+        processor_map = {
+            'wallet': WalletProcessor(),
+            'mobile_money': MobileMoneyProcessor(),
+            'card': CardProcessor(),
+            'invoice': InvoiceProcessor(),
+            'mock_gateway': MockGatewayProcessor(),
+        }
+        processor = processor_map.get(payment_method)
+        if not processor:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('Invalid payment method selected.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        # Calculate charge amount based on timing
+        total = pricing['total']
+        charge_amount = Decimal('0')
+        deposit_amount = Decimal('0')
+        amount_due = total
+        balance_due_date = None
+
+        if payment_timing == 'deposit':
+            deposit_pct = Decimal(str(data.get('deposit_percentage', 0)))
+            charge_amount = (total * deposit_pct / Decimal('100')).quantize(Decimal('0.01'))
+            deposit_amount = charge_amount
+            amount_due = total - charge_amount
+            policy = PropertyBookingPolicy.query.filter_by(property_id=property_obj.id).first()
+            if policy and policy.balance_due_days_before_checkin:
+                balance_due_date = check_in - timedelta(days=policy.balance_due_days_before_checkin)
+            else:
+                balance_due_date = check_in - timedelta(days=1)
+        elif payment_timing == 'pay_now':
+            charge_amount = total
+        elif payment_timing == 'invoice':
+            balance_due_date = datetime.now(timezone.utc).date() + timedelta(days=30)
+
+        # Check wallet balance if needed
+        if payment_method == 'wallet' and charge_amount > 0:
+            account = AccountModel.query.filter_by(user_id=current_user.id).first()
+            if account.balance < charge_amount:
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+                flash(f'Insufficient wallet balance. Your balance is {account.balance} {property_obj.currency} but the required amount is {charge_amount} {property_obj.currency}.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        # ============================================================
+        # STEP 3.5: Compute idempotency_key once, create booking as pending
+        # ============================================================
         idempotency_data = {
             'user_id': current_user.id,
             'property_id': int(data['property_id']),
@@ -1095,63 +1588,6 @@ def guest_checkout():
         idempotency_key = hashlib.sha256(
             json.dumps(idempotency_data, sort_keys=True).encode()
         ).hexdigest()
-
-        # Get property to verify owner
-        from app.accommodation.models.property import Property
-        property_obj = Property.query.get(int(data['property_id']))
-        if not property_obj:
-            flash('Property not found', 'danger')
-            return redirect(url_for('accommodation.guest_search'))
-
-        # Determine host_user_id (property owner).
-        # NOTE: owner_org_id is an Organisation ID, not a User ID — never assign it
-        # directly to host_user_id, which is a FK to users.id. For org-owned properties,
-        # resolve the organisation's primary_contact_user_id instead.
-        if property_obj.owner_user_id:
-            host_user_id = property_obj.owner_user_id
-        elif property_obj.owner_org_id:
-            org_contact_id = getattr(property_obj.owner_org, "primary_contact_user_id", None)
-            if not org_contact_id:
-                flash('This property\'s organisation has no primary contact configured for bookings. Please contact support.', 'danger')
-                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-            host_user_id = org_contact_id
-        else:
-            flash('Property has no valid owner configured.', 'danger')
-            return redirect(url_for('accommodation.guest_search'))
-
-        # ============================================================
-        # Validate room_type_id - Make it optional for single properties
-        # ============================================================
-        room_type_id_raw = data.get('room_type_id')
-
-        # Get property to check if it has room types
-        from app.accommodation.models.property import RoomType
-        active_room_types = RoomType.query.filter_by(property_id=property_obj.id, is_active=True).count()
-
-        if active_room_types > 0:
-            # Property has room types - require selection
-            if not room_type_id_raw or room_type_id_raw == 'None' or room_type_id_raw.strip() == '':
-                current_app.logger.warning(
-                    f"Checkout attempted without room_type_id for property with room types: {data.get('property_id')} "
-                    f"by user {current_user.id}"
-                )
-                flash('Please select a room type before proceeding to checkout.', 'danger')
-                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
-            try:
-                room_type_id = int(room_type_id_raw)
-                # Verify room type belongs to property and is active
-                room_type = RoomType.query.filter_by(id=room_type_id, property_id=property_obj.id, is_active=True).first()
-                if not room_type:
-                    flash('Selected room type is not available.', 'danger')
-                    return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-            except ValueError:
-                flash('Invalid room type selected. Please choose a valid room type.', 'danger')
-                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-        else:
-            # Single property - no room type needed
-            room_type_id = None
-
 
         booking, error = BookingService.create_booking(
             property_id=int(data['property_id']),
@@ -1170,7 +1606,6 @@ def guest_checkout():
             context_type=data.get('context_type'),
             context_id=data.get('context_id'),
             context_metadata=data.get('context_metadata'),
-            # NEW FIELDS:
             booked_by_user_id=current_user.id,
             primary_guest_id=primary_guest_id,
             primary_guest_name=primary_guest_name,
@@ -1181,62 +1616,89 @@ def guest_checkout():
             room_number=int(data.get('room_number', 1)) if booking_type == 'group' else None,
             guest_instructions=data.get('guest_instructions'),
             room_type_id=room_type_id,
+            skip_hold_creation=True,
         )
 
         if error:
-            flash(error, 'danger')
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Booking creation failed - {error}")
+            flash(f'Booking creation failed: {error}', 'danger')
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
-        # ============================================================
-        # Determine payment method and timing
-        # ============================================================
-        payment_method = data.get('payment_method', 'wallet')
-        payment_timing = data.get('payment_timing', 'pay_now')  # pay_now, deposit, pay_on_arrival, invoice
+        current_app.logger.info(f"✅ Booking created: {booking.booking_reference}")
 
-        # Resolve processor
-        processor_map = {
-            'wallet': WalletProcessor(),
-            'mobile_money': MobileMoneyProcessor(),
-            'card': CardProcessor(),
-            'invoice': InvoiceProcessor(),
-        }
-        processor = processor_map.get(payment_method)
-        if not processor:
-            flash('Invalid payment method selected.', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+        # ============================================================
+        # STEP 4: Process payment (if required)
+        # ============================================================
+        txn_id = None
+        payment_success = True
+        payment_error = None
 
-        # Update booking with payment timing info
+        if charge_amount > 0:
+            current_app.logger.info(f"💳 Processing payment: {charge_amount} {property_obj.currency} via {payment_method}")
+            success, txn_id, payment_error = processor.charge(
+                user_id=current_user.id,
+                amount=charge_amount,
+                currency=property_obj.currency,
+                description=f"Accommodation booking: {property_obj.title} - for {primary_guest_name}",
+                idempotency_key=idempotency_key,
+                metadata={
+                    'property_id': property_obj.id,
+                    'check_in': check_in.isoformat(),
+                    'check_out': check_out.isoformat(),
+                    'guest_name': primary_guest_name,
+                    'guest_email': primary_guest_email,
+                    'payment_timing': payment_timing,
+                }
+            )
+
+            if not success:
+                payment_success = False
+                current_app.logger.error(f"❌ PAYMENT FAILED: {payment_error}")
+
+                booking.payment_status = AccommodationPaymentStatus.FAILED.value
+                db.session.commit()
+
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+
+                try:
+                    from app.services.notification_service import NotificationService
+                    NotificationService.send(
+                        user_id=current_user.id,
+                        notification_type='payment_failed',
+                        title=f'Payment Failed: {property_obj.title}',
+                        message=f'Your payment of {charge_amount} {property_obj.currency} failed: {payment_error}. Your hold has been released.',
+                        channels=['in_app', 'email'],
+                        data={
+                            'property_id': property_obj.id,
+                            'amount': str(charge_amount),
+                            'error': payment_error,
+                        }
+                    )
+                except Exception as e:
+                    current_app.logger.error(f"Failed to send payment failed notification: {e}")
+
+                flash(f'Payment failed: {payment_error}. Your hold has been released. Please try again.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+            current_app.logger.info(f"✅ Payment successful: txn_id={txn_id}")
+
+        # ============================================================
+        # STEP 5: Update booking with payment info
+        # ============================================================
         booking.payment_timing = payment_timing
         booking.payment_method = payment_method
+        booking.deposit_amount = deposit_amount
+        booking.amount_paid = charge_amount
+        booking.amount_due = amount_due
+        booking.balance_due_date = balance_due_date
 
-        # Calculate amounts based on timing
-        total = booking.total_amount
-        if payment_timing == 'deposit':
-            deposit_pct = Decimal(str(data.get('deposit_percentage', 0)))
-            deposit_amount = (total * deposit_pct / Decimal('100')).quantize(Decimal('0.01'))
-            booking.deposit_amount = deposit_amount
-            booking.amount_paid = Decimal('0')
-            booking.amount_due = total - deposit_amount
-            # Balance due date: policy.balance_due_days_before_checkin
-            policy = PropertyBookingPolicy.query.filter_by(property_id=property_obj.id).first()
-            if policy and policy.balance_due_days_before_checkin:
-                booking.balance_due_date = check_in - timedelta(days=policy.balance_due_days_before_checkin)
-            else:
-                booking.balance_due_date = check_in - timedelta(days=1)
-        elif payment_timing == 'pay_on_arrival':
-            booking.amount_paid = Decimal('0')
-            booking.amount_due = total
-            booking.deposit_amount = Decimal('0')
-        elif payment_timing == 'invoice':
-            booking.amount_paid = Decimal('0')
-            booking.amount_due = total
-            booking.deposit_amount = Decimal('0')
-            # Invoice due date: 30 days after booking
-            booking.balance_due_date = datetime.now(timezone.utc).date() + timedelta(days=30)
-        else:  # pay_now
-            booking.amount_paid = total
-            booking.amount_due = Decimal('0')
-            booking.deposit_amount = Decimal('0')
+        if charge_amount > 0:
+            booking.payment_status = AccommodationPaymentStatus.PAID.value
+            booking.wallet_txn_id = txn_id
+            booking.paid_at = datetime.now(timezone.utc)
+        else:
+            booking.payment_status = AccommodationPaymentStatus.PENDING.value
 
         # Store policy snapshot
         policy_obj = PropertyBookingPolicy.query.filter_by(property_id=property_obj.id).first()
@@ -1250,92 +1712,122 @@ def guest_checkout():
                 'balance_due_days_before_checkin': policy_obj.balance_due_days_before_checkin,
             }
 
+        # 6.5 UPDATE PAYMENT LEDGER (thin wallet-linked index)
+        try:
+            BookingService.update_payment_event(
+                booking_id=booking.id,
+                payment_status="success" if charge_amount > 0 else "pending",
+                wallet_txn_id=txn_id,
+                payment_method=payment_method,
+                payment_gateway=payment_method,
+                gateway_transaction_id=txn_id,
+            )
+        except Exception as ledger_error:
+            current_app.logger.warning(f"Payment ledger write failed: {ledger_error}")
+
         db.session.flush()
 
         # ============================================================
-        # Process payment via selected processor
+        # STEP 7: Confirm booking
         # ============================================================
-        charge_amount = booking.amount_paid  # amount to charge now
-        if charge_amount > 0:
-            success, txn_id, payment_error = processor.charge(
-                user_id=current_user.id,
-                amount=charge_amount,
-                currency=booking.currency,
-                description=f"Accommodation booking: {booking.booking_reference} - for {primary_guest_name}",
-                idempotency_key=idempotency_key,
-                metadata={
-                    'booking_reference': booking.booking_reference,
-                    'property_id': property_obj.id,
-                    'guest_name': primary_guest_name,
-                    'guest_email': primary_guest_email,
-                }
+        if payment_timing in ('pay_now', 'deposit'):
+            # Already paid - confirm immediately
+            success, confirm_error = BookingService.confirm_booking(
+                booking.id,
+                wallet_transaction_id=txn_id,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
             )
 
             if not success:
-                BookingService.cancel_booking(
-                    booking.id,
-                    cancelled_by_user_id=current_user.id,
-                    reason=f"Payment failed: {payment_error}",
-                    ip_address=request.remote_addr,
-                    user_agent=request.headers.get('User-Agent')
-                )
-                flash(f'Payment failed: {payment_error}', 'danger')
+                current_app.logger.error(f"❌ BOOKING CONFIRMATION FAILED: {confirm_error}")
+                flash(f'Booking confirmation failed: {confirm_error}', 'danger')
                 return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
-            booking.wallet_txn_id = txn_id
-            booking.paid_at = datetime.now(timezone.utc)
-            booking.payment_status = AccommodationPaymentStatus.PAID.value
+            current_app.logger.info(f"✅ Booking confirmed: {booking.booking_reference}")
         else:
-            # No upfront charge (pay_on_arrival or invoice)
-            txn_id = None
-            booking.payment_status = AccommodationPaymentStatus.PENDING.value
-
-        # ============================================================
-        # Confirm booking
-        # ============================================================
-        success, confirm_error = BookingService.confirm_booking(
-            booking.id,
-            wallet_transaction_id=txn_id,
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get('User-Agent')
-        )
-
-        if not success:
-            flash(f'Booking confirmation failed: {confirm_error}', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+            # pay_on_arrival or invoice - mark as pending approval
+            booking.status = AccommodationBookingStatus.PENDING_APPROVAL.value
+            db.session.commit()
+            current_app.logger.info(f"✅ Booking created (pending approval): {booking.booking_reference}")
 
         session.pop('pending_booking', None)
 
         # ============================================================
-        # Send notifications
+        # STEP 8: Send notifications
         # ============================================================
-        # Notify the guest (if different from booker)
-        if booking_type == 'third_party' and primary_guest_email != current_user.email:
-            # Send email to guest with booking details
-            logger.info(
-                f"Third-party booking notification: booking={booking.booking_reference}, "
-                f"guest={primary_guest_email}, booker={current_user.email}"
-            )
+        try:
+            from app.services.notification_service import NotificationService
+            if payment_success and payment_timing in ('pay_now', 'deposit'):
+                NotificationService.send(
+                    user_id=current_user.id,
+                    notification_type='booking_confirmed',
+                    title=f'Booking Confirmed: {booking.booking_reference}',
+                    message=f'Your booking at {property_obj.title} from {check_in} to {check_out} has been confirmed. Reference: {booking.booking_reference}',
+                    channels=['in_app', 'email'],
+                    data={
+                        'booking_reference': booking.booking_reference,
+                        'property_id': property_obj.id,
+                        'check_in': check_in.isoformat(),
+                        'check_out': check_out.isoformat(),
+                    },
+                    link=url_for('accommodation.guest_confirmation', reference=booking.booking_reference)
+                )
+            elif payment_timing in ('pay_on_arrival', 'invoice'):
+                NotificationService.send(
+                    user_id=current_user.id,
+                    notification_type='booking_pending',
+                    title=f'Booking Pending: {booking.booking_reference}',
+                    message=f'Your booking at {property_obj.title} from {check_in} to {check_out} is pending host approval. Reference: {booking.booking_reference}',
+                    channels=['in_app', 'email'],
+                    data={
+                        'booking_reference': booking.booking_reference,
+                        'property_id': property_obj.id,
+                        'check_in': check_in.isoformat(),
+                        'check_out': check_out.isoformat(),
+                    },
+                    link=url_for('accommodation.guest_confirmation', reference=booking.booking_reference)
+                )
 
-        # For group bookings, offer to book another room
+            # Notify third-party guest
+            if booking_type == 'third_party' and primary_guest_email != current_user.email:
+                NotificationService.send(
+                    user_id=current_user.id,
+                    notification_type='third_party_booking',
+                    title=f'Booking for Guest: {booking.booking_reference}',
+                    message=f'You booked {property_obj.title} for {primary_guest_name} ({primary_guest_email}). Reference: {booking.booking_reference}',
+                    channels=['in_app', 'email'],
+                    data={
+                        'booking_reference': booking.booking_reference,
+                        'guest_name': primary_guest_name,
+                        'guest_email': primary_guest_email,
+                    }
+                )
+        except Exception as e:
+            current_app.logger.error(f"Failed to send notifications: {e}")
+
+        # ============================================================
+        # STEP 9: Final redirect
+        # ============================================================
         if booking_type == 'group' and room_number < total_rooms:
             flash(f'Room {room_number} of {total_rooms} booked successfully! Would you like to book another room for your group?', 'info')
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id'],
                                     check_in=data['check_in'], check_out=data['check_out'],
                                     group_booking_id=group_booking_id, room_number=room_number + 1, total_rooms=total_rooms))
 
-        # Final confirmation
-        if booking_type == 'third_party':
+        if payment_timing in ('pay_on_arrival', 'invoice'):
+            flash(f'Booking created! Your reference: {booking.booking_reference}. Awaiting host approval.', 'success')
+        elif booking_type == 'third_party':
             flash(f'Booking confirmed for {primary_guest_name}! They will receive an email with details.', 'success')
-        elif booking_type == 'group':
-            flash(f'All {total_rooms} rooms booked successfully for your group!', 'success')
         else:
             flash(f'Booking confirmed! Your reference: {booking.booking_reference}', 'success')
 
         return redirect(url_for('accommodation.guest_confirmation', reference=booking.booking_reference))
 
     except Exception as e:
-        logger.exception(f"Checkout error: {e}")
+        db.session.rollback()
+        current_app.logger.error(f"❌ CHECKOUT EXCEPTION: {type(e).__name__}: {str(e)}")
+        current_app.logger.error(f"Full traceback:", exc_info=True)
         flash(f'Error processing booking: {str(e)}', 'danger')
         return redirect(url_for('accommodation.guest_search'))
 
@@ -1865,6 +2357,23 @@ def host_dashboard():
         owner_org_id=host_info["id"] if host_info["type"] == "organisation" else None,
     )
 
+    # Get blocked dates for host's properties
+    from app.accommodation.models.availability import BlockedDate
+    from datetime import date, timedelta
+    from sqlalchemy import and_
+
+    host_property_ids = [p.id for p in dashboard_data["properties"]]
+    blocked_dates = []
+    if host_property_ids:
+        today = date.today()
+        blocked_dates = BlockedDate.query.filter(
+            and_(
+                BlockedDate.property_id.in_(host_property_ids),
+                BlockedDate.blocked_date >= today,
+                BlockedDate.reason == 'temporary_hold'
+            )
+        ).order_by(BlockedDate.blocked_date).all()
+
     return render_template(
         "accommodation/host/dashboard.html",
         host_info=host_info,
@@ -1892,7 +2401,41 @@ def host_dashboard():
         channel_performance=dashboard_data.get("channel_performance", []),
         seasonal_trends=dashboard_data.get("seasonal_trends", {}),
         booking_velocity=dashboard_data.get("booking_velocity", {}),
+        blocked_dates=blocked_dates,
     )
+
+
+@accommodation_bp.route('/host/release-hold/<int:block_id>', methods=['POST'], endpoint='host_release_hold')
+@login_required
+def host_release_hold(block_id):
+    """Release a temporary hold on a date (host/admin action)."""
+    from app.accommodation.models.availability import BlockedDate, AccommodationBlockedReason
+    from app.accommodation.models.property import Property
+
+    block = BlockedDate.query.get_or_404(block_id)
+
+    prop = Property.query.get(block.property_id)
+    if not prop:
+        flash('Property not found.', 'danger')
+        return redirect(url_for('accommodation.host_dashboard'))
+
+    is_admin = current_user.has_role('owner', 'super_admin', 'admin', 'moderator')
+    is_host = (prop.owner_user_id == current_user.id or
+               (prop.owner_org_id and hasattr(current_user, 'managed_organisations') and
+                any(org.id == prop.owner_org_id for org in current_user.managed_organisations)))
+
+    if not is_admin and not is_host:
+        abort(403)
+
+    if block.reason != AccommodationBlockedReason.TEMPORARY_HOLD.value:
+        flash('Only temporary holds can be released.', 'warning')
+        return redirect(url_for('accommodation.host_dashboard'))
+
+    db.session.delete(block)
+    db.session.commit()
+
+    flash(f'Released hold for {block.blocked_date}', 'success')
+    return redirect(url_for('accommodation.host_dashboard'))
 
 
 @accommodation_bp.route("/host/earnings", endpoint="host_earnings")
@@ -2417,7 +2960,30 @@ def host_bookings():
     host_info = _ensure_host_identity()
     if not host_info:
         return redirect(url_for("index"))
-    return render_template("accommodation/host/bookings.html", host_info=host_info)
+
+    booking_type = request.args.get('type', '').strip()
+    status_filter = request.args.get('status', '').strip()
+
+    query = AccommodationBooking.query.join(Property, AccommodationBooking.property_id == Property.id)
+    if host_info["type"] == "individual":
+        query = query.filter(Property.owner_user_id == host_info["id"])
+    else:
+        query = query.filter(Property.owner_org_id == host_info["id"])
+
+    if booking_type:
+        query = query.filter(AccommodationBooking.booking_type == booking_type)
+    if status_filter:
+        query = query.filter(AccommodationBooking.status == status_filter)
+
+    bookings = query.order_by(AccommodationBooking.created_at.desc()).limit(200).all()
+
+    return render_template(
+        "accommodation/host/bookings.html",
+        host_info=host_info,
+        bookings=bookings,
+        current_type=booking_type,
+        current_status=status_filter,
+    )
 
 
 @accommodation_bp.route('/host/booking/<int:booking_id>', endpoint='host_booking_detail')
@@ -2586,27 +3152,27 @@ def host_rooms(property_id):
     ):
         abort(403)
 
-    categories = RoomCategory.query.filter_by(property_id=property_id).order_by(
-        RoomCategory.name.asc()
+    room_types = RoomType.query.filter_by(property_id=property_id).order_by(
+        RoomType.name.asc()
     ).all()
 
-    for category in categories:
-        category.rooms_sorted = sorted(
-            category.rooms,
+    for room_type in room_types:
+        room_type.rooms_sorted = sorted(
+            room_type.rooms,
             key=lambda r: (len(r.room_number), r.room_number)
         )
 
     return render_template(
         'accommodation/host/rooms.html',
         property=prop,
-        categories=categories,
+        room_types=room_types,
         host_info=host_info,
     )
 
 
-@accommodation_bp.route('/host/property/<int:property_id>/rooms/category', methods=['POST'], endpoint='host_room_category_add')
+@accommodation_bp.route('/host/property/<int:property_id>/rooms/type', methods=['POST'], endpoint='host_room_type_add')
 @login_required
-def host_room_category_add(property_id):
+def host_room_type_add(property_id):
     host_info = _ensure_host_identity()
     if not host_info:
         return redirect(url_for('index'))
@@ -2622,10 +3188,10 @@ def host_room_category_add(property_id):
     try:
         name = request.form.get('name', '').strip()
         if not name:
-            flash('Category name is required.', 'danger')
+            flash('Room type name is required.', 'danger')
             return redirect(url_for('accommodation.host_rooms', property_id=property_id))
 
-        category = RoomCategory(
+        room_type = RoomType(
             property_id=property_id,
             name=name,
             description=request.form.get('description', '').strip() or None,
@@ -2639,27 +3205,27 @@ def host_room_category_add(property_id):
             cleaning_fee=Decimal(request.form.get('cleaning_fee', '0') or '0'),
             is_active=request.form.get('is_active') != 'off',
         )
-        db.session.add(category)
+        db.session.add(room_type)
         db.session.commit()
-        flash(f'Room category "{name}" created.', 'success')
+        flash(f'Room type "{name}" created.', 'success')
         HostService.sync_room_type_inventory(property_id)
     except Exception as e:
         db.session.rollback()
-        logger.exception('Failed to create room category')
-        flash(f'Failed to create category: {str(e)}', 'danger')
+        logger.exception('Failed to create room type')
+        flash(f'Failed to create room type: {str(e)}', 'danger')
 
     return redirect(url_for('accommodation.host_rooms', property_id=property_id))
 
 
-@accommodation_bp.route('/host/room-category/<int:category_id>/edit', methods=['POST'], endpoint='host_room_category_edit')
+@accommodation_bp.route('/host/room-type/<int:room_type_id>/edit', methods=['POST'], endpoint='host_room_type_edit')
 @login_required
-def host_room_category_edit(category_id):
+def host_room_type_edit(room_type_id):
     host_info = _ensure_host_identity()
     if not host_info:
         return redirect(url_for('index'))
 
-    category = RoomCategory.query.get_or_404(category_id)
-    prop = Property.query.get_or_404(category.property_id)
+    room_type = RoomType.query.get_or_404(room_type_id)
+    prop = Property.query.get_or_404(room_type.property_id)
     if not AccommodationIdentityService.can_manage_property(
         current_user,
         property_owner_user_id=prop.owner_user_id,
@@ -2668,24 +3234,24 @@ def host_room_category_edit(category_id):
         abort(403)
 
     try:
-        category.name = request.form.get('name', category.name).strip()
-        category.description = request.form.get('description', '') or None
-        category.short_code = request.form.get('short_code', '') or None
-        category.max_guests = int(request.form.get('max_guests', category.max_guests) or 2)
-        category.bedrooms = int(request.form.get('bedrooms', category.bedrooms) or 1)
-        category.beds = int(request.form.get('beds', category.beds) or 1)
-        category.bathrooms = int(request.form.get('bathrooms', category.bathrooms) or 1)
-        category.base_price_per_night = Decimal(request.form.get('base_price_per_night', category.base_price_per_night) or '0')
-        category.currency = request.form.get('currency', category.currency or 'USD')
-        category.cleaning_fee = Decimal(request.form.get('cleaning_fee', category.cleaning_fee) or '0')
-        category.is_active = request.form.get('is_active') != 'off'
+        room_type.name = request.form.get('name', room_type.name).strip()
+        room_type.description = request.form.get('description', '') or None
+        room_type.short_code = request.form.get('short_code', '') or None
+        room_type.max_guests = int(request.form.get('max_guests', room_type.max_guests) or 2)
+        room_type.bedrooms = int(request.form.get('bedrooms', room_type.bedrooms) or 1)
+        room_type.beds = int(request.form.get('beds', room_type.beds) or 1)
+        room_type.bathrooms = int(request.form.get('bathrooms', room_type.bathrooms) or 1)
+        room_type.base_price_per_night = Decimal(request.form.get('base_price_per_night', room_type.base_price_per_night) or '0')
+        room_type.currency = request.form.get('currency', room_type.currency or 'USD')
+        room_type.cleaning_fee = Decimal(request.form.get('cleaning_fee', room_type.cleaning_fee) or '0')
+        room_type.is_active = request.form.get('is_active') != 'off'
         db.session.commit()
-        flash('Room category updated.', 'success')
+        flash('Room type updated.', 'success')
         HostService.sync_room_type_inventory(property_id)
     except Exception as e:
         db.session.rollback()
-        logger.exception('Failed to update room category')
-        flash(f'Failed to update category: {str(e)}', 'danger')
+        logger.exception('Failed to update room type')
+        flash(f'Failed to update room type: {str(e)}', 'danger')
 
     return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
 
@@ -2705,10 +3271,10 @@ def host_room_add(property_id):
     ):
         abort(403)
 
-    category_id = request.form.get('category_id')
-    category = RoomCategory.query.get_or_404(int(category_id)) if category_id else None
-    if not category or category.property_id != property_id:
-        flash('Valid room category is required.', 'danger')
+    room_type_id = request.form.get('room_type_id')
+    room_type = RoomType.query.get_or_404(int(room_type_id)) if room_type_id else None
+    if not room_type or room_type.property_id != property_id:
+        flash('Valid room type is required.', 'danger')
         return redirect(url_for('accommodation.host_rooms', property_id=property_id))
 
     raw_numbers = request.form.get('room_numbers', '').strip()
@@ -2730,7 +3296,7 @@ def host_room_add(property_id):
                 continue
             room = Room(
                 property_id=property_id,
-                category_id=category.id,
+                room_type_id=room_type.id,
                 room_number=room_number,
                 floor=floor,
                 name=name,
@@ -2742,7 +3308,7 @@ def host_room_add(property_id):
             created += 1
         db.session.commit()
         if created:
-            flash(f'{created} room(s) added to "{category.name}".', 'success')
+            flash(f'{created} room(s) added to "{room_type.name}".', 'success')
         else:
             flash('No new rooms created (duplicates skipped).', 'warning')
         HostService.sync_room_type_inventory(property_id)
@@ -2900,9 +3466,11 @@ def admin_moderate():
 @require_moderator
 def admin_moderate_property(id):
     """Show single property for moderation review"""
-    property = Property.query.get_or_404(id)
-    history = PropertyModerationHistory.query.filter_by(property_id=id).order_by(PropertyModerationHistory.created_at.desc()).all()
-    return render_template('accommodation/moderate_property.html', property=property, history=history)
+    property_obj = Property.query.get_or_404(id)
+    return render_template(
+        'accommodation/moderate_property.html',
+        **_moderate_property_template_context(property_obj)
+    )
 
 
 @accommodation_bp.route("/admin/moderate/booking/<int:id>", endpoint="admin_moderate_booking")
@@ -3092,7 +3660,7 @@ def explore_search_api():
     
     # Build query
     query = Property.query.filter(
-        Property.status == "active",
+        Property.status.in_(['active', 'published']),
         Property.is_verified == True,
         Property.is_active == True,
         Property.is_deleted == False

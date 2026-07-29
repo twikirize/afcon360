@@ -16,11 +16,14 @@ templates/
 │       └── attendee_dashboard.html   ← UPDATED (inline styles removed, stacked mobile)
 ├── accommodation/
 │   ├── admin/
-│   │   └── properties.html          ← UPDATED (moderation workflow buttons, status badges, responsive action cells)
+│   │   ├── properties.html          ← UPDATED (moderation workflow buttons, status badges, responsive action cells)
 │   ├── host/
 │   │   ├── bookings.html            ← UPDATED (added approve/reject actions for pending_approval status, inline forms with CSRF)
-│   │   └── booking_detail.html      ← UPDATED (added approve/reject collapse forms for pending_approval, inline CSRF)
-│   └── moderate_property.html       ← UPDATED (status/prop_type value handling, max_guests, base_price_per_night, suspend button, photos, CSRF tokens)
+│   │   ├── booking_detail.html      ← UPDATED (added approve/reject collapse forms for pending_approval, inline CSRF)
+│   │   └── booking_policy.html      ← UPDATED (fixed payment-method checkbox state binding from `policy.property_payment_methods` to `property.payment_methods`)
+│   ├── moderate.html                ← UPDATED (matched global AFCON360 light theme, removed inline styles, added table scroll wrappers)
+│   ├── moderate_property.html       ← UPDATED (matched global AFCON360 light theme, removed all inline layout styles, added photo grid classes)
+│   └── moderate_review.html         ← UPDATED (matched global AFCON360 light theme, removed inline styles, hidden/visible toggle via CSS class)
 └── super_admin_dashboard.html        ← UPDATED (mobile drawer + JS)
 ```
 
@@ -113,17 +116,59 @@ templates/
 - Fixed `property.max_capacity` → `property.max_guests` and `property.base_price` → `property.base_price_per_night`.
 - Added Suspend button for active properties and CSRF tokens to all moderation forms.
 - Added property photos display (main_image + gallery).
+- **2026-07-25:** Wired `ModerationService.get_available_actions()`, `get_property_status_display()`, and `get_property_status_color()` so action buttons and status badges are status-driven (approve/publish/reject/request changes/suspend/reinstate/archive). Added ≥44px touch targets on `.btn-mod`, fluid action-button sizing, and ≤480px stacked action layout. Header shows `public_id` (not raw internal id).
+- **2026-07-25 (archive recovery):** Soft-delete archive stores reason/timestamp; archived status shows restore CTA + archive reason banner; Restore action returns property to draft with confirm dialog.
+
+### `static/css/modules/accommodation/moderate_base.css` — **UPDATED**
+- Removed custom dark-theme variables (`--ink`, `--surface`, `--panel`, `--gold`, `--text`, `--muted`, etc.).
+- Replaced all values with global AFCON360 theme variables (`--bg-surface`, `--border-light`, `--brand-primary`, `--brand-accent`, `--text-primary`, `--text-muted`, `--success`, `--danger`, `--warning`, etc.).
+- Updated `.panel`, `.panel-header`, `.panel-body`, `.badge-*`, `.form-*`, `.btn-*` to use global semantic colors and spacing scale.
+- Added responsive breakpoints: `@media (max-width: 1024px)` for wrapped action buttons; `@media (max-width: 480px)` for stacked mobile header, full-width buttons, and reduced panel padding.
+- Added utility classes: `.hidden`, `.mono`, `.mt-1`.
+
+### `static/css/modules/accommodation/moderate_detail.css` — **UPDATED**
+- Added `.info-span-2` (`grid-column: 1 / -1`) to replace inline `grid-column: span 2`.
+- Added `.photo-grid` and `.photo-thumb` classes for property image thumbnails.
+- Added `.form-actions` class for button groups in forms.
+- Added responsive overrides: single-column info grid on ≤1024px, smaller photo thumbs on ≤480px.
+
+### `templates/accommodation/moderate.html` — **UPDATED**
+- Removed inline `style="display: flex; align-items: center;"` from header row.
+- Removed inline `style="font-weight: 600; color: var(--text);"` from property title cell.
+- Removed inline `style="font-size: 11px; margin-top: 2px;"` from slug cell.
+- Wrapped data tables in `div` with `overflow-x: auto` for horizontal scroll on narrow screens.
+- **Preserved:** All tab counts, badge states, empty states, and action links.
+
+### `templates/accommodation/moderate_review.html` — **UPDATED**
+- Removed inline `style="display: flex; align-items: center;"` from header row.
+- Removed inline `style="grid-column: span 2;"` from comment/host response cells.
+- Replaced inline `onclick="...style.display='block'"` with `classList.remove('hidden')` toggling.
+- Replaced inline `style="display: none;"` panels with `class="hidden"`.
+- Replaced inline `style="display: flex; gap: 12px;"` button groups with `class="form-actions"`.
 
 ### `templates/accommodation/host/bookings.html` — **UPDATED**
 - Added Approve and Reject inline forms for `pending_approval` bookings with CSRF tokens.
 - Buttons use existing Bootstrap table action cell; no layout breakage on mobile.
 - Preserved existing Check In / Check Out buttons for confirmed and checked_in statuses.
 
+### `templates/accommodation/host/rooms.html` — **UPDATED**
+- Renamed `categories` → `room_types`, `category` → `room_type` throughout template.
+- Renamed `host_room_category_add` → `host_room_type_add` endpoint.
+- Renamed `host_room_category_edit` → `host_room_type_edit` endpoint.
+- Renamed form field `category_id` → `room_type_id`.
+- Updated "Add Room Category / Type" heading → "Add Room Type".
+- Updated flash messages: "Category name" → "Room type name", "Room category" → "Room type".
+- Updated "No room categories yet" → "No room types yet" and "No rooms in this category yet" → "No rooms in this type yet".
+
 ### `templates/accommodation/host/booking_detail.html` — **UPDATED**
 - Added Approve Booking button at top of actions card for `pending_approval` status.
 - Added collapsible Reject Booking form with reason input and CSRF token.
 - Existing Check In / Check Out / Refund / View Property actions remain unchanged.
 - **Preserved:** Existing card grid layout, button sizing, and mobile stacking behavior.
+
+### `templates/accommodation/host/booking_policy.html` — **UPDATED**
+- Fixed payment-method checkbox pre-check state: changed `policy.property_payment_methods` to `property.payment_methods` in the Jinja `selectattr` lookup so enabled methods render correctly when the host edits booking policy.
+- **Preserved:** Existing form layout, payment timing fields, cancellation policy dropdowns, and CSRF tokens.
 
 ---
 
@@ -153,6 +198,9 @@ templates/
 - [x] Touch targets ≥44×44px on hamburger, drawer links, CTA buttons, admin nav items
 - [x] Super admin mobile drawer has overlay, close button, and escape-via-resize
 - [x] No inline `style="display:flex"` wrappers remain in attendee dashboard
+- [x] No inline layout styles remain in `moderate_property.html`, `moderate.html`, or `moderate_review.html`
+- [x] Moderation pages use global theme variables (no custom `--ink`, `--surface`, `--gold` dark-theme tokens)
+- [x] Moderation panels have `border-radius: var(--radius-lg)` and `box-shadow: var(--shadow-sm)` matching global `.card`
 - [x] Banners use CSS classes with `--banner-offset` instead of hardcoded `top: 40px`
 - [x] No color/hex changes in any CSS file
 
@@ -169,6 +217,7 @@ When the next optimization phase begins, use this file to **scope** changes:
 
 ### Phase 3 Isolation Targets
 - `static/css/modules/accommodation/mobile.css` — listing cards, search, booking flow
+- `static/css/modules/accommodation/moderation-mobile.css` — moderation detail pages, queue tables, collapse forms
 - `static/css/modules/transport/mobile.css` — bookings, vehicles, driver dashboards
 - `static/css/modules/admin/mobile.css` — owner/admin dashboard mobile refinements
 
@@ -190,8 +239,8 @@ When the next optimization phase begins, use this file to **scope** changes:
 
 ## 7. Post-Change Report
 
-**Files changed:** 12 files  
-**What was done:** Refactored shared layout, extracted inline styles, added fluid typography, introduced mobile drawer for super admin, and ensured touch targets meet WCAG 44×44px minimum. No colors, branding, or desktop behavior were altered.  
+**Files changed:** 16 files  
+**What was done:** Refactored shared layout, extracted inline styles, added fluid typography, introduced mobile drawer for super admin, and ensured touch targets meet WCAG 44×44px minimum. Aligned accommodation moderation pages (`moderate.html`, `moderate_property.html`, `moderate_review.html`) with the global AFCON360 light theme by replacing custom dark-theme tokens with global CSS variables. Renamed `RoomCategory` → `RoomType` in accommodation host template (`rooms.html`). No colors, branding, or desktop behavior were altered.  
 **Migration needed?** No  
 **Manual steps:** Clear browser cache / hard-refresh to verify.  
-**Risks/conflicts:** Inline styles were the highest-specificity blocker; those have been extracted in the touched templates. Super-admin drawer reuses patterns from `base.html` but with isolated `.sad-mobile-*` classes, so z-index conflicts are unlikely. Owner.css duplication was intentionally left untouched (separate cleanup PR).
+**Risks/conflicts:** Inline styles were the highest-specificity blocker; those have been extracted in the touched templates. Super-admin drawer reuses patterns from `base.html` but with isolated `.sad-mobile-*` classes, so z-index conflicts are unlikely. Owner.css duplication was intentionally left untouched (separate cleanup PR). Moderation pages now inherit global theme from `base.html`; if a custom dark-mode override is added globally, moderation pages will follow automatically.

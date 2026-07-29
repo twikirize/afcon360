@@ -1,4 +1,4 @@
-{% from "accommodation/admin/_macros.html" import admin_sidebar, flash_messages, pagination %}
+{% from "macros/admin_macros.html" import admin_sidebar, flash_messages, pagination %}
 {% extends "base.html" %}
 {% block title %}Accommodation Analytics — AFCON360{% endblock %}
 
@@ -95,6 +95,26 @@
         </div>
       </div>
     </div>
+
+    {# ── Booking type breakdown ── #}
+    {% if booking_type_breakdown %}
+    <div class="aa-card">
+      <div class="aa-card-header">
+        <h5 class="aa-card-title"><i class="bi bi-tags text-success"></i>Bookings by Type</h5>
+      </div>
+      <div style="padding:1.25rem 1.25rem .75rem;">
+        {% set max_t = (booking_type_breakdown | map(attribute='count') | list | max) or 1 %}
+        {% for item in booking_type_breakdown %}
+        <div class="aa-bar-item">
+          <div class="aa-bar-meta"><strong>{{ item.type }}</strong><span>{{ item.count }}</span></div>
+          <div class="aa-bar-track">
+            <div class="aa-bar-fill" style="width:{{ ((item.count / max_t)*100)|round }}%;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     {# ── Property types + Top cities ── #}
     <div class="aa-charts-2eq">

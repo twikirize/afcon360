@@ -376,6 +376,98 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
+  <!-- Media Processing Health Section -->
+  <h3 class="section-title">Media Processing System</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #8b5cf6;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">🖼️</div>
+        <span class="card-badge badge-system">Media Processing</span>
+      </div>
+      <div class="card-title">Processing Health Status</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        Monitor media processing queue, stuck tasks, and system health
+      </div>
+      
+      <div id="mediaHealthContainer">
+        <div style="text-align:center;padding:1rem;">
+          <div class="spinner-border spinner-border-sm" role="status"></div>
+          <span class="ms-2">Loading health status...</span>
+        </div>
+      </div>
+      
+      <div id="mediaHealthDetails" style="margin-top:1rem;display:none;">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.75rem;margin-bottom:1rem;">
+          <div style="text-align:center;padding:0.75rem;background:#f8fafc;border-radius:8px;">
+            <div id="healthStatus" style="font-size:1.5rem;font-weight:600;margin-bottom:0.25rem;"></div>
+            <small style="color:#6b7280;">Health Status</small>
+          </div>
+          <div style="text-align:center;padding:0.75rem;background:#f8fafc;border-radius:8px;">
+            <div id="celeryWorkers" style="font-size:1.5rem;font-weight:600;margin-bottom:0.25rem;"></div>
+            <small style="color:#6b7280;">Workers Online</small>
+          </div>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.5rem;margin-bottom:1rem;">
+          <div style="text-align:center;padding:0.5rem;background:#f0fdf4;border-radius:6px;">
+            <div id="healthReady" style="font-size:1.25rem;font-weight:600;color:#16a34a;"></div>
+            <small style="color:#6b7280;">Ready</small>
+          </div>
+          <div style="text-align:center;padding:0.5rem;background:#fff7ed;border-radius:6px;">
+            <div id="healthPending" style="font-size:1.25rem;font-weight:600;color:#f59e0b;"></div>
+            <small style="color:#6b7280;">Pending</small>
+          </div>
+          <div style="text-align:center;padding:0.5rem;background:#fef3c7;border-radius:6px;">
+            <div id="healthProcessing" style="font-size:1.25rem;font-weight:600;color:#ca8a04;"></div>
+            <small style="color:#6b7280;">Processing</small>
+          </div>
+          <div style="text-align:center;padding:0.5rem;background:#fee2e2;border-radius:6px;">
+            <div id="healthFailed" style="font-size:1.25rem;font-weight:600;color:#dc2626;"></div>
+            <small style="color:#6b7280;">Failed</small>
+          </div>
+          <div style="text-align:center;padding:0.5rem;background:#eff6ff;border-radius:6px;">
+            <div id="healthTotal" style="font-size:1.25rem;font-weight:600;color:#2563eb;"></div>
+            <small style="color:#6b7280;">Total</small>
+          </div>
+        </div>
+        
+        <div style="margin-top:1rem;">
+          <button onclick="retryFailedMedia()" class="btn btn-sm btn-outline-primary" style="margin-right:0.5rem;">
+            <i class="bi bi-arrow-clockwise"></i> Retry Failed Media
+          </button>
+          <button onclick="refreshMediaHealth()" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+          </button>
+        </div>
+      </div>
+      
+      <div id="healthAlert" style="margin-top:1rem;display:none;padding:0.75rem;border-radius:8px;">
+        <div style="display:flex;align-items:center;">
+          <i class="bi bi-exclamation-triangle" style="font-size:1.25rem;margin-right:0.5rem;"></i>
+          <span id="alertMessage"></span>
+        </div>
+      </div>
+    </div>
+    
+    <a href="{{ url_for('media_admin.media_settings_page') }}" class="settings-card">
+      <div class="card-icon">⚙️</div>
+      <div class="card-title">Media Settings</div>
+      <div class="card-description">
+        Configure image optimization, virus scanning, content moderation, and storage quotas
+      </div>
+      <span class="card-badge badge-system">Media</span>
+    </a>
+    
+    <a href="{{ url_for('admin.owner.audit_logs') }}" class="settings-card">
+      <div class="card-icon">🔄</div>
+      <div class="card-title">Media Audit Logs</div>
+      <div class="card-description">
+        View processing attempts, retries, and audit trail for all media operations
+      </div>
+      <span class="card-badge badge-audit">Audit</span>
+    </div>
+  </div>
+  
   <!-- Organization Registration Section -->
   <h3 class="section-title">Organization Registration</h3>
   <div class="settings-grid">
@@ -649,6 +741,115 @@ function showOrgRegistrationDetails() {
             }
         });
     }
+
+    // Media Processing Health Monitoring
+    async function fetchMediaHealth() {
+        try {
+            const response = await fetch('/api/media/health');
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Failed to fetch media health:', error);
+            return null;
+        }
+    }
+
+    function updateMediaHealthDisplay(data) {
+        if (!data) {
+            document.getElementById('mediaHealthContainer').innerHTML = 
+                '<div class="alert alert-danger"><i class="bi bi-x-circle"></i> Failed to load health data</div>';
+            return;
+        }
+
+        document.getElementById('mediaHealthContainer').style.display = 'none';
+        document.getElementById('mediaHealthDetails').style.display = 'block';
+
+        // Health status
+        const statusEl = document.getElementById('healthStatus');
+        const statusColors = {
+            'ok': { color: '#16a34a', label: '✅ Healthy' },
+            'degraded': { color: '#f59e0b', label: '⚠️ Degraded' },
+            'unhealthy': { color: '#dc2626', label: '🔴 Unhealthy' }
+        };
+        const statusInfo = statusColors[data.status] || statusColors['unhealthy'];
+        statusEl.style.color = statusInfo.color;
+        statusEl.textContent = statusInfo.label;
+
+        // Celery workers
+        document.getElementById('celeryWorkers').textContent = data.celery?.workers || 0;
+
+        // Media counts
+        const counts = data.media_counts || {};
+        document.getElementById('healthReady').textContent = counts.ready || 0;
+        document.getElementById('healthPending').textContent = counts.pending || 0;
+        document.getElementById('healthProcessing').textContent = counts.processing || 0;
+        document.getElementById('healthFailed').textContent = counts.failed || 0;
+        document.getElementById('healthTotal').textContent = counts.total || 0;
+
+        // Alert for stuck items
+        const alertEl = document.getElementById('healthAlert');
+        const alertMsg = document.getElementById('alertMessage');
+        
+        if (data.oldest_stuck) {
+            const stuckMinutes = Math.floor((Date.now() - new Date(data.oldest_stuck.created_at).getTime()) / 60000);
+            alertEl.style.display = 'block';
+            alertEl.style.background = '#fff3cd';
+            alertEl.style.border = '1px solid #ffc107';
+            alertMsg.innerHTML = 
+                `<strong>Stuck task detected:</strong> ${data.oldest_stuck.public_id} ` +
+                `(status: ${data.oldest_stuck.status}, stuck for ${stuckMinutes} minutes, ` +
+                `attempts: ${data.oldest_stuck.attempts || 0})`;
+        } else if (data.failed_today > 0) {
+            alertEl.style.display = 'block';
+            alertEl.style.background = '#fef2f2';
+            alertEl.style.border = '1px solid #dc2626';
+            alertMsg.innerHTML = `<strong>Failed today:</strong> ${data.failed_today} media items failed processing`;
+        } else {
+            alertEl.style.display = 'none';
+        }
+    }
+
+    async function refreshMediaHealth() {
+        document.getElementById('mediaHealthContainer').innerHTML = 
+            '<div style="text-align:center;padding:1rem;"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Refreshing...</span></div>';
+        document.getElementById('mediaHealthContainer').style.display = 'block';
+        document.getElementById('mediaHealthDetails').style.display = 'none';
+        
+        const data = await fetchMediaHealth();
+        updateMediaHealthDisplay(data);
+    }
+
+    async function retryFailedMedia() {
+        if (!confirm('Retry all failed media items? This will re-queue them for processing.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/media/admin/retry-failed', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                }
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert(result.message);
+                refreshMediaHealth();
+            } else {
+                alert('Failed: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshMediaHealth();
+        // Auto-refresh every 30 seconds
+        setInterval(refreshMediaHealth, 30000);
+    });
 </script>
 
 {% endblock %}

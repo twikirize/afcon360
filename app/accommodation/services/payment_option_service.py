@@ -3,7 +3,7 @@ app/accommodation/services/payment_option_service.py
 Queries PaymentMethodConfig for available payment methods in accommodation bookings.
 """
 from typing import List, Dict, Optional
-from app.events.payment_config import PaymentMethodConfig
+from app.wallet import PaymentMethodConfig
 import logging
 
 logger = logging.getLogger(__name__)

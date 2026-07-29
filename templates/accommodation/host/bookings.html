@@ -1,3 +1,5 @@
+{% from "macros/booking_macros.html" import booking_type_badge %}
+
 {% extends "base.html" %}
 
 {% block title %}Host Bookings - AFCON360{% endblock %}
@@ -6,6 +8,34 @@
 <div class="container py-4">
     <h2>My Bookings</h2>
     <p class="text-muted">Manage your property bookings</p>
+
+    <form method="GET" class="row g-3 mb-4">
+        <div class="col-auto">
+            <label for="typeFilter" class="form-label">Booking Type</label>
+            <select name="type" id="typeFilter" class="form-select">
+                <option value="">All Types</option>
+                <option value="self" {{ 'selected' if current_type == 'self' }}>Personal</option>
+                <option value="third_party" {{ 'selected' if current_type == 'third_party' }}>For Guest</option>
+                <option value="group" {{ 'selected' if current_type == 'group' }}>Group</option>
+                <option value="event_assigned" {{ 'selected' if current_type == 'event_assigned' }}>Event</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="statusFilter" class="form-label">Status</label>
+            <select name="status" id="statusFilter" class="form-select">
+                <option value="">All Statuses</option>
+                <option value="pending" {{ 'selected' if current_status == 'pending' }}>Pending</option>
+                <option value="pending_approval" {{ 'selected' if current_status == 'pending_approval' }}>Pending Approval</option>
+                <option value="confirmed" {{ 'selected' if current_status == 'confirmed' }}>Confirmed</option>
+                <option value="checked_in" {{ 'selected' if current_status == 'checked_in' }}>Checked In</option>
+                <option value="checked_out" {{ 'selected' if current_status == 'checked_out' }}>Checked Out</option>
+                <option value="cancelled" {{ 'selected' if current_status == 'cancelled' }}>Cancelled</option>
+            </select>
+        </div>
+        <div class="col-auto align-self-end">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+    </form>
 
     <div class="table-responsive">
         <table class="table table-hover align-middle">
@@ -16,6 +46,7 @@
                     <th>Dates</th>
                     <th>Amount</th>
                     <th>Status</th>
+                    <th>Type</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -38,6 +69,9 @@
                         <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' }}">
                             {{ booking.status }}
                         </span>
+                    </td>
+                    <td>
+                        {{ booking_type_badge(booking) }}
                     </td>
                     <td>
                         <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}" class="btn btn-sm btn-outline-primary">
@@ -69,7 +103,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" class="text-center text-muted py-4">No bookings found.</td>
+                    <td colspan="7" class="text-center text-muted py-4">No bookings found.</td>
                 </tr>
                 {% endfor %}
             </tbody>

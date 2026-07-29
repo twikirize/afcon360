@@ -5,7 +5,6 @@ from flask import Blueprint, request, render_template, jsonify, session, current
 from flask_login import login_required, current_user
 from app.extensions import db
 from app.events.constants import MAX_BULK_GROUP_SIZE
-import pandas as pd
 import io
 import uuid
 import logging
@@ -61,6 +60,7 @@ def download_template(identifier):
 @login_required
 def upload_bulk(identifier):
     """Upload and validate bulk registration file"""
+    import pandas as pd
     try:
         from app.events.services import EventService
         from app.events.models import Event

@@ -1,12 +1,13 @@
 # app/accommodation/models/room.py
 """
-Room Management Models - Individual rooms with categories.
+Room Management Models - Individual rooms with room types.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from decimal import Decimal
+import enum
 from sqlalchemy import (
-    Column, BigInteger, String, Boolean, DateTime, Date,
+    Column, BigInteger, String, Boolean, DateTime, Date, Float,
     ForeignKey, Integer, Text, Numeric, JSON,
     Index, UniqueConstraint, CheckConstraint
 )
@@ -15,57 +16,133 @@ from app.extensions import db
 from app.models.base import BaseModel
 
 
-class RoomCategory(BaseModel):
-    """
-    Room category/type like VIP Suite, Deluxe King, Standard Twin.
-    Groups rooms with same features/pricing.
-    """
-    __tablename__ = "accommodation_room_categories"
+# ==========================================
+# RoomType Model (for multi-unit properties)
+# ==========================================
+
+class RoomType(BaseModel):
+    """Room type - the actual sellable SKU for hotels with multiple room types"""
+    __tablename__ = "accommodation_room_types"
     __table_args__ = (
-        Index("idx_room_category_property", "property_id"),
-        Index("idx_room_category_active", "is_active"),
-        UniqueConstraint("property_id", "name", name="uq_category_per_property"),
-        CheckConstraint("base_price_per_night >= 0", name="ck_category_price_positive"),
-        CheckConstraint("max_guests >= 1", name="ck_category_guests_min"),
+        Index("idx_roomtype_property", "property_id"),
+        Index("idx_roomtype_active", "is_active"),
     )
 
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
-    listing = relationship("Property", back_populates="room_categories")
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    listing = relationship("Property", back_populates="room_types")
 
+    # Room type identity
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    short_code = Column(String(20), nullable=True)
 
+    # Capacity
     max_guests = Column(Integer, nullable=False, default=2)
     bedrooms = Column(Integer, default=1)
     beds = Column(Integer, default=1)
-    bathrooms = Column(Integer, default=1)
+    bathrooms = Column(Float, default=1.0)
 
+    # Pricing
     base_price_per_night = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default="USD")
     cleaning_fee = Column(Numeric(10, 2), default=0)
+    service_fee_pct = Column(Numeric(5, 2), default=10.0)
 
+    # Inventory - total units of this room type
+    total_units = Column(Integer, nullable=False, default=1)
+
+    # Status
     is_active = Column(Boolean, default=True, nullable=False, index=True)
 
-    rooms = relationship("Room", back_populates="category", cascade="all, delete-orphan")
+    rooms = relationship("Room", back_populates="room_type", cascade="all, delete-orphan")
+
+    @property
+    def booked_units(self) -> int:
+        """Get number of booked/in-checked-in units for this room type (current date)."""
+        from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
+        from app.accommodation.models.availability import BlockedDate, AccommodationBlockedReason
+
+        today = date.today()
+
+        confirmed = AccommodationBooking.query.filter(
+            AccommodationBooking.room_type_id == self.id,
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.CONFIRMED.value,
+                AccommodationBookingStatus.CHECKED_IN.value,
+            ]),
+            AccommodationBooking.check_in <= today,
+            AccommodationBooking.check_out > today,
+        ).count()
+
+        blocks = InventoryBlock.query.filter(
+            InventoryBlock.room_type_id == self.id,
+            InventoryBlock.date_range_start <= today,
+            InventoryBlock.date_range_end > today,
+        ).all()
+        blocked = sum(b.units_blocked for b in blocks)
+
+        return confirmed + blocked
+
+    @property
+    def available_units(self) -> int:
+        """Get number of available units for this room type (current date)."""
+        return max(0, self.total_units - self.booked_units)
 
     def __repr__(self):
-        return f"<RoomCategory {self.name} (${self.base_price_per_night})>"
+        return f"<RoomType {self.property_id}: {self.name} ({self.total_units} units)>"
 
-    @property
-    def total_rooms(self) -> int:
-        return len(self.rooms)
 
-    @property
-    def available_rooms(self) -> int:
-        return sum(1 for r in self.rooms if r.is_available)
+# ==========================================
+# InventoryBlockReason enum
+# ==========================================
 
-    @property
-    def occupancy_rate(self) -> float:
-        if self.total_rooms == 0:
-            return 0.0
-        return ((self.total_rooms - self.available_rooms) / self.total_rooms) * 100
+class InventoryBlockReason(enum.Enum):
+    """Reason for blocking inventory"""
+    MAINTENANCE = "MAINTENANCE"
+    RENOVATION = "RENOVATION"
+    SEASONAL_CLOSE = "SEASONAL_CLOSE"
+    OWNER_BLOCK = "OWNER_BLOCK"
 
+
+# ==========================================
+# InventoryBlock Model (sparse availability)
+# ==========================================
+
+class InventoryBlock(BaseModel):
+    """Sparse table for inventory blocks - only rows for dates that are NOT default-available"""
+    __tablename__ = "accommodation_inventory_blocks"
+    __table_args__ = (
+        Index("idx_inv_block_range", "room_type_id", "date_range_start", "date_range_end"),
+        Index("idx_inv_block_booking", "booking_id"),
+    )
+
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    room_type = relationship("RoomType", back_populates="inventory_blocks")
+
+    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="SET NULL"), nullable=True, index=True)
+    booking = relationship("AccommodationBooking")
+
+    date_range_start = Column(Date, nullable=False)
+    date_range_end = Column(Date, nullable=False)
+    units_blocked = Column(Integer, nullable=False, default=0)
+    reason = Column(String(50), nullable=False, default="MAINTENANCE")
+
+    @validates("reason")
+    def _validate_reason(self, key, value):
+        """Allow setting reason by enum or by its string value (e.g., 'MAINTENANCE')."""
+        if isinstance(value, str):
+            try:
+                return InventoryBlockReason[value] if value in InventoryBlockReason.__members__ else InventoryBlockReason(value)
+            except Exception:
+                raise ValueError(f"Invalid InventoryBlock.reason: {value}")
+        return value
+
+    def __repr__(self):
+        return f"<InventoryBlock {self.room_type_id}: {self.date_range_start} to {self.date_range_end} ({self.units_blocked} units)>"
+
+
+# ==========================================
+# Room Model
+# ==========================================
 
 class Room(BaseModel):
     """
@@ -75,7 +152,7 @@ class Room(BaseModel):
     __tablename__ = "accommodation_rooms"
     __table_args__ = (
         Index("idx_room_property", "property_id"),
-        Index("idx_room_category", "category_id"),
+        Index("idx_room_room_type", "room_type_id"),
         Index("idx_room_status", "status"),
         UniqueConstraint("property_id", "room_number", name="uq_room_number_per_property"),
     )
@@ -83,8 +160,8 @@ class Room(BaseModel):
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
     listing = relationship("Property", back_populates="rooms")
 
-    category_id = Column(BigInteger, ForeignKey("accommodation_room_categories.id", ondelete="RESTRICT"), nullable=False)
-    category = relationship("RoomCategory", back_populates="rooms")
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="RESTRICT"), nullable=False)
+    room_type = relationship("RoomType", back_populates="rooms")
 
     room_number = Column(String(20), nullable=False)
     floor = Column(String(20), nullable=True)
@@ -134,6 +211,10 @@ class Room(BaseModel):
         self.status = "available"
 
 
+# ==========================================
+# RoomBooking Model
+# ==========================================
+
 class RoomBooking(BaseModel):
     """
     Tracks which room is assigned to which booking.
@@ -178,3 +259,14 @@ class RoomBooking(BaseModel):
         self.status = "checked_out"
         if self.room:
             self.room.release()
+
+
+# -------------------------------
+# Relationship wiring (lazy imports to avoid circular dependencies)
+# -------------------------------
+
+from app.accommodation.models.property import Property  # noqa: E402
+
+Property.room_types = relationship("RoomType", back_populates="listing", cascade="all, delete-orphan")
+Property.rooms = relationship("Room", back_populates="listing", cascade="all, delete-orphan")
+RoomType.inventory_blocks = relationship("InventoryBlock", back_populates="room_type", cascade="all, delete-orphan")

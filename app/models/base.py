@@ -85,6 +85,10 @@ class BaseModel(TimestampMixin, db.Model):
             'wallet_txn_id',  # AccommodationBooking / Event wallet transaction reference
             'context_id',  # AccommodationBooking / Event context reference
             'group_booking_id',  # AccommodationBooking group booking reference
+            'booking_reference',  # AccommodationBooking public booking reference
+            'payment_reference',  # AccommodationBookingPayment payment reference
+            'method_id',  # PaymentMethodConfig.method_id - e.g. 'wallet', 'mobile_money_mtn_ug'
+            'idempotency_key',  # AccommodationBooking / AccommodationBookingPayment idempotency key
         }
 
         # Check if this is an _id field that needs validation

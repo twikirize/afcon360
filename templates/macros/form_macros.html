@@ -1,0 +1,69 @@
+{% macro form_group(label, name, type='text', value='', placeholder='', required=false, help='', errors=[]) %}
+  <div class="mb-3">
+    <label for="{{ name }}" class="form-label">
+      {{ label }}
+      {% if required %}<span class="text-danger">*</span>{% endif %}
+    </label>
+    <input type="{{ type }}" 
+           class="form-control {{ 'is-invalid' if errors }}" 
+           id="{{ name }}" 
+           name="{{ name }}" 
+           value="{{ value }}" 
+           placeholder="{{ placeholder }}"
+           {% if required %}required{% endif %}>
+    {% if help %}
+      <div class="form-text">{{ help }}</div>
+    {% endif %}
+    {% if errors %}
+      <div class="invalid-feedback">
+        {% for error in errors %}{{ error }}{% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro select_group(label, name, options, selected='', required=false, help='', errors=[]) %}
+  <div class="mb-3">
+    <label for="{{ name }}" class="form-label">
+      {{ label }}
+      {% if required %}<span class="text-danger">*</span>{% endif %}
+    </label>
+    <select class="form-select {{ 'is-invalid' if errors }}" id="{{ name }}" name="{{ name }}" {% if required %}required{% endif %}>
+      <option value="">Select...</option>
+      {% for value, label in options %}
+        <option value="{{ value }}" {% if value == selected %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if help %}
+      <div class="form-text">{{ help }}</div>
+    {% endif %}
+    {% if errors %}
+      <div class="invalid-feedback">
+        {% for error in errors %}{{ error }}{% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro textarea_group(label, name, value='', placeholder='', rows=3, required=false, help='', errors=[]) %}
+  <div class="mb-3">
+    <label for="{{ name }}" class="form-label">
+      {{ label }}
+      {% if required %}<span class="text-danger">*</span>{% endif %}
+    </label>
+    <textarea class="form-control {{ 'is-invalid' if errors }}" 
+              id="{{ name }}" 
+              name="{{ name }}" 
+              rows="{{ rows }}"
+              placeholder="{{ placeholder }}"
+              {% if required %}required{% endif %}>{{ value }}</textarea>
+    {% if help %}
+      <div class="form-text">{{ help }}</div>
+    {% endif %}
+    {% if errors %}
+      <div class="invalid-feedback">
+        {% for error in errors %}{{ error }}{% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}

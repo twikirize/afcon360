@@ -118,6 +118,170 @@ def delete(media_public_id: str):
     return jsonify({'deleted': True})
 
 
+@media_bp.route('/set-cover/<media_public_id>', methods=['POST'])
+@login_required
+def set_cover(media_public_id: str):
+    """Set a media item as the cover image for its entity."""
+    from app.media.models import Media
+
+    media = db.session.query(Media).filter(
+        Media.public_id == media_public_id,
+        Media.is_deleted == False
+    ).first()
+
+    if not media:
+        return jsonify({'error': 'Media not found'}), 404
+
+    # Remove cover from other media for same entity
+    db.session.query(Media).filter(
+        Media.module == media.module,
+        Media.entity_id == media.entity_id,
+        Media.is_deleted == False
+    ).update({'is_cover': False})
+
+    # Set this as cover
+    media.is_cover = True
+    db.session.commit()
+
+    return jsonify({'success': True, 'media_id': media_public_id})
+
+
+@media_bp.route('/health', methods=['GET'])
+@login_required
+def media_health():
+    """
+    Health check endpoint for media system.
+    Returns system status, queue health, and processing metrics.
+    """
+    from sqlalchemy import text
+    from datetime import datetime, timezone
+
+    try:
+        db.session.execute(text("SELECT 1"))
+        db_healthy = True
+        db_error = None
+    except Exception as e:
+        db_healthy = False
+        db_error = str(e)
+
+    counts = {}
+    for status_name in ['pending', 'processing', 'ready', 'failed']:
+        counts[status_name] = db.session.execute(
+            text("SELECT COUNT(*) FROM media WHERE status = :s"),
+            {'s': status_name}
+        ).scalar() or 0
+
+    counts['total'] = sum(counts.values())
+
+    oldest_stuck = db.session.execute(text("""
+        SELECT public_id, status, created_at, processing_attempts
+        FROM media
+        WHERE status IN ('pending', 'processing')
+        ORDER BY created_at ASC
+        LIMIT 1
+    """)).fetchone()
+
+    failed_today = db.session.execute(text("""
+        SELECT COUNT(*)
+        FROM media
+        WHERE status = 'failed'
+        AND DATE(failed_at) = CURRENT_DATE
+    """)).scalar() or 0
+
+    celery_healthy = False
+    celery_workers = 0
+    try:
+        from app.celery_app import celery_app
+        inspect = celery_app.control.inspect()
+        if inspect:
+            active = inspect.active()
+            if active:
+                celery_healthy = True
+                celery_workers = len(active)
+    except Exception:
+        celery_healthy = False
+
+    if db_healthy and celery_healthy:
+        overall_status = 'ok'
+    elif db_healthy:
+        overall_status = 'degraded'
+    else:
+        overall_status = 'unhealthy'
+
+    return jsonify({
+        'status': overall_status,
+        'database': {
+            'healthy': db_healthy,
+            'error': db_error
+        },
+        'celery': {
+            'healthy': celery_healthy,
+            'workers': celery_workers
+        },
+        'media_counts': counts,
+        'oldest_stuck': {
+            'public_id': oldest_stuck[0] if oldest_stuck else None,
+            'status': oldest_stuck[1] if oldest_stuck else None,
+            'created_at': oldest_stuck[2].isoformat() if oldest_stuck else None,
+            'attempts': oldest_stuck[3] if oldest_stuck else None
+        } if oldest_stuck else None,
+        'failed_today': failed_today,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    })
+
+
+@media_bp.route('/admin/retry-failed', methods=['POST'])
+@login_required
+def retry_failed_media():
+    """
+    Admin endpoint to manually retry failed media.
+    """
+    from app.media.tasks import process_media_task
+    from app.media.models import Media
+
+    data = request.get_json() or {}
+    media_id = data.get('media_id')
+
+    if media_id:
+        media = db.session.query(Media).filter(
+            Media.public_id == media_id,
+            Media.is_deleted == False
+        ).first()
+        if not media:
+            return jsonify({'error': 'Media not found'}), 404
+
+        media.status = 'pending'
+        media.processing_attempts = 0
+        media.failed_at = None
+        db.session.commit()
+
+        task = process_media_task.delay(media.id)
+        return jsonify({
+            'success': True,
+            'media_id': media_id,
+            'task_id': task.id,
+            'message': 'Media re-queued for processing'
+        })
+    else:
+        failed_media = db.session.query(Media).filter(
+            Media.status == 'failed',
+            Media.is_deleted == False
+        ).all()
+        count = len(failed_media)
+        for media in failed_media:
+            media.status = 'pending'
+            media.processing_attempts = 0
+            media.failed_at = None
+            db.session.commit()
+            process_media_task.delay(media.id)
+
+        return jsonify({
+            'success': True,
+            'count': count,
+            'message': f'Re-queued {count} failed media items for processing'
+        })
+
+
 @media_bp.route('/files/<path:filename>', methods=['GET'])
 def serve_local_file(filename: str):
     """

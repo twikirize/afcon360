@@ -1,3 +1,5 @@
+{% from "macros/booking_macros.html" import booking_type_badge %}
+
 {% extends "base.html" %}
 {% block title %}Booking Management — AFCON360{% endblock %}
 
@@ -176,6 +178,7 @@
           <th>Reference</th>
           <th>Guest</th>
           <th>Property</th>
+          <th>Type</th>
           <th>Check-In</th>
           <th>Check-Out</th>
           <th>Nights</th>
@@ -197,45 +200,15 @@
             <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
             <small class="text-muted">{{ bk.guest_email | truncate(28) }}</small>
           </td>
-          <td>
-            {% if bk.accommodation_property %}
-            <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
-            <small class="text-muted">{{ bk.accommodation_property.city }}</small>
-            {% else %}
-            <small class="text-muted">Deleted</small>
-            {% endif %}
-          </td>
-          <td>{{ bk.check_in.strftime('%d %b %Y') if bk.check_in else '—' }}</td>
-          <td>{{ bk.check_out.strftime('%d %b %Y') if bk.check_out else '—' }}</td>
-          <td class="text-center">{{ bk.num_nights }}</td>
-          <td class="text-center">{{ bk.num_guests }}</td>
-          <td>
-            <strong>${{ "{:,.2f}".format(bk.total_amount) }}</strong>
-            <small class="text-muted d-block">{{ bk.currency }}</small>
-          </td>
-          <td>
-            <span class="sbadge sb-{{ bk.status }}">{{ bk.status | replace('_',' ') | title }}</span>
-          </td>
-          <td>
-            <span class="pay-badge pay-{{ bk.payment_status }}">
-              {{ bk.payment_status | replace('_',' ') | title }}
-            </span>
-          </td>
-          <td>
-            <small>{{ bk.created_at.strftime('%d %b %Y') if bk.created_at else '—' }}</small>
-          </td>
-          <td>
-            <div class="action-cell">
-              {% if bk.accommodation_property %}
-              <a href="{{ url_for('accommodation.guest_detail', identifier=bk.accommodation_property.id) }}"
-                 target="_blank" class="btn-sm-act btn-view-sm" title="View property">
-                <i class="bi bi-house-door"></i>
-              </a>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
+           <td>
+             {% if bk.accommodation_property %}
+             <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
+             <small class="text-muted">{{ bk.accommodation_property.city }}</small>
+                {% else %}
+                <tr>
+                    <td colspan="13" class="text-center text-muted py-4">No bookings found.</td>
+                </tr>
+                {% endfor %}
       </tbody>
     </table>
     </div>

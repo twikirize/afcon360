@@ -114,13 +114,13 @@ class MediaManager {
 
             switch (action) {
                 case 'view':
-                    this.openLightbox(parseInt(mediaId));
+                    this.openLightbox(mediaId);
                     break;
                 case 'set-cover':
-                    this.setCover(parseInt(mediaId));
+                    this.setCover(mediaId);
                     break;
                 case 'delete':
-                    this.deleteMedia(parseInt(mediaId));
+                    this.deleteMedia(mediaId);
                     break;
             }
         });
@@ -498,8 +498,10 @@ class MediaManager {
 
         gallery.innerHTML = sortedFiles.map((media, index) => {
             const actualIndex = this.uploadedFiles.indexOf(media);
+            // ✅ Use public_id for the data-id attribute
+            const mediaId = media.public_id || media.id || media.media_id;
             return `
-                <div class="media-item" data-index="${actualIndex}" data-id="${media.id || media.media_id}">
+                <div class="media-item" data-index="${actualIndex}" data-id="${mediaId}">
                     ${this.renderMediaThumbnail(media)}
                     ${media.is_cover ? '<span class="media-cover-badge">⭐ Cover</span>' : ''}
                     <div class="media-item-overlay">
@@ -507,9 +509,9 @@ class MediaManager {
                             <span class="media-item-name">${media.file_name || 'Untitled'}</span>
                         </div>
                         <div class="media-item-actions">
-                            <button class="media-item-btn view" data-action="view" data-media-id="${media.id || media.media_id}" title="View">👁️</button>
-                            ${!media.is_cover ? `<button class="media-item-btn cover" data-action="set-cover" data-media-id="${media.id || media.media_id}" title="Set as cover">⭐</button>` : ''}
-                            <button class="media-item-btn delete" data-action="delete" data-media-id="${media.id || media.media_id}" title="Delete">🗑️</button>
+                            <button class="media-item-btn view" data-action="view" data-media-id="${mediaId}" title="View">👁️</button>
+                            ${!media.is_cover ? `<button class="media-item-btn cover" data-action="set-cover" data-media-id="${mediaId}" title="Set as cover">⭐</button>` : ''}
+                            <button class="media-item-btn delete" data-action="delete" data-media-id="${mediaId}" title="Delete">🗑️</button>
                         </div>
                     </div>
                 </div>
@@ -544,50 +546,57 @@ class MediaManager {
     }
 
     async deleteMedia(mediaId) {
-        if (!confirm('Are you sure you want to delete this media?')) return;
+    // ✅ Handle UUID strings properly - don't use parseInt()
+    if (!mediaId || mediaId === 'NaN' || mediaId === 'undefined' || mediaId === 'null') {
+        console.warn('Invalid media ID:', mediaId);
+        this.showNotification('Invalid media ID', 'error');
+        return;
+    }
 
-        const mediaItem = this.container.querySelector(`[data-id="${mediaId}"]`);
-        if (mediaItem) {
-            mediaItem.classList.add('deleting');
-        }
+    if (!confirm('Are you sure you want to delete this media?')) return;
 
-        try {
-            const response = await fetch(
-                `/api/media/delete/${mediaId}`,
-                {
-                    method: 'DELETE',
-                    headers: {
-                        'X-CSRFToken': this.getCsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                }
-            );
-            
-            const data = await response.json();
+    const mediaItem = this.container.querySelector(`[data-id="${CSS.escape(String(mediaId))}"]`);
+    if (mediaItem) {
+        mediaItem.classList.add('deleting');
+    }
 
-            if (data.deleted || data.success) {
-                this.uploadedFiles = this.uploadedFiles.filter(m => 
-                    (m.id || m.media_id) !== parseInt(mediaId) && 
-                    (m.id || m.media_id) !== mediaId
-                );
-                this.renderGallery();
-                
-                // Show success feedback
-                this.showNotification('Media deleted successfully', 'success');
-            } else {
-                alert(data.error || 'Delete failed');
-                if (mediaItem) {
-                    mediaItem.classList.remove('deleting');
+    try {
+        const response = await fetch(
+            `/api/media/delete/${mediaId}`,
+            {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': this.getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
             }
-        } catch (error) {
-            console.error('Delete error:', error);
-            alert('Delete failed: ' + error.message);
+        );
+        
+        const data = await response.json();
+
+        if (data.deleted || data.success) {
+            // ✅ Filter by public_id (string), not parseInt
+            this.uploadedFiles = this.uploadedFiles.filter(m => 
+                (m.public_id || m.id || m.media_id) !== mediaId
+            );
+            this.renderGallery();
+            this.showNotification('Media deleted successfully', 'success');
+            // ✅ Refresh to ensure consistency
+            this.loadExistingMedia();
+        } else {
+            this.showNotification(data.error || 'Delete failed', 'error');
             if (mediaItem) {
                 mediaItem.classList.remove('deleting');
             }
         }
+    } catch (error) {
+        console.error('Delete error:', error);
+        this.showNotification('Delete failed: ' + error.message, 'error');
+        if (mediaItem) {
+            mediaItem.classList.remove('deleting');
+        }
     }
+}
 
     async setCover(mediaId) {
         // Check if set-cover endpoint exists
@@ -610,31 +619,31 @@ class MediaManager {
                     // Update local data
                     this.uploadedFiles = this.uploadedFiles.map(m => ({
                         ...m,
-                        is_cover: (m.id || m.media_id) === parseInt(mediaId)
+                        is_cover: (m.public_id || m.id || m.media_id) === mediaId
                     }));
                     this.renderGallery();
                     this.showNotification('Cover image updated', 'success');
                 } else {
-                    alert(data.error || 'Failed to set cover');
+                    this.showNotification(data.error || 'Failed to set cover', 'error');
                 }
             } else if (response.status === 404) {
                 // Endpoint not implemented - just update locally
                 this.uploadedFiles = this.uploadedFiles.map(m => ({
                     ...m,
-                    is_cover: (m.id || m.media_id) === parseInt(mediaId)
+                    is_cover: (m.public_id || m.id || m.media_id) === mediaId
                 }));
                 this.renderGallery();
                 this.showNotification('Cover updated locally (server endpoint not available)', 'info');
             } else {
                 const data = await response.json();
-                alert(data.error || 'Failed to set cover');
+                this.showNotification(data.error || 'Failed to set cover', 'error');
             }
         } catch (error) {
             console.error('Set cover error:', error);
             // Fallback: update locally even if server fails
             this.uploadedFiles = this.uploadedFiles.map(m => ({
                 ...m,
-                is_cover: (m.id || m.media_id) === parseInt(mediaId)
+                is_cover: (m.public_id || m.id || m.media_id) === mediaId
             }));
             this.renderGallery();
             this.showNotification('Cover updated locally', 'info');

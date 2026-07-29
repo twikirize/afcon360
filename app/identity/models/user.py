@@ -363,6 +363,16 @@ class User(UserMixin, ProtectedModel):
         return latest and latest.status in ["pending", "manual_review"]
 
     @property
+    def kyc_verified(self) -> bool:
+        """Check if user has a verified KYC record."""
+        if not self.verifications:
+            return False
+        latest = max(self.verifications, key=lambda v: v.requested_at, default=None)
+        return latest and latest.status == "verified" and (
+            not latest.expires_at or latest.expires_at >= datetime.now(timezone.utc)
+        )
+
+    @property
     def role_names(self) -> list[str]:
         return [ur.role.name for ur in self.roles if ur.role]
 

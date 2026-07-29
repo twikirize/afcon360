@@ -3,6 +3,7 @@ Travel Rule Compliance Service
 FATF Travel Rule implementation for crypto/fiat transfers
 """
 
+import uuid
 from typing import Dict, Any, Optional, List
 from flask import current_app
 
@@ -135,7 +136,7 @@ class TravelRuleService:
     
     @staticmethod
     def create_travel_rule_record(
-        transaction_id: int,
+        transaction_id: uuid.UUID,
         originator_info: Dict[str, Any],
         beneficiary_info: Dict[str, Any],
         amount: int,

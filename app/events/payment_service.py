@@ -12,7 +12,7 @@ from app.wallet.payments.mobile_money import MobileMoneyService
 from app.audit.comprehensive_audit import AuditService, TransactionType, APICallStatus, AuditSeverity
 from app.events.constants import BookingType
 from app.events.models import Event, TicketType, EventRegistration
-from app.events.payment_config import PaymentMethodConfig, EventPaymentPreference
+from app.wallet import PaymentMethodConfig, EventPaymentPreference
 from app.events.attendee_accounts import find_or_create_attendee_user
 from app.extensions import db
 from app.identity.models.user import User

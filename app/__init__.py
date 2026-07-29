@@ -459,7 +459,7 @@ def create_app(config_object=None) -> Flask:
             "form-action 'self'; "
             "base-uri 'self'; "
             "upgrade-insecure-requests; " if should_upgrade_insecure() else ""
-            "report-to csp-endpoint; report-uri /csp-report"
+                                                                            "report-to csp-endpoint; report-uri /csp-report"
         )
         response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
 
@@ -552,22 +552,28 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     # CRITICAL: Register ALL models before SQLAlchemy initialization
     # ------------------------------------------------------------------
+    _boot_t0 = time.time()
     from app.core.model_registry import register_all_models
     register_all_models()
+    logger.info(f"⏱ register_all_models() took {time.time() - _boot_t0:.2f}s")
 
+    _boot_t1 = time.time()
     db.init_app(app)
     socketio.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+    logger.info(f"⏱ core extension init_app calls took {time.time() - _boot_t1:.2f}s")
 
     # Initialize mail
+    _boot_t2 = time.time()
     mail.init_app(app)
-    
+
     # Initialize socketio
     from app.accommodation.sockets import HostDashboardNamespace
     socketio.on_namespace(HostDashboardNamespace('/ws/host-dashboard'))
-    
+    logger.info(f"⏱ mail + socketio namespace init took {time.time() - _boot_t2:.2f}s")
+
     logger.info("✅ Mail extension initialized")
 
     # Module flag DB overrides are loaded on first request (see _run_deferred_startup)
@@ -596,13 +602,16 @@ def create_app(config_object=None) -> Flask:
     else:
         logger.warning("IDGuard not available - skipping ID mixing protection")
 
-    # Dynamic rate limit settings wiring (after DB init)
+    # Dynamic rate limit settings wiring
+    # NOTE: The initial DB fetch of default_limits (RateLimitService.get_default_limits())
+    # used to run here at boot, blocking startup for ~3s — it was the FIRST real DB query
+    # in the whole app factory, which forces SQLAlchemy's one-time configure_mappers() pass
+    # across every registered model. That fetch has been moved into _run_deferred_startup
+    # (see below), which runs in a background thread on the first real request instead.
+    # limiter.default_limits keeps whatever Limiter was constructed with until that thread
+    # updates it — functionally identical, just non-blocking.
     try:
         from app.admin.owner.rate_limit_service import RateLimitService
-
-        with app.app_context():
-            default_limits = RateLimitService.get_default_limits()
-            limiter.default_limits = default_limits
 
         @app.before_request
         def _apply_dynamic_rate_limits():
@@ -748,14 +757,35 @@ def create_app(config_object=None) -> Flask:
 
             threading.Thread(target=_validate_schema, daemon=True).start()
 
+            # Deferred rate-limit default_limits fetch — this DB call used to sit
+            # at boot time and cost ~3s (it was the first query in the whole app,
+            # forcing SQLAlchemy's one-time configure_mappers() pass). Moved here
+            # so it runs after the server is already accepting requests.
+            def _load_rate_limit_defaults():
+                try:
+                    with app.app_context():
+                        from app.admin.owner.rate_limit_service import RateLimitService
+                        default_limits = RateLimitService.get_default_limits()
+                        limiter.default_limits = default_limits
+                        logger.info("✅ Rate limit default_limits loaded (deferred)")
+                except Exception as exc:
+                    logger.warning(f"Deferred rate limit defaults load failed: {exc}")
+
+            threading.Thread(target=_load_rate_limit_defaults, daemon=True).start()
+
     # ------------------------------------------------------------------
     # Lazy Imports - Blueprints & Models
     # ------------------------------------------------------------------
+    _boot_t3 = time.time()
     from app.identity import models as identity_models
     from app.profile import models as profile_models
     from app.audit import models as audit_models
     from app.auth import roles as role_models
     from app.admin import models as admin_models  # Required for Alembic to detect ModerationLog
+    from app.event_accommodation import \
+        models as event_accommodation_models  # Required for Alembic to detect event accommodation models
+    logger.info(
+        f"⏱ lazy model imports (identity/profile/audit/roles/admin/event_accommodation) took {time.time() - _boot_t3:.2f}s")
 
     # Core Web Blueprints
     from app.auth.routes import auth_bp
@@ -859,6 +889,7 @@ def create_app(config_object=None) -> Flask:
     if auth_kyc_bp:
         def _auth_kyc_upload_alias():
             return redirect(url_for('auth_kyc.overview'))
+
         app.add_url_rule('/auth/kyc/upload', endpoint='auth.kyc_routes.kyc_upload', view_func=_auth_kyc_upload_alias)
 
     # Note: Compliance blueprint is already registered under admin_bp in app/admin/__init__.py
@@ -926,6 +957,14 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         app.logger.error(f"❌ Failed to register accommodation module: {e}")
 
+    # Event Accommodation module (Layer 1-4 trust & discovery architecture)
+    try:
+        from app.event_accommodation import event_accommodation_bp
+        app.register_blueprint(event_accommodation_bp)
+        app.logger.info("✅ Event Accommodation module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register event accommodation module: {e}")
+
     # Events module - already registered in core_blueprints
 
     # Wallet module
@@ -988,18 +1027,6 @@ def create_app(config_object=None) -> Flask:
             logger.error(f"Failed to register IDGuard CLI commands: {e}")
     else:
         logger.warning("IDGuard CLI commands not available - skipping")
-
-    # ------------------------------------------------------------------
-    # Initialize Event Signal Handlers
-    # ------------------------------------------------------------------
-    try:
-        from app.events.signal_handlers import connect_event_signal_handlers
-        connect_event_signal_handlers()
-        logger.info("✅ Event signal handlers connected")
-    except ImportError:
-        logger.warning("Event signal handlers not found – skipping")
-    except Exception as e:
-        logger.error(f"Failed to connect event signal handlers: {e}")
 
     # ------------------------------------------------------------------
     # Module disabled page handler (always register - handles disabled modules gracefully)
@@ -1459,7 +1486,7 @@ def create_app(config_object=None) -> Flask:
         from flask import g as _g
         if hasattr(_g, '_cached_user_pubid') and _g._cached_user_pubid == public_id:
             return _g._cached_user
-        
+
         # Check Redis user cache (L2) to avoid DB queries
         _cache_key = f"user:{public_id}"
         _cached = cache.get(_cache_key)
@@ -1474,7 +1501,7 @@ def create_app(config_object=None) -> Flask:
                     return user
             except Exception:
                 pass  # Fall through to full query on cache reconstruction failure
-        
+
         try:
             user = (
                 db.session.query(User)
@@ -1645,7 +1672,8 @@ def create_app(config_object=None) -> Flask:
         from app.utils.module_guard import module_enabled
 
         # Skip checks for static files, health checks, and admin routes
-        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith('/admin'):
+        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith(
+                '/admin'):
             return
 
         # Extract module name from path

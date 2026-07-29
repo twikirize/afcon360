@@ -1115,6 +1115,9 @@ class BookingPayment(TransportBase):
     payment_method = db.Column(db.String(50), nullable=False)  # card, wallet, cash, bank_transfer
     payment_method_details = db.Column(JSONB, default=lambda: {})
 
+    # Canonical wallet reference
+    wallet_txn_id = db.Column(db.String(255), nullable=True, index=True)
+
     # Gateway integration
     payment_gateway = db.Column(db.String(50))
     gateway_transaction_id = db.Column(db.String(100))

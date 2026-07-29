@@ -17,11 +17,11 @@
         </a>
     </div>
 
-    {# ── ADD ROOM CATEGORY ─────────────────────────────────────────── #}
+    {# ── ADD ROOM TYPE ─────────────────────────────────────────── #}
     <div class="card mb-4 shadow-sm">
-        <div class="card-header bg-light fw-semibold">Add Room Category / Type</div>
+        <div class="card-header bg-light fw-semibold">Add Room Type</div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('accommodation.host_room_category_add', property_id=property.id) }}" class="row g-3">
+            <form method="POST" action="{{ url_for('accommodation.host_room_type_add', property_id=property.id) }}" class="row g-3">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="col-md-3">
                     <label class="form-label">Name *</label>
@@ -53,8 +53,8 @@
                 </div>
                 <div class="col-md-1 d-flex align-items-end">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="is_active" checked id="cat_active">
-                        <label class="form-check-label" for="cat_active">Active</label>
+                        <input class="form-check-input" type="checkbox" name="is_active" checked id="rt_active">
+                        <label class="form-check-label" for="rt_active">Active</label>
                     </div>
                 </div>
                 <div class="col-12">
@@ -62,43 +62,43 @@
                     <input type="text" name="description" class="form-control" placeholder="Optional description">
                 </div>
                 <div class="col-12">
-                    <button type="submit" class="btn btn-primary">Add Category</button>
+                    <button type="submit" class="btn btn-primary">Add Room Type</button>
                 </div>
             </form>
         </div>
     </div>
 
-    {% if not categories %}
+    {% if not room_types %}
     <div class="alert alert-info">
-        No room categories yet. Add a category above to start managing individual rooms.
+        No room types yet. Add a room type above to start managing individual rooms.
     </div>
     {% endif %}
 
-    {# ── CATEGORIES + ROOMS ────────────────────────────────────────── #}
-    {% for category in categories %}
+    {# ── ROOM TYPES + ROOMS ────────────────────────────────────────── #}
+    {% for room_type in room_types %}
     <div class="card mb-4 shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center bg-light">
             <div>
-                <span class="fw-semibold">{{ category.name }}</span>
-                <span class="badge bg-secondary ms-1">{{ category.rooms|length }} room(s)</span>
-                {% if not category.is_active %}<span class="badge bg-warning ms-1">Inactive</span>{% endif %}
+                <span class="fw-semibold">{{ room_type.name }}</span>
+                <span class="badge bg-secondary ms-1">{{ room_type.rooms|length }} room(s)</span>
+                {% if not room_type.is_active %}<span class="badge bg-warning ms-1">Inactive</span>{% endif %}
                 <small class="text-muted ms-2">
-                    {{ category.currency }} {{ "%.2f"|format(category.base_price_per_night) }}/night
-                    &middot; max {{ category.max_guests }} guests
+                    {{ room_type.currency }} {{ "%.2f"|format(room_type.base_price_per_night) }}/night
+                    &middot; max {{ room_type.max_guests }} guests
                 </small>
             </div>
             <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#add-room-{{ category.id }}">
+                    data-bs-target="#add-room-{{ room_type.id }}">
                 + Add Rooms
             </button>
         </div>
 
         {# Bulk add rooms #}
-        <div class="collapse" id="add-room-{{ category.id }}">
+        <div class="collapse" id="add-room-{{ room_type.id }}">
             <div class="card-body border-bottom bg-light-subtle">
                 <form method="POST" action="{{ url_for('accommodation.host_room_add', property_id=property.id) }}" class="row g-3">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="category_id" value="{{ category.id }}">
+                    <input type="hidden" name="room_type_id" value="{{ room_type.id }}">
                     <div class="col-md-4">
                         <label class="form-label">Room Numbers *</label>
                         <input type="text" name="room_numbers" class="form-control"
@@ -129,9 +129,9 @@
 
         {# Room grid #}
         <div class="card-body">
-            {% if category.rooms_sorted %}
+            {% if room_type.rooms_sorted %}
             <div class="row g-2">
-                {% for room in category.rooms_sorted %}
+                {% for room in room_type.rooms_sorted %}
                 <div class="col-auto">
                     <div class="card border {% if room.is_maintenance %}border-warning{% elif room.status == 'booked' %}border-danger{% else %}border-success{% endif %}" style="min-width: 150px;">
                         <div class="card-body py-2 px-3">
@@ -165,7 +165,7 @@
                 {% endfor %}
             </div>
             {% else %}
-            <p class="text-muted mb-0">No rooms in this category yet. Use "Add Rooms" above.</p>
+            <p class="text-muted mb-0">No rooms in this type yet. Use "Add Rooms" above.</p>
             {% endif %}
         </div>
     </div>

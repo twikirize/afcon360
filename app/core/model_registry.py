@@ -32,9 +32,9 @@ def register_all_models():
     except ImportError:
         pass
 
-    # Events payment config
+    # Wallet payment config
     try:
-        from app.events.payment_config import PaymentMethodConfig, EventPaymentPreference
+        from app.wallet.models.payment_method import PaymentMethodConfig, EventPaymentPreference
     except ImportError:
         pass
 

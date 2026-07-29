@@ -9,7 +9,7 @@
      data-accepted-types="{{ accepted_types|default('image/jpeg,image/png,image/webp,image/heic') }}"
      data-allow-video="{{ allow_video|default('false') }}">
 
-    {# Upload Drop Zone #}
+    {# ─── Upload Drop Zone ─── #}
     <div class="drop-zone" id="dropZone">
         <div class="drop-zone-content">
             <i class="bi bi-cloud-upload"></i>
@@ -23,28 +23,94 @@
                accept="{{ accepted_types|default('image/jpeg,image/png,image/webp,image/heic') }}{% if allow_video|default('false') == 'true' %},video/*{% endif %}">
     </div>
 
-    {# Upload Queue #}
+    {# ─── Upload Queue ─── #}
     <div class="upload-queue" id="uploadQueue"></div>
 
-    {# Progress Bar #}
+    {# ─── Progress Bar ─── #}
     <div class="upload-progress" id="uploadProgress" style="display: none;">
         <div class="progress-bar" style="width: 0%">0%</div>
     </div>
 
-    {# Stats #}
+    {# ─── Stats ─── #}
     <div class="media-stats">
         <span class="media-count">0 / {{ max_files|default(20) }}</span>
         <span class="media-hint">{{ media_hint|default('Upload images for your listing') }}</span>
     </div>
 
-    {# Gallery Grid #}
+    {# ─── Gallery Grid ─── #}
     <div class="media-grid" id="mediaGrid">
-        {# Existing media displayed here by MediaManager JS #}
-        <div class="media-loading">Loading media...</div>
+        {% if media_items %}
+            {% for media in media_items %}
+                <div class="media-item"
+                     data-index="{{ loop.index0 }}"
+                     data-id="{{ media.public_id or media.id or media.media_id }}">
+
+                    {# ── Media Preview ── #}
+                    {% if media.media_type == 'video' %}
+                        <video src="{{ media.url }}" muted preload="metadata"></video>
+                    {% else %}
+                        {% set img_url = media.thumbnail_url or media.url or media.urls.original or '' %}
+                        {% if img_url %}
+                            <img src="{{ img_url }}"
+                                 alt="{{ media.file_name or media.original_filename or 'Media' }}"
+                                 loading="lazy"
+                                 onerror="this.style.display='none'">
+                        {% else %}
+                            <div class="media-placeholder">🖼️</div>
+                        {% endif %}
+                    {% endif %}
+
+                    {# ── Cover Badge ── #}
+                    {% if media.is_cover %}
+                        <span class="media-cover-badge">⭐ Cover</span>
+                    {% endif %}
+
+                    {# ── Overlay Actions ── #}
+                    <div class="media-item-overlay">
+                        <div class="media-item-info">
+                            <span class="media-item-name">{{ media.file_name or media.original_filename or 'Untitled' }}</span>
+                        </div>
+                        <div class="media-item-actions">
+                            <button class="media-item-btn view"
+                                    data-action="view"
+                                    data-media-id="{{ media.public_id or media.id or media.media_id }}"
+                                    title="View">
+                                👁️
+                            </button>
+                            {% if not media.is_cover %}
+                                <button class="media-item-btn cover"
+                                        data-action="set-cover"
+                                        data-media-id="{{ media.public_id or media.id or media.media_id }}"
+                                        title="Set as cover">
+                                    ⭐
+                                </button>
+                            {% endif %}
+                            <button class="media-item-btn delete"
+                                    data-action="delete"
+                                    data-media-id="{{ media.public_id or media.id or media.media_id }}"
+                                    title="Delete">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="media-empty">
+                <span class="empty-icon">🖼️</span>
+                <p>No media uploaded yet</p>
+                <small>Upload images or videos using the drop zone above</small>
+            </div>
+        {% endif %}
     </div>
+
+    {# ─── Loading/Error States ─── #}
+    <div class="media-loading" id="mediaLoading" style="display: none;">Loading media...</div>
+    <div class="media-error" id="mediaError" style="display: none;">Failed to load media. Please refresh.</div>
+
 </div>
 
-{# Lightbox Modal #}
+{# ─── Lightbox Modal ─── #}
 <div class="media-lightbox" id="mediaLightbox">
     <div class="media-lightbox-content">
         <button class="media-lightbox-close" data-action="close-lightbox">&times;</button>
@@ -55,7 +121,7 @@
     </div>
 </div>
 
-{# CSS Styles #}
+{# ─── CSS Styles ─── #}
 <style>
 /* ================================
    Media Uploader Styles
@@ -68,7 +134,7 @@
     border: 1px solid var(--border-color, #e5e7eb);
 }
 
-/* Drop Zone */
+/* ── Drop Zone ── */
 .drop-zone {
     border: 2px dashed var(--border-color, #d1d5db);
     border-radius: 10px;
@@ -123,7 +189,7 @@
     display: none;
 }
 
-/* Upload Progress */
+/* ── Upload Progress ── */
 .upload-progress {
     height: 6px;
     background: var(--bg-progress, #e5e7eb);
@@ -146,7 +212,7 @@
     font-weight: 600;
 }
 
-/* Upload Queue */
+/* ── Upload Queue ── */
 .upload-queue {
     margin-bottom: 20px;
     max-height: 300px;
@@ -165,14 +231,8 @@
 }
 
 @keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .upload-item-preview {
@@ -251,7 +311,7 @@
     background: var(--bg-danger-light, #fef2f2);
 }
 
-/* Media Stats */
+/* ── Media Stats ── */
 .media-stats {
     display: flex;
     justify-content: space-between;
@@ -270,7 +330,7 @@
     color: var(--text-muted, #9ca3af);
 }
 
-/* Gallery Grid */
+/* ── Gallery Grid ── */
 .media-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -317,7 +377,7 @@
     border-radius: 8px;
 }
 
-/* Media Item */
+/* ── Media Item ── */
 .media-item {
     position: relative;
     aspect-ratio: 1;
@@ -441,7 +501,7 @@
     background: rgba(255,255,255,0.5);
 }
 
-/* Lightbox */
+/* ── Lightbox ── */
 .media-lightbox {
     position: fixed;
     inset: 0;
@@ -560,7 +620,7 @@
     font-weight: 600;
 }
 
-/* Notifications */
+/* ── Notifications ── */
 .media-notification {
     position: fixed;
     bottom: 30px;
@@ -592,27 +652,16 @@
 }
 
 @keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeOut {
-    from {
-        opacity: 1;
-    }
-    to {
-        opacity: 0;
-        transform: translateY(10px);
-    }
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(10px); }
 }
 
-/* Responsive */
+/* ── Responsive ── */
 @media (max-width: 768px) {
     .media-uploader {
         padding: 12px;
@@ -682,7 +731,7 @@
     }
 }
 
-/* Dark Mode Support */
+/* ── Dark Mode ── */
 @media (prefers-color-scheme: dark) {
     .media-uploader {
         --bg-card: #1f2937;

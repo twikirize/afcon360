@@ -87,10 +87,11 @@ def search_properties(params: dict = None) -> dict:
             selectinload(Property.reviews),
             selectinload(Property.amenities).selectinload(PropertyAmenity.amenity),
         ).filter(
-            Property.status == "active",
+            Property.status.in_(['active', 'published']),
             Property.is_verified == True,
             Property.is_deleted == False,
-            Property.is_active == True
+            Property.is_active == True,
+            Property.is_publicly_visible == True
         )
 
         # FULL-TEXT SEARCH using PostgreSQL tsvector (no Elasticsearch needed)

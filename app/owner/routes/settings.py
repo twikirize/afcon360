@@ -58,7 +58,35 @@ def require_owner_role(f):
 
 @owner_settings.route('/wallet')
 @require_owner_role
+
+@app.before_request
+def inject_media_stats():
+    from app.media.models import Media
+
+    # Get aggregate stats
+    stats = {
+        'total_processing_attempts': db.session.query(func.sum(Media.processing_attempts)).scalar() or 0,
+        'total_notified': db.session.query(Media.query.notified).count() or 0,
+        'total_media': Media.query.count()
+    }
+
+    g.media_stats = stats  # Store in Flask global
+
+@owner_settings.route('/wallet')
+@require_owner_role
+
+@app.before_request
+inject_media_stats
+
+@owner_settings.route('/wallet')
+@require_owner_role
+
 def wallet_settings():
+    # Existing code to build config
+    ...
+
+    # Merge with media stats
+    return render_template('owner/wallet_settings.html', config=config, stats=g.media_stats)
     """Wallet settings page"""
     # Get current wallet configuration
     config = {

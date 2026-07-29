@@ -109,47 +109,21 @@ class AccountRepository:
         self, 
         user_id: int, 
         currency: str = 'USD'
-    ) -> AccountModel:
+    ) -> Optional[AccountModel]:
         """
-        Get or create account atomically.
+        Get existing account. Returns None if not found.
         
-        Uses PostgreSQL ON CONFLICT to eliminate race conditions.
+        This method does NOT create accounts automatically.
+        Accounts must be created explicitly during wallet onboarding.
         
         Args:
             user_id: User ID
             currency: Currency code
             
         Returns:
-            AccountModel (existing or newly created)
+            AccountModel or None
         """
-        # Try to get existing first (with lock)
-        existing = self.get_by_user_id(user_id, currency, for_update=True)
-        if existing:
-            return existing
-        
-        # Create new account using ON CONFLICT DO NOTHING
-        stmt = pg_insert(AccountModel).values(
-            user_id=user_id,
-            currency=currency,
-            is_frozen=False,
-            daily_volume=0,
-            monthly_volume=0,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc)
-        ).on_conflict_do_nothing(
-            index_elements=['user_id', 'currency']
-        ).returning(AccountModel)
-        
-        result = self.db.execute(stmt)
-        self.db.flush()
-        
-        # If insert succeeded, return the new account
-        new_account = result.scalar_one_or_none()
-        if new_account:
-            return new_account
-        
-        # Another transaction created it - fetch it now
-        return self.get_by_user_id(user_id, currency, for_update=True)
+        return self.get_by_user_id(user_id, currency)
 
     def freeze_account(
         self, 

@@ -15,9 +15,10 @@ class CardProcessor(PaymentProcessor):
         idempotency_key: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        # TODO: Integrate with card payment gateway
-        # For now, return a placeholder success
-        return True, f"card_{idempotency_key[:16]}", None
+        raise NotImplementedError(
+            "CardProcessor is not yet implemented. "
+            "Use 'wallet', 'mobile_money', 'mock_gateway', or 'invoice' as payment method."
+        )
 
     def refund(
         self,
@@ -25,5 +26,4 @@ class CardProcessor(PaymentProcessor):
         amount: Decimal,
         reason: str,
     ) -> Tuple[bool, Optional[str]]:
-        # TODO: Integrate with card payment gateway
-        return True, None
+        raise NotImplementedError("CardProcessor is not yet implemented.")

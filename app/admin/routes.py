@@ -1381,7 +1381,7 @@ def wallet_control():
 @admin_required
 def payment_methods():
     """Payment methods configuration page"""
-    from app.events.models.payment_config import PaymentMethodConfig
+    from app.wallet import PaymentMethodConfig
     
     # Initialize defaults if none exist
     PaymentMethodConfig.initialize_defaults()

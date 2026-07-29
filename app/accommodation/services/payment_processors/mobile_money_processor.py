@@ -15,9 +15,10 @@ class MobileMoneyProcessor(PaymentProcessor):
         idempotency_key: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        # TODO: Integrate with mobile money API
-        # For now, return a placeholder success
-        return True, f"mm_{idempotency_key[:16]}", None
+        raise NotImplementedError(
+            "MobileMoneyProcessor is not yet implemented. "
+            "Use 'wallet', 'mock_gateway', or 'invoice' as payment method."
+        )
 
     def refund(
         self,
@@ -25,5 +26,4 @@ class MobileMoneyProcessor(PaymentProcessor):
         amount: Decimal,
         reason: str,
     ) -> Tuple[bool, Optional[str]]:
-        # TODO: Integrate with mobile money API
-        return True, None
+        raise NotImplementedError("MobileMoneyProcessor is not yet implemented.")

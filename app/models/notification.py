@@ -15,6 +15,8 @@ class NotificationType(enum.Enum):
     PROPERTY_CHANGES_REQUESTED = "property_changes_requested"
     PROPERTY_SUSPENDED = "property_suspended"
     PROPERTY_REINSTATED = "property_reinstated"
+    PROPERTY_ARCHIVED = "property_archived"
+    PROPERTY_RESTORED = "property_restored"
     BOOKING_CONFIRMED = "booking_confirmed"
     BOOKING_CANCELLED = "booking_cancelled"
     REVIEW_RECEIVED = "review_received"

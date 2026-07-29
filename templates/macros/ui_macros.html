@@ -1,0 +1,54 @@
+{% macro status_badge(status, color_map=none) %}
+  {% set default_colors = {
+    'draft': 'secondary',
+    'pending': 'warning',
+    'pending_review': 'warning',
+    'approved': 'success',
+    'active': 'success',
+    'published': 'success',
+    'suspended': 'danger',
+    'archived': 'secondary',
+    'cancelled': 'danger',
+    'confirmed': 'success',
+    'checked_in': 'info',
+    'checked_out': 'secondary',
+    'refunded': 'dark'
+  } %}
+  {% set colors = color_map or default_colors %}
+  <span class="badge bg-{{ colors.get(status, 'secondary') }}">
+    {{ status|replace('_', ' ')|title }}
+  </span>
+{% endmacro %}
+
+{% macro action_button(label, url, icon='', color='primary', size='sm') %}
+  <a href="{{ url }}" class="btn btn-{{ color }} btn-{{ size }}">
+    {% if icon %}<i class="fas fa-{{ icon }} me-1"></i>{% endif %}
+    {{ label }}
+  </a>
+{% endmacro %}
+
+{% macro modal_dialog(id, title, body, footer) %}
+  <div class="modal fade" id="{{ id }}" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ title }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">{{ body }}</div>
+        <div class="modal-footer">{{ footer }}</div>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro empty_state(icon, title, message, action_url=none, action_label=none) %}
+  <div class="text-center py-5">
+    <i class="fas fa-{{ icon }} fa-3x text-muted mb-3"></i>
+    <h3>{{ title }}</h3>
+    <p class="text-muted">{{ message }}</p>
+    {% if action_url and action_label %}
+      <a href="{{ action_url }}" class="btn btn-primary">{{ action_label }}</a>
+    {% endif %}
+  </div>
+{% endmacro %}

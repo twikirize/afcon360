@@ -4,6 +4,8 @@
 {% block module_styles %}
 <style>
 .acc-admin { padding: 2rem 1.5rem; }
+
+/* ── Header ── */
 .acc-admin-header {
   background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
   color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
@@ -17,7 +19,26 @@
 }
 .acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
 
-/* ── toolbar ── */
+/* ── Stats Cards ── */
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.stat-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 1rem; text-align: center; cursor: pointer; transition: all .2s;
+}
+.stat-card:hover { border-color: var(--brand-primary); transform: translateY(-2px); }
+.stat-card .number { font-size: 1.8rem; font-weight: 700; }
+.stat-card .label { font-size: .7rem; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; }
+.stat-card.pending .number { color: #f59e0b; }
+.stat-card.approved .number { color: #10b981; }
+.stat-card.rejected .number { color: #ef4444; }
+.stat-card.total .number { color: #3b82f6; }
+.stat-card.published .number { color: #8b5cf6; }
+.stat-card.needs_info .number { color: #ef4444; }
+
+/* ── Toolbar ── */
 .toolbar {
   display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem;
 }
@@ -32,74 +53,155 @@
   border-radius: 8px; font-size: .88rem; background: var(--bg-surface,#fff);
   color: var(--text-primary,#111);
 }
-.toolbar button, .toolbar a.btn-tool {
-  padding: .5rem 1.1rem; border-radius: 8px; font-size: .85rem; font-weight: 600;
-  border: none; cursor: pointer; text-decoration: none; transition: background .2s;
-}
-.btn-tool-primary { background: var(--brand-primary,#047857); color: #fff; }
-.btn-tool-primary:hover { background: #065f46; color: #fff; }
-.btn-tool-outline { background: transparent; border: 1px solid var(--border-light,#d1d5db);
-                    color: var(--text-primary,#111); }
-.btn-tool-outline:hover { background: var(--bg-surface-alt,#f3f4f6); }
 
-/* ── table ── */
+/* ── Bulk Actions Bar ── */
+.bulk-bar {
+  background: #f0fdf4; border: 1px solid #d1fae5; border-radius: 8px;
+  padding: .75rem 1rem; margin-bottom: 1rem;
+  display: none; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.bulk-bar.active { display: flex; }
+.bulk-bar .selected-count { font-weight: 600; font-size: .9rem; }
+.bulk-bar .btn-bulk {
+  padding: .3rem .8rem; border: none; border-radius: 5px;
+  font-size: .75rem; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.btn-bulk-approve { background: #d1fae5; color: #065f46; }
+.btn-bulk-approve:hover { background: #a7f3d0; }
+.btn-bulk-publish { background: #10b981; color: #fff; }
+.btn-bulk-publish:hover { background: #059669; }
+.btn-bulk-reject { background: #fee2e2; color: #b91c1c; }
+.btn-bulk-reject:hover { background: #fca5a5; }
+.btn-bulk-suspend { background: #e5e7eb; color: #374151; }
+.btn-bulk-suspend:hover { background: #d1d5db; }
+
+/* ── Status Badges ── */
+.status-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 20px;
+  font-size: .65rem; font-weight: 700; text-transform: uppercase;
+  white-space: nowrap;
+}
+.sb-draft             { background: #f3f4f6; color: #6b7280; }
+.sb-submitted         { background: #dbeafe; color: #1d4ed8; }
+.sb-under_review      { background: #fef3c7; color: #92400e; }
+.sb-approved          { background: #dbeafe; color: #1e40af; }
+.sb-needs_information { background: #fee2e2; color: #b91c1c; }
+.sb-active            { background: #d1fae5; color: #065f46; }
+.sb-published         { background: #d1fae5; color: #065f46; font-weight: 800; border: 2px solid #10b981; }
+.sb-suspended         { background: #fee2e2; color: #b91c1c; }
+.sb-archived          { background: #e5e7eb; color: #374151; }
+
+/* ── Trust Score Bar ── */
+.trust-bar {
+  width: 40px; height: 4px; background: #e5e7eb; border-radius: 3px; overflow: hidden;
+  display: inline-block; vertical-align: middle; margin-right: 3px;
+}
+.trust-bar .fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.trust-bar .fill.good { background: #10b981; }
+.trust-bar .fill.medium { background: #f59e0b; }
+.trust-bar .fill.bad { background: #ef4444; }
+.trust-text { font-size: .65rem; font-weight: 600; }
+
+/* ── Verification Badges ── */
+.verification-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 12px;
+  font-size: .58rem; font-weight: 600;
+}
+.vb-verified   { background: #d1fae5; color: #065f46; }
+.vb-pending    { background: #fef3c7; color: #92400e; }
+.vb-unverified { background: #f3f4f6; color: #6b7280; }
+.vb-rejected   { background: #fee2e2; color: #b91c1c; }
+
+.visibility-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 12px;
+  font-size: .58rem; font-weight: 600;
+  background: #dbeafe; color: #1d4ed8;
+}
+
+/* ── Table ── */
 .data-card {
   background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
   border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.05);
 }
-.data-card table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.data-card table { width: 100%; border-collapse: collapse; font-size: .8rem; }
 .data-card thead th {
-  background: var(--bg-surface-alt,#f9fafb); padding: .85rem 1rem;
-  font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  background: var(--bg-surface-alt,#f9fafb); padding: .6rem .75rem;
+  font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
   color: var(--text-secondary,#6b7280); border-bottom: 1px solid var(--border-light,#e5e7eb);
   white-space: nowrap;
 }
 .data-card tbody td {
-  padding: .85rem 1rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
+  padding: .6rem .75rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
   color: var(--text-primary,#111); vertical-align: middle;
 }
 .data-card tbody tr:last-child td { border-bottom: none; }
 .data-card tbody tr:hover td { background: var(--bg-surface-alt,#f9fafb); }
+.data-card tbody tr.selected { background: #f0fdf4; }
 
 .prop-img-sm {
-  width: 54px; height: 40px; object-fit: cover; border-radius: 6px;
+  width: 40px; height: 30px; object-fit: cover; border-radius: 4px;
   background: var(--bg-surface-alt,#f3f4f6);
 }
 .prop-img-sm.no-img {
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 1.3rem; color: #9ca3af;
+  font-size: .8rem; color: #9ca3af;
+  width: 40px; height: 30px;
 }
 
-.status-badge {
-  display: inline-block; padding: 2px 9px; border-radius: 20px;
-  font-size: .72rem; font-weight: 700; text-transform: uppercase;
-  white-space: nowrap;
-}
-.sb-active         { background: #d1fae5; color: #065f46; }
-.sb-pending_review { background: #fef3c7; color: #92400e; }
-.sb-suspended      { background: #fee2e2; color: #b91c1c; }
-.sb-draft          { background: #f3f4f6; color: #6b7280; }
-.sb-archived       { background: #e5e7eb; color: #374151; }
-
+/* ── Action Buttons ── */
 .action-cell { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
 .btn-sm-act {
-  padding: 3px 10px; border-radius: 6px; font-size: .77rem; font-weight: 600;
-  text-decoration: none; border: none; cursor: pointer; transition: background .2s;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 32px; height: 32px; padding: 0 .6rem;
+  border-radius: 6px; font-size: .7rem; font-weight: 600;
+  text-decoration: none; border: none; cursor: pointer;
+  transition: all .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.05);
 }
-.btn-suspend  { background: #fee2e2; color: #b91c1c; }
-.btn-suspend:hover  { background: #fca5a5; }
-.btn-activate { background: #d1fae5; color: #065f46; }
-.btn-activate:hover { background: #a7f3d0; }
-.btn-view-sm  { background: var(--bg-surface-alt,#f3f4f6); color: var(--text-primary,#111);
-                border: 1px solid var(--border-light,#e5e7eb); }
-.btn-view-sm:hover { background: #e5e7eb; color: var(--text-primary,#111); }
+.btn-sm-act:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+.btn-sm-act:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.btn-sm-act i { font-size: .9rem; line-height: 1; }
+.btn-view-sm  { background: #f3f4f6; color: #111; border: 1px solid #e5e7eb; }
+.btn-view-sm:hover { background: #e5e7eb; border-color: #d1d5db; }
 .btn-edit-sm  { background: #dbeafe; color: #1d4ed8; }
 .btn-edit-sm:hover { background: #bfdbfe; }
+.btn-approve  { background: #d1fae5; color: #065f46; }
+.btn-approve:hover { background: #a7f3d0; }
+.btn-publish  { background: #10b981; color: #fff; }
+.btn-publish:hover { background: #059669; }
+.btn-reject   { background: #fee2e2; color: #b91c1c; }
+.btn-reject:hover { background: #fca5a5; }
+.btn-changes  { background: #fef3c7; color: #92400e; }
+.btn-changes:hover { background: #fde68a; }
+.btn-suspend  { background: #e5e7eb; color: #374151; }
+.btn-suspend:hover { background: #d1d5db; }
 
+/* ── Checkbox ── */
+.select-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--brand-primary); }
+
+/* ── Modal ── */
+.modal-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+  background: #fff; border-radius: 14px; padding: 2rem; max-width: 500px; width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.modal-box textarea { width: 100%; min-height: 100px; border: 1px solid #d1d5db; border-radius: 8px; padding: .75rem; }
+
+/* ── Empty State ── */
 .empty-box { text-align: center; padding: 4rem 2rem; color: var(--text-secondary,#9ca3af); }
 .empty-box i { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
 
 .result-count { font-size: .83rem; color: var(--text-secondary,#6b7280); margin-bottom: 1rem; }
+
+.missing-badge {
+  display: inline-block; padding: 1px 4px; border-radius: 3px;
+  font-size: .5rem; font-weight: 600; margin-left: 2px;
+}
+.missing-badge.danger { background: #fee2e2; color: #b91c1c; }
+.missing-badge.warning { background: #fef3c7; color: #92400e; }
 </style>
 {% endblock %}
 
@@ -109,52 +211,29 @@
   {# ── Header ── #}
   <div class="acc-admin-header">
     <div>
-      <h1><i class="bi bi-house-door-fill me-2"></i>Property Management</h1>
-      <p>Browse, search, and manage all platform property listings</p>
+      <h1><i class="bi bi-house-door-fill me-2"></i>Property Command Center</h1>
+      <p>Browse, moderate, approve, and publish properties with bulk actions</p>
     </div>
     <nav class="acc-admin-nav">
       <a href="{{ url_for('accommodation.admin_dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
-      <a href="{{ url_for('accommodation.admin_verification') }}"><i class="bi bi-shield-check me-1"></i>Verification</a>
       <a href="{{ url_for('accommodation.admin_analytics') }}"><i class="bi bi-graph-up me-1"></i>Analytics</a>
     </nav>
   </div>
 
-  {# ── Lifecycle & Public Visibility Guide Box ── #}
-  <div class="card mb-4 border-0 shadow-sm" style="border-radius: 12px; background: #f8fafc; border-left: 5px solid var(--brand-primary, #047857) !important;">
-    <div class="card-body p-4">
-      <h5 class="fw-bold text-dark mb-2"><i class="bi bi-info-circle-fill text-success me-2"></i>Property Verification & Public Visibility Workflow</h5>
-      <p class="text-muted small mb-3">To ensure safety and compliance, listings must pass through strict lifecycle stages before appearing on the public accommodation selection page (<a href="{{ url_for('accommodation.home') }}" target="_blank">/accommodation/</a>).</p>
-      <div class="row g-3 text-center">
-        <div class="col-md-3">
-          <div class="p-3 bg-white rounded border">
-            <span class="badge bg-secondary mb-1">Stage 1</span>
-            <h6 class="fw-bold mb-1">Draft / Created</h6>
-            <p class="text-muted mb-0" style="font-size: .78rem;">Host fills out property details, rooms & photos. Next: Submit for review.</p>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="p-3 bg-white rounded border" style="border-left: 3px solid #f59e0b !important;">
-            <span class="badge bg-warning text-dark mb-1">Stage 2</span>
-            <h6 class="fw-bold mb-1">Pending Review</h6>
-            <p class="text-muted mb-0" style="font-size: .78rem;">Awaiting admin moderation. Next: Admin inspects & clicks Approve.</p>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="p-3 bg-white rounded border" style="border-left: 3px solid #10b981 !important;">
-            <span class="badge bg-success mb-1">Stage 3</span>
-            <h6 class="fw-bold mb-1">Verified & Active 🛡️</h6>
-            <p class="text-muted mb-0" style="font-size: .78rem;">Admin approved with <code>is_verified=True</code>. Appears with ⭐ and tick!</p>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="p-3 bg-white rounded border" style="border-left: 3px solid #ef4444 !important;">
-            <span class="badge bg-danger mb-1">⚠️ Active Only</span>
-            <h6 class="fw-bold mb-1">Unverified Active</h6>
-            <p class="text-muted mb-0" style="font-size: .78rem;">Status is active but <code>is_verified=False</code>. <strong>Hidden from public search</strong> until verified.</p>
-          </div>
-        </div>
-      </div>
-    </div>
+  {# ── Stats Cards ── #}
+  {% set stats = {
+    'total': properties.total,
+    'pending': properties.items | selectattr('status', 'equalto', 'under_review') | list | length + properties.items | selectattr('status', 'equalto', 'submitted') | list | length,
+    'approved': properties.items | selectattr('status', 'equalto', 'approved') | list | length,
+    'published': properties.items | selectattr('status', 'equalto', 'published') | list | length,
+    'needs_info': properties.items | selectattr('status', 'equalto', 'needs_information') | list | length,
+  } %}
+  <div class="stats-row">
+    <div class="stat-card total"><div class="number">{{ stats.total }}</div><div class="label">Total</div></div>
+    <div class="stat-card pending"><div class="number">{{ stats.pending }}</div><div class="label">Pending Review</div></div>
+    <div class="stat-card approved"><div class="number">{{ stats.approved }}</div><div class="label">Approved</div></div>
+    <div class="stat-card published"><div class="number">{{ stats.published }}</div><div class="label">Published 🎉</div></div>
+    <div class="stat-card needs_info"><div class="number">{{ stats.needs_info }}</div><div class="label">Needs Info</div></div>
   </div>
 
   {# ── Flash messages ── #}
@@ -167,30 +246,83 @@
   {% endwith %}
 
   {# ── Toolbar ── #}
-  <div class="toolbar">
-    <form method="GET" action="{{ url_for('accommodation.admin_properties') }}">
-      <input type="text" name="q" value="{{ search_q }}" placeholder="Search title, city, country…">
-      <select name="status">
-        <option value="all" {{ 'selected' if status_filter == 'all' }}>All Statuses</option>
-        {% for s in status_options %}
-        <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s | replace('_',' ') | title }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="btn-tool-primary">
-        <i class="bi bi-search me-1"></i>Search
-      </button>
+  <div class="card mb-4 border-0 shadow-sm p-3" style="border-radius: 12px;">
+    <form method="GET" action="{{ url_for('accommodation.admin_properties') }}" class="row g-2">
+      <div class="col-md-2">
+        <label class="form-label small fw-bold text-muted">Search</label>
+        <input type="text" name="q" value="{{ search_q }}" class="form-control form-control-sm" placeholder="Title, city…">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-bold text-muted">Stage</label>
+        <select name="workflow_stage" class="form-select form-select-sm">
+          <option value="all" {{ 'selected' if workflow_stage == 'all' }}>All</option>
+          {% for st in workflow_stages %}
+          <option value="{{ st }}" {{ 'selected' if workflow_stage == st }}>{{ st | replace('_',' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-bold text-muted">Verification</label>
+        <select name="verification_status" class="form-select form-select-sm">
+          <option value="all" {{ 'selected' if verification_status == 'all' }}>All</option>
+          {% for vs in verification_options %}
+          <option value="{{ vs }}" {{ 'selected' if verification_status == vs }}>{{ vs | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-bold text-muted">Missing</label>
+        <select name="missing_info" class="form-select form-select-sm">
+          <option value="all" {{ 'selected' if missing_info == 'all' }}>All</option>
+          <option value="no_photos" {{ 'selected' if missing_info == 'no_photos' }}>📷 Photos</option>
+          <option value="no_pricing" {{ 'selected' if missing_info == 'no_pricing' }}>💰 Pricing</option>
+          <option value="no_rooms" {{ 'selected' if missing_info == 'no_rooms' }}>🛏️ Capacity</option>
+          <option value="no_kyc" {{ 'selected' if missing_info == 'no_kyc' }}>🔒 KYC</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-bold text-muted">Visibility</label>
+        <select name="visibility" class="form-select form-select-sm">
+          <option value="all" {{ 'selected' if visibility_filter == 'all' }}>All</option>
+          {% for v in visibility_options %}
+          <option value="{{ v }}" {{ 'selected' if visibility_filter == v }}>{{ v | replace('_',' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end gap-1">
+        <button type="submit" class="btn btn-success btn-sm w-100 fw-bold">
+          <i class="bi bi-filter"></i> Filter
+        </button>
+        <a href="{{ url_for('accommodation.admin_properties') }}" class="btn btn-outline-secondary btn-sm" title="Reset">
+          <i class="bi bi-arrow-counterclockwise"></i>
+        </a>
+      </div>
     </form>
-    {% if search_q or status_filter != 'all' %}
-    <a href="{{ url_for('accommodation.admin_properties') }}" class="btn-sm-act btn-view-sm">
-      <i class="bi bi-x-lg me-1"></i>Clear
-    </a>
-    {% endif %}
+  </div>
+
+  {# ── Bulk Actions Bar ── #}
+  <div class="bulk-bar" id="bulkBar">
+    <span class="selected-count"><span id="selectedCount">0</span> selected</span>
+    <span style="color: #6b7280; font-size: .8rem;">|</span>
+    <button class="btn-bulk btn-bulk-approve" onclick="bulkAction('approve')" title="Approve all selected">
+      <i class="bi bi-check-lg"></i> Approve
+    </button>
+    <button class="btn-bulk btn-bulk-publish" onclick="bulkAction('publish')" title="Publish all selected">
+      <i class="bi bi-globe"></i> Publish
+    </button>
+    <button class="btn-bulk btn-bulk-reject" onclick="bulkAction('reject')" title="Reject all selected">
+      <i class="bi bi-x-lg"></i> Reject
+    </button>
+    <button class="btn-bulk btn-bulk-suspend" onclick="bulkAction('suspend')" title="Suspend all selected">
+      <i class="bi bi-ban"></i> Suspend
+    </button>
+    <button class="btn-bulk" style="background:#f3f4f6; color:#6b7280;" onclick="clearSelection()">
+      <i class="bi bi-x-circle"></i> Clear
+    </button>
   </div>
 
   <p class="result-count">
-    Showing {{ properties.total }} {{ 'result' if properties.total == 1 else 'results' }}
-    {% if search_q %} for "<strong>{{ search_q }}</strong>"{% endif %}
-    {% if status_filter != 'all' %} · status: <strong>{{ status_filter | replace('_',' ') | title }}</strong>{% endif %}
+    Showing <strong>{{ properties.total }}</strong> {{ 'result' if properties.total == 1 else 'results' }}
   </p>
 
   {# ── Table ── #}
@@ -199,81 +331,152 @@
     <table>
       <thead>
         <tr>
-          <th>Thumbnail</th>
-          <th>Title</th>
-          <th>Location</th>
+          <th><input type="checkbox" id="selectAll" class="select-checkbox" onchange="toggleAll()"></th>
+          <th>Thumb</th>
+          <th>Property</th>
           <th>Host</th>
-          <th>Type</th>
-          <th>Price/Night</th>
           <th>Status</th>
-          <th>Bookings</th>
-          <th>Rating</th>
+          <th>Trust</th>
+          <th>Verification</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for prop in properties.items %}
-        <tr>
+        {% set prop_status = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
+        <tr id="prop-{{ prop.id }}">
+          <td><input type="checkbox" class="select-checkbox prop-checkbox" data-id="{{ prop.id }}" onchange="updateBulkBar()"></td>
           <td>
             {% if prop.main_image %}
-              <img src="{{ prop.main_image }}" class="prop-img-sm" alt="">
+            <img src="{{ prop.main_image }}" class="prop-img-sm" alt="prop">
             {% else %}
-              <span class="prop-img-sm no-img"><i class="bi bi-image"></i></span>
+            <div class="prop-img-sm no-img"><i class="bi bi-image"></i></div>
             {% endif %}
           </td>
           <td>
-            <strong>{{ prop.title | truncate(40) }}</strong><br>
-            <small class="text-muted">ID {{ prop.id }}</small>
-          </td>
-          <td>{{ prop.city }}, {{ prop.country }}</td>
-          <td>
-            <small>{{ prop.owner_display_name | truncate(25) }}</small><br>
-            <small class="text-muted">{{ 'Individual' if prop.owner_user_id else 'Org' }}</small>
-          </td>
-          <td>
-            {{ (prop.property_type.value if prop.property_type and prop.property_type.value else (prop.property_type|string)) | replace('_',' ') | title }}
-          </td>
-          <td>${{ "{:,.0f}".format(prop.base_price_per_night) }}</td>
-          <td>
-            {% set sv = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
-            <span class="status-badge sb-{{ sv }}">{{ sv | replace('_',' ') | title }}</span>
-            {% if prop.is_verified %}
-            <i class="bi bi-patch-check-fill text-success ms-1" title="Verified"></i>
+            <strong>{{ prop.title | truncate(25) }}</strong><br>
+            <span class="text-muted" style="font-size: .6rem;"><code>{{ prop.public_id[:8] if prop.public_id else prop.id }}...</code></span>
+            <div style="font-size: .6rem; color: #6b7280;">{{ prop.city }}, {{ prop.country }}</div>
+            {% if prop.status == 'needs_information' %}
+            <span class="missing-badge danger">⚠️ Needs Info</span>
+            {% endif %}
+            {% if not prop.main_image or not prop.gallery %}
+            <span class="missing-badge warning">📷</span>
             {% endif %}
           </td>
-          <td class="text-center">{{ prop.total_bookings }}</td>
+          <td style="font-size: .7rem;">
+            {{ prop.owner_user.email | truncate(18) if prop.owner_user else ('Org #' + prop.owner_org_id|string if prop.owner_org_id else 'Unknown') }}
+            <div style="font-size: .6rem; color: #6b7280;">
+              {% if prop.owner_user and prop.owner_user.kyc_verified %}✅ KYC Verified{% else %}⏳ KYC Pending{% endif %}
+            </div>
+          </td>
           <td>
-            {% if prop.overall_rating and prop.total_reviews > 0 %}
-            <i class="bi bi-star-fill text-warning" style="font-size:.75rem;"></i>
-            {{ "%.1f"|format(prop.overall_rating) }}
-            <small class="text-muted">({{ prop.total_reviews }})</small>
+            <span class="status-badge sb-{{ prop_status }}">
+              {{ prop_status | replace('_',' ') | title }}
+            </span>
+          </td>
+          <td style="min-width: 60px;">
+            <div style="display: flex; flex-direction: column; gap: 1px; font-size: .6rem;">
+              <div>
+                <span class="trust-bar"><span class="fill {% if prop.trust_score >= 70 %}good{% elif prop.trust_score >= 40 %}medium{% else %}bad{% endif %}" style="width: {{ prop.trust_score or 0 }}%;"></span></span>
+                <span class="trust-text">{{ "%.0f"|format(prop.trust_score or 0) }}</span>
+              </div>
+              <div>
+                <span class="trust-bar"><span class="fill {% if prop.readiness_score >= 70 %}good{% elif prop.readiness_score >= 40 %}medium{% else %}bad{% endif %}" style="width: {{ prop.readiness_score or 0 }}%;"></span></span>
+                <span class="trust-text">{{ "%.0f"|format(prop.readiness_score or 0) }}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="verification-badge vb-{{ prop.verification_status }}">
+              {{ prop.verification_status | title }}
+            </span>
+            <br>
+            <span class="visibility-badge">{{ prop.visibility | replace('_',' ') | title }}</span>
+            {% if prop.is_publicly_visible %}
+            <span style="font-size: .6rem; color: #10b981;">🌐</span>
             {% else %}
-            <span class="text-muted">—</span>
+            <span style="font-size: .6rem; color: #6b7280;">🔒</span>
             {% endif %}
           </td>
           <td>
             <div class="action-cell">
-              <a href="{{ url_for('accommodation.moderate_property', property_id=prop.id) }}"
-                 class="btn-sm-act btn-view-sm" title="Review">
+              {# ── View ── #}
+              <a href="{{ url_for('accommodation.guest_detail', identifier=prop.public_id) }}" class="btn-sm-act btn-view-sm" target="_blank" title="View">
+                <i class="bi bi-eye"></i>
+              </a>
+
+              {# ── Admin Edit (new) ── #}
+              <a href="{{ url_for('accommodation.admin_edit_property', property_id=prop.id) }}" 
+                 class="btn-sm-act btn-edit-sm" title="Edit Property (Admin)" style="background:#e0e7ff; color:#3730a3;">
+                  <i class="bi bi-pencil-square"></i>
+              </a>
+
+              {# ── Moderate (Deep Dive) ── #}
+              <a href="{{ url_for('accommodation.moderate_property', property_id=prop.id) }}" class="btn-sm-act btn-edit-sm" title="Inspect">
                 <i class="bi bi-clipboard-check"></i>
               </a>
-              <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}"
-                 class="btn-sm-act btn-edit-sm">
-                <i class="bi bi-pencil"></i>
-              </a>
-              {% set prop_status = prop.status.value if prop.status and prop.status.value else (prop.status|string) %}
-              {% if prop_status == 'pending_review' %}
-              <form action="{{ url_for('accommodation.moderate_property_approve', property_id=prop.id) }}" method="POST" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-sm-act btn-activate" title="Approve">
+
+              {# ── Stage 1: SUBMITTED / UNDER_REVIEW / PENDING_REVIEW → Approve ── #}
+              {% if prop_status in ['submitted', 'under_review', 'pending_review'] %}
+              <form method="POST" action="{{ url_for('accommodation.moderate_property_approve', property_id=prop.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Approve this property?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn-sm-act btn-approve" title="Approve">
                   <i class="bi bi-check-lg"></i>
                 </button>
               </form>
-              <form action="{{ url_for('accommodation.moderate_property_reject', property_id=prop.id) }}" method="POST" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="reason" value="Please review and resubmit">
-                <button type="submit" class="btn-sm-act btn-suspend" title="Reject">
+              {% endif %}
+
+              {# ── Stage 2: APPROVED → Publish ── #}
+              {% if prop_status == 'approved' %}
+              <form method="POST" action="{{ url_for('accommodation.moderate_property_publish', property_id=prop.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Publish this property? It will become public.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn-sm-act btn-publish" title="Publish">
+                  <i class="bi bi-globe"></i>
+                </button>
+              </form>
+              {% endif %}
+
+              {# ── Stage: ANY REVIEW → Request Changes ── #}
+              {% if prop_status in ['submitted', 'under_review', 'pending_review'] %}
+              <button class="btn-sm-act btn-changes" title="Request Changes" onclick="openChangeModal({{ prop.id }})">
+                <i class="bi bi-pencil"></i>
+              </button>
+              {% endif %}
+
+              {# ── Stage: ANY REVIEW → Reject ── #}
+              {% if prop_status in ['submitted', 'under_review', 'pending_review'] %}
+              <form method="POST" action="{{ url_for('accommodation.moderate_property_reject', property_id=prop.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Reject this property?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="reason" value="Property does not meet platform standards"/>
+                <button type="submit" class="btn-sm-act btn-reject" title="Reject">
                   <i class="bi bi-x-lg"></i>
+                </button>
+              </form>
+              {% endif %}
+
+              {# ── Stage: ACTIVE/PUBLISHED → Suspend ── #}
+              {% if prop_status in ['active', 'published'] %}
+              <form method="POST" action="{{ url_for('accommodation.moderate_property_suspend', property_id=prop.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Suspend this property?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="reason" value="Suspended by moderator"/>
+                <button type="submit" class="btn-sm-act btn-suspend" title="Suspend">
+                  <i class="bi bi-ban"></i>
+                </button>
+              </form>
+              {% endif %}
+
+              {# ── Stage: SUSPENDED → Reinstate ── #}
+              {% if prop_status == 'suspended' %}
+              <form method="POST" action="{{ url_for('accommodation.moderate_property_reinstate', property_id=prop.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Reinstate this property?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn-sm-act" style="background:#dbeafe; color:#1d4ed8;" title="Reinstate">
+                  <i class="bi bi-arrow-counterclockwise"></i>
                 </button>
               </form>
               {% endif %}
@@ -291,7 +494,7 @@
     <ul class="pagination">
       {% if properties.has_prev %}
       <li class="page-item">
-        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.prev_num, q=search_q, status=status_filter) }}">
+        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.prev_num, q=search_q, workflow_stage=workflow_stage, verification_status=verification_status, visibility=visibility_filter, missing_info=missing_info) }}">
           <i class="bi bi-chevron-left"></i>
         </a>
       </li>
@@ -299,7 +502,7 @@
       {% for p in properties.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
         {% if p %}
         <li class="page-item {{ 'active' if p == properties.page }}">
-          <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=p, q=search_q, status=status_filter) }}">{{ p }}</a>
+          <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=p, q=search_q, workflow_stage=workflow_stage, verification_status=verification_status, visibility=visibility_filter, missing_info=missing_info) }}">{{ p }}</a>
         </li>
         {% else %}
         <li class="page-item disabled"><span class="page-link">…</span></li>
@@ -307,7 +510,7 @@
       {% endfor %}
       {% if properties.has_next %}
       <li class="page-item">
-        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.next_num, q=search_q, status=status_filter) }}">
+        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.next_num, q=search_q, workflow_stage=workflow_stage, verification_status=verification_status, visibility=visibility_filter, missing_info=missing_info) }}">
           <i class="bi bi-chevron-right"></i>
         </a>
       </li>
@@ -325,4 +528,102 @@
   {% endif %}
 
 </div>
+
+{# ── Request Changes Modal ── #}
+<div class="modal-overlay" id="changeModal">
+  <div class="modal-box">
+    <h5 class="mb-3">📝 Request Changes</h5>
+    <form id="changeForm" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div class="mb-3">
+        <label class="form-label">What needs to be changed?</label>
+        <textarea name="changes" class="form-control" placeholder="Please add more photos, complete description, verify location..." required></textarea>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Additional notes</label>
+        <textarea name="notes" class="form-control" placeholder="Optional notes..."></textarea>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-warning">Send Request</button>
+        <button type="button" class="btn btn-secondary" onclick="closeChangeModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ── Bulk Actions ──
+function toggleAll() {
+  const checked = document.getElementById('selectAll').checked;
+  document.querySelectorAll('.prop-checkbox').forEach(cb => cb.checked = checked);
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const checked = document.querySelectorAll('.prop-checkbox:checked');
+  const count = checked.length;
+  document.getElementById('selectedCount').textContent = count;
+  document.getElementById('bulkBar').classList.toggle('active', count > 0);
+  // Highlight selected rows
+  document.querySelectorAll('.prop-checkbox').forEach(cb => {
+    const row = document.getElementById('prop-' + cb.dataset.id);
+    if (row) row.classList.toggle('selected', cb.checked);
+  });
+}
+
+function clearSelection() {
+  document.querySelectorAll('.prop-checkbox').forEach(cb => cb.checked = false);
+  document.getElementById('selectAll').checked = false;
+  updateBulkBar();
+}
+
+function bulkAction(action) {
+  const selected = document.querySelectorAll('.prop-checkbox:checked');
+  if (selected.length === 0) return;
+
+  const ids = Array.from(selected).map(cb => cb.dataset.id);
+  const actionMap = {
+    'approve': { url: '/accommodation/moderate/property/{id}/approve', confirm: 'Approve all selected properties?' },
+    'publish': { url: '/accommodation/moderate/property/{id}/publish', confirm: 'Publish all selected properties?' },
+    'reject': { url: '/accommodation/moderate/property/{id}/reject', confirm: 'Reject all selected properties?' },
+    'suspend': { url: '/accommodation/moderate/property/{id}/suspend', confirm: 'Suspend all selected properties?' },
+  };
+
+  const info = actionMap[action];
+  if (!info) return;
+
+  if (!confirm(info.confirm)) return;
+
+  // Submit each form
+  ids.forEach(id => {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = info.url.replace('{id}', id);
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrf_token';
+    csrf.value = '{{ csrf_token() }}';
+    form.appendChild(csrf);
+    document.body.appendChild(form);
+    form.submit();
+  });
+}
+
+// ── Modal ──
+function openChangeModal(propertyId) {
+  document.getElementById('changeModal').classList.add('active');
+  document.getElementById('changeForm').action = '/accommodation/moderate/property/' + propertyId + '/request-changes';
+}
+
+function closeChangeModal() {
+  document.getElementById('changeModal').classList.remove('active');
+}
+
+document.getElementById('changeModal').addEventListener('click', function(e) {
+  if (e.target === this) closeChangeModal();
+});
+
+// ── Auto-update on page load ──
+document.addEventListener('DOMContentLoaded', updateBulkBar);
+</script>
 {% endblock %}

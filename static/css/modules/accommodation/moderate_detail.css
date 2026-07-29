@@ -6,10 +6,30 @@
    ============================================================ */
 
 /* Info grid for property/review details */
-.info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); }
 .info-item { display: flex; flex-direction: column; gap: 4px; }
-.info-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-family: 'DM Mono', monospace; }
-.info-value { font-size: 14px; color: var(--text); }
+.info-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-family: var(--font-family-mono); }
+.info-value { font-size: var(--font-size-sm); color: var(--text-primary); }
+
+/* Span full width in info grid */
+.info-span-2 { grid-column: 1 / -1; }
 
 /* Star rating (for review pages) */
-.rating-stars { color: var(--gold); font-size: 16px; }
+.rating-stars { color: var(--brand-accent); font-size: 16px; }
+
+/* Photo grid */
+.photo-grid { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: 8px; }
+.photo-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-light); }
+
+/* Form actions */
+.form-actions { display: flex; gap: var(--space-3); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1024px) {
+  .info-grid { grid-template-columns: 1fr; }
+  .info-span-2 { grid-column: 1 / -1; }
+}
+
+@media (max-width: 480px) {
+  .photo-thumb { width: 80px; height: 60px; }
+}

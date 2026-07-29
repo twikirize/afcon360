@@ -132,6 +132,8 @@ class NotificationService:
             'property_changes_requested': 'email/property_changes_requested.html',
             'property_suspended': 'email/property_suspended.html',
             'property_reinstated': 'email/property_reinstated.html',
+            'property_archived': 'email/property_archived.html',
+            'property_restored': 'email/property_restored.html',
             'booking_confirmed': 'email/booking_confirmed.html',
             'default': 'email/default.html'
         }

@@ -219,8 +219,11 @@ class IDGuard:
         """
         Log a violation and show front-end alert if possible.
         """
-        msg = f"\n🔴 ID SYSTEM VIOLATION: {error}\n   Suggestion: {suggestion}\n   Source: {source}"
-        print(msg)
+        msg = f"\n[ID VIOLATION] {error}\n   Suggestion: {suggestion}\n   Source: {source}"
+        try:
+            print(msg)
+        except UnicodeEncodeError:
+            print(msg.encode('ascii', errors='replace').decode('ascii'))
 
         # Show flash message if in request context
         try:

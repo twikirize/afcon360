@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}{{ account.account_name }} — AFCON360{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{{ url_for('admin.owner.escrow_index') }}" class="text-muted text-decoration-none">
+                <i class="fas fa-arrow-left me-1"></i> Back to Accounts
+            </a>
+            <h1 class="h2 mb-0 mt-2">
+                <span class="text-muted">{{ account.account_number or '—' }}</span>
+                {{ account.account_name }}
+            </h1>
+            <p class="text-muted">{{ account.account_description }}</p>
+        </div>
+        <div>
+            <span class="badge bg-{{ 'success' if account.status == 'active' else 'danger' }} fs-6">
+                {{ account.status|upper }}
+            </span>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Balance</h6>
+                    <h2 class="text-{{ 'success' if balance > 0 else 'danger' }}">
+                        ${{ "%.2f"|format(balance) }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Account Type</h6>
+                    <h5>{{ service_info.display_name or 'Escrow' }}</h5>
+                    <span class="badge bg-info">{{ account.account_type }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Daily Limit</h6>
+                    <h5>${{ "%.2f"|format(account.daily_volume_limit or 0) }}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Status</h6>
+                    <h5 class="text-{{ 'success' if account.status == 'active' else 'danger' }}">
+                        {{ account.status|upper }}
+                    </h5>
+                    {% if account.require_dual_authorization %}
+                        <span class="badge bg-warning">Dual Auth Required</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Controls</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    {% if account.status == 'active' %}
+                    <form method="POST" action="{{ url_for('admin.owner.escrow_freeze', account_id=account.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="input-group">
+                            <input type="text" name="reason" class="form-control" placeholder="Reason for freezing..." required>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-pause"></i> Freeze Account
+                            </button>
+                        </div>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('admin.owner.escrow_unfreeze', account_id=account.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-play"></i> Unfreeze Account
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Recent Transactions</h5>
+            <small class="text-muted">Last 50 transactions</small>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Currency</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for txn in transactions %}
+                        <tr>
+                            <td>{{ txn.created_at.strftime('%Y-%m-%d %H:%M') if txn.created_at else '—' }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if txn.entry_type == 'CREDIT' else 'danger' }}">
+                                    {{ txn.entry_type }}
+                                </span>
+                            </td>
+                            <td class="text-{{ 'success' if txn.entry_type == 'CREDIT' else 'danger' }}">
+                                ${{ "%.2f"|format(txn.amount) }}
+                            </td>
+                            <td>{{ txn.currency or 'USD' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">No transactions yet</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

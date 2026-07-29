@@ -10,7 +10,7 @@ from sqlalchemy import (
     ForeignKey, Integer, Text,
     Index, UniqueConstraint, CheckConstraint
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from app.extensions import db
 from app.models.base import BaseModel
@@ -75,6 +75,12 @@ class BlockedDate(BaseModel):
     # Timestamps
     # -------------------------------
     created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+
+    @validates('reason')
+    def validate_reason(self, key, value):
+        if isinstance(value, enum.Enum):
+            return value.value
+        return value
 
     def __repr__(self):
         return f"<BlockedDate property={self.property_id} date={self.blocked_date} reason={self.reason}>"

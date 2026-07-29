@@ -14,6 +14,35 @@ AFCON360 is a comprehensive Flask/PostgreSQL/Redis web application ecosystem tha
 
 Each module operates independently but integrates seamlessly - users can pay for events via wallet, book transport to events, secure accommodation, and access tourism activities through a unified interface.
 
+## Payment Architecture
+
+**Wallet is the single source of truth for all financial events.** Every module (accommodation, transport, events) delegates actual money movement to the wallet module and stores only a thin `wallet_txn_id` reference.
+
+```
+Wallet Module (source of truth)
+├── TransactionModel      ← immutable record of every financial event
+├── LedgerEntryModel      ← double-entry records
+├── AccountModel          ← balances derived from ledger
+└── PaymentMethodConfig   ← global payment catalogue
+
+Accommodation             Transport             Events
+├── AccommodationBooking  ├── Booking           ├── EventRegistration
+│   ├── wallet_txn_id     │   ├── wallet_txn_id │   ├── wallet_txn_id
+│   └── payment_status    │   └── payment_status│   └── payment_status
+└── AccommodationBookingPayment (thin index)
+    ├── booking_id
+    ├── wallet_txn_id      ← canonical link
+    ├── payment_reference
+    ├── payment_status     ← cached from wallet
+    └── retry_count        ← module-specific
+```
+
+**Key rules:**
+- **Wallet owns the money.** All charges, refunds, and transfers flow through `WalletService` or `PaymentGateway`.
+- **Modules own the context.** Which room, which car, which event ticket — that stays in the domain module.
+- **One line links them.** `wallet_txn_id` / `wallet_transaction_id` points from the booking record to the canonical `TransactionModel`.
+- **No duplicate ledgers.** Module-specific payment tables (`AccommodationBookingPayment`, transport `BookingPayment`) are thin indexes for fast queries, not sources of truth.
+
 ## System Architecture
 
 ### **Core Technologies**
@@ -443,20 +472,23 @@ app/
 ### **1. Events Module** (`app/events/`)
 - Event creation, approval, and registration workflows
 - Ticketing and payment processing
+- **Wallet integration** — `EventRegistration.wallet_txn_id` links to `TransactionModel`; no separate payment ledger table needed
 - Signal handlers for event lifecycle
 - Event metrics and analytics
 - Community host integration
 - Accommodation and transport integration for events
 
 ### **2. Wallet Module** (`app/wallet/`)
+- **Single source of truth for all financial events** across accommodation, transport, and events
 - Double-entry ledger architecture (enterprise-grade)
-- Transaction processing with fraud detection
-- Payout management
-- Commission tracking
+- `TransactionModel` — immutable transaction records every other module references via `wallet_txn_id`
+- `LedgerEntryModel` — double-entry records; balances are derived, never stored
+- `PaymentMethodConfig` — global catalogue of enabled payment methods
 - Payment provider integrations (Flutterwave, Paystack, PayPal, Alipay, WeChat, Visa, Mobile Money)
-- Webhook handling
+- Webhook handling and reconciliation
 - API endpoints for wallet operations
 - Middleware: idempotency, kill switch, activation checks
+- **Other modules do not duplicate financial records.** They store thin indexes (`AccommodationBookingPayment`, transport `BookingPayment`) that link back to `TransactionModel`.
 
 ### **3. Transport Module** (`app/transport/`)
 - Transport booking system
@@ -466,6 +498,8 @@ app/
 - External platform integrations
 - Analytics and reporting (32+ API endpoints)
 - State management and matching services
+- **Wallet integration for payments** — `Booking.wallet_transaction_id` links to `TransactionModel`
+- Thin payment index `BookingPayment` for fast module-level queries
 
 ### **4. Accommodation Module** (`app/accommodation/`)
 - Host registration and management
@@ -473,7 +507,8 @@ app/
 - Booking system with state machine
 - Review and rating system
 - Pricing and availability management
-- Wallet integration for payments
+- **Wallet integration for payments** — `AccommodationBooking.wallet_txn_id` links to `TransactionModel`
+- Thin payment index `AccommodationBookingPayment` for fast module-level queries
 - AI-powered search and trip planning
 - Gamified loyalty and blockchain reviews
 
@@ -707,13 +742,19 @@ Modules can be enabled/disabled via system configuration:
 - **Organisation**: Organization management
 - **SystemConfig**: System-wide configuration
 
-### **Wallet Models**
-- **WalletAccount**: User wallet accounts
-- **Transaction**: Double-entry ledger transactions
-- **LedgerEntry**: Individual ledger entries
+### **Wallet Models** (source of truth for all payments)
+- **AccountModel**: Financial accounts (user wallets, org wallets, platform accounts); balances derived from ledger
+- **TransactionModel**: Immutable transaction records — every charge, refund, or transfer in the system
+- **LedgerEntryModel**: Double-entry ledger records tied to `TransactionModel`
+- **PaymentMethodConfig**: Global catalogue of enabled payment methods (wallet, mobile money, card)
 - **Payout**: Payout requests
 - **Commission**: Commission tracking
 - **FraudDetection**: Fraud detection records
+
+### **Module Payment Indexes** (thin references to wallet, not ledgers)
+- **AccommodationBookingPayment**: Maps `booking_id` → `wallet_txn_id`, caches `payment_status` and `payment_reference`
+- **Transport BookingPayment**: Maps `booking_id` → `wallet_txn_id`, caches `payment_status` and `payment_reference`
+- **EventRegistration**: Stores `wallet_txn_id` and `payment_status` directly — no separate ledger table needed
 
 ### **Audit Models**
 - **AuditLog**: General audit logging

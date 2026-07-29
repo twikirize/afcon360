@@ -1,43 +1,197 @@
 {% extends "base.html" %}
+{% block title %}Pending Properties — AFCON360 Admin{% endblock %}
 
-{% block title %}Pending Properties{% endblock %}
+{% block module_styles %}
+<style>
+.acc-admin { padding: 2rem 1.5rem; }
+.acc-admin-header {
+  background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.acc-admin-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+.acc-admin-nav a {
+  background: rgba(255,255,255,.18); color: #fff; padding: .45rem 1rem; border-radius: 7px;
+  text-decoration: none; font-weight: 600; font-size: .82rem; margin-left: .4rem; transition: background .2s;
+}
+.acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
+
+.data-card {
+  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.data-card table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.data-card thead th {
+  background: var(--bg-surface-alt,#f9fafb); padding: .85rem 1rem;
+  font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--text-secondary,#6b7280); border-bottom: 1px solid var(--border-light,#e5e7eb);
+  white-space: nowrap;
+}
+.data-card tbody td {
+  padding: .85rem 1rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
+  color: var(--text-primary,#111); vertical-align: middle;
+}
+.data-card tbody tr:last-child td { border-bottom: none; }
+.data-card tbody tr:hover td { background: var(--bg-surface-alt,#f9fafb); }
+
+.prop-img-sm {
+  width: 54px; height: 40px; object-fit: cover; border-radius: 6px;
+  background: var(--bg-surface-alt,#f3f4f6);
+}
+.prop-img-sm.no-img {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; color: #9ca3af;
+}
+
+.status-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 20px;
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  white-space: nowrap;
+}
+.sb-pending_review { background: #fef3c7; color: #92400e; }
+
+.action-cell { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+.btn-sm-act {
+  padding: 4px 12px; border-radius: 6px; font-size: .78rem; font-weight: 600;
+  text-decoration: none; border: none; cursor: pointer; transition: background .2s;
+}
+.btn-approve { background: #d1fae5; color: #065f46; }
+.btn-approve:hover { background: #a7f3d0; color: #065f46; }
+.btn-review-sm { background: #dbeafe; color: #1d4ed8; }
+.btn-review-sm:hover { background: #bfdbfe; color: #1d4ed8; }
+.btn-view-sm { background: var(--bg-surface-alt,#f3f4f6); color: var(--text-primary,#111); border: 1px solid var(--border-light,#e5e7eb); }
+.btn-view-sm:hover { background: #e5e7eb; color: var(--text-primary,#111); }
+
+.empty-box { text-align: center; padding: 4rem 2rem; color: var(--text-secondary,#9ca3af); }
+.empty-box i { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="d-flex justify-content-between align-items-center">
-        <h2>Pending Properties</h2>
-        <span class="badge bg-primary">{{ pending_count }} Pending</span>
+<div class="acc-admin">
+
+  <div class="acc-admin-header">
+    <div>
+      <h1>Pending Property Moderation</h1>
+      <p>Review and approve newly submitted accommodation listings awaiting verification.</p>
     </div>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Host</th>
-                <th>Submission Date</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for prop in properties.items %}
-            <tr>
-                <td>{{ prop.title }}</td>
-                <td>{{ prop.host.username }}</td>
-                <td>{{ prop.created_at.strftime('%Y-%m-%d') }}</td>
-                <td>
-                    <a href="{{ url_for('accommodation.moderate_property', property_id=prop.id) }}" class="btn btn-primary btn-sm">Review</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
+    <div class="acc-admin-nav">
+      <a href="{{ url_for('accommodation.admin_properties') }}"><i class="bi bi-houses me-1"></i> All Properties</a>
+      <a href="{{ url_for('accommodation.admin_moderate') }}"><i class="bi bi-shield-check me-1"></i> Moderation Dashboard</a>
+    </div>
+  </div>
+
+  {% if properties.items %}
+  <div class="result-count mb-3">
+    Showing <strong>{{ properties.items|length }}</strong> of <strong>{{ properties.total }}</strong> pending listings
+  </div>
+
+  <div class="data-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Thumbnail</th>
+          <th>Title & ID</th>
+          <th>Location</th>
+          <th>Host / Owner</th>
+          <th>Status</th>
+          <th>Submitted</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for prop in properties.items %}
+        <tr>
+          <td>
+            {% if prop.main_image %}
+            <img src="{{ prop.main_image }}" class="prop-img-sm" alt="prop">
+            {% else %}
+            <div class="prop-img-sm no-img"><i class="bi bi-image"></i></div>
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ prop.title }}</strong><br>
+            <span class="text-muted" style="font-size: .75rem;"><code>{{ prop.public_id[:8] if prop.public_id else prop.id }}</code></span>
+          </td>
+          <td>{{ prop.city }}, {{ prop.country }}</td>
+          <td>
+            {% if prop.owner_user %}
+              {{ prop.owner_user.email }}
+            {% elif prop.owner_org_id %}
+              Org #{{ prop.owner_org_id }}
+            {% else %}
+              Unknown
+            {% endif %}
+          </td>
+          <td>
+            <span class="status-badge sb-pending_review">Pending Review</span>
+          </td>
+          <td>
+            {{ prop.created_at.strftime('%Y-%m-%d %H:%M') if prop.created_at else 'N/A' }}
+          </td>
+          <td>
+            <div class="action-cell">
+              {% if prop.public_id %}
+              <a href="{{ url_for('accommodation.guest_detail', identifier=prop.public_id) }}" class="btn-sm-act btn-view-sm" target="_blank" title="View Public Page">
+                <i class="bi bi-eye"></i>
+              </a>
+              {% endif %}
+              <a href="{{ url_for('accommodation.moderate_property', property_id=prop.id) }}" class="btn-sm-act btn-review-sm" title="Inspect & Review">
+                <i class="bi bi-clipboard-check"></i> Review
+              </a>
+              <form method="POST" action="{{ url_for('accommodation.moderate_property_approve', property_id=prop.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn-sm-act btn-approve" title="Quick Approve">
+                  <i class="bi bi-check-lg"></i> Approve
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
-    <nav>
-        <ul class="pagination">
-            {% for page_num in properties.iter_pages() %}
-            <li class="page-item {% if page_num == properties.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('accommodation.pending_properties', page=page_num) }}">{{ page_num }}</a>
-            </li>
-            {% endfor %}
-        </ul>
-    </nav>
+  </div>
+
+  {% if properties.pages > 1 %}
+  <nav class="mt-4 d-flex justify-content-center">
+    <ul class="pagination">
+      {% if properties.has_prev %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.prev_num) }}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+      </li>
+      {% endif %}
+      {% for p in properties.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+        <li class="page-item {{ 'active' if p == properties.page }}">
+          <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=p) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      {% if properties.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('accommodation.admin_properties', page=properties.next_num) }}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-box">
+    <i class="bi bi-check2-circle text-success"></i>
+    <h5>No Pending Properties</h5>
+    <p class="small">All property listings have been reviewed and processed.</p>
+    <a href="{{ url_for('accommodation.admin_properties') }}" class="btn btn-sm btn-outline-success mt-2">View All Properties</a>
+  </div>
+  {% endif %}
+
 </div>
 {% endblock %}

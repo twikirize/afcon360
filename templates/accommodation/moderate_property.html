@@ -1,189 +1,519 @@
 {% extends "base.html" %}
-{% block title %}Review Property - AFCON360{% endblock %}
 
-{% block head %}
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/moderate_base.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/moderate_detail.css') }}">
+{% block title %}Moderate Property — {{ property.title }}{% endblock %}
+
+{% block module_styles %}
+<style>
+.moderation-container { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+
+/* ── Header ── */
+.mod-header {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+}
+.mod-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; }
+.mod-header .property-id { font-size: .78rem; opacity: .7; }
+
+/* ── Cards ── */
+.mod-card {
+  background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;
+  padding: 1.5rem; margin-bottom: 1.5rem;
+}
+.mod-card h3 {
+  font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: #6b7280; margin: 0 0 1rem 0; border-bottom: 2px solid #f3f4f6; padding-bottom: .75rem;
+}
+
+/* ── Trust Score ── */
+.trust-meter {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.trust-score {
+  font-size: 2.5rem; font-weight: 800; padding: .25rem 1rem;
+  border-radius: 10px;
+}
+.trust-good { background: #d1fae5; color: #065f46; }
+.trust-medium { background: #fef3c7; color: #92400e; }
+.trust-bad { background: #fee2e2; color: #b91c1c; }
+
+/* ── Checklist ── */
+.checklist-item {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .5rem .75rem; border-radius: 6px; margin-bottom: .25rem;
+}
+.checklist-item.pass { background: #f0fdf4; color: #065f46; }
+.checklist-item.fail { background: #fef2f2; color: #b91c1c; }
+.checklist-item .icon { font-size: 1.1rem; }
+
+/* ── Action Buttons ── */
+.action-group {
+  display: flex; gap: .75rem; flex-wrap: wrap;
+  margin-top: 1rem;
+  align-items: center;
+}
+.btn-mod {
+  display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+  min-height: 44px; min-width: 44px;
+  padding: .6rem 1.25rem; border: none; border-radius: 8px;
+  font-weight: 600; font-size: clamp(.8rem, 2.2vw, .85rem); cursor: pointer;
+  transition: all .2s; text-decoration: none;
+}
+.btn-mod.btn-success { background: #d1fae5; color: #065f46; }
+.btn-mod.btn-success:hover { background: #a7f3d0; }
+.btn-mod.btn-danger { background: #fee2e2; color: #b91c1c; }
+.btn-mod.btn-danger:hover { background: #fca5a5; }
+.btn-mod.btn-warning { background: #fef3c7; color: #92400e; }
+.btn-mod.btn-warning:hover { background: #fde68a; }
+.btn-mod.btn-info { background: #dbeafe; color: #1d4ed8; }
+.btn-mod.btn-info:hover { background: #bfdbfe; }
+.btn-mod.btn-secondary { background: #e5e7eb; color: #374151; }
+.btn-mod.btn-secondary:hover { background: #d1d5db; }
+.btn-mod.btn-primary { background: #10b981; color: #fff; }
+.btn-mod.btn-primary:hover { background: #059669; }
+.btn-view { background: #f3f4f6; color: #111; border: 1px solid #d1d5db; }
+.btn-view:hover { background: #e5e7eb; color: #111; }
+
+/* Status badge colors from ModerationService */
+.badge-status {
+  display: inline-block; padding: 4px 12px; border-radius: 20px;
+  font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+}
+.badge-status.bg-secondary { background: #e5e7eb; color: #374151; }
+.badge-status.bg-primary { background: #dbeafe; color: #1d4ed8; }
+.badge-status.bg-warning { background: #fef3c7; color: #92400e; }
+.badge-status.bg-info { background: #dbeafe; color: #0e7490; }
+.badge-status.bg-danger { background: #fee2e2; color: #b91c1c; }
+.badge-status.bg-success { background: #d1fae5; color: #065f46; }
+
+@media (max-width: 480px) {
+  .moderation-container { padding: 1rem; }
+  .mod-header { padding: 1.25rem; gap: .75rem; }
+  .mod-header h1 { font-size: clamp(1.1rem, 5vw, 1.5rem); }
+  .action-group { gap: .5rem; }
+  .btn-mod { flex: 1 1 auto; }
+}
+
+/* ── History Table ── */
+.history-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.history-table th {
+  text-align: left; padding: .6rem .75rem;
+  background: #f9fafb; font-size: .7rem; text-transform: uppercase;
+  color: #6b7280; border-bottom: 1px solid #e5e7eb;
+}
+.history-table td { padding: .6rem .75rem; border-bottom: 1px solid #f3f4f6; }
+
+/* ── Property Info Grid ── */
+.info-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;
+}
+.info-grid .label { font-size: .7rem; text-transform: uppercase; color: #6b7280; }
+.info-grid .value { font-weight: 600; }
+
+/* ── Status Badges ── */
+.status-badge {
+  display: inline-block; padding: 2px 12px; border-radius: 20px;
+  font-size: .7rem; font-weight: 700; text-transform: uppercase;
+}
+.sb-draft { background: #f3f4f6; color: #6b7280; }
+.sb-submitted { background: #dbeafe; color: #1d4ed8; }
+.sb-under_review { background: #fef3c7; color: #92400e; }
+.sb-approved { background: #d1fae5; color: #065f46; }
+.sb-needs_information { background: #fee2e2; color: #b91c1c; }
+.sb-active { background: #d1fae5; color: #065f46; }
+.sb-published { background: #d1fae5; color: #065f46; font-weight: 800; border: 2px solid #10b981; }
+.sb-suspended { background: #fee2e2; color: #b91c1c; }
+.sb-archived { background: #e5e7eb; color: #374151; }
+
+.verification-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 20px;
+  font-size: .7rem; font-weight: 600;
+}
+.vb-verified { background: #d1fae5; color: #065f46; }
+.vb-pending { background: #fef3c7; color: #92400e; }
+.vb-unverified { background: #f3f4f6; color: #6b7280; }
+.vb-rejected { background: #fee2e2; color: #b91c1c; }
+
+.visibility-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 20px;
+  font-size: .7rem; font-weight: 600;
+  background: #dbeafe; color: #1d4ed8;
+}
+
+/* ── Gallery Preview ── */
+.gallery-preview {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .5rem;
+}
+.gallery-preview img {
+  width: 100%; height: 80px; object-fit: cover; border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+/* ── Missing Info Alert ── */
+.missing-alert {
+  background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+  padding: .75rem 1rem; margin-bottom: 1rem;
+  display: flex; align-items: center; gap: .5rem;
+}
+.missing-alert i { color: #ef4444; font-size: 1.2rem; }
+
+/* ── Next Action Guide ── */
+.next-action {
+  background: #f0fdf4; border: 1px solid #d1fae5; border-radius: 8px;
+  padding: .75rem 1rem; margin-bottom: 1rem;
+  display: flex; align-items: center; gap: .5rem;
+}
+.next-action i { color: #10b981; font-size: 1.2rem; }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="mod-header">
-  <div style="display: flex; align-items: center;">
-    <span class="mod-badge">MODERATOR</span>
-    <span class="mod-title">Review Property</span>
-  </div>
-  <a href="{{ safe_url('accommodation.admin_moderate') }}" class="btn-ghost">
-    <i class="fas fa-arrow-left"></i> Back to Queue
-  </a>
-</div>
+<div class="moderation-container">
 
-<div class="mod-wrap">
-  <div class="breadcrumb-row">
-    <a href="{{ url_for('admin.moderator.dashboard') }}">Dashboard</a>
-    <span class="sep">/</span>
-    <a href="{{ safe_url('accommodation.admin_moderate') }}">Accommodation</a>
-    <span class="sep">/</span>
-    <span class="active">{{ property.title }}</span>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-title">Property Details</div>
-      {% set status_text = property.status.value if property.status and property.status.value else property.status %}
-      <span class="badge badge-{% if status_text == 'active' %}approved{% elif status_text == 'pending_review' %}pending{% elif status_text == 'suspended' or status_text == 'rejected' %}rejected{% else %}pending{% endif %}">{{ status_text | replace('_',' ') | title }}</span>
+  {# ── Header ── #}
+  {% set status_display = status_display if status_display is defined else ModerationService.get_property_status_display(property) %}
+  {% set status_color = status_color if status_color is defined else ModerationService.get_property_status_color(property) %}
+  {% set available_actions = available_actions if available_actions is defined else ModerationService.get_available_actions(property) %}
+  <div class="mod-header">
+    <div>
+      <h1>🔍 {{ property.title }}</h1>
+      <span class="property-id">ID: {{ property.public_id[:8] if property.public_id else '—' }}… · {{ property.city }}, {{ property.country }}</span>
     </div>
-    <div class="panel-body">
-      <div class="info-grid">
-        <div class="info-item">
-          <span class="info-label">Title</span>
-          <span class="info-value">{{ property.title }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Slug</span>
-          <span class="info-value" style="font-family: 'DM Mono', monospace;">{{ property.slug }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Owner</span>
-          <span class="info-value">{{ property.owner_display_name }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Property Type</span>
-          <span class="info-value">{{ (property.property_type.value if property.property_type and property.property_type.value else property.property_type) | replace('_',' ') | title }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Location</span>
-          <span class="info-value">{{ property.city }}, {{ property.country }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Max Guests</span>
-          <span class="info-value">{{ property.max_guests }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Price/Night</span>
-          <span class="info-value">${{ "{:,.0f}".format(property.base_price_per_night) }} {{ property.currency }}</span>
-        </div>
-        <div class="info-item" style="grid-column: span 2;">
-          <span class="info-label">Photos</span>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;">
-            {% if property.main_image %}
-              <img src="{{ property.main_image }}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
-            {% endif %}
-            {% if property.gallery %}
-              {% for img in property.gallery %}
-                <img src="{{ img }}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
-              {% endfor %}
-            {% endif %}
-            {% if not property.main_image and not property.gallery %}
-              <span class="text-muted">No photos</span>
-            {% endif %}
-          </div>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Created</span>
-          <span class="info-value">{{ property.created_at.strftime('%Y-%m-%d %H:%M') if property.created_at else '-' }}</span>
-        </div>
-        <div class="info-item" style="grid-column: span 2;">
-          <span class="info-label">Description</span>
-          <span class="info-value">{{ property.description or 'No description provided' }}</span>
+    <div>
+      <span class="badge-status bg-{{ status_color }}">{{ status_display }}</span>
+      <span class="verification-badge vb-{{ property.verification_status }}">{{ property.verification_status | title }}</span>
+      <span class="visibility-badge">{{ property.visibility | replace('_',' ') | title }}</span>
+    </div>
+  </div>
+
+  {# ── Next Action Guide ── #}
+  {% if property.status in ['submitted', 'under_review', 'pending_review'] %}
+  <div class="next-action">
+    <i class="bi bi-lightbulb"></i>
+    <div>
+      <strong>Next Action:</strong> Review this property. Check all details, photos, and documents.
+      <span style="font-size: .8rem; color: #6b7280;">Then <strong>Approve</strong> or <strong>Request Changes</strong>.</span>
+    </div>
+  </div>
+  {% elif property.status == 'approved' %}
+  <div class="next-action">
+    <i class="bi bi-rocket-takeoff"></i>
+    <div>
+      <strong>Ready to Publish!</strong> This property has been approved. Click <strong>Publish</strong> to make it publicly visible.
+    </div>
+  </div>
+  {% elif property.status == 'needs_information' %}
+  <div class="missing-alert">
+    <i class="bi bi-exclamation-triangle"></i>
+    <div>
+      <strong>Needs Information:</strong> Host must update the property. Wait for host to resubmit.
+    </div>
+  </div>
+  {% elif property.status == 'published' %}
+  <div class="next-action" style="background:#d1fae5; border-color:#10b981;">
+    <i class="bi bi-check-circle-fill" style="color:#10b981;"></i>
+    <div>
+      <strong>🎉 Published!</strong> This property is publicly visible and bookable.
+    </div>
+  </div>
+  {% elif property.status == 'archived' %}
+  <div class="missing-alert">
+    <i class="bi bi-archive"></i>
+    <div>
+      <strong>Archived (soft-deleted).</strong>
+      {% if property.archived_reason %}
+      Reason: {{ property.archived_reason }}
+      {% endif %}
+      {% if property.archived_at %}
+      · Archived {{ property.archived_at.strftime('%Y-%m-%d %H:%M') }}
+      {% endif %}
+      <span style="font-size: .8rem; color: #6b7280;">Use <strong>Restore</strong> to return this property to draft.</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Trust & Readiness Scores ── #}
+  <div class="mod-card">
+    <h3>📊 Property Health</h3>
+    <div class="trust-meter">
+      <div>
+        <span class="trust-score {% if property.trust_score >= 70 %}trust-good{% elif property.trust_score >= 40 %}trust-medium{% else %}trust-bad{% endif %}">
+          {{ "%.0f"|format(property.trust_score or 0) }}
+        </span>
+        <span style="font-size: .85rem; color: #6b7280;">Trust Score</span>
+        <div style="font-size: .7rem; color: #6b7280; margin-top: .25rem;">
+          {% if property.trust_score >= 70 %}✅ Low risk - Auto approve eligible
+          {% elif property.trust_score >= 40 %}⚠️ Medium risk - Review required
+          {% else %}🔴 High risk - Investigate thoroughly{% endif %}
         </div>
       </div>
-    </div>
-
-    <div class="action-bar">
-      <form method="POST" action="{{ url_for('accommodation.moderate_property_approve', property_id=property.id) }}" style="display: inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-approve">
-          <i class="fas fa-check"></i> Approve Property
-        </button>
-      </form>
-      {% set status_text = property.status.value if property.status and property.status.value else property.status %}
-      {% if status_text == 'active' %}
-      <form method="POST" action="{{ url_for('accommodation.moderate_property_suspend', property_id=property.id) }}" style="display: inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="reason" value="Suspended by moderator">
-        <button type="submit" class="btn btn-reject">
-          <i class="fas fa-pause"></i> Suspend
-        </button>
-      </form>
-      {% endif %}
-      <button onclick="document.getElementById('reject-form').style.display='block'" class="btn btn-reject">
-        <i class="fas fa-times"></i> Reject
-      </button>
-      <button onclick="document.getElementById('change-form').style.display='block'" class="btn btn-warning">
-        <i class="fas fa-edit"></i> Request Changes
-      </button>
+      <div>
+        <span class="trust-score {% if property.readiness_score >= 70 %}trust-good{% elif property.readiness_score >= 40 %}trust-medium{% else %}trust-bad{% endif %}">
+          {{ "%.0f"|format(property.readiness_score or 0) }}
+        </span>
+        <span style="font-size: .85rem; color: #6b7280;">Readiness Score</span>
+        <div style="font-size: .7rem; color: #6b7280; margin-top: .25rem;">
+          {% if property.readiness_score >= 70 %}✅ Ready for publication
+          {% elif property.readiness_score >= 40 %}⚠️ Some items missing
+          {% else %}🔴 Not ready - needs work{% endif %}
+        </div>
+      </div>
+      <div style="margin-left: auto; text-align: right; font-size: .85rem;">
+        <div>KYC: <strong>{% if property.owner_user and property.owner_user.kyc_verified %}✅ Verified{% else %}⏳ Pending{% endif %}</strong></div>
+        <div>Publicly Visible: <strong>{% if property.is_publicly_visible %}✅ Yes{% else %}❌ No{% endif %}</strong></div>
+        <div>Created: <strong>{{ property.created_at.strftime('%Y-%m-%d %H:%M') if property.created_at else 'N/A' }}</strong></div>
+      </div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-title">Moderation History</div>
+  {# ── Readiness Checklist ── #}
+  <div class="mod-card">
+    <h3>✅ Readiness Checklist</h3>
+    {% set checks = [
+      ('Photos', property.main_image and property.gallery|length > 0),
+      ('Description', property.description and property.description|length > 20),
+      ('Pricing', property.base_price_per_night and property.base_price_per_night > 0),
+      ('Location', property.latitude and property.longitude),
+      ('Rooms/Capacity', property.max_guests and property.max_guests > 0),
+      ('Cancellation Policy', property.cancellation_policy),
+      ('House Rules', property.house_rules),
+      ('Owner Verified', property.owner_user and property.owner_user.kyc_verified),
+    ] %}
+    {% set fail_count = checks | selectattr('1', 'equalto', False) | list | length %}
+    <div style="margin-bottom: .75rem; font-size: .85rem; color: #6b7280;">
+      {{ checks|length - fail_count }} of {{ checks|length }} checks passed
+      {% if fail_count > 0 %}
+      <span style="color: #ef4444; font-weight: 600;">({{ fail_count }} failing)</span>
+      {% else %}
+      <span style="color: #10b981; font-weight: 600;">(All passed ✅)</span>
+      {% endif %}
     </div>
-    <div class="panel-body">
-      <table class="table">
+    {% for name, passed in checks %}
+    <div class="checklist-item {{ 'pass' if passed else 'fail' }}">
+      <span class="icon">{% if passed %}✅{% else %}❌{% endif %}</span>
+      <span>{{ name }}</span>
+      <span style="margin-left: auto; font-size: .75rem; font-weight: 600;">
+        {{ 'PASS' if passed else 'FAIL' }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── Gallery Preview ── #}
+  {% if property.gallery or property.main_image %}
+  <div class="mod-card">
+    <h3>🖼️ Gallery</h3>
+    <div class="gallery-preview">
+      {% if property.main_image %}
+      <img src="{{ property.main_image }}" alt="Main image">
+      {% endif %}
+      {% for img in property.gallery[:5] %}
+      <img src="{{ img }}" alt="Gallery image">
+      {% endfor %}
+      {% if property.gallery|length > 5 %}
+      <div style="display:flex; align-items:center; justify-content:center; background:#f3f4f6; border-radius:6px; height:80px; color:#6b7280; font-size:.8rem;">
+        +{{ property.gallery|length - 5 }} more
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Quick Actions (driven by ModerationService.get_available_actions) ── #}
+  <div class="mod-card">
+    <h3>⚡ Moderation Actions</h3>
+    <div class="action-group">
+      {% for action in available_actions %}
+        {% if action.action == 'request_changes' %}
+        <button type="button" class="btn-mod btn-{{ action.color }}"
+                onclick="openChangeModal('{{ property.public_id }}', {{ property.id }})">
+          <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+        </button>
+
+        {% elif action.action == 'approve' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_approve', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Approve this property?')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+
+        {% elif action.action == 'publish' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_publish', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Publish this property? It will become public.')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+
+        {% elif action.action == 'reject' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_reject', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="reason" value="Property does not meet platform standards"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Reject this property?')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+
+        {% elif action.action == 'suspend' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_suspend', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="reason" value="Suspended by moderator"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Suspend this property?')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+
+        {% elif action.action == 'reinstate' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_reinstate', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Reinstate this property?')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+
+        {% elif action.action == 'archive' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_archive', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="reason" value="Archived by moderator"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Archive this property? This will hide it from public view and mark it as deleted. Moderators can restore it later.')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+
+        {% elif action.action == 'restore' %}
+        <form method="POST" action="{{ url_for('accommodation.moderate_property_restore', property_id=property.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <button type="submit" class="btn-mod btn-{{ action.color }}"
+                  onclick="return confirm('Restore this archived property to draft? The host can then edit and resubmit.')">
+            <i class="bi bi-{{ action.icon }}"></i> {{ action.label }}
+          </button>
+        </form>
+        {% endif %}
+      {% else %}
+        <p class="text-muted mb-0" style="font-size:.85rem;">No moderation actions available for this status.</p>
+      {% endfor %}
+
+      {# Always-available navigation #}
+      <a href="{{ url_for('accommodation.admin_properties') }}" class="btn-mod btn-view">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+      {% if property.public_id %}
+      <a href="{{ url_for('accommodation.guest_detail', identifier=property.public_id) }}" class="btn-mod btn-view" target="_blank" rel="noopener">
+        <i class="bi bi-eye"></i> View Public
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Property Information ── #}
+  <div class="mod-card">
+    <h3>📋 Property Information</h3>
+    <div class="info-grid">
+      <div><span class="label">Title</span><div class="value">{{ property.title }}</div></div>
+      <div><span class="label">Type</span><div class="value">{{ property.property_type | replace('_',' ') | title if property.property_type else 'N/A' }}</div></div>
+      <div><span class="label">City</span><div class="value">{{ property.city or 'N/A' }}</div></div>
+      <div><span class="label">Country</span><div class="value">{{ property.country or 'N/A' }}</div></div>
+      <div><span class="label">Max Guests</span><div class="value">{{ property.max_guests or 'N/A' }}</div></div>
+      <div><span class="label">Price / Night</span><div class="value">${{ "%.0f"|format(property.base_price_per_night or 0) }}</div></div>
+      <div><span class="label">Created</span><div class="value">{{ property.created_at.strftime('%Y-%m-%d %H:%M') if property.created_at else 'N/A' }}</div></div>
+      <div><span class="label">Owner</span><div class="value">{{ property.owner_user.email if property.owner_user else 'N/A' }}</div></div>
+      <div><span class="label">Status</span><div class="value"><span class="badge-status bg-{{ status_color }}">{{ status_display }}</span></div></div>
+      <div><span class="label">Visibility</span><div class="value">{{ property.visibility | replace('_',' ') | title }}</div></div>
+    </div>
+    {% if property.description %}
+    <div style="margin-top: 1rem;">
+      <span class="label">Description</span>
+      <p style="margin-top: .25rem; white-space: pre-wrap;">{{ property.description }}</p>
+    </div>
+    {% endif %}
+    {% if property.house_rules %}
+    <div style="margin-top: 1rem;">
+      <span class="label">House Rules</span>
+      <p style="margin-top: .25rem; white-space: pre-wrap;">{{ property.house_rules }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Moderation History ── #}
+  <div class="mod-card">
+    <h3>📜 Moderation History</h3>
+    {% if history %}
+    <div style="overflow-x: auto;">
+      <table class="history-table">
         <thead>
-            <tr>
-                <th>Action</th>
-                <th>Previous Status</th>
-                <th>New Status</th>
-                <th>Reason/Notes</th>
-                <th>Moderated By</th>
-                <th>Date</th>
-            </tr>
+          <tr>
+            <th>Action</th>
+            <th>Previous Status</th>
+            <th>New Status</th>
+            <th>Reason/Notes</th>
+            <th>Moderated By</th>
+            <th>Date</th>
+          </tr>
         </thead>
         <tbody>
-            {% for record in history %}
-            <tr>
-                <td>{{ record.action }}</td>
-                <td>{{ record.previous_status }}</td>
-                <td>{{ record.new_status }}</td>
-                <td>{{ record.reason or record.notes or '' }}</td>
-                <td>{{ record.moderator.username if record.moderator else 'System' }}</td>
-                <td>{{ record.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            </tr>
-            {% endfor %}
+          {% for record in history %}
+          <tr>
+            <td><span class="status-badge" style="background:#f3f4f6; color:#374151; font-size:.65rem;">{{ record.action | title }}</span></td>
+            <td>{% if record.previous_status %}<span class="status-badge sb-{{ record.previous_status }}" style="font-size:.65rem;">{{ record.previous_status | replace('_',' ') | title }}</span>{% else %}-{% endif %}</td>
+            <td>{% if record.new_status %}<span class="status-badge sb-{{ record.new_status }}" style="font-size:.65rem;">{{ record.new_status | replace('_',' ') | title }}</span>{% else %}-{% endif %}</td>
+            <td style="max-width: 200px; word-wrap: break-word;">{{ record.reason or record.notes or '-' }}</td>
+            <td>{{ record.moderator.username if record.moderator else 'System' }}</td>
+            <td>{{ record.created_at.strftime('%Y-%m-%d %H:%M') if record.created_at else '-' }}</td>
+          </tr>
+          {% endfor %}
         </tbody>
-    </table>
+      </table>
     </div>
+    {% else %}
+    <p style="color: #9ca3af; text-align: center; padding: 1rem 0;">No moderation history yet.</p>
+    {% endif %}
   </div>
 
-  <div id="reject-form" class="panel" style="display: none;">
-    <div class="panel-header">
-      <div class="panel-title">Reject Property</div>
-    </div>
-    <div class="panel-body">
-      <form method="POST" action="{{ url_for('accommodation.moderate_property_reject', property_id=property.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-          <label class="form-label">Rejection Reason *</label>
-          <textarea name="reason" class="form-textarea" required placeholder="Explain why this property is being rejected..."></textarea>
-        </div>
-        <div style="display: flex; gap: 12px;">
-          <button type="submit" class="btn btn-reject">Confirm Rejection</button>
-          <button type="button" onclick="document.getElementById('reject-form').style.display='none'" class="btn btn-ghost">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
+</div>
 
-  <div id="change-form" class="panel" style="display: none;">
-    <div class="panel-header">
-      <div class="panel-title">Request Changes</div>
-    </div>
-    <div class="panel-body">
-      <form method="POST" action="{{ url_for('accommodation.moderate_property_request_changes', property_id=property.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-          <label class="form-label">Requested Changes *</label>
-          <textarea name="changes" class="form-textarea" required placeholder="Specify what changes are needed..."></textarea>
-        </div>
-        <div style="display: flex; gap: 12px;">
-          <button type="submit" class="btn btn-warning">Request Changes</button>
-          <button type="button" onclick="document.getElementById('change-form').style.display='none'" class="btn btn-ghost">Cancel</button>
-        </div>
-      </form>
-    </div>
+{# ── Request Changes Modal ── #}
+<div class="modal-overlay" id="changeModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:14px; padding:2rem; max-width:500px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h5 class="mb-3">📝 Request Changes</h5>
+    <form id="changeForm" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div class="mb-3">
+        <label class="form-label">What needs to be changed?</label>
+        <textarea name="changes" class="form-control" placeholder="Please add more photos, complete description, verify location..." required style="width:100%; min-height:100px; border:1px solid #d1d5db; border-radius:8px; padding:.75rem;"></textarea>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Additional notes</label>
+        <textarea name="notes" class="form-control" placeholder="Optional notes..." style="width:100%; min-height:60px; border:1px solid #d1d5db; border-radius:8px; padding:.75rem;"></textarea>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-warning">Send Request</button>
+        <button type="button" class="btn btn-secondary" onclick="closeChangeModal()">Cancel</button>
+      </div>
+    </form>
   </div>
 </div>
+
+<script>
+function openChangeModal(publicId, propertyId) {
+  // Routes still use internal property_id; public_id is reserved for display/audit only.
+  document.getElementById('changeModal').style.display = 'flex';
+  document.getElementById('changeForm').action =
+    '/accommodation/moderate/property/' + propertyId + '/request-changes';
+}
+
+function closeChangeModal() {
+  document.getElementById('changeModal').style.display = 'none';
+}
+
+document.getElementById('changeModal').addEventListener('click', function(e) {
+  if (e.target === this) closeChangeModal();
+});
+</script>
 {% endblock %}

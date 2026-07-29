@@ -132,40 +132,50 @@
                             </div>
                         </div>
                         
-                        <!-- ============================================================ -->
-                        <!-- STEP 5: PAYMENT METHOD -->
-                        <!-- ============================================================ -->
-                        <h5 class="mb-3">Payment Method</h5>
-                        <div class="mb-4">
-                            {% if payment_options and payment_options.allowed_methods %}
-                            <div class="row">
-                                {% for method_id in payment_options.allowed_methods %}
-                                <div class="col-md-4 mb-2">
-                                    <div class="payment-method-card" onclick="selectPaymentMethod('{{ method_id }}')">
-                                        <div class="form-check">
-                                            <input type="radio" name="payment_method" value="{{ method_id }}" id="pm_{{ method_id }}" class="form-check-input" {{ 'checked' if loop.first else '' }}>
-                                            <label class="form-check-label fw-bold" for="pm_{{ method_id }}">
-                                                {% if method_id == 'wallet' %}
-                                                <i class="fas fa-wallet"></i> Wallet
-                                                {% elif method_id == 'mobile_money' %}
-                                                <i class="fas fa-mobile-alt"></i> Mobile Money
-                                                {% elif method_id == 'card' %}
-                                                <i class="fas fa-credit-card"></i> Card
-                                                {% elif method_id == 'invoice' %}
-                                                <i class="fas fa-file-invoice"></i> Invoice
-                                                {% else %}
-                                                Method {{ method_id }}
-                                                {% endif %}
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% else %}
-                            <div class="alert alert-warning">No payment methods available for this property.</div>
-                            {% endif %}
-                        </div>
+                         <!-- ============================================================ -->
+                         <!-- STEP 5: PAYMENT METHOD -->
+                         <!-- ============================================================ -->
+                         <h5 class="mb-3">Payment Method <span class="text-danger">*</span></h5>
+                         <div class="mb-4">
+                             {% if payment_options and payment_options.allowed_methods %}
+                             <div class="row">
+                                 {% for method_id in payment_options.allowed_methods %}
+                                 <div class="col-md-4 mb-2">
+                                     <div class="payment-method-card" onclick="selectPaymentMethod('{{ method_id }}')">
+                                         <div class="form-check">
+                                             <input type="radio" name="payment_method" value="{{ method_id }}" id="pm_{{ method_id }}" class="form-check-input" {{ 'checked' if loop.first else '' }} required>
+                                             <label class="form-check-label fw-bold" for="pm_{{ method_id }}">
+                                                 {% if method_id == 'wallet' %}
+                                                 <i class="fas fa-wallet"></i> Wallet
+                                                 {% elif method_id == 'mobile_money' %}
+                                                 <i class="fas fa-mobile-alt"></i> Mobile Money
+                                                 {% elif method_id == 'card' %}
+                                                 <i class="fas fa-credit-card"></i> Card
+                                                 {% elif method_id == 'invoice' %}
+                                                 <i class="fas fa-file-invoice"></i> Invoice
+                                                 {% else %}
+                                                 Method {{ method_id }}
+                                                 {% endif %}
+                                             </label>
+                                         </div>
+                                         {% if method_id == 'wallet' and current_user.is_authenticated %}
+                                         <div class="wallet-balance-info small text-muted mt-1">
+                                             {% if user_has_wallet %}
+                                                 Available balance: {{ wallet_balance }}
+                                             {% else %}
+                                                 No wallet found. <a href="{{ url_for('wallet.wallet_activate') }}">Create wallet</a>
+                                             {% endif %}
+                                         </div>
+                                         {% endif %}
+                                     </div>
+                                 </div>
+                                 {% endfor %}
+                             </div>
+                             <div class="invalid-feedback">Please select a payment method.</div>
+                             {% else %}
+                             <div class="alert alert-warning">No payment methods available for this property.</div>
+                             {% endif %}
+                         </div>
 
                         <!-- ============================================================ -->
                         <!-- STEP 6: PAYMENT TIMING -->
@@ -237,6 +247,7 @@
                         
                         <!-- Hidden fields -->
                         <input type="hidden" name="property_id" value="{{ booking.property_id }}">
+                        <input type="hidden" name="room_type_id" value="{{ booking.room_type_id or '' }}">
                         <input type="hidden" name="host_user_id" value="{{ booking.host_user_id }}">
                         <input type="hidden" name="check_in" value="{{ booking.check_in }}">
                         <input type="hidden" name="check_out" value="{{ booking.check_out }}">
@@ -275,21 +286,21 @@
                 </div>
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-2">
-                        <span>${{ "%.2f"|format(booking.nightly_rate) }} × {{ booking.nights }} nights</span>
-                        <span>${{ "%.2f"|format(booking.subtotal) }}</span>
+                        <span>${{ "%.2f"|format(booking.nightly_rate|float) }} × {{ booking.nights|int }} nights</span>
+                        <span>${{ "%.2f"|format(booking.subtotal|float) }}</span>
                     </div>
                     <div class="d-flex justify-content-between mb-2">
                         <span>Cleaning fee</span>
-                        <span>${{ "%.2f"|format(booking.cleaning_fee) }}</span>
+                            <span>${{ "%.2f"|format(booking.cleaning_fee|float) }}</span>
                     </div>
                     <div class="d-flex justify-content-between mb-2">
                         <span>Service fee</span>
-                        <span>${{ "%.2f"|format(booking.service_fee) }}</span>
+                            <span>${{ "%.2f"|format(booking.service_fee|float) }}</span>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between mb-0">
                         <strong>Total</strong>
-                        <strong class="text-primary">${{ "%.2f"|format(booking.total) }}</strong>
+                            <strong class="text-primary">${{ "%.2f"|format(booking.total|float) }}</strong>
                     </div>
                     <small class="text-muted" id="payment-method-label">Select a payment method</small>
                 </div>
@@ -320,6 +331,13 @@ function selectBookingType(type) {
 
 function selectPaymentMethod(methodId) {
     document.querySelectorAll('[name="payment_method"]').forEach(el => el.checked = (el.value === methodId));
+    document.querySelectorAll('.payment-method-card').forEach(card => {
+        card.classList.remove('selected');
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio && radio.value === methodId) {
+            card.classList.add('selected');
+        }
+    });
     const labels = {
         'wallet': 'Paid from your AFCON360 wallet',
         'mobile_money': 'Paid via Mobile Money',
@@ -362,9 +380,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (selectedTiming) {
         document.getElementById('depositSection').style.display = selectedTiming.value === 'deposit' ? 'block' : 'none';
     }
-    const selectedPayment = document.querySelector('[name="payment_method"]:checked');
-    if (selectedPayment) {
-        selectPaymentMethod(selectedPayment.value);
+    const firstPayment = document.querySelector('[name="payment_method"]');
+    if (firstPayment) {
+        selectPaymentMethod(firstPayment.value);
     }
 });
 </script>

@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.transport.models import Booking, BookingStatus
+from app.wallet.services.wallet_service import WalletService
 from app.utils.exceptions import ValidationError, NotFoundError, ServiceUnavailableError
 from app.utils.monitoring import monitor_endpoint, record_metric, start_span
 from app.utils.security import sanitize_input
@@ -75,27 +76,40 @@ class PaymentService:
             # Generate payment reference
             payment_ref = PaymentService._generate_payment_reference()
 
-            # Process payment (simplified - integrate with actual payment gateway)
+            # Process payment
             payment_method = sanitized_data.get('payment_method', 'cash')
 
-            if payment_method == 'cash':
-                # Cash payment - mark as pending
+            wallet_txn_id = None
+            if payment_method == 'wallet':
+                wallet_service = WalletService()
+                account = wallet_service.account_repo.get_by_user_id(booking.customer_id, booking.currency)
+                if not account:
+                    raise ValidationError(message="No wallet account found", code="NO_WALLET")
+                balance = wallet_service.ledger_repo.get_balance(account.id, booking.currency)
+                if balance < final_price:
+                    raise ValidationError(message="Insufficient wallet balance", code="INSUFFICIENT_BALANCE")
+                client_request_id = f"TRN-PAY-{booking_id}-{int(datetime.now(timezone.utc).timestamp())}"
+                result = wallet_service.withdraw(
+                    account_id=str(account.id),
+                    amount=final_price,
+                    currency=booking.currency,
+                    client_request_id=client_request_id,
+                    metadata={"transport_booking_id": str(booking_id), "payment_reference": payment_ref}
+                )
+                if result.get("status") != "success":
+                    raise ValidationError(message=result.get("error", "Wallet payment failed"), code="WALLET_FAILED")
+                wallet_txn_id = result.get("transaction_id")
+                payment_status = 'completed'
+                payment_processed = True
+            elif payment_method == 'cash':
                 payment_status = 'pending'
                 payment_processed = False
             else:
-                # Card/online payment - check if enabled
-                if not current_app.config.get('PAYMENT_PROCESSING_ENABLED', False):
-                    raise ValidationError(
-                        message="Online payment processing is disabled",
-                        code="PAYMENT_DISABLED"
-                    )
-
                 payment_status = 'processing'
                 payment_processed = PaymentService._process_online_payment(
                     amount=final_price,
                     payment_data=sanitized_data
                 )
-
                 if payment_processed:
                     payment_status = 'completed'
                 else:
@@ -107,6 +121,7 @@ class PaymentService:
             booking.payment_status = payment_status
             booking.payment_reference = payment_ref
             booking.payment_processed_at = datetime.now(timezone.utc) if payment_processed else None
+            booking.wallet_transaction_id = wallet_txn_id or booking.wallet_transaction_id
 
             if payment_status == 'completed':
                 booking.status = BookingStatus.PAID

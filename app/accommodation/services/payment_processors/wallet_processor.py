@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from app.accommodation.services.payment_processors.base import PaymentProcessor
 from app.accommodation.services.marketplace_service import MarketplaceService
+from app.wallet.models.ledger import AccountModel
 
 
 class WalletProcessor(PaymentProcessor):
@@ -21,6 +22,9 @@ class WalletProcessor(PaymentProcessor):
         Looks up the booking by idempotency_key and delegates to
         MarketplaceService.charge_guest() which uses WalletService.transfer()
         with platform_fee for commission.
+        
+        This processor does NOT create accounts automatically.
+        It requires the wallet account to already exist with sufficient balance.
         """
         from app.accommodation.models.booking import AccommodationBooking
 
@@ -29,6 +33,13 @@ class WalletProcessor(PaymentProcessor):
         ).first()
         if not booking:
             return False, None, "Booking not found for idempotency key"
+
+        account = AccountModel.query.filter_by(user_id=user_id).first()
+        if not account:
+            return False, None, "Wallet account not found. Please create a wallet first."
+
+        if account.balance < amount:
+            return False, None, f"Insufficient wallet balance. Available: {account.balance}, Required: {amount}"
 
         success, txn_id, error = MarketplaceService.charge_guest(
             booking=booking,

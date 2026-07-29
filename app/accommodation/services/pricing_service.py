@@ -46,7 +46,7 @@ class PricingService:
 
         # Base nightly rate and fees - check if room_type_id is provided
         if room_type_id:
-            from app.accommodation.models.property import RoomType
+            from app.accommodation.models.room import RoomType
             room_type = RoomType.query.get(room_type_id)
             if not room_type or room_type.property_id != property.id:
                 raise ValueError("Room type not found or does not belong to this property")

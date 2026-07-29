@@ -4,7 +4,8 @@ FATF Travel Rule implementation for crypto/fiat transfers
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Index, ForeignKey, BigInteger
+from sqlalchemy import Column,BigInteger, Integer, String, Boolean, DateTime, Text, Index, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from app.extensions import db
 
 
@@ -96,7 +97,7 @@ class TravelRuleTransfer(db.Model):
     id = Column(BigInteger, primary_key=True)
     
     # Transaction reference
-    transaction_id = Column(BigInteger, ForeignKey('transactions.id'), nullable=False, index=True)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey('transactions.id'), nullable=False, index=True)
     
     # Originator information
     originator_name = Column(String(255), nullable=True)

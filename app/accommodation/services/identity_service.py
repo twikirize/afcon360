@@ -147,12 +147,16 @@ class AccommodationIdentityService:
 
     @staticmethod
     def can_manage_property(user: User, property_owner_user_id=None, property_owner_org_id=None) -> bool:
-        """
-        Check if user can manage a specific property.
-
-        Returns: bool
-        """
-        # Super admin can manage everything
+        """Check if user can manage a property."""
+        if not user or not user.is_authenticated:
+            return False
+        
+        # Admins, owners, super_admins, and accommodation_admins can manage ANY property
+        from app.auth.helpers import has_global_role
+        if has_global_role(user, 'admin', 'owner', 'super_admin', 'accommodation_admin'):
+            return True
+        
+        # Super admin check via permission
         if can(user, "accommodation.manage"):
             return True
 

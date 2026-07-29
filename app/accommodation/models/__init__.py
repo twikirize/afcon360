@@ -44,7 +44,7 @@ from app.accommodation.models.availability import (
 
 # Review models
 from app.accommodation.models.review import Review, AccommodationReviewStatus
-from app.accommodation.models.room import RoomCategory, Room, RoomBooking
+from app.accommodation.models.room import RoomType, Room, RoomBooking
 from app.accommodation.models.wishlist import Wishlist
 from app.accommodation.models.guest_profile import GuestProfile
 
@@ -75,7 +75,7 @@ __all__ = [
     'BookingContextType',
     'Wishlist',
     'GuestProfile',
-    'RoomCategory',
+    'RoomType',
     'Room',
     'RoomBooking',
     # Booking Policy

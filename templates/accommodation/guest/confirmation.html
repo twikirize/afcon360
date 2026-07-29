@@ -1,3 +1,4 @@
+{% from "macros/booking_macros.html" import booking_type_badge, room_type_display %}
 {% extends "base.html" %}
 
 {% block title %}Booking Confirmed - AFCON360{% endblock %}
@@ -97,20 +98,21 @@
                         </div>
                     </div>
                     <div class="mt-2">
-                        <span class="badge bg-info text-dark">
-                            {% if booking.booking_type == 'self' %}
-                                Personal booking
-                            {% elif booking.booking_type == 'third_party' %}
-                                Booking for another guest
-                            {% elif booking.booking_type == 'group' %}
-                                Group accommodation
-                            {% else %}
-                                {{ booking.booking_type|replace('_', ' ')|title }}
-                            {% endif %}
-                        </span>
+                        {{ booking_type_badge(booking) }}
                     </div>
                 </div>
             </div>
+
+            {% if booking.room_type_id %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-bed me-2"></i>Room Type</h5>
+                </div>
+                <div class="card-body">
+                    {{ room_type_display(booking.room_type_name, booking.room_type_id) }}
+                </div>
+            </div>
+            {% endif %}
 
             <!-- PAYMENT RECEIPT -->
             <div class="card shadow-sm mb-4">

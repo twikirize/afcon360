@@ -259,7 +259,12 @@ class MediaService:
         ).order_by(Media.is_cover.desc(), Media.display_order.asc())
         if media_type:
             q = q.filter(Media.media_type == media_type)
-        return q.all()
+        items = q.all()
+        # ✅ Ensure each item has a public_id attribute
+        for item in items:
+            if not hasattr(item, 'public_id') or not item.public_id:
+                item.public_id = str(item.id)
+        return items
 
     @classmethod
     def delete(cls, media_public_id: str, requesting_user_id: int) -> bool:

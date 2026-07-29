@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Escrow Accounts — AFCON360{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-0"><i class="fas fa-shield-alt text-success me-2"></i>Escrow Accounts</h1>
+            <p class="text-muted">Manage platform escrow accounts for all services</p>
+        </div>
+        <a href="{{ url_for('admin.owner.escrow_create') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Create Escrow Account
+        </a>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Escrow</h6>
+                    <h2 class="text-success">${{ "%.2f"|format(stats.total_balance) }}</h2>
+                    <small>{{ stats.total_accounts }} accounts</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Frozen Accounts</h6>
+                    <h2 class="text-danger">{{ stats.frozen_count }}</h2>
+                    <small>Accounts requiring attention</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Active Services</h6>
+                    <h2>{{ stats.by_service|length }}</h2>
+                    <small>Escrow enabled</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Auto-Release</h6>
+                    <h2>{{ settings.get('escrow_auto_release_days', '2') }} days</h2>
+                    <small>After check-out/service</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Balance by Service</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for service_type, data in stats.by_service.items() %}
+                <div class="col-md-4 mb-2">
+                    <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                        <div>
+                            <span class="badge bg-{{ 'success' if data.status == 'active' else 'danger' }} me-2">
+                                {{ data.status|upper }}
+                            </span>
+                            <strong>{{ data.display_name }}</strong>
+                            <br>
+                            <small class="text-muted">{{ data.account_number }}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="fw-bold">${{ "%.2f"|format(data.balance) }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-list me-2"></i>All Escrow Accounts</h5>
+            <a href="{{ url_for('admin.owner.escrow_transactions') }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-history me-1"></i> View All Transactions
+            </a>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Service</th>
+                            <th>Balance</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in accounts %}
+                        {% set account = item.account %}
+                        <tr>
+                            <td>
+                                <strong>{{ account.account_number or '—' }}</strong>
+                                <br>
+                                <small class="text-muted">{{ account.account_name }}</small>
+                            </td>
+                            <td>
+                                <i class="fas {{ service_types.get(account.extra_data.service_type if account.extra_data else '', {}).get('icon', 'fa-cube') }}"></i>
+                                {{ item.display_name }}
+                            </td>
+                            <td>
+                                <span class="fw-bold">${{ "%.2f"|format(item.balance) }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if account.status == 'active' else 'danger' }}">
+                                    {{ account.status|upper }}
+                                </span>
+                            </td>
+                            <td>
+                                <small>{{ account.created_at.strftime('%Y-%m-%d') if account.created_at else 'N/A' }}</small>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('admin.owner.escrow_detail', account_id=account.id) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-2x d-block mb-2"></i>
+                                No escrow accounts found.
+                                <br>
+                                <a href="{{ url_for('admin.owner.escrow_create') }}" class="btn btn-sm btn-primary mt-2">
+                                    Create First Escrow Account
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

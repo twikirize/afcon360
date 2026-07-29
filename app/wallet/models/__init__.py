@@ -14,6 +14,7 @@ from .fx import FXRateModel, FXTransactionModel
 from .commission import AgentCommission
 from .payout import PayoutRequest
 from .adjustment import AdjustmentRequestModel
+from .payment_method import PaymentMethodConfig, EventPaymentPreference
 
 __all__ = [
     'LedgerEntryModel',
@@ -25,4 +26,6 @@ __all__ = [
     'AgentCommission',
     'PayoutRequest',
     'AdjustmentRequestModel',
+    'PaymentMethodConfig',
+    'EventPaymentPreference',
 ]
