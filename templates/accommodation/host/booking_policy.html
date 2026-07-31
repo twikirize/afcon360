@@ -10,7 +10,7 @@
                 </div>
                 <div class="card-body">
                     <form method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <!-- Payment Timing -->
                         <h5 class="mb-3">Payment Timing</h5>
@@ -92,14 +92,53 @@
                         <div class="mb-4">
                             {% for m in payment_options.payment_methods %}
                             <div class="form-check mb-2">
-                                <input type="checkbox" name="payment_methods" value="{{ m.id }}" id="method_{{ m.id }}" class="form-check-input"
+                                <input type="checkbox" name="payment_methods" value="{{ m.method_id }}" id="method_{{ m.method_id }}" class="form-check-input"
                                 {% set pm = property.payment_methods|selectattr('wallet_method_id', 'equalto', m.id)|first %}
                                 {{ 'checked' if pm and pm.enabled else '' }}>
-                                <label class="form-check-label" for="method_{{ m.id }}">
+                                <label class="form-check-label" for="method_{{ m.method_id }}">
                                     <i class="fas fa-{{ m.icon }}"></i> {{ m.display_name }}
                                 </label>
                             </div>
                             {% endfor %}
+                        </div>
+
+                        <!-- Cash Payment Protection -->
+                        <h5 class="mb-3">Cash Payment Protection</h5>
+                        <div class="mb-4">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="allow_cash_payments" id="allow_cash_payments" class="form-check-input" {{ 'checked' if policy.allow_cash_payments else '' }}>
+                                <label class="form-check-label" for="allow_cash_payments">Allow Cash Payments</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="cash_requires_deposit" id="cash_requires_deposit" class="form-check-input" {{ 'checked' if policy.cash_requires_deposit else '' }}>
+                                <label class="form-check-label" for="cash_requires_deposit">Require Deposit for Cash</label>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Cash Deposit Percentage (%)</label>
+                                    <input type="number" name="cash_deposit_percentage" class="form-control" value="{{ policy.cash_deposit_percentage or 30 }}" min="0" max="100" step="0.01">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Maximum Cash Amount (UGX)</label>
+                                    <input type="number" name="cash_max_amount" class="form-control" value="{{ policy.cash_max_amount or 500000 }}" min="0" step="0.01">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Minimum KYC Level</label>
+                                    <input type="number" name="cash_min_kyc_level" class="form-control" value="{{ policy.cash_min_kyc_level or 2 }}" min="0">
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Minimum Previous Bookings</label>
+                                    <input type="number" name="cash_min_previous_bookings" class="form-control" value="{{ policy.cash_min_previous_bookings or 0 }}" min="0">
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="cash_requires_verified_guest" id="cash_requires_verified_guest" class="form-check-input" {{ 'checked' if policy.cash_requires_verified_guest else '' }}>
+                                        <label class="form-check-label" for="cash_requires_verified_guest">Require Verified Guest</label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Status -->

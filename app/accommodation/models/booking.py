@@ -25,23 +25,32 @@ import enum
 
 class AccommodationBookingStatus(enum.Enum):
     """Booking status - stored as string in DB"""
-    PENDING = "pending"
+    # New states (specification)
+    DRAFT = "draft"
+    HELD = "held"
     PENDING_PAYMENT = "pending_payment"
-    PAYMENT_PARTIAL = "payment_partial"
     PENDING_APPROVAL = "pending_approval"
     CONFIRMED = "confirmed"
     CHECKED_IN = "checked_in"
     CHECKED_OUT = "checked_out"
+    CLOSED = "closed"
     CANCELLED = "cancelled"
-    REFUNDED = "refunded"
     NO_SHOW = "no_show"
     EXPIRED = "expired"
+    REFUNDED = "refunded"
+    
+    # Legacy states (for backward compatibility)
+    PENDING = "pending"
+    PAYMENT_PARTIAL = "payment_partial"
 
 
 class AccommodationPaymentStatus(enum.Enum):
     """Payment status - stored as string in DB"""
+    UNPAID = "unpaid"
     PENDING = "pending"
+    PROCESSING = "processing"
     PAID = "paid"
+    PARTIALLY_PAID = "partially_paid"
     FAILED = "failed"
     REFUNDED = "refunded"
     PARTIAL_REFUND = "partial_refund"
@@ -151,7 +160,7 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     # Booking Status (String storage)
     # -------------------------------
-    status = Column(String(50), default=AccommodationBookingStatus.PENDING.value, nullable=False, index=True)
+    status = Column(String(50), default=AccommodationBookingStatus.DRAFT.value, nullable=False, index=True)
 
     # -------------------------------
     # Cancellation / Host Approval
@@ -293,6 +302,29 @@ class AccommodationBooking(BaseModel):
         """Get context type as enum"""
         return BookingContextType(self.context_type)
 
+    @property
+    def is_ready_for_checkin(self) -> bool:
+        """
+        Computed property - not stored in DB.
+        Returns True if guest can check in.
+        """
+        return (
+            self.status == AccommodationBookingStatus.CONFIRMED.value
+            and self.payment_status_enum in [
+                AccommodationPaymentStatus.PAID,
+                AccommodationPaymentStatus.PARTIALLY_PAID,
+            ]
+            and self.check_in <= date.today()
+            and self.all_required_guests_registered
+        )
+
+    @property
+    def all_required_guests_registered(self) -> bool:
+        """Check if all required guests are registered for this booking"""
+        # This would typically check against guest registration model
+        # For now, return True if there's at least primary guest info
+        return bool(self.primary_guest_id or self.guest_user_id or self.guest_email)
+
     # -------------------------------
     # Core Methods
     # -------------------------------
@@ -366,32 +398,24 @@ class AccommodationBooking(BaseModel):
 # ==========================================
 
 class BookingStatusHistory(BaseModel):
-    __tablename__ = "accommodation_booking_history"
-    __table_args__ = (
-        Index("idx_history_booking", "booking_id"),
-        Index("idx_history_timestamp", "changed_at"),
-    )
+    __tablename__ = 'accommodation_booking_status_history'
 
-    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False, index=True)
-    booking = relationship("AccommodationBooking", back_populates="status_history")
-
+    id = Column(BigInteger, primary_key=True)
+    booking_id = Column(BigInteger, ForeignKey('accommodation_bookings.id'), nullable=False)
     from_status = Column(String(50), nullable=True)
     to_status = Column(String(50), nullable=False)
-    changed_by_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    reason = Column(Text, nullable=True)
-
-    ip_address = Column(String(64), nullable=True)
-    user_agent = Column(String(512), nullable=True)
     changed_at = Column(DateTime, default=func.now(), nullable=False)
+    changed_by = Column(BigInteger, nullable=True)  # user_id who made the change
+    trigger = Column(String(100), nullable=True)  # What triggered the change (e.g., 'payment_callback', 'host_action')
+    change_metadata = Column(JSON, nullable=True)  # Additional data about the transition
 
-    changed_by = relationship("User", foreign_keys=[changed_by_user_id])
+    # Relationships
+    booking = relationship("AccommodationBooking", back_populates="status_history")
 
     @property
-    def from_status_enum(self) -> AccommodationBookingStatus:
-        """Get from_status as enum"""
+    def from_status_enum(self):
         return AccommodationBookingStatus(self.from_status) if self.from_status else None
 
     @property
-    def to_status_enum(self) -> AccommodationBookingStatus:
-        """Get to_status as enum"""
-        return AccommodationBookingStatus(self.to_status) if self.from_status else None
+    def to_status_enum(self):
+        return AccommodationBookingStatus(self.to_status) if self.to_status else None

@@ -408,7 +408,7 @@ class SecurityEventLog(BaseModel):
             user_id: Optional[int] = None,
             ip_address: Optional[str] = None,
             **kwargs
-    ) -> 'SecurityEventLog':
+    ) -> None:
         """Log security event"""
         # Ensure severity is an AuditSeverity enum value
         if isinstance(severity, str):
@@ -424,23 +424,25 @@ class SecurityEventLog(BaseModel):
             logger.warning(f"Invalid severity type '{type(severity)}', defaulting to 'info'")
             severity = AuditSeverity.INFO
 
-        log_entry = SecurityEventLog(
-            event_type=event_type,
-            severity=severity,
-            description=description,
-            user_id=user_id,
-            ip_address=ip_address,
-            **kwargs
+        # Use connection.execute() to avoid SAWarning when called during flush events.
+        # Direct INSERT bypasses the ORM session and does not trigger autoflush.
+        connection = db.session.connection()
+        connection.execute(
+            SecurityEventLog.__table__.insert().values(
+                event_type=event_type,
+                severity=severity.value if isinstance(severity, AuditSeverity) else str(severity),
+                description=description,
+                user_id=user_id,
+                ip_address=ip_address,
+                **kwargs
+            )
         )
-
-        db.session.add(log_entry)
-        db.session.commit()
 
         # Alert on critical events
         if severity == AuditSeverity.CRITICAL:
             logger.critical(f"SECURITY ALERT: {event_type} - {description}")
 
-        return log_entry
+        return None
 
 
 # ============================================================================
@@ -488,7 +490,7 @@ class DataChangeLog(BaseModel):
             ip_address: Optional[str] = None,
             user_agent: Optional[str] = None,
             extra_data: Optional[Dict] = None
-    ) -> 'DataChangeLog':
+    ) -> None:
         """Log a data change event"""
 
         # Sanitize sensitive data
@@ -521,22 +523,25 @@ class DataChangeLog(BaseModel):
             else:
                 sanitized_new = {'value': str(new_value)}
 
-        log_entry = DataChangeLog(
-            entity_type=entity_type,
-            entity_id=str(entity_id) if entity_id is not None else None,
-            operation=operation,
-            old_value=sanitized_old,
-            new_value=sanitized_new,
-            changed_by=changed_by,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            extra_data=extra_data or {}
+        # Use connection.execute() to avoid SAWarning when called during flush events.
+        # Direct INSERT bypasses the ORM session and does not trigger autoflush.
+        connection = db.session.connection()
+        connection.execute(
+            DataChangeLog.__table__.insert().values(
+                public_id=str(uuid.uuid4()),
+                entity_type=entity_type,
+                entity_id=str(entity_id) if entity_id is not None else None,
+                operation=operation,
+                old_value=sanitized_old,
+                new_value=sanitized_new,
+                changed_by=changed_by,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                extra_data=extra_data or {}
+            )
         )
 
-        db.session.add(log_entry)
-        db.session.commit()
-
-        return log_entry
+        return None
 
 
 # ============================================================================

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from app.identity.models.user import User, Session as UserSession
 from app.profile.models import get_profile_by_user
 from app.extensions import db
-from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits, TIER_REQUIREMENTS, TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD, TIER_3_ENHANCED, TIER_4_PREMIUM, TIER_5_CORPORATE
+from app.utils.immutable_fields import filter_immutable_changes, enforce_immutability
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -192,19 +192,45 @@ def edit_profile():
 
         is_verified = profile.verification_status == 'verified'
 
-        profile.display_name = request.form.get('display_name') or profile.display_name
-        profile.bio = request.form.get('bio') or profile.bio
-        profile.fan_team = request.form.get('fan_team') or profile.fan_team
-        profile.avatar_url = request.form.get('avatar_url') or profile.avatar_url
-        profile.nationality = request.form.get('nationality') or profile.nationality
-        profile.address = request.form.get('address') or profile.address
-        profile.city = request.form.get('city') or profile.city
-        profile.country = request.form.get('country') or profile.country
+        editable_data = {
+            'display_name': request.form.get('display_name'),
+            'bio': request.form.get('bio'),
+            'fan_team': request.form.get('fan_team'),
+            'avatar_url': request.form.get('avatar_url'),
+            'nationality': request.form.get('nationality'),
+            'address': request.form.get('address'),
+            'city': request.form.get('city'),
+            'country': request.form.get('country'),
+        }
 
         if not is_verified:
-            full_name = request.form.get('full_name')
-            if full_name:
-                profile.full_name = full_name
+            editable_data['full_name'] = request.form.get('full_name')
+
+        allowed_changes, blocked_fields = filter_immutable_changes(
+            profile, editable_data, is_verified,
+        )
+
+        for field, value in allowed_changes.items():
+            if value is not None:
+                setattr(profile, field, value)
+
+        if blocked_fields:
+            from app.audit.forensic_audit import ForensicAuditService
+            for field in blocked_fields:
+                old_value = getattr(profile, field, None)
+                attempted_value = editable_data.get(field)
+                ForensicAuditService.log_blocked(
+                    entity_type="user_profile",
+                    entity_id=str(profile.id),
+                    action=f"update_{field}",
+                    user_id=current_user.id,
+                    reason=f"{field} cannot be changed after verification",
+                    attempted_value=str(attempted_value) if attempted_value else None,
+                    old_value=str(old_value) if old_value else None,
+                    ip_address=request.remote_addr,
+                )
+            flash('Some fields cannot be changed after verification.', 'danger')
+            return redirect(url_for('profile.edit_profile'))
 
         try:
             db.session.commit()
@@ -264,20 +290,61 @@ def update_settings():
     """Update user settings via AJAX"""
     from app.profile.models import get_profile_by_user
     from app.identity.models.user import User
+    from app.utils.immutable_fields import filter_immutable_changes
+    from app.audit.forensic_audit import ForensicAuditService
 
     profile = get_profile_by_user(current_user.public_id)
     user = User.query.filter_by(public_id=str(current_user.public_id)).first()
 
-    if request.form.get('full_name') and profile:
-        profile.full_name = request.form.get('full_name')
-    if request.form.get('email') and user:
-        user.email = request.form.get('email')
-    if request.form.get('phone_number') and profile:
-        profile.phone_number = request.form.get('phone_number')
-    if request.form.get('location') and profile:
-        parts = request.form.get('location').split(',')
-        profile.city = parts[0].strip() if parts else None
-        profile.country = parts[1].strip() if len(parts) > 1 else None
+    if not profile:
+        return jsonify({'success': False, 'error': 'Profile not found'}), 404
+
+    is_verified = profile.verification_status == 'verified'
+
+    editable_data = {
+        'full_name': request.form.get('full_name'),
+        'phone_number': request.form.get('phone_number'),
+        'address': request.form.get('address'),
+        'city': request.form.get('city'),
+        'country': request.form.get('country'),
+    }
+
+    allowed_changes, blocked_fields = filter_immutable_changes(
+        profile, editable_data, is_verified,
+    )
+
+    for field, value in allowed_changes.items():
+        if value is not None:
+            if field == 'full_name':
+                profile.full_name = value
+            elif field == 'phone_number':
+                profile.phone_number = value
+            elif field == 'address':
+                profile.address = value
+            elif field == 'city':
+                profile.city = value
+            elif field == 'country':
+                profile.country = value
+
+    if blocked_fields:
+        for field in blocked_fields:
+            old_value = getattr(profile, field, None)
+            attempted_value = editable_data.get(field)
+            ForensicAuditService.log_blocked(
+                entity_type="user_profile",
+                entity_id=str(profile.id),
+                action=f"update_{field}",
+                user_id=current_user.id,
+                reason=f"{field} cannot be changed after verification",
+                attempted_value=str(attempted_value) if attempted_value else None,
+                old_value=str(old_value) if old_value else None,
+                ip_address=request.remote_addr,
+            )
+        return jsonify({
+            'success': False,
+            'error': 'Some fields cannot be changed after verification.',
+            'blocked_fields': list(blocked_fields),
+        }), 403
 
     db.session.commit()
     return jsonify({'success': True, 'message': 'Profile updated successfully'})

@@ -17,7 +17,7 @@ wallet_txn_id.
 from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import (
-    Column, BigInteger, String, Integer, Text, Index, UniqueConstraint, ForeignKey
+    Column, BigInteger, String, Integer, Text, Index, UniqueConstraint, ForeignKey, DateTime
 )
 from sqlalchemy.orm import relationship
 from app.extensions import db

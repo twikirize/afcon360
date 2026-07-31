@@ -150,6 +150,113 @@ class WalletService:
                 current=float(daily_volume)
             )
 
+    def _check_monthly_limit(
+        self,
+        account_id: UUID,
+        amount: Decimal,
+        currency: str
+    ) -> None:
+        """
+        Check monthly limit for operation.
+
+        Args:
+            account_id: Account UUID
+            amount: Transaction amount
+            currency: Currency code
+
+        Raises:
+            LimitExceededError: If limit would be exceeded
+        """
+        account = self.account_repo.get_by_id(account_id)
+        if not account:
+            return
+        
+        monthly_limit = account.monthly_volume_limit
+        if not monthly_limit:
+            return
+        
+        monthly_volume = account.monthly_volume or Decimal('0')
+        
+        # Reset if period has elapsed
+        if account.monthly_volume_reset_at and datetime.utcnow() > account.monthly_volume_reset_at:
+            monthly_volume = Decimal('0')
+            account.monthly_volume = Decimal('0')
+            account.monthly_volume_reset_at = datetime.utcnow() + timedelta(days=30)
+            db.session.commit()
+        
+        if monthly_volume + amount > monthly_limit:
+            raise LimitExceededError(
+                limit_type="monthly",
+                currency=currency,
+                limit=float(monthly_limit),
+                current=float(monthly_volume)
+            )
+
+    def _check_kyc_limits(
+        self,
+        user_id: int,
+        amount: Decimal,
+        action: str,
+        currency: str = 'UGX'
+    ) -> None:
+        """
+        Check KYC-based transaction limits.
+
+        Args:
+            user_id: Internal user ID
+            amount: Transaction amount
+            action: 'send', 'receive', 'withdraw', 'deposit'
+            currency: Currency code
+
+        Raises:
+            LimitExceededError: If KYC limits exceeded
+        """
+        from app.wallet.services.kyc_limit_service import KYCLimitService
+        
+        result = KYCLimitService.check_transaction_allowed(user_id, amount, action, currency)
+        if not result['allowed']:
+            raise LimitExceededError(
+                limit_type="kyc",
+                currency=currency,
+                limit=0,
+                current=float(amount)
+            )
+        # Store reason in exception message if needed
+        if 'reason' in result:
+            current_app.logger.info(f"KYC check passed: {result['reason']}")
+
+    def _check_fraud_risk(
+        self,
+        user_id: int,
+        amount: Decimal,
+        currency: str,
+        recipient_id: Optional[int] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Run fraud detection scoring on transaction.
+
+        Returns:
+            Dict with risk assessment. Raises ComplianceBlockError if blocked.
+        """
+        from app.wallet.services.fraud_detection_service import FraudDetectionService
+        
+        score_result = FraudDetectionService.score_transaction(
+            user_id=user_id,
+            amount=float(amount),
+            currency=currency,
+            recipient_id=recipient_id,
+            ip_address=ip_address
+        )
+        
+        if FraudDetectionService.should_block_transaction(score_result):
+            raise ComplianceBlockError(
+                reason=f"Transaction blocked by fraud detection (score: {score_result['score']}, patterns: {score_result['patterns']})",
+                rule_name='fraud_detection'
+            )
+        
+        return score_result
+
     # ========================================================================
     # WALLET MANAGEMENT
     # ========================================================================
@@ -430,8 +537,17 @@ class WalletService:
                     reason=account.frozen_reason
                 )
 
-            # 3. Daily limit check
+            # 3. KYC limit check
+            self._check_kyc_limits(account.user_id, amount, 'deposit', currency)
+            
+            # 4. Fraud risk check
+            self._check_fraud_risk(account.user_id, amount, currency, ip_address=self._get_ip_address())
+            
+            # 5. Daily limit check
             self._check_daily_limit(account.id, amount, currency, 'deposit')
+            
+            # 6. Monthly limit check
+            self._check_monthly_limit(account.id, amount, currency)
 
             # 4. Atomic idempotency
             tx = self.tx_repo.get_or_create(
@@ -606,15 +722,24 @@ class WalletService:
                     reason=account.frozen_reason
                 )
 
-            # 3. Balance check (derived from ledger, no TOCTOU)
+            # 3. KYC limit check
+            self._check_kyc_limits(account.user_id, amount, 'withdraw', currency)
+            
+            # 4. Fraud risk check
+            self._check_fraud_risk(account.user_id, amount, currency, ip_address=self._get_ip_address())
+            
+            # 5. Balance check (derived from ledger, no TOCTOU)
             current_balance = self.ledger_repo.get_balance(account.id, currency)
             if current_balance < amount:
                 raise InsufficientBalanceError(
                     currency, float(amount), float(current_balance)
                 )
 
-            # 4. Daily limit check
+            # 6. Daily limit check
             self._check_daily_limit(account.id, amount, currency, "withdraw")
+            
+            # 7. Monthly limit check
+            self._check_monthly_limit(account.id, amount, currency)
 
             # 5. Atomic idempotency
             tx = self.tx_repo.get_or_create(
@@ -841,7 +966,19 @@ class WalletService:
                     reason=to_account.frozen_reason
                 )
 
-            # 3. Balance check (derived from ledger)
+            # 3. KYC limit check (sender)
+            self._check_kyc_limits(from_account.user_id, amount, 'send', currency)
+            
+            # 4. Fraud risk check (sender)
+            self._check_fraud_risk(
+                from_account.user_id, 
+                amount, 
+                currency, 
+                recipient_id=to_account.user_id,
+                ip_address=self._get_ip_address()
+            )
+
+            # 5. Balance check (derived from ledger)
             from_balance = self.ledger_repo.get_balance(from_account.id, currency)
             total_debit = amount + (platform_fee or Decimal('0'))
 
@@ -850,8 +987,11 @@ class WalletService:
                     currency, float(total_debit), float(from_balance)
                 )
 
-            # 4. Daily limit check
+            # 6. Daily limit check
             self._check_daily_limit(from_account.id, amount, currency, "transfer")
+            
+            # 7. Monthly limit check
+            self._check_monthly_limit(from_account.id, amount, currency)
 
             # 5. Atomic idempotency
             tx = self.tx_repo.get_or_create(

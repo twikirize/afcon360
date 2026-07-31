@@ -1,14 +1,18 @@
-# app/accommodation/state_machine/booking_states.py
 """
 Booking State Machine - Manages booking lifecycle transitions.
 
-State Flow:
-PENDING → CONFIRMED → CHECKED_IN → CHECKED_OUT
-               ↓
-           CANCELLED → REFUNDED
+State Flow (Specification compliant):
+DRAFT → HELD → PENDING_PAYMENT → CONFIRMED → [READY_FOR_CHECKIN] → CHECKED_IN → CHECKED_OUT → CLOSED
+                                          ↘                          ↘            ↘
+                                           CANCELLED                  NO_SHOW      CLOSED
+                                               ↓                          ↑
+                                         EXPIRED                (after review)
+
+Where [READY_FOR_CHECKIN] is a computed state, not stored in DB.
 """
 
-from app.accommodation.models.booking import AccommodationBookingStatus
+from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
+from datetime import date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,29 +28,37 @@ class BookingStateMachine:
     Manages booking state transitions with validation and history logging.
     """
 
+    # Valid state transitions (stored states only)
     VALID_TRANSITIONS = {
+        AccommodationBookingStatus.DRAFT: [
+            AccommodationBookingStatus.HELD,
+            AccommodationBookingStatus.CANCELLED,
+        ],
+        AccommodationBookingStatus.HELD: [
+            AccommodationBookingStatus.PENDING_PAYMENT,
+            AccommodationBookingStatus.EXPIRED,
+            AccommodationBookingStatus.CANCELLED,
+        ],
+        AccommodationBookingStatus.PENDING_PAYMENT: [
+            AccommodationBookingStatus.CONFIRMED,
+            AccommodationBookingStatus.CANCELLED,
+            AccommodationBookingStatus.EXPIRED,
+        ],
+        AccommodationBookingStatus.CONFIRMED: [
+            AccommodationBookingStatus.CANCELLED,
+            AccommodationBookingStatus.NO_SHOW,
+        ],
+        # CHECKED_IN is allowed conditionally (guard checks)
+        AccommodationBookingStatus.PENDING_APPROVAL: [
+            AccommodationBookingStatus.CONFIRMED,
+            AccommodationBookingStatus.CANCELLED,
+        ],
+        # Legacy states (maintained for backward compatibility)
         AccommodationBookingStatus.PENDING: [
             AccommodationBookingStatus.CONFIRMED,
             AccommodationBookingStatus.CANCELLED,
             AccommodationBookingStatus.PENDING_APPROVAL,
         ],
-        AccommodationBookingStatus.PENDING_APPROVAL: [
-            AccommodationBookingStatus.CONFIRMED,
-            AccommodationBookingStatus.CANCELLED,
-        ],
-        AccommodationBookingStatus.CONFIRMED: [
-            AccommodationBookingStatus.CHECKED_IN,
-            AccommodationBookingStatus.CANCELLED,
-        ],
-        AccommodationBookingStatus.CHECKED_IN: [
-            AccommodationBookingStatus.CHECKED_OUT,
-        ],
-        AccommodationBookingStatus.CHECKED_OUT: [],  # Terminal
-        AccommodationBookingStatus.CANCELLED: [
-            AccommodationBookingStatus.REFUNDED,
-        ],
-        AccommodationBookingStatus.REFUNDED: [],  # Terminal
-        AccommodationBookingStatus.NO_SHOW: [],  # Terminal
     }
 
     @classmethod
@@ -57,17 +69,42 @@ class BookingStateMachine:
     ) -> bool:
         """
         Check if booking can transition to new_status.
-
-        Args:
-            booking: AccommodationBooking instance (status is stored as string)
-            new_status: Target AccommodationBookingStatus enum
-
-        Returns:
-            bool: True if transition is valid
+        Includes computed state logic for READY_FOR_CHECKIN.
         """
-        # Convert the stored string status to enum for comparison
+        # Special case: CHECKED_IN requires readiness check
+        if new_status == AccommodationBookingStatus.CHECKED_IN:
+            current_enum = AccommodationBookingStatus(booking.status)
+            return (
+                current_enum == AccommodationBookingStatus.CONFIRMED
+                and cls._can_check_in(booking)
+            )
+
+        # Regular transition validation
         current_enum = AccommodationBookingStatus(booking.status)
         return new_status in cls.VALID_TRANSITIONS.get(current_enum, [])
+
+    @classmethod
+    def _can_check_in(cls, booking) -> bool:
+        """
+        Computed READY_FOR_CHECKIN status.
+        Not stored in DB - always derived from current state.
+        """
+        return (
+            booking.status == AccommodationBookingStatus.CONFIRMED.value
+            and booking.payment_status in [
+                AccommodationPaymentStatus.PAID.value,
+                AccommodationPaymentStatus.PARTIALLY_PAID.value,
+            ]
+            and booking.check_in <= date.today()
+            and cls._all_guests_registered(booking)
+        )
+
+    @classmethod
+    def _all_guests_registered(cls, booking) -> bool:
+        """
+        Check if all required guests are registered for this booking.
+        """
+        return bool(booking.primary_guest_id or booking.guest_user_id or booking.guest_email)
 
     @classmethod
     def get_next_states(
@@ -75,7 +112,11 @@ class BookingStateMachine:
             current_status: AccommodationBookingStatus
     ) -> list:
         """Return all valid next states from current_status"""
-        return cls.VALID_TRANSITIONS.get(current_status, [])
+        base_states = cls.VALID_TRANSITIONS.get(current_status, [])
+        # CHECKED_IN is conditionally available from CONFIRMED
+        if current_status == AccommodationBookingStatus.CONFIRMED:
+            return [AccommodationBookingStatus.CHECKED_IN] + base_states
+        return base_states
 
     @classmethod
     def is_terminal(
@@ -94,17 +135,21 @@ class BookingStateMachine:
             reason: str = None,
             ip_address: str = None,
             user_agent: str = None,
+            trigger: str = None,
+            metadata: dict = None,
     ):
         """
         Transition booking to new_status with validation and history record.
 
         Args:
-            booking:             The AccommodationBooking instance (status is stored as string)
+            booking:             The AccommodationBooking instance
             new_status:          Target AccommodationBookingStatus enum
             changed_by_user_id:  User performing the transition (None = system)
             reason:              Optional reason string
             ip_address:          Request IP for audit trail
             user_agent:          Request user-agent for audit trail
+            trigger:             What triggered this transition
+            metadata:            Additional context as dict
 
         Returns:
             The updated booking instance
@@ -115,20 +160,17 @@ class BookingStateMachine:
         from app.extensions import db
         from app.accommodation.models.booking import BookingStatusHistory
 
-        # Convert the stored string status to enum for validation
-        current_enum = AccommodationBookingStatus(booking.status)
-
-        # Check if transition is valid
-        if new_status not in cls.VALID_TRANSITIONS.get(current_enum, []):
+        # Validate transition
+        if not cls.can_transition(booking, new_status):
             raise InvalidStateTransition(
-                f"Cannot transition booking {booking.booking_reference} "
+                f"Cannot transition booking {booking.booking_reference or booking.id} "
                 f"from '{booking.status}' to '{new_status.value}'"
             )
 
         old_status_string = booking.status
         new_status_string = new_status.value
 
-        # Record transition in history (store as strings)
+        # Record transition in history with trigger and metadata
         history = BookingStatusHistory(
             booking_id=booking.id,
             from_status=old_status_string,
@@ -137,16 +179,19 @@ class BookingStateMachine:
             reason=reason,
             ip_address=ip_address,
             user_agent=user_agent,
+            trigger=trigger,
+            metadata=metadata or {},
         )
         db.session.add(history)
 
-        # Apply the transition (store as string)
+        # Apply the transition
         booking.status = new_status_string
 
         logger.info(
-            f"Booking transition: {booking.booking_reference} | "
+            f"Booking transition: {booking.booking_reference or booking.id} | "
             f"{old_status_string} → {new_status_string} | "
             f"By: {changed_by_user_id or 'system'} | "
+            f"Trigger: {trigger or 'none'} | "
             f"Reason: {reason or 'none'}"
         )
 

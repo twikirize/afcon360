@@ -176,9 +176,10 @@ class AccountModel(db.Model):
         default=AccountOwnerType.USER
     )
     
-    # Owner - references users.id or organisations.id
+    # Owner - references users.id
     user_id = Column(
-        db.BigInteger,
+        BigInteger,
+        ForeignKey('users.id', ondelete='RESTRICT'),
         nullable=False
     )
     
@@ -225,6 +226,7 @@ class AccountModel(db.Model):
     )
     frozen_by = Column(
         BigInteger,
+        ForeignKey('users.id', ondelete='SET NULL'),
         nullable=True
     )
     

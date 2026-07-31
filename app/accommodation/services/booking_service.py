@@ -46,6 +46,103 @@ def _assert_no_open_flags(entity_type: str, entity_id: int):
 from app.accommodation.utils import enum_value  # single source of truth
 
 
+def check_cash_eligibility(guest_user, property_id, booking_amount):
+    """
+    Check if a guest is eligible to book with cash pay-on-arrival.
+
+    Three-level control:
+      1. Global (SystemConfig) — development mode, KYC requirements, limits
+      2. Property (PropertyBookingPolicy) — per-property cash settings
+      3. Guest (User) — KYC level, verification, booking history
+
+    Returns dict: {'allowed': bool, 'reason': str, 'requires_deposit': bool}
+    """
+    from app.models.system_config import SystemConfig
+    from app.accommodation.models.booking_policy import PropertyBookingPolicy
+    from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
+
+    # --- Level 1: Global checks ---
+    if not SystemConfig.get('payment_cash_globally_enabled', True):
+        return {'allowed': False, 'reason': 'Cash payments are disabled system-wide.'}
+
+    dev_mode = SystemConfig.get('payment_cash_development_mode', True)
+    if dev_mode:
+        try:
+            policy = PropertyBookingPolicy.query.filter_by(property_id=property_id).first()
+            if policy and hasattr(policy, 'allow_cash_payments') and not policy.allow_cash_payments:
+                return {'allowed': False, 'reason': 'Cash payments not allowed for this property.'}
+        except Exception:
+            pass
+        return {'allowed': True, 'reason': 'Development mode — all checks bypassed.', 'requires_deposit': False}
+
+    # --- Level 2: Property policy ---
+    try:
+        policy = PropertyBookingPolicy.query.filter_by(property_id=property_id).first()
+        if not policy:
+            policy = PropertyBookingPolicy(property_id=property_id)
+            db.session.add(policy)
+            db.session.commit()
+
+        if hasattr(policy, 'allow_cash_payments') and not policy.allow_cash_payments:
+            return {'allowed': False, 'reason': 'Cash payments are not enabled for this property.'}
+    except Exception:
+        return {'allowed': False, 'reason': 'Cash payment policy not configured for this property.'}
+
+    # --- Level 3: Guest verification checks ---
+    checks = {}
+
+    if SystemConfig.get('payment_cash_requires_kyc', True):
+        min_kyc = SystemConfig.get('payment_cash_min_kyc_level', 2)
+        checks['kyc_level'] = guest_user.kyc_level >= min_kyc
+        if not checks['kyc_level']:
+            return {'allowed': False, 'reason': f'KYC level {guest_user.kyc_level} is below minimum required ({min_kyc}).'}
+
+    if SystemConfig.get('payment_cash_requires_verified_phone', True):
+        checks['phone_verified'] = guest_user.phone_verified
+        if not checks['phone_verified']:
+            return {'allowed': False, 'reason': 'Phone verification is required for cash bookings.'}
+
+    if SystemConfig.get('payment_cash_requires_verified_email', True):
+        checks['email_verified'] = guest_user.email_verified
+        if not checks['email_verified']:
+            return {'allowed': False, 'reason': 'Email verification is required for cash bookings.'}
+
+    if SystemConfig.get('payment_cash_requires_previous_booking', True):
+        min_bookings = SystemConfig.get('payment_cash_min_previous_bookings', 1)
+        if min_bookings is None:
+            min_bookings = 1
+        completed_count = AccommodationBooking.query.filter(
+            AccommodationBooking.guest_user_id == guest_user.id,
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.CONFIRMED.value,
+                AccommodationBookingStatus.CHECKED_OUT.value,
+            ]),
+        ).count()
+        checks['previous_bookings'] = completed_count >= min_bookings
+        if not checks['previous_bookings']:
+            return {'allowed': False, 'reason': f'At least {min_bookings} previous completed booking(s) required for cash payments.'}
+
+    no_show_count = AccommodationBooking.query.filter(
+        AccommodationBooking.guest_user_id == guest_user.id,
+        AccommodationBooking.status == AccommodationBookingStatus.NO_SHOW.value,
+    ).count()
+    checks['no_no_shows'] = no_show_count == 0
+    if not checks['no_no_shows']:
+        return {'allowed': False, 'reason': f'Guests with no-show history cannot use cash payments.'}
+
+    max_amount = SystemConfig.get('payment_cash_max_amount', 500000)
+    checks['amount_limit'] = booking_amount <= max_amount
+    if not checks['amount_limit']:
+        return {'allowed': False, 'reason': f'Booking amount exceeds maximum cash limit ({max_amount}).'}
+
+    return {
+        'allowed': True,
+        'reason': 'All fraud protection checks passed.',
+        'requires_deposit': policy.cash_requires_deposit,
+        'deposit_percentage': float(policy.cash_deposit_percentage) if policy.cash_deposit_percentage else 0,
+    }
+
+
 class BookingService:
     """
     Production-grade booking service with:
@@ -139,22 +236,27 @@ class BookingService:
             # 3. ANTI-ABUSE PREVENTION (OPTIONAL)
             try:
                 from app.accommodation.services.abuse_prevention_service import AbusePreventionService
+                from app.models.system_config import SystemConfig
 
-                ok, msg = AbusePreventionService.check_user_hold_limit(guest_user_id)
-                if not ok:
-                    return None, msg
+                # Skip anti-abuse checks in development mode
+                if SystemConfig.get('payment_cash_development_mode', True):
+                    logger.debug("Development mode — skipping anti-abuse checks")
+                else:
+                    ok, msg = AbusePreventionService.check_user_hold_limit(guest_user_id)
+                    if not ok:
+                        return None, msg
 
-                ok, msg = AbusePreventionService.check_property_hold_limit(property_id)
-                if not ok:
-                    return None, msg
+                    ok, msg = AbusePreventionService.check_property_hold_limit(property_id)
+                    if not ok:
+                        return None, msg
 
-                ok, msg = AbusePreventionService.check_rate_limit(guest_user_id)
-                if not ok:
-                    return None, msg
+                    ok, msg = AbusePreventionService.check_rate_limit(guest_user_id)
+                    if not ok:
+                        return None, msg
 
-                ok, msg = AbusePreventionService.detect_suspicious_behavior(guest_user_id)
-                if not ok:
-                    return None, msg
+                    ok, msg = AbusePreventionService.detect_suspicious_behavior(guest_user_id)
+                    if not ok:
+                        return None, msg
 
             except ImportError:
                 logger.debug("Anti-abuse service not available, skipping checks")
@@ -187,9 +289,10 @@ class BookingService:
             except ValueError as e:
                 return None, str(e)
 
-            # 6. CREATE BOOKING (PENDING OR PENDING_APPROVAL STATE)
+            # 6. CREATE BOOKING (DRAFT OR PENDING_APPROVAL STATE)
             # Determine initial status based on property settings
-            initial_status = AccommodationBookingStatus.PENDING.value
+            # New bookings always start in DRAFT state
+            initial_status = AccommodationBookingStatus.DRAFT.value
             if not property.instant_book or property.require_host_approval:
                 initial_status = AccommodationBookingStatus.PENDING_APPROVAL.value
 

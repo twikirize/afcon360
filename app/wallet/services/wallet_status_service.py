@@ -259,11 +259,11 @@ class WalletStatusService:
         # Wallet core items (require wallet)
         if status.exists:
             items.extend([
-                {"name": "Deposit Funds", "url": "wallet.deposit_page", "icon": "fa-arrow-down",
+                {"name": "Deposit Funds", "url": "wallet.deposit", "icon": "fa-arrow-down",
                  "feature": WalletFeature.MAKE_DEPOSIT},
-                {"name": "Send Funds", "url": "wallet.send_page", "icon": "fa-paper-plane",
+                {"name": "Send Funds", "url": "wallet.send", "icon": "fa-paper-plane",
                  "feature": WalletFeature.SEND_MONEY},
-                {"name": "Withdraw Funds", "url": "wallet.withdraw_page", "icon": "fa-arrow-up",
+                {"name": "Withdraw Funds", "url": "wallet.withdraw", "icon": "fa-arrow-up",
                  "feature": WalletFeature.WITHDRAW_MONEY},
                 {"name": "Transaction History", "url": "wallet.wallet_transactions", "icon": "fa-list",
                  "feature": WalletFeature.VIEW_TRANSACTIONS},
@@ -319,7 +319,7 @@ class WalletStatusService:
         else:
             buttons.append({
                 "name": "Deposit",
-                "url": "wallet.deposit_page",
+                "url": "wallet.deposit",
                 "color": "success",
                 "icon": "fa-arrow-down",
                 "order": 1
@@ -327,7 +327,7 @@ class WalletStatusService:
             if status.can_send:
                 buttons.append({
                     "name": "Send",
-                    "url": "wallet.send_page",
+                    "url": "wallet.send",
                     "color": "primary",
                     "icon": "fa-paper-plane",
                     "order": 2
@@ -335,7 +335,7 @@ class WalletStatusService:
             if status.can_withdraw:
                 buttons.append({
                     "name": "Withdraw",
-                    "url": "wallet.withdraw_page",
+                    "url": "wallet.withdraw",
                     "color": "danger",
                     "icon": "fa-arrow-up",
                     "order": 3

@@ -85,6 +85,18 @@ class PropertyBookingPolicy(BaseModel):
     maximum_age = Column(Integer, nullable=True)  # Maximum age (for senior-only properties)
 
     # -------------------------------
+    # Cash Payment Protection
+    # -------------------------------
+    allow_cash_payments = Column(Boolean, default=True, nullable=False, server_default='true')
+    cash_requires_deposit = Column(Boolean, default=True, nullable=False, server_default='true')
+    cash_deposit_percentage = Column(Numeric(5, 2), default=30, server_default='30')
+    cash_max_amount = Column(Numeric(10, 2), default=500000, server_default='500000')
+    cash_requires_verified_guest = Column(Boolean, default=True, nullable=False, server_default='true')
+    cash_requires_previous_booking = Column(Boolean, default=False, nullable=False, server_default='false')
+    cash_min_kyc_level = Column(Integer, default=2, server_default='2')
+    cash_min_previous_bookings = Column(Integer, default=0, server_default='0')
+
+    # -------------------------------
     # Status
     # -------------------------------
     is_active = Column(Boolean, default=True, nullable=False)

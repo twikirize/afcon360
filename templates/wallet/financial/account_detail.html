@@ -1,0 +1,649 @@
+{# templates/wallet/financial/account_detail.html #}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Account Detail — AFCON360 Financial{% endblock %}
+
+{% block extra_style %}
+<style>
+    .detail-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .detail-header {
+        background: var(--surface);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-md);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .detail-header .user-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    
+    .detail-header .avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: var(--accent-lt);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 22px;
+        color: var(--accent-dk);
+    }
+    
+    .detail-header .name {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--ink);
+    }
+    
+    .detail-header .meta {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 4px;
+    }
+    
+    .back-btn {
+        padding: 8px 16px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    
+    .back-btn:hover {
+        background: var(--bg);
+        border-color: var(--accent);
+    }
+    
+    .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+    
+    .detail-card {
+        background: var(--surface);
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-md);
+    }
+    
+    .detail-card h3 {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        font-size: 13px;
+    }
+    
+    .detail-row .label {
+        color: var(--muted);
+    }
+    
+    .detail-row .value {
+        font-weight: 600;
+        color: var(--ink);
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .status-active { background: var(--green-lt); color: var(--green); }
+    .status-pending { background: var(--orange-lt); color: var(--orange); }
+    .status-frozen { background: #fef2f2; color: #dc2626; }
+    
+    .role-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        background: var(--purple-lt);
+        color: var(--purple);
+        margin-right: 4px;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+    }
+    
+    .btn-freeze {
+        padding: 8px 16px;
+        background: #dc2626;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .btn-freeze:hover {
+        background: #b91c1c;
+    }
+    
+    .btn-unfreeze {
+        padding: 8px 16px;
+        background: var(--green);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .btn-unfreeze:hover {
+        background: #15803d;
+    }
+    
+    .freeze-form {
+        margin-top: 12px;
+        display: flex;
+        gap: 8px;
+    }
+    
+    .freeze-form input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 13px;
+    }
+    
+    .freeze-form button {
+        padding: 8px 16px;
+        background: #dc2626;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    
+    .transaction-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .transaction-table th,
+    .transaction-table td {
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 13px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .transaction-table th {
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+    }
+    
+    .transaction-table .amount-positive {
+        color: var(--green);
+        font-weight: 600;
+    }
+    
+    .transaction-table .amount-negative {
+        color: var(--red);
+        font-weight: 600;
+    }
+    
+    .session-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        font-size: 13px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .session-item .label {
+        color: var(--muted);
+    }
+    
+    .session-item .value {
+        font-weight: 600;
+    }
+    
+    .kyc-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--blue-lt);
+        color: var(--blue);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="detail-container">
+    <div class="detail-header">
+        <div class="user-info">
+            <div class="avatar">
+                {{ user.username[0]|upper if user.username else '?' }}
+            </div>
+            <div>
+                <div class="name">
+                    {{ profile.full_name if profile else user.username }}
+                    {% for role in user_roles %}
+                        <span class="role-tag">{{ role|replace('_', ' ')|title }}</span>
+                    {% endfor %}
+                </div>
+                <div class="meta">
+                    <i class="fas fa-envelope"></i> {{ user.email or 'N/A' }} &nbsp;|&nbsp;
+                    <i class="fas fa-phone"></i> {{ user.phone or 'N/A' }} &nbsp;|&nbsp;
+                    <i class="fas fa-user"></i> @{{ user.username or 'N/A' }}
+                </div>
+            </div>
+        </div>
+        <div>
+            <a href="{{ url_for('wallet.financial_account_lookup') }}" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Lookup
+            </a>
+        </div>
+    </div>
+    
+    <div class="detail-grid">
+        <!-- Account Status -->
+        <div class="detail-card">
+            <h3><i class="fas fa-wallet"></i> Account Status</h3>
+            <div class="detail-row">
+                <span class="label">Status</span>
+                <span class="value">
+                    <span class="status-badge 
+                        {% if account_status == 'active' %}status-active
+                        {% elif account_status == 'pending_activation' %}status-pending
+                        {% elif account_status == 'no_wallet' %}status-no-wallet
+                        {% endif %}
+                        {% if is_frozen %}status-frozen{% endif %}
+                    ">
+                        {% if is_frozen %}
+                            <i class="fas fa-snowflake"></i> Frozen
+                        {% elif account_status == 'active' %}
+                            <i class="fas fa-check-circle"></i> Active
+                        {% elif account_status == 'pending_activation' %}
+                            <i class="fas fa-clock"></i> Pending Activation
+                        {% else %}
+                            <i class="fas fa-times-circle"></i> No Wallet
+                        {% endif %}
+                    </span>
+                </span>
+            </div>
+            {% if account %}
+            <div class="detail-row">
+                <span class="label">Account ID</span>
+                <span class="value mono" style="font-size: 12px;">{{ (account.id|string)[:12] }}...</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Currency</span>
+                <span class="value">{{ account.currency }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Frozen</span>
+                <span class="value">{{ 'Yes' if is_frozen else 'No' }}</span>
+            </div>
+            {% if frozen_reason %}
+            <div class="detail-row">
+                <span class="label">Freeze Reason</span>
+                <span class="value">{{ frozen_reason }}</span>
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="detail-row">
+                <span class="label">No wallet account found</span>
+            </div>
+            {% endif %}
+            
+            {% if 'owner' in user_roles or 'super_admin' in user_roles or 'admin' in user_roles or 'wallet_admin' in user_roles %}
+            <div class="action-buttons">
+                {% if is_frozen %}
+                <form method="POST" action="{{ url_for('wallet.financial_unfreeze_account', public_id=user.public_id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-unfreeze">
+                        <i class="fas fa-unlock"></i> Unfreeze
+                    </button>
+                </form>
+                {% else %}
+                <form method="POST" action="{{ url_for('wallet.financial_freeze_account', public_id=user.public_id) }}" style="display:inline;" class="freeze-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="reason" placeholder="Reason for freeze..." required>
+                    <button type="submit" class="btn-freeze">
+                        <i class="fas fa-snowflake"></i> Freeze
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- KYC & Verification -->
+        <div class="detail-card">
+            <h3><i class="fas fa-shield-alt"></i> KYC & Verification</h3>
+            <div class="detail-row">
+                <span class="label">KYC Tier</span>
+                <span class="value"><span class="kyc-badge">Tier {{ kyc_info.get('tier', 0) }}</span></span>
+            </div>
+            <div class="detail-row">
+                <span class="label">KYC Level</span>
+                <span class="value">{{ kyc_info.get('tier_name', 'Unregistered') }}</span>
+            </div>
+            {% if profile %}
+            <div class="detail-row">
+                <span class="label">Profile Verified</span>
+                <span class="value">{{ profile.verification_status|title }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Email Verified</span>
+                <span class="value">{{ 'Yes' if profile.email_verified else 'No' }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Phone Verified</span>
+                <span class="value">{{ 'Yes' if profile.phone_verified else 'No' }}</span>
+            </div>
+            {% else %}
+            <div class="detail-row">
+                <span class="label">No profile found</span>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Financial Summary -->
+        <div class="detail-card">
+            <h3><i class="fas fa-chart-bar"></i> Financial Summary</h3>
+            <div class="detail-row">
+                <span class="label">Total Deposits</span>
+                <span class="value amount-positive">+{{ total_deposits }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Total Withdrawals</span>
+                <span class="value amount-negative">-{{ total_withdrawals }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Transfers Sent</span>
+                <span class="value amount-negative">-{{ total_transfers_sent }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Transfers Received</span>
+                <span class="value amount-positive">+{{ total_transfers_received }}</span>
+            </div>
+        </div>
+        
+        <!-- Account Lifecycle Timeline -->
+<div class="detail-card" style="margin-bottom: 24px;">
+    <h3><i class="fas fa-timeline"></i> Account Lifecycle Timeline</h3>
+    {% if timeline %}
+    <div style="position: relative; padding-left: 30px;">
+        {% for event in timeline %}
+        <div style="position: relative; padding-bottom: 16px; border-left: 2px solid var(--border); padding-left: 16px; margin-left: 8px;">
+            <div style="position: absolute; left: -8px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--{{ event.color }}); border: 2px solid var(--surface);"></div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 2px;">{{ event.timestamp[:19] if event.timestamp else 'N/A' }}</div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--ink);">
+                <i class="fas {{ event.icon }}" style="color: var(--{{ event.color }}); margin-right: 6px;"></i>
+                {{ event.label }}
+            </div>
+            <div style="font-size: 12px; color: var(--muted);">{{ event.description }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="detail-row">
+        <span class="label">No timeline events found</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Wallet Creation Events (Admin View) -->
+{% if creation_events %}
+<div class="detail-card" style="margin-bottom: 24px;">
+    <h3><i class="fas fa-route"></i> Wallet Creation Events</h3>
+    <div style="position: relative; padding-left: 30px;">
+        {% for event in creation_events %}
+        <div style="position: relative; padding-bottom: 16px; border-left: 2px solid var(--border); padding-left: 16px; margin-left: 8px;">
+            <div style="position: absolute; left: -8px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface);"></div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 2px;">{{ event.timestamp[:19] if event.timestamp else 'N/A' }}</div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--ink);">
+                <i class="fas fa-circle-dot" style="color: var(--accent); margin-right: 6px;"></i>
+                {{ event.event.replace('_', ' ').title() }}
+            </div>
+            {% if event.step_metadata %}
+            <div style="font-size: 12px; color: var(--muted);">
+                {% for key, value in event.step_metadata.items() %}
+                <span>{{ key }}: {{ value }}</span>{% if not loop.last %} | {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if event.ip_address %}
+            <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">
+                <i class="fas fa-globe" style="margin-right: 4px;"></i>{{ event.ip_address }}
+                {% if event.user_agent %}
+                <span style="margin-left: 8px;"><i class="fas fa-browser" style="margin-right: 4px;"></i>{{ event.user_agent[:60] }}...</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Account Status Summary -->
+<div class="detail-card" style="margin-bottom: 24px;">
+    <h3><i class="fas fa-clipboard-check"></i> Account Status Summary</h3>
+    <div class="detail-row">
+        <span class="label">User Created</span>
+        <span class="value">{{ user_created_at.strftime('%Y-%m-%d %H:%M') if user_created_at else 'N/A' }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Profile Created</span>
+        <span class="value">{{ profile_created_at.strftime('%Y-%m-%d %H:%M') if profile_created_at else 'N/A' }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Wallet Created</span>
+        <span class="value">{{ account_created_at.strftime('%Y-%m-%d %H:%M') if account_created_at else 'N/A' }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Wallet Activated</span>
+        <span class="value">{{ account_activated_at.strftime('%Y-%m-%d %H:%M') if account_activated_at else 'Not Activated' }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Account Status</span>
+        <span class="value">
+            <span class="status-badge 
+                {% if account_status == 'active' %}status-active
+                {% elif account_status == 'pending_activation' %}status-pending
+                {% elif account_status == 'no_wallet' %}status-no-wallet
+                {% endif %}
+                {% if is_frozen %}status-frozen{% endif %}
+            ">
+                {% if is_frozen %}
+                    <i class="fas fa-snowflake"></i> Frozen
+                {% elif account_status == 'active' %}
+                    <i class="fas fa-check-circle"></i> Active
+                {% elif account_status == 'pending_activation' %}
+                    <i class="fas fa-clock"></i> Pending Activation
+                {% else %}
+                    <i class="fas fa-times-circle"></i> No Wallet
+                {% endif %}
+            </span>
+        </span>
+    </div>
+    <div class="detail-row">
+        <span class="label">KYC Tier</span>
+        <span class="value"><span class="kyc-badge">Tier {{ kyc_info.get('tier', 0) }}</span></span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Security Events</span>
+        <span class="value">{{ security_events|length }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Total Transactions</span>
+        <span class="value">{{ total_transactions }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">FX Conversions</span>
+        <span class="value">{{ total_fx_conversions }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Payout Requests</span>
+        <span class="value">{{ total_payouts }}</span>
+    </div>
+    <div class="detail-row">
+        <span class="label">Adjustments</span>
+        <span class="value">{{ total_adjustments }}</span>
+    </div>
+</div>
+
+<!-- Account Lifecycle Timeline -->
+<div class="detail-card" style="margin-bottom: 24px;">
+    <h3><i class="fas fa-timeline"></i> Complete Activity Timeline</h3>
+    {% if timeline %}
+    <div style="position: relative; padding-left: 30px;">
+        {% for event in timeline %}
+        <div style="position: relative; padding-bottom: 16px; border-left: 2px solid var(--border); padding-left: 16px; margin-left: 8px;">
+            <div style="position: absolute; left: -8px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--{{ event.color }}); border: 2px solid var(--surface);"></div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 2px;">{{ event.timestamp[:19] if event.timestamp else 'N/A' }}</div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--ink);">
+                <i class="fas {{ event.icon }}" style="color: var(--{{ event.color }}); margin-right: 6px;"></i>
+                {{ event.label }}
+            </div>
+            <div style="font-size: 12px; color: var(--muted);">{{ event.description }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="detail-row">
+        <span class="label">No timeline events found</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Active Sessions -->
+<div class="detail-card" style="margin-bottom: 24px;">
+    <h3><i class="fas fa-desktop"></i> Active Sessions</h3>
+    {% if active_sessions %}
+        {% for session in active_sessions %}
+        <div class="session-item">
+            <span class="label">Session {{ loop.index }}</span>
+            <span class="value">
+                {{ session.created_at.strftime('%Y-%m-%d %H:%M') if session.created_at else 'N/A' }}
+            </span>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="detail-row">
+            <span class="label">No active sessions</span>
+        </div>
+    {% endif %}
+</div>
+
+<!-- All Transactions -->
+<div class="detail-card" style="margin-bottom: 24px;">
+    <h3><i class="fas fa-clock-rotate-left"></i> All Transactions ({{ all_transactions|length }})</h3>
+    {% if all_transactions %}
+    <div style="overflow-x: auto;">
+        <table class="transaction-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in all_transactions %}
+                <tr>
+                    <td>
+                        <span class="badge
+                            {% if tx.tx_type.value == 'DEPOSIT' %}badge-approved
+                            {% elif tx.tx_type.value == 'WITHDRAW' %}badge-rejected
+                            {% elif tx.tx_type.value == 'TRANSFER' %}badge-pending
+                            {% elif tx.tx_type.value == 'FEE' %}badge-active
+                            {% elif tx.tx_type.value == 'REFUND' %}badge-verified
+                            {% elif tx.tx_type.value == 'ADJUSTMENT' %}badge-info
+                            {% else %}badge-type{% endif %}">
+                            {% if tx.tx_type.value == 'DEPOSIT' %}<i class="fas fa-arrow-down"></i>
+                            {% elif tx.tx_type.value == 'WITHDRAW' %}<i class="fas fa-arrow-up"></i>
+                            {% elif tx.tx_type.value == 'TRANSFER' %}<i class="fas fa-exchange-alt"></i>
+                            {% elif tx.tx_type.value == 'FEE' %}<i class="fas fa-coins"></i>
+                            {% elif tx.tx_type.value == 'REFUND' %}<i class="fas fa-undo"></i>
+                            {% elif tx.tx_type.value == 'ADJUSTMENT' %}<i class="fas fa-wrench"></i>
+                            {% else %}<i class="fas fa-receipt"></i>{% endif %}
+                            {{ tx.tx_type.value|capitalize }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="{% if tx.tx_type.value in ['DEPOSIT', 'FEE', 'REFUND'] %}amount-positive{% else %}amount-negative{% endif %}">
+                            {% if tx.tx_type.value in ['DEPOSIT', 'FEE', 'REFUND'] %}+{% endif %}
+                            {{ tx.amount }} {{ tx.currency }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge
+                            {% if tx.status.value == 'COMPLETED' %}badge-approved
+                            {% elif tx.status.value == 'PENDING' %}badge-pending
+                            {% elif tx.status.value == 'FAILED' %}badge-rejected
+                            {% elif tx.status.value == 'CANCELLED' %}badge-type
+                            {% else %}badge-type{% endif %}">
+                            {{ tx.status.value|capitalize }}
+                        </span>
+                    </td>
+                    <td class="mono">{{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else 'N/A' }}</td>
+                    <td>{{ tx.description or tx.tx_metadata.get('description', '') if tx.tx_metadata else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No transactions found.</p>
+    </div>
+    {% endif %}
+</div>
+</div>
+{% endblock %}

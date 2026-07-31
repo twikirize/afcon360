@@ -20,11 +20,22 @@ templates/
 │   ├── host/
 │   │   ├── bookings.html            ← UPDATED (added approve/reject actions for pending_approval status, inline forms with CSRF)
 │   │   ├── booking_detail.html      ← UPDATED (added approve/reject collapse forms for pending_approval, inline CSRF)
-│   │   └── booking_policy.html      ← UPDATED (fixed payment-method checkbox state binding from `policy.property_payment_methods` to `property.payment_methods`)
+│   │   ├── booking_policy.html      ← UPDATED (payment method checkboxes now use method_id string value instead of numeric id; added Cash Payment Protection section with allow_cash_payments, cash_requires_deposit, cash_deposit_percentage, cash_max_amount, cash_min_kyc_level, cash_min_previous_bookings, cash_requires_verified_guest fields)
+│   │   ├── dashboard.html           ← UPDATED (added payment settings widget linking to booking policy per property)
+│   │   └── guest/
+│   │       └── checkout.html        ← UPDATED (moved inline styles to external CSS, added selection cards, validation feedback, responsive grids)
+│   │       └── detail.html          ← UPDATED (added live AJAX availability checking on date/guest change; added live_availability_results container; submit button disabled when no availability; partial availability suggestions)
 │   ├── moderate.html                ← UPDATED (matched global AFCON360 light theme, removed inline styles, added table scroll wrappers)
 │   ├── moderate_property.html       ← UPDATED (matched global AFCON360 light theme, removed all inline layout styles, added photo grid classes)
 │   └── moderate_review.html         ← UPDATED (matched global AFCON360 light theme, removed inline styles, hidden/visible toggle via CSS class)
 └── super_admin_dashboard.html        ← UPDATED (mobile drawer + JS)
+```
+
+```
+templates/
+├── owner/
+│   ├── cash_settings.html            ← NEW (global cash payment settings: development mode toggle, fraud protection requirements, amount limits)
+│   └── dashboard.html                ← UPDATED (added Cash Settings card linking to cash_settings.html)
 ```
 
 ---
@@ -63,13 +74,29 @@ templates/
 - **Tablet breakpoint:** Added `@media (max-width: 1024px)` making `.wallet-grid-cols-3` use `repeat(2, 1fr)`.
 - **Preserved:** All wallet card gradients, shadows, button colors, and spacing scale.
 
-### `static/css/modules/events/base_events.css` — **UPDATED**
-- `.event-card-img`: `height: clamp(140px, 30vw, 180px)` (was fixed `180px`).
-- `.event-table-wrap`: Added new wrapper class with `overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;`.
-- `.event-table`: Added `min-width: 600px` to force horizontal scroll on narrow screens.
-- `.event-filters`: Added `display: flex; flex-wrap: wrap; gap` and `.event-search-input` changed to `flex: 1 1 200px`.
-- **Mobile (≤768px):** `.event-filters` stacks vertically (`flex-direction: column`).
-- **Preserved:** Card hover effects, badge colors, borders.
+### `static/css/modules/accommodation/checkout.css` — **NEW**
+- Extracted checkout styling from inline `<style>` block in `checkout.html` into dedicated module CSS.
+- Added responsive grids: `.booking-type-grid`, `.payment-method-grid`, `.timing-grid` using `repeat(auto-fit, minmax(..., 1fr))`.
+- Added selected states with `.selected` class, checkmark badges via `::after`, and hover lift effects.
+- Added validation feedback styling `.checkout-feedback.show` with shake animation.
+- Mobile breakpoints: grids collapse to 1 column at `max-width: 480px`, 2 columns at `max-width: 768px`.
+- **Preserved:** All brand colors, no color/theme changes.
+
+### `templates/accommodation/guest/checkout.html` — **UPDATED**
+- Linked external `checkout.css` via `{% block module_styles %}` and removed inline `<style>` block.
+- Restructured booking type, payment method, and payment timing sections to use card-based grids with `onclick` selection handlers.
+- Added `.checkout-feedback` validation blocks with `.show` class for proper error display.
+- Removed `required` attributes from radio buttons to allow deselection; validation now handled by JavaScript on submit.
+- **Mobile:** Payment grids collapse from 3 columns → 2 columns → 1 column across breakpoints.
+- **Preserved:** All form fields, hidden inputs, and Bootstrap layout classes.
+
+### `templates/accommodation/guest/detail.html` — **UPDATED**
+- Added live AJAX availability checking: calls `/accommodation/api/availability` on date/guest change.
+- Added `live_availability_results` container with real-time feedback (available units, partial availability, blocked dates, alternatives).
+- Submit button disabled when no availability found.
+- Shows Tier 0/1/2 cascade results (exact match, same-property alternatives, nearby properties).
+- Shows partial availability messaging ("Booked until X, available from Y").
+- **Preserved:** Existing date validation, room type selection, and price breakdown rendering.
 
 ### `static/css/modules/user/dashboard.css` — **UPDATED**
 - `.greeting-text`: `font-size: clamp(1.25rem, 4vw, 2rem)` (was fixed `24px`).
@@ -151,6 +178,19 @@ templates/
 - Buttons use existing Bootstrap table action cell; no layout breakage on mobile.
 - Preserved existing Check In / Check Out buttons for confirmed and checked_in statuses.
 
+### `templates/accommodation/host/property_manage.html` — **NEW**
+- Full property management dashboard for hosts/admins.
+- Shows: occupancy stats, notifications (check-ins, check-outs, low availability), room types overview with stock status, active bookings table with guest info and cancel action, blocked dates table with release button, block-date form, recent booking history.
+- Mobile responsive: stats grid collapses to single column on small screens, tables scroll horizontally, action buttons stack vertically under 480px.
+
+### `templates/accommodation/host/room_availability.html` — **NEW**
+- Room-type availability calendar showing 90-day window with per-day status (available/booked/blocked).
+- Mobile responsive: table scrolls horizontally on narrow viewports, legend and stats stack vertically.
+
+### `templates/accommodation/host/dashboard.html` — **UPDATED**
+- Added "Manage" button to each property listing action row, linking to `host_property_manage` endpoint.
+- Manage button styled with green accent (`#047857`) to distinguish from Edit action.
+
 ### `templates/accommodation/host/rooms.html` — **UPDATED**
 - Renamed `categories` → `room_types`, `category` → `room_type` throughout template.
 - Renamed `host_room_category_add` → `host_room_type_add` endpoint.
@@ -168,7 +208,18 @@ templates/
 
 ### `templates/accommodation/host/booking_policy.html` — **UPDATED**
 - Fixed payment-method checkbox pre-check state: changed `policy.property_payment_methods` to `property.payment_methods` in the Jinja `selectattr` lookup so enabled methods render correctly when the host edits booking policy.
+- Changed payment method checkbox `value` from numeric `m.id` to string `m.method_id` (e.g., `"cash"`, `"wallet"`) for stable, human-readable identifiers.
+- Changed checkbox `id` attribute from `method_{{ m.id }}` to `method_{{ m.method_id }}` for consistency.
+- Added "Cash Payment Protection" section with fields: `allow_cash_payments`, `cash_requires_deposit`, `cash_deposit_percentage`, `cash_max_amount`, `cash_min_kyc_level`, `cash_min_previous_bookings`, `cash_requires_verified_guest`.
 - **Preserved:** Existing form layout, payment timing fields, cancellation policy dropdowns, and CSRF tokens.
+
+### `templates/owner/cash_settings.html` — **NEW**
+- Global cash payment settings page for Owner: development mode toggle, KYC requirements, verification requirements, booking history requirements, amount limits, and default deposit percentage.
+- Uses Bootstrap responsive grid, mobile-stacked form controls, CSRF token, and standard form conventions.
+
+### `templates/owner/dashboard.html` — **UPDATED**
+- Added "Cash Settings" card linking to `admin.owner.owner_settings.owner_cash_settings` route.
+- **Preserved:** Existing dashboard layout, stats grid, and all navigation cards.
 
 ---
 
@@ -196,6 +247,9 @@ templates/
 - [x] All `min-width: 240px` / `min-width: 110px` removed from mobile-bound components
 - [x] `env(safe-area-inset-bottom)` applied to footer, sticky bars, mobile drawers
 - [x] Touch targets ≥44×44px on hamburger, drawer links, CTA buttons, admin nav items
+- [x] Checkout grids use `repeat(auto-fit, minmax(..., 1fr))` and collapse to 1 column at `max-width: 480px`
+- [x] Checkout inline `<style>` block removed; styles moved to `static/css/modules/accommodation/checkout.css`
+- [x] No inline `style="display:flex"` wrappers remain in checkout template
 - [x] Super admin mobile drawer has overlay, close button, and escape-via-resize
 - [x] No inline `style="display:flex"` wrappers remain in attendee dashboard
 - [x] No inline layout styles remain in `moderate_property.html`, `moderate.html`, or `moderate_review.html`
@@ -239,8 +293,23 @@ When the next optimization phase begins, use this file to **scope** changes:
 
 ## 7. Post-Change Report
 
-**Files changed:** 16 files  
-**What was done:** Refactored shared layout, extracted inline styles, added fluid typography, introduced mobile drawer for super admin, and ensured touch targets meet WCAG 44×44px minimum. Aligned accommodation moderation pages (`moderate.html`, `moderate_property.html`, `moderate_review.html`) with the global AFCON360 light theme by replacing custom dark-theme tokens with global CSS variables. Renamed `RoomCategory` → `RoomType` in accommodation host template (`rooms.html`). No colors, branding, or desktop behavior were altered.  
-**Migration needed?** No  
-**Manual steps:** Clear browser cache / hard-refresh to verify.  
-**Risks/conflicts:** Inline styles were the highest-specificity blocker; those have been extracted in the touched templates. Super-admin drawer reuses patterns from `base.html` but with isolated `.sad-mobile-*` classes, so z-index conflicts are unlikely. Owner.css duplication was intentionally left untouched (separate cleanup PR). Moderation pages now inherit global theme from `base.html`; if a custom dark-mode override is added globally, moderation pages will follow automatically.
+**Files changed:** 10 files (1 new CSS, 5 updated templates, 4 updated docs)
+**What was done:** 
+- Extracted accommodation checkout styles from inline `<style>` into dedicated `static/css/modules/accommodation/checkout.css`.
+- Fixed payment timing and payment method card selection states with `.selected` class, checkmark badges, and hover effects.
+- Added proper validation feedback blocks (`.checkout-feedback.show`) with shake animation instead of inline text.
+- Made payment timing and method cards deselectable by removing `required` and handling validation in JavaScript.
+- Wired owner-only payment method management into existing owner settings page (`/owner/settings/wallet` → Payment Methods tab).
+- Added host dashboard payment settings widget linking to per-property booking policy.
+- Added `cash` to `PaymentMethodConfig.initialize_defaults()` so it is no longer hardcoded.
+- Updated property 2 booking policy to allow `pay_on_arrival` and `deposit`.
+- Updated README.md, PAYMENT_ARCHITECTURE.md, and MOBILE_OPTIMIZATION.md with new payment settings wiring.
+
+**Migration needed?** No
+**Manual steps:** 
+1. Restart Flask server.
+2. Owner visits `/owner/settings/wallet` → Payment Methods tab to enable/disable methods.
+3. Host visits `/host/property/2/booking-policy` to enable Cash and payment timings for the property.
+4. Test checkout at `/accommodation/guest/hotel-yriad` to verify Wallet + Cash cards and Pay Now / Deposit / Pay on Arrival timings appear.
+
+**Risks/conflicts:** No schema changes. Owner endpoints protected by `@require_owner_role`. Host booking policy already had payment-method saving logic. No colors, branding, or desktop layout were altered.

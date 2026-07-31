@@ -602,7 +602,7 @@ function saveAMLSettings() {
         manual_review_threshold: parseFloat(document.getElementById('manual_review_threshold').value)
     };
     
-    fetch('/owner/settings/compliance/save-aml', {
+    fetch('/admin/owner/settings/compliance/save-aml', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -635,7 +635,7 @@ function saveKYCSettings() {
         document_expiry_days: parseInt(document.getElementById('document_expiry_days').value)
     };
     
-    fetch('/owner/settings/compliance/save-kyc', {
+    fetch('/admin/owner/settings/compliance/save-kyc', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -668,7 +668,7 @@ function saveRegulatorSettings() {
         auto_daily_reports: document.querySelector('#regulator-settings .toggle-switch:nth-child(3)').classList.contains('active')
     };
     
-    fetch('/owner/settings/compliance/save-regulator', {
+    fetch('/admin/owner/settings/compliance/save-regulator', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -701,7 +701,7 @@ function saveAuditSettings() {
         log_failed_logins: document.querySelector('#audit-settings .toggle-switch:nth-child(3)').classList.contains('active')
     };
     
-    fetch('/owner/settings/compliance/save-audit', {
+    fetch('/admin/owner/settings/compliance/save-audit', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

@@ -89,13 +89,14 @@ This is the **single source of truth** for all available payment methods in the 
 - `get_by_id(method_id)` — lookup by method_id string
 - `supports_currency(currency)` — check currency support
 - `calculate_fee(amount)` — calculate transaction fee
-- `initialize_defaults()` — seed default methods (wallet, MTN UG, Airtel UG, M-PESA KE, MTN NG, Airtel NG)
+- `initialize_defaults()` — seed default methods (wallet, cash, MTN UG, Airtel UG, M-PESA KE, MTN NG, Airtel NG)
 
 ### 2.2 Default Payment Methods
 
 | method_id | display_name | method_type | provider | country | currencies | min | max | fee |
 |-----------|-------------|-------------|----------|---------|------------|-----|-----|-----|
 | `wallet` | AFCON360 Wallet | wallet | afcon360 | UG | UGX, KES, NGN, USD, EUR, GBP | 0 | 10,000,000 | 0% |
+| `cash` | Cash | cash | afcon360 | UG | UGX, KES, NGN, USD, EUR, GBP | 0 | 10,000,000 | 0% |
 | `mobile_money_mtn_ug` | MTN Mobile Money Uganda | mobile_money | mtn | UG | UGX | 500 | 5,000,000 | 1% |
 | `mobile_money_airtel_ug` | Airtel Money Uganda | mobile_money | airtel | UG | UGX | 500 | 5,000,000 | 1% |
 | `mobile_money_mpesa_ke` | M-PESA Kenya | mobile_money | safaricom | KE | KES | 10 | 700,000 | 1% |
@@ -316,6 +317,48 @@ Processor classes:
 9. Send notifications
 
 **Key rule:** The `TransactionModel` write happens first. The module booking record and thin payment index are updated after wallet confirms success.
+
+### 4.4 Payment Settings Management
+
+Payment settings are controlled at two levels:
+
+#### Owner Level (Global)
+
+**Route:** `/owner/settings/wallet` → **Payment Methods** section  
+**Access:** Owner only (`@require_owner_role`)
+
+The owner manages the global payment catalogue via `PaymentMethodConfig`:
+
+- **Enable/disable** payment methods globally (wallet, cash, mobile money, card)
+- Changes take effect immediately across all properties
+- Cash is included in defaults but disabled by default; owner must explicitly enable it
+- UI: `templates/owner/wallet_settings.html` → Payment Methods tab
+- API: `GET/POST /owner/settings/payment-methods`, `POST /owner/settings/payment-methods/<id>/toggle`
+
+#### Host Level (Property-Specific)
+
+**Route:** `/host/property/<id>/booking-policy`  
+**Access:** Property host only
+
+The host controls which globally-enabled methods their property accepts:
+
+- **Payment timing:** `allow_pay_now`, `allow_pay_on_arrival`, `allow_deposit_payment`
+- **Deposit settings:** `deposit_percentage`, `balance_due_days_before_checkin`
+- **Accepted methods:** checkboxes for each globally-enabled `PaymentMethodConfig` method
+- Saved to `PropertyBookingPolicy` and `PropertyPaymentMethod` tables
+- Template: `templates/accommodation/host/booking_policy.html`
+
+#### Guest Checkout
+
+**Route:** `/accommodation/guest/checkout`  
+**Logic:** `PaymentPolicyService.get_allowed_options()`
+
+Checkout shows the intersection of:
+1. Globally enabled methods (`PaymentMethodConfig.is_enabled=True`)
+2. Property-accepted methods (`PropertyPaymentMethod.enabled=True`)
+3. Property-allowed timings (`PropertyBookingPolicy.allow_*`)
+
+If `cash` is globally enabled but the property does not accept it, cash is hidden from checkout.
 
 ---
 
@@ -745,6 +788,7 @@ Admin Module:
 
 ```
 wallet                    → AFCON360 Wallet
+cash                      → Cash
 mobile_money_mtn_ug       → MTN Uganda
 mobile_money_airtel_ug    → Airtel Uganda
 mobile_money_mpesa_ke     → M-PESA Kenya

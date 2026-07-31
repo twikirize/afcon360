@@ -798,7 +798,18 @@ with app.app_context():
         db.session.commit()
 ```
 
-Global defaults seeded: `wallet` (enabled/active), plus 5 mobile-money entries (disabled by default).
+Global defaults seeded: `wallet` (enabled/active), `cash` (active but disabled by default), plus 5 mobile-money entries (disabled by default).
+
+**Current state:**
+- `payment_method_configs`: wallet=enabled/active, cash=disabled/active, mobile money entries=disabled/inactive
+- `property_booking_policy` for property 2: `allow_pay_now=True`, `allow_pay_on_arrival=True`, `allow_deposit_payment=True`
+- `accommodation_property_payment_methods` for property 2: wallet=enabled
+
+**To enable cash for property 2:**
+1. Owner enables `cash` globally via `/owner/settings/wallet` → Payment Methods
+2. Host enables cash for property 2 via `/host/property/2/booking-policy` → check Cash under Accepted Payment Methods
+
+Guest checkout then shows 2 methods (Wallet + Cash) and 3 timings (Pay Now, Deposit, Pay on Arrival).
 
 ### B.5 IDGuard / Windows Console Note
 

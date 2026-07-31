@@ -12,6 +12,10 @@ owner_bp = Blueprint(
 # Import routes
 from app.admin.owner import routes
 
+# Register settings routes
+from app.owner.routes.settings import owner_settings
+owner_bp.register_blueprint(owner_settings)
+
 # Register escrow routes
 from app.admin.owner.escrow_routes import escrow_bp
 owner_bp.register_blueprint(escrow_bp)

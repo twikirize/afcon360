@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Room Availability - {{ room_type.name }}{% endblock %}
+
+{% block module_styles %}
+<style>
+  .ra-shell { padding: 1.5rem 0; }
+  .ra-header {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;
+  }
+  .ra-header h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+  .ra-header .sub { color: #6b7280; font-size: 0.85rem; }
+  .ra-stats { display: flex; gap: 1.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  .ra-stat { font-size: 0.85rem; }
+  .ra-stat strong { font-size: 1.1rem; }
+  .ra-legend { display: flex; gap: 1rem; margin-top: 0.5rem; flex-wrap: wrap; }
+  .ra-legend span { font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; }
+  .ra-legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .ra-legend .dot.available { background: #10b981; }
+  .ra-legend .dot.booked { background: #f59e0b; }
+  .ra-legend .dot.blocked { background: #ef4444; }
+  .ra-legend .dot.today { background: #3b82f6; }
+
+  .ra-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+  .ra-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .ra-table th {
+    background: #f9fafb; padding: 0.5rem 0.6rem; text-align: left;
+    font-weight: 600; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb;
+  }
+  .ra-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  .ra-table tr:hover td { background: #f9fafb; }
+
+  .ra-status {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  }
+  .ra-status.available { background: #d1fae5; color: #065f46; }
+  .ra-status.booked { background: #fef3c7; color: #92400e; }
+  .ra-status.blocked { background: #fee2e2; color: #b91c1c; }
+  .ra-status.today { background: #dbeafe; color: #1d4ed8; }
+
+  .ra-back { display: inline-flex; align-items: center; gap: 0.25rem; }
+  .ra-detail { font-size: 0.7rem; color: #6b7280; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ra-shell">
+
+  <div class="ra-header">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item">
+              <a href="{{ url_for('accommodation.host_property_manage', property_id=property.id) }}">
+                {{ property.title }}
+              </a>
+            </li>
+            <li class="breadcrumb-item active">{{ room_type.name }}</li>
+          </ol>
+        </nav>
+        <h1>{{ room_type.name }}</h1>
+        <div class="sub">
+          {{ room_type.total_units }} total units ·
+          {{ room_type.available_units }} available ·
+          <span class="badge bg-success">${{ "%.2f"|format(room_type.base_price_per_night) }}/night</span>
+        </div>
+        <div class="ra-stats">
+          <div class="ra-stat"><strong>{{ room_type.total_units }}</strong> units</div>
+          <div class="ra-stat"><strong>{{ room_type.available_units }}</strong> available</div>
+          <div class="ra-stat"><strong>${{ "%.2f"|format(room_type.base_price_per_night) }}</strong> / night</div>
+          <div class="ra-stat"><strong>{{ room_type.max_guests }}</strong> max guests</div>
+        </div>
+      </div>
+      <a href="{{ url_for('accommodation.host_property_manage', property_id=property.id) }}"
+         class="btn btn-outline-secondary ra-back">
+        <i class="fas fa-arrow-left"></i> Back to Property
+      </a>
+    </div>
+    <div class="ra-legend">
+      <span><span class="dot available"></span> Available</span>
+      <span><span class="dot booked"></span> Booked</span>
+      <span><span class="dot blocked"></span> Blocked</span>
+      <span><span class="dot today"></span> Today</span>
+    </div>
+  </div>
+
+  <div class="ra-table-wrap">
+    {% if calendar_data.days %}
+    <table class="ra-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in calendar_data.days %}
+        <tr>
+          <td>
+            {{ day.date }}
+            {% if day.is_today %}
+            <span class="ra-status today">Today</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="ra-status {{ day.status }}">
+              {{ day.status|title }}
+            </span>
+          </td>
+          <td>
+            {% if day.bookings %}
+              {% for booking in day.bookings %}
+              <div class="ra-detail">
+                <strong>{{ booking.guest_name }}</strong>
+                ({{ booking.status|replace('_', ' ')|title }})
+                <span class="text-muted">{{ booking.check_in }} → {{ booking.check_out }}</span>
+              </div>
+              {% endfor %}
+            {% elif day.blocked_reason %}
+              <span class="text-danger">{{ day.blocked_reason }}</span>
+            {% else %}
+              <span class="text-muted">Available</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="pm-empty">
+      <i class="fas fa-calendar text-muted"></i>
+      <p>No availability data for this period.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

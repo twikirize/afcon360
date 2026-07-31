@@ -86,7 +86,16 @@ class SystemConfig(BaseModel):
         """Initialize default system settings"""
         defaults = [
             {'key': 'SITE_NAME', 'value': 'AFCON 360', 'value_type': 'str', 'category': 'branding', 'description': 'Site display name'},
-            {'key': 'MAINTENANCE_MODE', 'value': 'false', 'value_type': 'bool', 'category': 'system', 'description': 'Enable maintenance mode'}
+            {'key': 'MAINTENANCE_MODE', 'value': 'false', 'value_type': 'bool', 'category': 'system', 'description': 'Enable maintenance mode'},
+            {'key': 'payment_cash_globally_enabled', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Allow cash payments system-wide'},
+            {'key': 'payment_cash_development_mode', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Bypass fraud checks for cash (development/testing)'},
+            {'key': 'payment_cash_requires_kyc', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Require KYC for cash payments'},
+            {'key': 'payment_cash_min_kyc_level', 'value': '2', 'value_type': 'int', 'category': 'payments', 'description': 'Minimum KYC level for cash'},
+            {'key': 'payment_cash_requires_verified_phone', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Require phone verification for cash'},
+            {'key': 'payment_cash_requires_verified_email', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Require email verification for cash'},
+            {'key': 'payment_cash_requires_previous_booking', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Require at least 1 previous booking for cash'},
+            {'key': 'payment_cash_max_amount', 'value': '500000', 'value_type': 'int', 'category': 'payments', 'description': 'Maximum cash booking amount (UGX)'},
+            {'key': 'payment_cash_default_deposit_pct', 'value': '30', 'value_type': 'int', 'category': 'payments', 'description': 'Default deposit percentage for cash bookings'},
         ]
         created = 0
         for item in defaults:

@@ -16,6 +16,12 @@ from functools import wraps
 from flask import current_app, request, g, flash
 import traceback
 import re
+import uuid as uuid_lib
+
+try:
+    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+except ImportError:
+    PG_UUID = None
 
 
 class IDGuard:
@@ -29,6 +35,14 @@ class IDGuard:
         ('UserProfile', 'user_id'): 'users.public_id',
         # Add other exceptions here as needed:
         # ('SomeModel', 'some_field'): 'users.public_id',
+    }
+
+    # Foreign keys that are native UUID columns (not String, but still reference public_id)
+    UUID_FK_EXCEPTIONS = {
+        # (ModelName, field_name): "referenced_table.referenced_column"
+        ('LedgerEntryModel', 'transaction_id'): 'transactions.id',
+        ('LedgerEntryModel', 'account_id'): 'accounts.id',
+        ('TransactionModel', 'account_id'): 'accounts.id',
     }
 
     # Foreign keys that should be checked even if they don't end with '_id'
@@ -92,6 +106,21 @@ class IDGuard:
                 return False
             # Validate it looks like a UUID
             return cls.check_public_id(value, source)
+
+        # Check if this is a native UUID FK exception
+        if exception_key in cls.UUID_FK_EXCEPTIONS:
+            # This FK references a UUID column (native Postgres UUID)
+            # Accept both uuid.UUID objects and string representations
+            if isinstance(value, uuid_lib.UUID):
+                return True
+            if isinstance(value, str):
+                return cls.check_public_id(value, source)
+            cls._log_violation(
+                f"Foreign key {model_name}.{fk_field} assigned non-UUID {value}",
+                f"Expected UUID or str, got {type(value).__name__}",
+                source
+            )
+            return False
 
         # Check 1: FK must be integer (BIGINT)
         if not isinstance(value, int):

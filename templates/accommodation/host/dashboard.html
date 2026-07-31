@@ -675,6 +675,10 @@
                 {% endif %}
 
                 <div class="listing-actions-modern">
+                  <a href="{{ url_for('accommodation.host_property_manage', property_id=prop.id) }}"
+                     class="btn-outline-modern" style="color:#047857;border-color:#047857;">
+                    <i class="bi bi-grid-3x3-gap-fill me-1"></i>Manage
+                  </a>
                   <a href="{{ url_for('accommodation.host_edit_listing', property_id=prop.id) }}"
                      class="btn-outline-modern">
                     <i class="bi bi-pencil me-1"></i>Edit
@@ -746,6 +750,27 @@
               <i class="bi bi-question-circle" style="color:#ef4444;"></i>
               <span class="action-label">Help</span>
             </a>
+          </div>
+        </div>
+
+        {# ── Payment Settings ── #}
+        <div class="widget-modern">
+          <div class="widget-header-modern">
+            <h4>💳 Payment Settings</h4>
+          </div>
+          <div class="list-section">
+            {% if listings %}
+            {% for prop in listings %}
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+              <span class="small">{{ prop.title }}</span>
+              <a href="{{ url_for('accommodation.host_booking_policy', property_id=prop.id) }}" class="btn-outline-modern" style="font-size:0.7rem;">
+                <i class="bi bi-shield-check"></i> Manage Payments
+              </a>
+            </div>
+            {% endfor %}
+            {% else %}
+            <small class="text-muted">No properties yet.</small>
+            {% endif %}
           </div>
         </div>
 

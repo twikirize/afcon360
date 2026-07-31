@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+{% block title %}Manage Property - {{ property.title }}{% endblock %}
+
+{% block module_styles %}
+<style>
+.pm-shell { padding: 1.5rem 0; }
+.pm-header {
+  background: linear-gradient(135deg, #0a1a2a 0%, #1a2a3a 100%);
+  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+}
+.pm-header h1 { font-size: 1.8rem; font-weight: 700; margin: 0; }
+.pm-header .subtitle { opacity: 0.8; margin-top: 0.25rem; }
+.pm-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem; margin: 1.25rem 0 0;
+}
+.pm-stat {
+  background: rgba(255,255,255,0.1); border-radius: 10px; padding: 0.75rem 1rem; text-align: center;
+}
+.pm-stat .number { font-size: 1.5rem; font-weight: 700; }
+.pm-stat .label { font-size: 0.7rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px; }
+.pm-stat.occ .number { color: #34d399; }
+.pm-stat.bookings .number { color: #60a5fa; }
+.pm-stat.rooms .number { color: #fbbf24; }
+.pm-stat.blocked .number { color: #f87171; }
+
+/* Notifications */
+.pm-notif {
+  background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;
+  padding: 1rem 1.25rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.pm-notif-item {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.pm-notif-item:last-child { border-bottom: none; }
+.pm-notif-item .icon { font-size: 1.2rem; }
+.pm-notif-item.critical { border-left: 4px solid #ef4444; padding-left: 0.75rem; }
+.pm-notif-item.high { border-left: 4px solid #f59e0b; padding-left: 0.75rem; }
+.pm-notif-item.medium { border-left: 4px solid #3b82f6; padding-left: 0.75rem; }
+.pm-notif-item .msg { flex: 1; font-size: 0.9rem; }
+.pm-notif-item .msg strong { display: block; font-size: 0.8rem; color: #6b7280; font-weight: 400; }
+
+/* Room cards */
+.pm-room-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.pm-room-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem;
+  transition: all 0.2s;
+}
+.pm-room-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-2px); }
+.pm-room-card .name { font-weight: 700; font-size: 1rem; }
+.pm-room-card .details { font-size: 0.8rem; color: #6b7280; margin: 0.25rem 0; }
+.pm-avail {
+  display: inline-block; padding: 2px 10px; border-radius: 20px;
+  font-size: 0.7rem; font-weight: 600;
+}
+.pm-avail.available { background: #d1fae5; color: #065f46; }
+.pm-avail.low { background: #fef3c7; color: #92400e; }
+.pm-avail.sold { background: #fee2e2; color: #b91c1c; }
+
+/* Tables */
+.pm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.pm-table th {
+  background: #f9fafb; padding: 0.6rem 0.75rem; text-align: left; font-weight: 600;
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280;
+  border-bottom: 2px solid #e5e7eb;
+}
+.pm-table td {
+  padding: 0.6rem 0.75rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle;
+}
+.pm-table tr:hover td { background: #f9fafb; }
+
+.pm-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 20px;
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+}
+.pm-badge.confirmed { background: #d1fae5; color: #065f46; }
+.pm-badge.pending { background: #fef3c7; color: #92400e; }
+.pm-badge.checked_in { background: #dbeafe; color: #1d4ed8; }
+.pm-badge.cancelled { background: #fee2e2; color: #b91c1c; }
+.pm-badge.pending_approval { background: #fef3c7; color: #92400e; }
+
+.pm-blocked-reason {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 12px;
+  background: #f3f4f6; color: #6b7280;
+}
+
+/* Block form */
+.pm-block-form {
+  background: #f9fafb; border-radius: 10px; padding: 1rem; margin-bottom: 1.5rem;
+  border: 1px solid #e5e7eb;
+}
+.pm-block-form .pm-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+.pm-block-form .pm-field { flex: 1; min-width: 140px; }
+.pm-block-form .pm-field label {
+  display: block; font-size: 0.7rem; font-weight: 600; color: #6b7280;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.pm-block-form .pm-field input,
+.pm-block-form .pm-field select {
+  width: 100%; padding: 0.4rem 0.6rem; border: 1px solid #d1d5db;
+  border-radius: 6px; font-size: 0.85rem;
+}
+
+/* Quick actions */
+.pm-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.pm-actions .btn {
+  padding: 0.4rem 1rem; border-radius: 8px; font-size: 0.8rem;
+  font-weight: 600; text-decoration: none; transition: all 0.2s;
+}
+.pm-actions .btn-primary { background: #047857; color: #fff; }
+.pm-actions .btn-primary:hover { background: #065f46; }
+.pm-actions .btn-outline { background: transparent; border: 1px solid #d1d5db; color: #374151; }
+.pm-actions .btn-outline:hover { background: #f3f4f6; }
+.pm-actions .btn-danger { background: #ef4444; color: #fff; }
+.pm-actions .btn-danger:hover { background: #dc2626; }
+
+.pm-empty { text-align: center; padding: 3rem 1rem; color: #6b7280; }
+.pm-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pm-shell">
+
+  {# ── HEADER ── #}
+  <div class="pm-header">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1>{{ property.title }}</h1>
+        <div class="subtitle">
+          <i class="fas fa-map-marker-alt me-1"></i> {{ property.city }}, {{ property.country }}
+          <span class="ms-3">
+            <span class="badge bg-{{ 'success' if property.is_active else 'secondary' }}">
+              {{ 'Active' if property.is_active else 'Inactive' }}
+            </span>
+            <span class="badge bg-info ms-1">{{ property.status|replace('_', ' ')|title }}</span>
+          </span>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('accommodation.guest_detail', identifier=property.public_id) }}"
+           class="btn btn-light btn-sm" target="_blank">
+          <i class="fas fa-eye"></i> View Listing
+        </a>
+        <a href="{{ url_for('accommodation.host_edit_listing', property_id=property.id) }}"
+           class="btn btn-warning btn-sm">
+          <i class="fas fa-edit"></i> Edit
+        </a>
+      </div>
+    </div>
+
+    <div class="pm-stats">
+      <div class="pm-stat occ">
+        <div class="number">{{ occupancy_rate }}%</div>
+        <div class="label">Occupancy</div>
+      </div>
+      <div class="pm-stat bookings">
+        <div class="number">{{ bookings|length }}</div>
+        <div class="label">Active Bookings</div>
+      </div>
+      <div class="pm-stat rooms">
+        <div class="number">{{ total_rooms }}</div>
+        <div class="label">Total Rooms</div>
+      </div>
+      <div class="pm-stat blocked">
+        <div class="number">{{ blocked_dates|length + temp_holds|length }}</div>
+        <div class="label">Blocked Dates</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── NOTIFICATIONS ── #}
+  {% if notifications %}
+  <div class="pm-notif">
+    <h6 class="mb-2"><i class="fas fa-bell text-warning"></i> Notifications</h6>
+    {% for notif in notifications %}
+    <div class="pm-notif-item {{ notif.priority }}">
+      <span class="icon"><i class="bi {{ notif.icon }}"></i></span>
+      <div class="msg">
+        <strong>{{ notif.title }}</strong>
+        {{ notif.message }}
+        {% if notif.booking_id %}
+        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=notif.booking_id) }}" class="ms-2">View</a>
+        {% endif %}
+      </div>
+      <span class="text-muted small">{{ notif.time }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── QUICK ACTIONS ── #}
+  <div class="pm-actions">
+    <a href="{{ url_for('accommodation.host_rooms', property_id=property.id) }}" class="btn btn-primary">
+      <i class="fas fa-door-open"></i> Manage Rooms
+    </a>
+    <a href="{{ url_for('accommodation.host_calendar', property_id=property.id) }}" class="btn btn-outline">
+      <i class="fas fa-calendar-alt"></i> Calendar
+    </a>
+    <a href="{{ url_for('accommodation.host_bookings') }}" class="btn btn-outline">
+      <i class="fas fa-calendar-check"></i> All Bookings
+    </a>
+    <a href="{{ url_for('accommodation.host_booking_policy', property_id=property.id) }}" class="btn btn-outline">
+      <i class="fas fa-shield-alt"></i> Policies
+    </a>
+  </div>
+
+  {# ── BLOCK DATES FORM ── #}
+  <div class="pm-block-form">
+    <form method="POST" action="{{ url_for('accommodation.host_block_date', property_id=property.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="pm-row">
+        <div class="pm-field">
+          <label>Start Date</label>
+          <input type="date" name="date_range_start" required>
+        </div>
+        <div class="pm-field">
+          <label>End Date</label>
+          <input type="date" name="date_range_end" required>
+        </div>
+        <div class="pm-field">
+          <label>Reason</label>
+          <select name="reason">
+            <option value="OWNER_BLOCKED">Owner Blocked</option>
+            <option value="MAINTENANCE">Maintenance</option>
+            <option value="SEASONAL">Seasonal</option>
+          </select>
+        </div>
+        <div class="pm-field">
+          <label>Room Type</label>
+          <select name="room_type_id">
+            <option value="">All Rooms</option>
+            {% for rt in room_types %}
+            <option value="{{ rt.id }}">{{ rt.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="pm-field" style="flex: 0 0 auto;">
+          <button type="submit" class="btn btn-danger">
+            <i class="fas fa-ban"></i> Block Dates
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {# ── ROOM TYPES OVERVIEW ── #}
+  <h5 class="mb-3"><i class="fas fa-door-open"></i> Room Types</h5>
+  <div class="pm-room-grid">
+    {% for rt in room_types %}
+    <div class="pm-room-card">
+      <div class="name">{{ rt.name }}</div>
+      <div class="details">
+        {{ rt.total_units }} units · {{ rt.available_units }} available
+      </div>
+      <div class="details">
+        ${{ "%.2f"|format(rt.base_price_per_night) }}/night
+        <span class="ms-2">max {{ rt.max_guests }} guests</span>
+      </div>
+      <div class="mt-2">
+        {% set avail = rt.available_units %}
+        {% if avail == 0 %}
+        <span class="pm-avail sold">Sold Out</span>
+        {% elif avail <= 2 %}
+        <span class="pm-avail low">Low Stock ({{ avail }})</span>
+        {% else %}
+        <span class="pm-avail available">Available</span>
+        {% endif %}
+      </div>
+      <div class="mt-2">
+        <a href="{{ url_for('accommodation.host_room_availability', property_id=property.id, room_type_id=rt.id) }}"
+           class="btn btn-sm btn-outline-primary w-100">
+          <i class="fas fa-calendar-alt"></i> Manage Availability
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── ACTIVE BOOKINGS ── #}
+  <h5 class="mb-3 mt-4"><i class="fas fa-calendar-check"></i> Active Bookings</h5>
+  <div class="card">
+    <div class="card-body p-0">
+      {% if bookings %}
+      <div class="table-responsive">
+        <table class="pm-table">
+          <thead>
+            <tr>
+              <th>Guest</th>
+              <th>Room</th>
+              <th>Check-in</th>
+              <th>Check-out</th>
+              <th>Nights</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for booking in bookings %}
+            <tr>
+              <td>
+                <strong>{{ booking.guest_name }}</strong>
+                <br><small class="text-muted">{{ booking.guest_email }}</small>
+              </td>
+              <td>{{ booking.room_type.name if booking.room_type else 'N/A' }}</td>
+              <td>{{ booking.check_in.strftime('%b %d, %Y') }}</td>
+              <td>{{ booking.check_out.strftime('%b %d, %Y') }}</td>
+              <td>{{ booking.num_nights }}</td>
+              <td>
+                <span class="pm-badge {{ booking.status|lower }}">
+                  {{ booking.status|replace('_', ' ')|title }}
+                </span>
+              </td>
+              <td>
+                <div class="d-flex gap-1">
+                  <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}"
+                     class="btn btn-sm btn-outline-primary">View</a>
+                  <button class="btn btn-sm btn-outline-danger"
+                          onclick="cancelBooking({{ booking.id }})">
+                    Cancel
+                  </button>
+                  <form id="cancel-form-{{ booking.id }}"
+                        method="POST"
+                        action="{{ url_for('accommodation.host_cancel_booking', property_id=property.id, booking_id=booking.id) }}"
+                        style="display:none;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="reason" value="Host cancellation">
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pm-empty">
+        <i class="fas fa-calendar-alt text-muted"></i>
+        <p>No active bookings for this property.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── BLOCKED DATES ── #}
+  <h5 class="mb-3 mt-4"><i class="fas fa-lock"></i> Blocked Dates</h5>
+  <div class="card">
+    <div class="card-body p-0">
+      {% if blocked_dates or temp_holds %}
+      <div class="table-responsive">
+        <table class="pm-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Reason</th>
+              <th>Type</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for block in blocked_dates %}
+            <tr>
+              <td>{{ block.blocked_date.strftime('%b %d, %Y') }}</td>
+              <td><span class="pm-blocked-reason">{{ block.reason|replace('_', ' ')|title }}</span></td>
+              <td><span class="badge bg-danger">Blocked</span></td>
+              <td>
+                <form method="POST"
+                      action="{{ url_for('accommodation.host_unblock_date', property_id=property.id, block_id=block.id) }}"
+                      style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-success">
+                    <i class="fas fa-unlock"></i> Release
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+            {% for hold in temp_holds %}
+            <tr>
+              <td>{{ hold.blocked_date.strftime('%b %d, %Y') }}</td>
+              <td><span class="pm-blocked-reason">Temporary Hold</span></td>
+              <td><span class="badge bg-warning text-dark">Hold</span></td>
+              <td>
+                <form method="POST"
+                      action="{{ url_for('accommodation.host_unblock_date', property_id=property.id, block_id=hold.id) }}"
+                      style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-success">
+                    <i class="fas fa-unlock"></i> Release Hold
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pm-empty">
+        <i class="fas fa-unlock text-muted"></i>
+        <p>No blocked dates.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── RECENT HISTORY ── #}
+  {% if history %}
+  <h5 class="mb-3 mt-4"><i class="fas fa-history"></i> Recent History</h5>
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="pm-table">
+          <thead>
+            <tr>
+              <th>Guest</th>
+              <th>Room</th>
+              <th>Check-in</th>
+              <th>Check-out</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in history %}
+            <tr>
+              <td><strong>{{ h.guest_name }}</strong><br><small class="text-muted">{{ h.guest_email }}</small></td>
+              <td>{{ h.room_type.name if h.room_type else 'N/A' }}</td>
+              <td>{{ h.check_in.strftime('%b %d, %Y') }}</td>
+              <td>{{ h.check_out.strftime('%b %d, %Y') }}</td>
+              <td>
+                <span class="pm-badge {{ h.status|lower }}">
+                  {{ h.status|replace('_', ' ')|title }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+function cancelBooking(bookingId) {
+  if (confirm('Are you sure you want to cancel this booking? This action cannot be undone.')) {
+    document.getElementById('cancel-form-' + bookingId).submit();
+  }
+}
+</script>
+{% endblock %}

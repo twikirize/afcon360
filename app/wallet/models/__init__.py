@@ -15,10 +15,11 @@ from .commission import AgentCommission
 from .payout import PayoutRequest
 from .adjustment import AdjustmentRequestModel
 from .payment_method import PaymentMethodConfig, EventPaymentPreference
+from .creation_tracker import WalletCreationEventModel
 
 __all__ = [
     'LedgerEntryModel',
-    'AccountModel', 
+    'AccountModel',
     'TransactionModel',
     'AuditLogModel',
     'FXRateModel',
@@ -28,4 +29,5 @@ __all__ = [
     'AdjustmentRequestModel',
     'PaymentMethodConfig',
     'EventPaymentPreference',
+    'WalletCreationEventModel',
 ]

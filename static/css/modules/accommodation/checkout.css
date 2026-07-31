@@ -1,0 +1,546 @@
+/* ============================================================ */
+/* CHECKOUT PAGE - PROFESSIONAL STYLING                          */
+/* ============================================================ */
+
+/* ── Container ── */
+.checkout-wrapper {
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    min-height: calc(100vh - 80px);
+    padding: 2rem 0;
+}
+
+/* ── Main Card ── */
+.checkout-main-card {
+    border: none;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.checkout-main-card .card-header {
+    background: linear-gradient(135deg, #1a2a3a 0%, #2a3a4a 100%);
+    color: white;
+    border: none;
+    padding: 1.25rem 2rem;
+}
+
+.checkout-main-card .card-header h4 {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.checkout-main-card .card-header h4 i {
+    color: #60a5fa;
+}
+
+.checkout-main-card .card-body {
+    padding: 2rem;
+}
+
+/* ── Section Headers ── */
+.checkout-section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0a1a2a;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checkout-section-title .step-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* ── Booking Type Cards ── */
+.booking-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.booking-type-card {
+    position: relative;
+    border: 2px solid #e8edf4;
+    border-radius: 16px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: #ffffff;
+}
+
+.booking-type-card:hover {
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.12);
+}
+
+.booking-type-card.selected {
+    border-color: #667eea;
+    background: linear-gradient(135deg, #f0f4ff, #e8eeff);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);
+}
+
+.booking-type-card.selected::after {
+    content: "✓";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.booking-type-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.booking-type-card .form-check-label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #0a1a2a;
+}
+
+.booking-type-card .form-check-label i {
+    width: 20px;
+    color: #667eea;
+}
+
+.booking-type-card .description {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+/* ── Payment Method Cards ── */
+.payment-method-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.payment-method-card {
+    position: relative;
+    border: 2px solid #e8edf4;
+    border-radius: 16px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: #ffffff;
+}
+
+.payment-method-card:hover {
+    border-color: #10b981;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(16, 185, 129, 0.12);
+}
+
+.payment-method-card.selected {
+    border-color: #10b981;
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.15);
+}
+
+.payment-method-card.selected::after {
+    content: "✓";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.payment-method-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.payment-method-card .form-check-label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #0a1a2a;
+}
+
+.payment-method-card .form-check-label i {
+    width: 20px;
+    color: #10b981;
+}
+
+.payment-method-card .method-description {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+.payment-method-card .wallet-balance {
+    font-size: 0.75rem;
+    color: #6b7280;
+    padding: 0.25rem 0.75rem;
+    background: #f3f4f6;
+    border-radius: 20px;
+    display: inline-block;
+    margin-top: 0.5rem;
+}
+
+.payment-method-card .wallet-balance .amount {
+    font-weight: 600;
+    color: #059669;
+}
+
+/* ── Timing Cards ── */
+.timing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+}
+
+.timing-card {
+    position: relative;
+    border: 2px solid #e8edf4;
+    border-radius: 16px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: #ffffff;
+}
+
+.timing-card:hover {
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.12);
+}
+
+.timing-card.selected {
+    border-color: #667eea;
+    background: linear-gradient(135deg, #f0f4ff, #e8eeff);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);
+}
+
+.timing-card.selected::after {
+    content: "✓";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.timing-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.timing-card .form-check-label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #0a1a2a;
+}
+
+.timing-card .form-check-label i {
+    width: 20px;
+}
+
+.timing-card .timing-description {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+.timing-card .badge-timing {
+    font-size: 0.6rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 20px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.badge-instant {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.badge-deposit {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-arrival {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+/* ── Payment Summary ── */
+.payment-summary {
+    background: linear-gradient(135deg, #f0f4ff, #f8faff);
+    border-left: 4px solid #667eea;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-top: 1rem;
+}
+
+.payment-summary i {
+    color: #667eea;
+}
+
+.payment-summary .summary-text {
+    font-weight: 500;
+    color: #0a1a2a;
+}
+
+/* ── Deposit Section ── */
+.deposit-section {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-top: 0.75rem;
+    display: none;
+}
+
+.deposit-section.visible {
+    display: block;
+    animation: fadeSlideDown 0.3s ease;
+}
+
+.deposit-section label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #92400e;
+}
+
+.deposit-section input {
+    border: 2px solid #fde68a;
+    border-radius: 10px;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+}
+
+.deposit-section input:focus {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+/* ── Validation Feedback ── */
+.checkout-feedback {
+    display: none;
+    color: #dc2626;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    background: #fef2f2;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+    margin-top: 0.5rem;
+}
+
+.checkout-feedback.show {
+    display: block !important;
+    animation: shakeX 0.4s ease;
+}
+
+/* ── Price Summary Sidebar ── */
+.price-summary-card {
+    border: none;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
+    background: #ffffff;
+    position: sticky;
+    top: 20px;
+}
+
+.price-summary-card .card-header {
+    background: linear-gradient(135deg, #0a1a2a, #1a2a3a);
+    color: white;
+    border: none;
+    border-radius: 20px 20px 0 0 !important;
+    padding: 1.25rem 1.5rem;
+}
+
+.price-summary-card .card-header h5 {
+    font-weight: 600;
+    margin: 0;
+}
+
+.price-summary-card .price-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    color: #4b5563;
+    font-size: 0.9rem;
+}
+
+.price-summary-card .price-item.total {
+    border-top: 2px solid #e5e7eb;
+    padding-top: 0.75rem;
+    margin-top: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0a1a2a;
+}
+
+.price-summary-card .price-item.total .amount {
+    color: #667eea;
+    font-size: 1.25rem;
+}
+
+.price-summary-card .payment-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #6b7280;
+    text-align: center;
+    padding: 0.5rem;
+    background: #f3f4f6;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+}
+
+/* ── Submit Button ── */
+.btn-checkout-submit {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    border-radius: 14px;
+    padding: 0.85rem;
+    font-weight: 700;
+    font-size: 1rem;
+    color: white;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-checkout-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.btn-checkout-submit:active {
+    transform: translateY(0);
+}
+
+.btn-checkout-submit i {
+    margin-right: 0.5rem;
+}
+
+/* ── Animations ── */
+@keyframes fadeSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes shakeX {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+/* ── Booking Details Box ── */
+.booking-details-box {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 1.25rem;
+}
+
+.booking-details-box .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    font-size: 0.9rem;
+}
+
+.booking-details-box .detail-item i {
+    width: 18px;
+    color: #667eea;
+}
+
+.booking-details-box .detail-item strong {
+    color: #0a1a2a;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .checkout-main-card .card-body {
+        padding: 1.25rem;
+    }
+
+    .booking-type-grid,
+    .payment-method-grid,
+    .timing-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .price-summary-card {
+        position: relative;
+        top: 0;
+        margin-top: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .booking-type-grid,
+    .payment-method-grid,
+    .timing-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .checkout-main-card .card-header {
+        padding: 1rem;
+    }
+
+    .checkout-main-card .card-header h4 {
+        font-size: 1.1rem;
+    }
+}

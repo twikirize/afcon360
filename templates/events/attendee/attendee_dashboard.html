@@ -513,7 +513,7 @@
                     <div class="wallet-balance">{{ wallet.balance }}</div>
                     <div class="wallet-currency">{{ wallet.currency }} · Available Balance</div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:1rem;">
-                        <a href="{{ safe_url('wallet.deposit_page') }}" class="wallet-cta" style="font-size:0.8rem;">
+                        <a href="{{ safe_url('wallet.deposit') }}" class="wallet-cta" style="font-size:0.8rem;">
                             <i class="fas fa-plus-circle"></i> Top Up
                         </a>
                         <a href="{{ safe_url('wallet.transaction_history') }}" class="wallet-cta" style="font-size:0.8rem;">

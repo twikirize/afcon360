@@ -5,6 +5,7 @@ Manages ML-based fraud detection and transaction scoring
 
 from typing import Dict, Any, Optional
 from flask import current_app
+from decimal import Decimal
 
 from app.extensions import db
 from app.wallet.models.fraud_detection import FraudDetectionConfig
@@ -12,7 +13,7 @@ from app.wallet.services.admin_audit_service import AdminAuditService
 
 
 class FraudDetectionService:
-    """Service for managing fraud detection configuration"""
+    """Service for managing fraud detection configuration and transaction scoring"""
     
     @staticmethod
     def get_config() -> Optional[FraudDetectionConfig]:
@@ -42,21 +43,17 @@ class FraudDetectionService:
             config = FraudDetectionConfig.query.first()
             
             if not config:
-                # Create default config if none exists
                 config = FraudDetectionConfig()
                 db.session.add(config)
             
-            # Store old value for audit
             old_value = config.to_dict()
             
-            # Update fields
             for key, value in updates.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
             
             db.session.commit()
             
-            # Log the action
             AdminAuditService.log_action(
                 admin_id=admin_id,
                 admin_name=admin_name,
@@ -111,26 +108,52 @@ class FraudDetectionService:
             score = 0.0
             factors = []
             
-            # Check transaction amount
+            # 1. High amount check
             if amount > config.max_amount_per_transaction:
                 score += 0.3
                 factors.append('high_amount')
             
-            # Check velocity (simplified - would need actual history)
-            # This is a placeholder - real implementation would query transaction history
+            # 2. Velocity checks
             if config.check_velocity:
-                # Simplified velocity check
-                pass
+                from app.wallet.services.suspicious_activity_service import SuspiciousActivityService
+                
+                txn_count = SuspiciousActivityService._get_recent_transaction_count(user_id, minutes=5)
+                if txn_count > config.max_transactions_per_minute:
+                    score += 0.4
+                    factors.append('high_velocity')
+                
+                # Hourly volume check
+                hourly_volume = SuspiciousActivityService._get_hourly_volume(user_id, currency)
+                if hourly_volume > config.max_amount_per_hour:
+                    score += 0.3
+                    factors.append('hourly_limit_exceeded')
             
-            # Check IP location (simplified)
+            # 3. New account large transfer
+            if config.check_new_account_large_transfer and recipient_id:
+                from app.wallet.services.suspicious_activity_service import SuspiciousActivityService
+                if SuspiciousActivityService._is_new_recipient(user_id, recipient_id):
+                    if amount > config.max_amount_per_transaction * 0.5:
+                        score += 0.2
+                        factors.append('new_recipient_large_amount')
+            
+            # 4. IP location check (simplified)
             if config.check_ip_location and ip_address:
-                # Would implement IP geolocation check
-                pass
+                if SuspiciousActivityService._is_new_ip(user_id, ip_address):
+                    score += 0.1
+                    factors.append('new_ip')
             
-            # Check new account large transfer
-            if config.check_new_account_large_transfer:
-                # Would implement account age check
-                pass
+            # 5. Unusual patterns
+            if config.check_unusual_patterns:
+                from app.wallet.services.suspicious_activity_service import SuspiciousActivityService
+                avg_amount = SuspiciousActivityService._get_average_transaction_amount(user_id, currency)
+                if avg_amount > 0 and amount > avg_amount * 3:
+                    score += 0.2
+                    factors.append('amount_3x_avg')
+            
+            # 6. Off-hours
+            if SuspiciousActivityService._is_off_hours():
+                score += 0.1
+                factors.append('off_hours')
             
             # Determine risk level
             if score < config.low_risk_threshold:
@@ -144,17 +167,26 @@ class FraudDetectionService:
                 action = 'block' if config.auto_block_high_risk else 'review'
             
             return {
-                'score': score,
+                'score': round(score, 2),
                 'risk_level': risk_level,
                 'factors': factors,
                 'action': action
             }
         except Exception as e:
             current_app.logger.error(f"Fraud detection scoring error: {e}")
-            # Fail open - allow transaction if scoring fails
             return {
                 'score': 0.0,
                 'risk_level': 'low',
                 'factors': [],
                 'action': 'allow'
             }
+    
+    @staticmethod
+    def should_block_transaction(score_result: Dict[str, Any]) -> bool:
+        """Determine if transaction should be blocked based on score."""
+        return score_result.get('action') == 'block'
+    
+    @staticmethod
+    def should_review_transaction(score_result: Dict[str, Any]) -> bool:
+        """Determine if transaction should be flagged for review."""
+        return score_result.get('action') == 'review'

@@ -133,6 +133,206 @@ class AvailabilityService:
         return True, [], None
 
     @staticmethod
+    def get_room_type_availability(
+        property_id: int,
+        check_in: date,
+        check_out: date,
+        num_guests: int = 2,
+        num_rooms: int = 1,
+        exclude_booking_id: int = None
+    ) -> dict:
+        """
+        Get detailed availability for all room types at a property.
+
+        Returns count-based availability per room type, with capacity matching.
+        """
+        from app.accommodation.models.room import RoomType
+        from app.accommodation.services.host_service import HostService
+        from datetime import timedelta
+
+        room_types = RoomType.query.filter_by(property_id=property_id, is_active=True).all()
+        results = []
+
+        for rt in room_types:
+            available = HostService.available_units(rt.id, check_in, check_out, exclude_booking_id)
+            rooms_needed = max(1, (num_guests + rt.max_guests - 1) // rt.max_guests) if num_guests > 0 else num_rooms
+            can_accommodate = rt.max_guests >= num_guests or rooms_needed <= available
+
+            blocked_dates = []
+            current_date = check_in
+            while current_date < check_out:
+                units_for_date = HostService.available_units(rt.id, current_date, current_date + timedelta(days=1), exclude_booking_id)
+                if units_for_date <= 0:
+                    blocked_dates.append(current_date.isoformat())
+                current_date += timedelta(days=1)
+
+            status = "available" if (available >= num_rooms and can_accommodate) else (
+                "limited" if available > 0 else "sold_out"
+            )
+            if blocked_dates and available > 0:
+                status = "partial"
+
+            results.append({
+                'id': rt.id,
+                'name': rt.name,
+                'max_guests': rt.max_guests,
+                'total_units': rt.total_units,
+                'available_units': available,
+                'is_available': available >= num_rooms,
+                'can_accommodate_guests': can_accommodate,
+                'rooms_needed': rooms_needed,
+                'status': status,
+                'price': float(rt.base_price_per_night),
+                'currency': rt.currency,
+                'blocked_dates': blocked_dates,
+            })
+
+        return {'room_types': results, 'property_id': property_id}
+
+    @staticmethod
+    def get_availability_cascade(
+        property_id: int,
+        check_in: date,
+        check_out: date,
+        num_guests: int = 2,
+        num_rooms: int = 1,
+        exclude_booking_id: int = None
+    ) -> dict:
+        """
+        Full availability cascade: Tier 0 → Tier 1 → Tier 2.
+
+        Tier 0: Exact room type match
+        Tier 1: Same-property alternative room types
+        Tier 2: Context-aware nearby properties
+        """
+        from app.accommodation.models.property import Property
+        from app.accommodation.services.host_service import HostService
+
+        prop = Property.query.get(property_id)
+        if not prop:
+            return {'error': 'Property not found'}
+
+        # Get room type availability
+        rt_availability = AvailabilityService.get_room_type_availability(
+            property_id, check_in, check_out, num_guests, num_rooms, exclude_booking_id
+        )
+
+        # Tier 0: Exact match (all room types that are fully available)
+        tier0 = [rt for rt in rt_availability['room_types'] if rt['is_available'] and rt['can_accommodate_guests']]
+
+        # Tier 1: Same property alternatives (room types that can partially accommodate)
+        tier1 = [rt for rt in rt_availability['room_types'] if not rt['is_available'] and rt['can_accommodate_guests'] and rt['available_units'] > 0]
+
+        # Tier 2: Nearby properties (context-aware)
+        tier2 = []
+        if not tier0 and not tier1:
+            tier2 = AvailabilityService.find_nearby_alternatives(property_id, check_in, check_out, num_guests, num_rooms)
+
+        # Partial availability info
+        partial = None
+        for rt in rt_availability['room_types']:
+            if rt['status'] == 'partial':
+                # Find earliest available date after blocked dates
+                from datetime import timedelta
+                avail_from = None
+                current = check_in
+                while current < check_out:
+                    units = HostService.available_units(rt['id'], current, current + timedelta(days=1), exclude_booking_id)
+                    if units > 0 and avail_from is None:
+                        avail_from = current.isoformat()
+                    current += timedelta(days=1)
+                partial = {
+                    'room_type_id': rt['id'],
+                    'name': rt['name'],
+                    'blocked_dates': rt['blocked_dates'],
+                    'available_from': avail_from,
+                    'available_units': rt['available_units'],
+                    'message': f'Booked until {rt["blocked_dates"][-1] if rt["blocked_dates"] else "N/A"}. Available from {avail_from or "immediately"}.'
+                }
+                break
+
+        return {
+            'property_id': property_id,
+            'property_name': prop.title if hasattr(prop, 'title') else str(prop),
+            'check_in': check_in.isoformat(),
+            'check_out': check_out.isoformat(),
+            'guest_count': num_guests,
+            'rooms_requested': num_rooms,
+            'tier0_exact_match': tier0,
+            'tier1_same_property': tier1,
+            'tier2_nearby_properties': tier2,
+            'partial_availability': partial,
+            'room_types': rt_availability['room_types'],
+        }
+
+    @staticmethod
+    def find_nearby_alternatives(
+        property_id: int,
+        check_in: date,
+        check_out: date,
+        num_guests: int,
+        num_rooms: int,
+        radius_km: float = 10.0
+    ) -> list:
+        """
+        Find nearby properties with matching availability, ranked by:
+        1. Event/venue proximity (if context available)
+        2. Amenity overlap
+        3. Price band proximity
+        4. Distance
+        5. Rating
+        """
+        from app.accommodation.models.property import Property
+        from app.accommodation.services.host_service import HostService
+        from sqlalchemy import func
+
+        prop = Property.query.get(property_id)
+        if not prop:
+            return []
+
+        nearby = []
+        # Simple distance-based search using approximate km from lat/lng
+        lat_range = (prop.latitude - radius_km / 111, prop.latitude + radius_km / 111) if prop.latitude else None
+        lng_range = (prop.longitude - radius_km / 111, prop.longitude + radius_km / 111) if prop.longitude else None
+
+        query = Property.query.filter(
+            Property.id != property_id,
+            Property.is_active == True,
+            Property.is_verified == True,
+        )
+        if lat_range and lng_range:
+            query = query.filter(
+                Property.latitude.between(lat_range[0], lat_range[1]),
+                Property.longitude.between(lng_range[0], lng_range[1]),
+            )
+
+        for p in query.limit(20).all():
+            rt_result = AvailabilityService.get_room_type_availability(
+                p.id, check_in, check_out, num_guests, num_rooms
+            )
+            available_rts = [rt for rt in rt_result['room_types'] if rt['is_available'] and rt['can_accommodate_guests']]
+            if available_rts:
+                distance = None
+                if prop.latitude and p.latitude:
+                    from math import radians, cos, sin, asin, sqrt
+                    lon1, lat1, lon2, lat2 = map(radians, [prop.longitude, prop.latitude, p.longitude, p.latitude])
+                    dlon = lon2 - lon1
+                    dlat = lat2 - lat1
+                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                    distance = round(2 * asin(sqrt(a)) * 6371, 1)
+
+                nearby.append({
+                    'id': p.id,
+                    'name': p.title,
+                    'distance_km': distance,
+                    'room_type': available_rts[0],
+                    'reason': f'{distance}km away, {len(available_rts)} room type(s) available',
+                })
+
+        nearby.sort(key=lambda x: (x['distance_km'] or 99999))
+        return nearby[:5]
+
+    @staticmethod
     def block_dates(
             property_id: int,
             check_in: date,

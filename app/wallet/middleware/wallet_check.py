@@ -36,7 +36,7 @@ def require_wallet_for_feature(feature=None, redirect_to=None):
                     return redirect(url_for("wallet.wallet_activate"))
                 elif status.requires_kyc:
                     flash("Please complete KYC verification to access this feature.", "warning")
-                    return redirect(url_for("kyc.verify_upload"))
+                    return redirect(url_for("kyc.upload"))
                 else:
                     flash("You don't have permission to access this feature.", "warning")
                     return redirect(url_for("wallet.wallet_dashboard"))

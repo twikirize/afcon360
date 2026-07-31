@@ -272,6 +272,11 @@
                 <span class="nav-text">Payment Gateways</span>
             </div>
             
+            <div class="nav-item" onclick="showSection('payment-methods')">
+                <span class="nav-icon">💵</span>
+                <span class="nav-text">Payment Methods</span>
+            </div>
+            
             <div class="nav-item" onclick="showSection('wallet-limits')">
                 <span class="nav-icon">💰</span>
                 <span class="nav-text">Wallet Limits</span>
@@ -488,6 +493,31 @@
                             <label>Enable/Disable</label>
                             <div class="toggle-switch" onclick="toggleGateway('wechat')"></div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Methods Section -->
+            <div id="payment-methods" class="setting-section">
+                <div class="section-header">
+                    <h2 class="section-title">Payment Methods</h2>
+                    <button onclick="loadPaymentMethods()" class="save-section-btn">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <div class="alert-box">
+                    <div class="alert-title">ℹ️ Info</div>
+                    <div class="alert-text">
+                        Enable or disable payment methods available for accommodation bookings.
+                        Cash must be enabled for "Pay on Arrival" to work.
+                    </div>
+                </div>
+
+                <div id="paymentMethodsContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted">Loading payment methods...</p>
                     </div>
                 </div>
             </div>
@@ -901,8 +931,66 @@ function saveDelegationSettings() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    // Load initial settings from server
-    // This would typically be done via API calls
+    loadPaymentMethods();
 });
+
+function loadPaymentMethods() {
+    fetch('/admin/owner/settings/payment-methods')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('paymentMethodsContainer');
+            if (!data.success || !data.payment_methods.length) {
+                container.innerHTML = '<div class="alert alert-warning">No payment methods found.</div>';
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr><th>Method</th><th>Type</th><th>Provider</th><th>Currencies</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+            data.payment_methods.forEach(m => {
+                const statusBadge = m.is_enabled
+                    ? '<span class="badge bg-success">Enabled</span>'
+                    : '<span class="badge bg-secondary">Disabled</span>';
+                const icon = m.icon || '💳';
+                html += `
+                    <tr>
+                        <td><strong>${icon} ${m.display_name}</strong></td>
+                        <td>${m.method_type}</td>
+                        <td>${m.provider_name}</td>
+                        <td>${(m.supported_currencies || []).join(', ')}</td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            <button class="btn btn-sm ${m.is_enabled ? 'btn-danger' : 'btn-success'}" onclick="togglePaymentMethod(${m.id}, ${!m.is_enabled})">
+                                ${m.is_enabled ? 'Disable' : 'Enable'}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById('paymentMethodsContainer').innerHTML = '<div class="alert alert-danger">Failed to load payment methods.</div>';
+        });
+}
+
+function togglePaymentMethod(id, enable) {
+    fetch(`/admin/owner/settings/payment-methods/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ enabled: enable })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            loadPaymentMethods();
+        } else {
+            alert(data.error || 'Failed to update payment method');
+        }
+    })
+    .catch(() => alert('Error updating payment method'));
+}
 </script>
 {% endblock %}

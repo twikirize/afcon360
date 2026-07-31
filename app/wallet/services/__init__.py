@@ -30,6 +30,9 @@ from app.wallet.services.compliance_engine import (
 
 # Fraud & Security services
 from app.wallet.services.fraud_detection_service import FraudDetectionService
+from app.wallet.services.kyc_limit_service import KYCLimitService
+from app.wallet.services.identity_verification_service import IdentityVerificationService
+from app.wallet.services.suspicious_activity_service import SuspiciousActivityService
 from app.wallet.services.nonce_protection_service import NonceProtectionService
 from app.wallet.services.travel_rule_service import TravelRuleService
 

@@ -114,6 +114,20 @@ class PaymentMethodConfig(BaseModel):
                 'transaction_fee': 0.0000
             },
             {
+                'method_id': 'cash',
+                'display_name': 'Cash',
+                'method_type': 'cash',
+                'provider_name': 'afcon360',
+                'country_code': 'UG',
+                'is_enabled': False,
+                'is_active': True,
+                'requires_phone': False,
+                'supported_currencies': ['UGX', 'KES', 'NGN', 'USD', 'EUR', 'GBP'],
+                'min_amount': 0.00,
+                'max_amount': 10000000.00,
+                'transaction_fee': 0.0000
+            },
+            {
                 'method_id': 'mobile_money_mtn_ug',
                 'display_name': 'MTN Mobile Money Uganda',
                 'method_type': 'mobile_money',

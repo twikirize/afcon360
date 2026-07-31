@@ -47,17 +47,30 @@ class PaymentPolicyService:
         """
         policy = PaymentPolicyService.get_or_create_policy(property_id)
 
-        # Get enabled payment methods
+        # Get enabled payment methods for this property
         enabled_methods = PropertyPaymentMethod.query.filter_by(
             property_id=property_id,
             enabled=True
         ).all()
 
         method_ids = [pm.wallet_method_id for pm in enabled_methods]
-        payment_methods = PaymentMethodConfig.query.filter(
-            PaymentMethodConfig.id.in_(method_ids) if method_ids else False,
-            PaymentMethodConfig.is_available == True
+        # Always include all globally enabled methods so hosts can discover
+        # and select methods not yet linked to the property
+        all_enabled = PaymentMethodConfig.query.filter(
+            PaymentMethodConfig.is_enabled == True,
+            PaymentMethodConfig.is_active == True,
         ).all()
+        all_enabled_ids = [m.id for m in all_enabled]
+        # Merge: include all globally enabled methods that are either
+        # explicitly linked OR the policy allows cash
+        if not method_ids:
+            payment_methods = all_enabled
+        else:
+            # Include linked methods plus all globally enabled methods
+            # so hosts/guests can see all available options
+            payment_methods = PaymentMethodConfig.query.filter(
+                PaymentMethodConfig.id.in_(all_enabled_ids),
+            ).all()
 
         # Build options
         options = {
@@ -85,6 +98,12 @@ class PaymentPolicyService:
                     'deposit': policy.allow_deposit_payment,
                 }.items() if enabled
             ],
+            'method_timing_map': {
+                'pay_now': ['wallet', 'card', 'mobile_money'],
+                'deposit': ['wallet', 'card', 'mobile_money'],
+                'pay_on_arrival': ['cash'],
+                'invoice': ['invoice'],
+            },
             'cancellation': {
                 'policy': policy.cancellation_policy,
                 'free_cancel_hours': policy.free_cancel_hours,
@@ -130,5 +149,6 @@ class PaymentPolicyService:
             'card': 'credit-card',
             'bank_transfer': 'building-bank',
             'invoice': 'file-invoice',
+            'cash': 'cash',
         }
         return icons.get(method_type, 'cash')

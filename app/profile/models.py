@@ -312,6 +312,139 @@ class UserProfileAudit(BaseModel):
 
 
 # ---------------------------
+# Profile Change Request Model
+# ---------------------------
+class ProfileChangeRequest(BaseModel):
+    """
+    Tracks requests to change immutable profile fields after verification.
+
+    Approval workflow:
+    - Owner: can approve any request at any level
+    - Super Admin: can approve any request except owner-level
+    - Compliance Officer: can approve compliance-level requests only
+    - All other roles: read-only, no approval power
+    """
+    __tablename__ = "profile_change_requests"
+
+    user_profile_id = Column(
+        BigInteger,
+        ForeignKey("user_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    field_name = Column(String(64), nullable=False)
+    old_value = Column(Text, nullable=True)
+    requested_value = Column(Text, nullable=False)
+    requested_by_user_id = Column(BigInteger, nullable=False)
+    reason = Column(Text, nullable=True)
+
+    # Approval levels
+    requires_admin_approval = Column(Boolean, default=False, nullable=False)
+    requires_compliance_approval = Column(Boolean, default=False, nullable=False)
+    requires_super_admin_approval = Column(Boolean, default=False, nullable=False)
+    requires_owner_approval = Column(Boolean, default=False, nullable=False)
+
+    # Approval status
+    admin_approved = Column(Boolean, default=False, nullable=False)
+    admin_approved_by = Column(BigInteger, nullable=True)
+    admin_approved_at = Column(DateTime, nullable=True)
+    admin_approval_notes = Column(Text, nullable=True)
+
+    compliance_approved = Column(Boolean, default=False, nullable=False)
+    compliance_approved_by = Column(BigInteger, nullable=True)
+    compliance_approved_at = Column(DateTime, nullable=True)
+    compliance_approval_notes = Column(Text, nullable=True)
+
+    super_admin_approved = Column(Boolean, default=False, nullable=False)
+    super_admin_approved_by = Column(BigInteger, nullable=True)
+    super_admin_approved_at = Column(DateTime, nullable=True)
+    super_admin_approval_notes = Column(Text, nullable=True)
+
+    owner_approved = Column(Boolean, default=False, nullable=False)
+    owner_approved_by = Column(BigInteger, nullable=True)
+    owner_approved_at = Column(DateTime, nullable=True)
+    owner_approval_notes = Column(Text, nullable=True)
+
+    # Status: pending, approved, rejected, applied, expired
+    status = Column(
+        String(20),
+        nullable=False,
+        default="pending",
+        index=True,
+    )
+    approved_at = Column(DateTime, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    applied_by = Column(BigInteger, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    rejected_by = Column(BigInteger, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+    # Relationships
+    user_profile = relationship("UserProfile", backref="change_requests")
+
+    # Audit trail
+    audit_trail = Column(JSON, nullable=True, default=list)
+
+    def add_audit_trail_entry(self, action: str, performed_by: int, notes: str = None):
+        """Add an entry to the audit trail."""
+        if self.audit_trail is None:
+            self.audit_trail = []
+        self.audit_trail.append(
+            {
+                "action": action,
+                "performed_by": performed_by,
+                "timestamp": datetime.utcnow().isoformat(),
+                "notes": notes,
+            }
+        )
+
+    def is_fully_approved(self) -> bool:
+        """Check if all required approvals have been obtained."""
+        if self.requires_owner_approval and not self.owner_approved:
+            return False
+        if self.requires_super_admin_approval and not self.super_admin_approved:
+            return False
+        if self.requires_admin_approval and not self.admin_approved:
+            return False
+        if self.requires_compliance_approval and not self.compliance_approved:
+            return False
+        return True
+
+    def can_user_approve(self, user) -> bool:
+        """
+        Check if a user can approve this change request.
+
+        Only Owner and Super Admin have full approval privileges.
+        Compliance Officer can approve compliance-level approvals only.
+        """
+        from app.auth.roles import ROLE_OWNER, ROLE_SUPER_ADMIN, ROLE_COMPLIANCE_OFFICER
+
+        if not user:
+            return False
+
+        role_names = user.role_names if hasattr(user, "role_names") else []
+
+        # Owner can approve ANY request (highest authority)
+        if user.is_app_owner() or ROLE_OWNER in role_names:
+            return True
+
+        # Super Admin can approve any request EXCEPT owner-level
+        if ROLE_SUPER_ADMIN in role_names:
+            if self.requires_owner_approval and not self.owner_approved:
+                return False
+            return True
+
+        # Compliance Officer can only approve compliance-level approvals
+        if ROLE_COMPLIANCE_OFFICER in role_names:
+            if self.requires_compliance_approval and not self.compliance_approved:
+                return True
+            return False
+
+        # All other roles (Admin, Moderator, Support, etc.) have NO approval power
+        return False
+
+
+# ---------------------------
 # Event-based immutability enforcement + audit
 # ---------------------------
 @event.listens_for(UserProfile, "before_update")

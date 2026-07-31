@@ -22,6 +22,11 @@ from app.wallet.middleware.wallet_check import (
     require_withdraw_access,
     require_payout_access
 )
+from app.wallet.decorators import (
+    require_no_freeze,
+    require_sufficient_kyc,
+    require_transaction_verification
+)
 from app.wallet.services.wallet_status_service import WalletFeature, WalletStatusService
 from app.auth.decorators import require_fresh_user
 from app.services.analytics import AnalyticsService
@@ -92,7 +97,7 @@ def get_or_create_account(user_id, currency='UGX'):
         Account object (existing or newly created)
     """
     from app.identity.models.user import User
-    from app.wallet.models.ledger import AccountModel
+    from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountStatus, AccountType
     from app.extensions import db
     from uuid import uuid4
     from decimal import Decimal
@@ -108,7 +113,10 @@ def get_or_create_account(user_id, currency='UGX'):
         internal_id = user_id
     
     # Try to find existing account (one account per user - unique constraint)
-    account = AccountModel.query.filter_by(user_id=internal_id).first()
+    account = AccountModel.query.filter_by(
+        user_id=internal_id,
+        owner_type=AccountOwnerType.USER
+    ).first()
     
     if not account:
         # Create new account (verified defaults to False in model)
@@ -122,10 +130,21 @@ def get_or_create_account(user_id, currency='UGX'):
             daily_volume=Decimal('0'),
             daily_volume_reset_at=None,
             monthly_volume=Decimal('0'),
-            monthly_volume_reset_at=None
+            monthly_volume_reset_at=None,
+            owner_type=AccountOwnerType.USER,
+            status=AccountStatus.ACTIVE,
+            account_type=AccountType.USER_WALLET,
+            account_name=f"Wallet_{currency}_{internal_id}",
+            verified=False
         )
         db.session.add(account)
         db.session.commit()
+        
+        # Re-query to ensure we have a fresh object from the DB
+        account = AccountModel.query.filter_by(
+            user_id=internal_id,
+            owner_type=AccountOwnerType.USER
+        ).first()
         
     return account
 
@@ -137,21 +156,36 @@ def activate_wallet():
     """User explicitly opts in to wallet activation with terms acceptance."""
     from app.identity.models.user import User
     from app.wallet.models.ledger import AccountOwnerType
+    from app.wallet.services.wallet_creation_tracker import (
+        WalletCreationTracker, WalletCreationEvent
+    )
+    from datetime import datetime
 
     db_user = User.query.filter_by(public_id=str(current_user.public_id)).first()
     if not db_user:
         flash("User not found.", "danger")
         return redirect(url_for("user.dashboard"))
 
-    existing = AccountModel.query.filter_by(
+    # Ownership validation: get account ONLY if it belongs to this user
+    account = AccountModel.query.filter_by(
         user_id=db_user.id,
-        owner_type=AccountOwnerType.USER,
+        owner_type=AccountOwnerType.USER
     ).first()
 
-    if not existing:
+    if not account:
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
 
+    # Check if wallet is already activated
+    if account.verified:
+        flash('Your wallet is already activated.', 'info')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+    # GET request: Show activation form
+    if request.method == 'GET':
+        return render_template('wallet/wallet_activate.html', account=account)
+
+    # POST request: Process activation
     if request.method == 'POST':
         from flask_wtf.csrf import validate_csrf
         csrf_token = request.form.get('csrf_token')
@@ -164,29 +198,63 @@ def activate_wallet():
             flash('Invalid security token. Please try again.', 'danger')
             return redirect(url_for('wallet.wallet_activate'))
 
-        if existing.verified:
+        # Check if already activated
+        if account.verified:
             flash('Your wallet is already activated.', 'info')
             return redirect(url_for('wallet.wallet_dashboard'))
 
+        # Check terms acceptance
         if not request.form.get('accept_terms'):
             flash('You must accept the terms to activate your wallet.', 'warning')
-            return render_template('wallet/wallet_activate.html', action='verify', wallet=existing)
+            return render_template('wallet/wallet_activate.html', account=account)
 
-        with db_transaction('Wallet activation'):
-            existing.verified = True
-            existing.terms_accepted_at = datetime.utcnow()
-            db.session.add(existing)
+        # Activate wallet
+        account.verified = True
+        account.terms_accepted_at = datetime.utcnow()
+        db.session.commit()
+
+        # Record activation in tracker
+        try:
+            WalletCreationTracker.record_activation(
+                user_id=current_user.id,
+                account_id=str(account.id)
+            )
+            WalletCreationTracker.record_completion(
+                user_id=current_user.id,
+                account_id=str(account.id)
+            )
+        except Exception as e:
+            current_app.logger.warning(f"Could not record activation in tracker: {e}")
+
+        # Record in audit log (compliance/system event)
+        try:
+            from app.audit.comprehensive_audit import AuditService
+            AuditService.data_change(
+                entity_type="wallet",
+                entity_id=str(account.id),
+                operation="activate",
+                old_value={"verified": False},
+                new_value={"verified": True, "terms_accepted_at": str(account.terms_accepted_at)},
+                changed_by=current_user.id,
+                extra_data={
+                    "ip_address": request.remote_addr,
+                    "user_agent": request.user_agent.string if request.user_agent else None
+                }
+            )
+            current_app.logger.info(f"Audit: Wallet activation logged for user {current_user.id}")
+        except Exception as e:
+            current_app.logger.error(f"Audit error: {e}")
 
         flash('Your wallet has been activated!', 'success')
-        
-        # Expert recommendation: Ensure user has a PIN setup immediately after activation
+
+        # Check PIN setup
         if not current_user.transaction_pin_hash:
             flash('Please set a transaction PIN to secure your funds before you start.', 'info')
             return redirect(url_for('wallet.pin_page'))
-            
+
         return redirect(url_for('wallet.wallet_dashboard'))
 
-    return render_template('wallet/wallet_activate.html', action='verify', wallet=existing)
+    return render_template('wallet/wallet_activate.html', account=account)
 
 
 # =============================================================================
@@ -234,6 +302,10 @@ def wallet_home():
 @login_required
 def wallet_dashboard():
     """Main wallet dashboard — the real landing page."""
+    import traceback
+    import logging
+    logger = logging.getLogger(__name__)
+
     AnalyticsService.track_page_view('wallet')
 
     # Clear admin/module flash messages from previous page loads
@@ -242,10 +314,35 @@ def wallet_dashboard():
         session['_flashes'] = [(category, message) for category, message in session['_flashes'] if 'module' not in message.lower()]
 
     try:
-        wallet_status = WalletStatusService.get_wallet_status(current_user)
-        account = get_account(current_user.id)
+        logger.info("=" * 60)
+        logger.info("WALLET DASHBOARD START")
+        logger.info(f"User ID: {current_user.id}")
+        logger.info(f"User Public ID: {current_user.public_id}")
+        logger.info("=" * 60)
 
+        # 1. Get wallet status
+        logger.info("Step 1: Getting wallet status...")
+        wallet_status = WalletStatusService.get_wallet_status(current_user)
+        logger.info(f"Wallet Status: exists={wallet_status.exists if wallet_status else 'None'}, activated={wallet_status.is_activated if wallet_status else 'None'}")
+
+        # 2. Get account
+        logger.info("Step 2: Getting account...")
+        account = get_account(current_user.id)
+        logger.info(f"Account found: {account is not None}")
+
+        # Get wallet creation trace for dashboard context
+        from app.wallet.services.wallet_creation_tracker import WalletCreationTracker
+        creation_trace = WalletCreationTracker.get_creation_status(current_user.id)
+
+        if account:
+            logger.info(f"  Account ID: {account.id}")
+            logger.info(f"  Account Verified: {account.verified}")
+            logger.info(f"  Account Currency: {account.currency}")
+            logger.info(f"  Account Is Frozen: {account.is_frozen}")
+
+        # 3. If no account, show no-wallet state
         if not account:
+            logger.info("No account found - showing create prompt")
             return render_template(
                 'wallet/wallet_dashboard.html',
                 account=None,
@@ -254,37 +351,33 @@ def wallet_dashboard():
                 commission=Decimal('0'),
                 transaction_count=0,
                 no_wallet=True,
-                wallet_activated=False
+                wallet_activated=False,
+                show_create_prompt=True,
+                wallet_creation_status=creation_trace
             )
 
-        if account and account.id:
-            try:
-                from app.audit.forensic_audit import ForensicAuditService
-                ForensicAuditService.log_attempt(
-                    entity_type="wallet",
-                    entity_id=str(account.id),
-                    action="view_dashboard",
-                    user_id=current_user.id,
-                    ip_address=request.remote_addr,
-                    user_agent=request.user_agent.string if request.user_agent else None
-                )
-            except Exception:
-                pass
-
+        # 4. Get balance from ledger
+        logger.info("Step 3: Getting balance...")
         service = WalletService()
         balance_data = service.get_balance(account.user_id)
         balance = balance_data.get('balance', Decimal('0'))
+        logger.info(f"Balance: {balance}")
 
+        # 5. Get recent transactions
+        logger.info("Step 4: Getting transactions...")
         recent_transactions = TransactionModel.query.filter(
             or_(
                 TransactionModel.user_id == current_user.id,
                 TransactionModel.recipient_user_id == current_user.id
             )
         ).order_by(TransactionModel.created_at.desc()).limit(10).all()
+        logger.info(f"Transactions: {len(recent_transactions)}")
 
+        # 6. Calculate transaction count
         transaction_count = calculate_transaction_usage(current_user.id)
         commission = Decimal('0')
 
+        logger.info("Step 5: Rendering dashboard...")
         return render_template(
             'wallet/wallet_dashboard.html',
             account=account,
@@ -293,9 +386,22 @@ def wallet_dashboard():
             commission=commission,
             transaction_count=transaction_count,
             no_wallet=False,
-            wallet_activated=wallet_status.is_activated if wallet_status else False
+            wallet_activated=wallet_status.is_activated if wallet_status else False,
+            show_create_prompt=False,
+            wallet_creation_status={}
         )
+
     except Exception as e:
+        # Log the FULL error
+        logger.error("=" * 60)
+        logger.error("❌ DASHBOARD ERROR")
+        logger.error(f"Error Type: {type(e).__name__}")
+        logger.error(f"Error Message: {str(e)}")
+        logger.error("Full Traceback:")
+        logger.error(traceback.format_exc())
+        logger.error("=" * 60)
+
+        # Also log to the app's error handler
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
             user_id=current_user.id if current_user.is_authenticated else None,
@@ -303,8 +409,18 @@ def wallet_dashboard():
             error_message=str(e),
             context={"component": "wallet_dashboard"}
         )
+
         flash('Unable to load wallet dashboard. Please try again later.', 'warning')
-        return render_template('wallet/wallet_dashboard.html', balance=Decimal('0'), recent_transactions=[], commission=Decimal('0'), no_wallet=True, wallet_activated=False)
+        return render_template(
+            'wallet/wallet_dashboard.html',
+            balance=Decimal('0'),
+            recent_transactions=[],
+            commission=Decimal('0'),
+            no_wallet=True,
+            wallet_activated=False,
+            show_create_prompt=True,
+            wallet_creation_status={}
+        )
 
 
 @wallet_bp.route('/overview')
@@ -367,9 +483,8 @@ def wallet_create_page():
 @wallet_bp.route('/create', methods=['POST'])
 @login_required
 def wallet_create():
-    """Create a new wallet and sync profile information"""
+    """Create a new wallet"""
     from flask_wtf.csrf import validate_csrf
-    from app.profile.models import get_profile_by_user
     from app.extensions import db
     
     # Validate CSRF
@@ -399,29 +514,99 @@ def wallet_create():
         # Check if wallet already exists
         account = get_account(current_user.id)
         if account:
+            flash('You already have a wallet.', 'info')
             return redirect(url_for('wallet.wallet_dashboard'))
-        
-        # Sync profile information (Nationality)
-        nationality = request.form.get('nationality')
-        if nationality:
-            profile = get_profile_by_user(current_user.public_id)
-            if profile:
-                profile.nationality = nationality
-                db.session.add(profile)
-        
+
         # Get currency from form (default to UGX)
         currency = request.form.get('currency', 'UGX')
-        
+
+        # Start wallet creation tracker
+        from app.wallet.services.wallet_creation_tracker import (
+            WalletCreationTracker, WalletCreationEvent
+        )
+        WalletCreationTracker.log_step(current_user.id, WalletCreationEvent.INITIATED)
+
         # Create account using get_or_create_account with selected currency
         account = get_or_create_account(current_user.id, currency=currency)
-        
-        # Log successful creation
-        current_app.logger.info(f"Wallet created for user {current_user.id} with currency {currency}")
-        
+
+        # Verify account was created and is retrievable
+        if not account:
+            raise ValueError("Account creation returned None")
+
+        # Record account creation in tracker
+        WalletCreationTracker.record_account_created(
+            current_user.id, str(account.id)
+        )
+
+        # Force flush and re-query to ensure account is visible
+        db.session.flush()
+        db.session.commit()
+
+        # Verify the account exists by re-querying and checking ownership
+        verify_account = get_account(current_user.id)
+        if not verify_account:
+            current_app.logger.error(
+                f"Account verification failed after creation for user {current_user.id}"
+            )
+            WalletCreationTracker.log_step(
+                current_user.id,
+                WalletCreationEvent.FAILED,
+                metadata={"error": "Account created but not found in database"}
+            )
+            raise ValueError("Account created but not found in database")
+
+        # Verify account ownership to prevent hijacking
+        if not WalletCreationTracker.verify_account_ownership(
+            str(verify_account.id), current_user.id
+        ):
+            WalletCreationTracker.log_step(
+                current_user.id,
+                WalletCreationEvent.FAILED,
+                metadata={"error": "Account ownership verification failed"}
+            )
+            raise ValueError("Account ownership verification failed")
+
+        WalletCreationTracker.log_step(
+            current_user.id,
+            WalletCreationEvent.ACCOUNT_VERIFIED
+        )
+        WalletCreationTracker.record_completion(
+            current_user.id, str(verify_account.id)
+        )
+
+        # Record in audit log (compliance/system event)
+        try:
+            from app.audit.comprehensive_audit import AuditService
+            AuditService.data_change(
+                entity_type="wallet",
+                entity_id=str(verify_account.id),
+                operation="create",
+                old_value=None,
+                new_value={
+                    "currency": currency,
+                    "owner_type": "USER",
+                    "status": "ACTIVE",
+                    "verified": False
+                },
+                changed_by=current_user.id,
+                extra_data={
+                    "ip_address": request.remote_addr,
+                    "user_agent": request.user_agent.string if request.user_agent else None
+                }
+            )
+            current_app.logger.info(f"Audit: Wallet creation logged for user {current_user.id}")
+        except Exception as e:
+            current_app.logger.error(f"Audit error: {e}")
+
+        current_app.logger.info(
+            f"Wallet created and verified for user {current_user.id} with currency {currency}"
+        )
+
         flash('Financial account opened successfully! Your vault is ready for activation.', 'success')
         return redirect(url_for('wallet.wallet_activate'))
-        
+
     except Exception as e:
+        db.session.rollback()
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
             user_id=current_user.id,
@@ -429,6 +614,15 @@ def wallet_create():
             error_message=str(e),
             context={"component": "wallet_onboarding", "currency": request.form.get('currency')}
         )
+        current_app.logger.error(f"Wallet creation failed: {e}")
+
+        from app.wallet.services.wallet_creation_tracker import WalletCreationTracker, WalletCreationEvent
+        WalletCreationTracker.log_step(
+            current_user.id,
+            WalletCreationEvent.FAILED,
+            metadata={"error": str(e)}
+        )
+
         flash('System encountered a temporary glitch while securing your vault. Please try again.', 'warning')
         return redirect(url_for('wallet.wallet_create_page'))
 
@@ -523,6 +717,7 @@ def send_page():
 @login_required
 @require_send_access
 @require_fresh_user
+@require_no_freeze
 def send_funds():
     """POST: Process send/transfer request"""
     try:
@@ -544,6 +739,13 @@ def send_funds():
         
         if amount <= 0:
             flash('Amount must be greater than zero', 'error')
+            return redirect(url_for('wallet.send_page'))
+        
+        # KYC limit check before processing
+        from app.wallet.services.kyc_limit_service import KYCLimitService
+        kyc_check = KYCLimitService.check_transaction_allowed(current_user.id, amount, 'send', currency)
+        if not kyc_check['allowed']:
+            flash(kyc_check.get('reason', 'Transaction not permitted for your KYC level.'), 'warning')
             return redirect(url_for('wallet.send_page'))
         
         # Get sender account (do NOT auto-create)
@@ -576,11 +778,10 @@ def send_funds():
         pin = request.form.get('pin')
 
         service = WalletService()
-        # Use from_account_id / to_account_id (UUIDs) and generate a client_request_id
         client_request_id = str(uuid4())
         transaction = service.transfer(
-            from_account_id=sender_account.id,  # UUID - correct per Alipay model
-            to_account_id=receiver_account.id,    # UUID - correct per Alipay model
+            from_account_id=sender_account.id,
+            to_account_id=receiver_account.id,
             amount=amount,
             currency=currency,
             client_request_id=client_request_id,
@@ -594,6 +795,9 @@ def send_funds():
         
     except InsufficientBalanceError:
         flash('Insufficient balance', 'error')
+        return redirect(url_for('wallet.send_page'))
+    except LimitExceededError as e:
+        flash(f'Limit exceeded: {str(e)}', 'error')
         return redirect(url_for('wallet.send_page'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
@@ -627,6 +831,7 @@ def withdraw_page():
 @login_required
 @require_withdraw_access
 @require_fresh_user
+@require_no_freeze
 def withdraw_funds():
     """POST: Process withdrawal request"""
     try:
@@ -649,6 +854,13 @@ def withdraw_funds():
             flash('Amount must be greater than zero', 'error')
             return redirect(url_for('wallet.withdraw_page'))
         
+        # KYC limit check before processing
+        from app.wallet.services.kyc_limit_service import KYCLimitService
+        kyc_check = KYCLimitService.check_transaction_allowed(current_user.id, amount, 'withdraw', currency)
+        if not kyc_check['allowed']:
+            flash(kyc_check.get('reason', 'Withdrawal not permitted for your KYC level.'), 'warning')
+            return redirect(url_for('wallet.withdraw_page'))
+        
         # Get existing account (do NOT auto-create)
         account = get_account(current_user.id, currency)
         if not account:
@@ -658,10 +870,10 @@ def withdraw_funds():
         # Process withdrawal using WalletService
         service = WalletService()
         transaction = service.withdraw(
-            account_id=account.id,  # UUID - correct per Alipay model
+            account_id=account.id,
             amount=amount,
             currency=currency,
-            client_request_id=str(uuid4()),  # Required parameter
+            client_request_id=str(uuid4()),
             metadata={'method': method, 'agent_id': agent_id}
         )
         
@@ -1167,3 +1379,478 @@ def fx_convert_page():
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
     return render_template('wallet/fx_convert.html', account=account, balance=Decimal('0'))
+
+
+# =============================================================================
+# FINANCIAL ACCOUNT LOOKUP SYSTEM (Financial Roles Only)
+# =============================================================================
+
+def _has_financial_access(user) -> bool:
+    """Check if user has financial access (Owner, Super Admin, Admin, Wallet Admin, Compliance, Auditor)."""
+    if not user or not user.is_authenticated:
+        return False
+
+    # Owner has ultimate access
+    if user.is_app_owner():
+        return True
+
+    role_names = user.role_names if hasattr(user, 'role_names') else []
+    financial_roles = {'owner', 'super_admin', 'admin', 'wallet_admin', 'compliance_officer', 'auditor'}
+    return any(role in financial_roles for role in role_names)
+
+
+@wallet_bp.route('/financial/lookup', methods=['GET', 'POST'])
+@login_required
+def financial_account_lookup():
+    """
+    Search for user accounts by name, email, phone, or username.
+    Only users with financial roles can access this.
+    """
+    from app.identity.models.user import User
+    from app.profile.models import get_profile_by_user, UserProfile
+    from app.wallet.models.ledger import AccountModel
+    from sqlalchemy import or_
+    from decimal import Decimal
+
+    # Authorisation check
+    if not _has_financial_access(current_user):
+        flash('You do not have permission to access financial account lookup.', 'danger')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+    results = []
+    search_query = None
+    search_type = 'all'
+
+    if request.method == 'POST':
+        search_query = request.form.get('search_query', '').strip()
+        search_type = request.form.get('search_type', 'all')
+
+        if search_query and len(search_query) >= 2:
+            query = User.query.filter(User.is_deleted == False)
+
+            if search_type == 'all' or search_type == 'name':
+                query = query.join(UserProfile, User.public_id == UserProfile.user_id)
+                query = query.filter(UserProfile.full_name.ilike(f'%{search_query}%'))
+
+            if search_type == 'all' or search_type == 'email':
+                query = query.filter(User.email.ilike(f'%{search_query}%'))
+
+            if search_type == 'all' or search_type == 'phone':
+                query = query.filter(User.phone.ilike(f'%{search_query}%'))
+
+            if search_type == 'all' or search_type == 'username':
+                query = query.filter(User.username.ilike(f'%{search_query}%'))
+
+            users = query.limit(50).all()
+
+            for user in users:
+                profile = get_profile_by_user(user.public_id)
+                account = AccountModel.query.filter_by(user_id=user.id).first()
+
+                results.append({
+                    'user': user,
+                    'profile': profile,
+                    'account': account,
+                    'account_status': 'active' if account and account.verified else 'pending_activation' if account else 'no_wallet',
+                    'account_balance': Decimal('0'),
+                    'account_currency': account.currency if account else 'N/A',
+                    'roles': user.role_names if hasattr(user, 'role_names') else [],
+                    'is_frozen': account.is_frozen if account else False
+                })
+
+    return render_template(
+        'wallet/financial/account_lookup.html',
+        results=results,
+        search_query=search_query,
+        search_type=search_type,
+        total_results=len(results),
+        has_access=_has_financial_access(current_user)
+    )
+
+
+@wallet_bp.route('/financial/account/<public_id>')
+@login_required
+def financial_account_detail(public_id):
+    """
+    View detailed account information for a specific user.
+    Only users with financial roles can access this.
+    """
+    from app.identity.models.user import User
+    from app.profile.models import get_profile_by_user, UserProfile
+    from app.wallet.models.ledger import AccountModel
+    from app.wallet.models.transaction import TransactionModel
+    from app.audit.comprehensive_audit import SecurityEventLog
+    from sqlalchemy import or_
+    from decimal import Decimal
+    from datetime import datetime, timezone
+
+    # Authorisation check
+    if not _has_financial_access(current_user):
+        flash('You do not have permission to view financial account details.', 'danger')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+    user = User.query.filter_by(public_id=public_id, is_deleted=False).first()
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('wallet.financial_account_lookup'))
+
+    profile = get_profile_by_user(user.public_id)
+    account = AccountModel.query.filter_by(user_id=user.id).first()
+
+    # Recent transactions
+    recent_transactions = []
+    if account:
+        recent_transactions = TransactionModel.query.filter(
+            or_(
+                TransactionModel.user_id == user.id,
+                TransactionModel.recipient_user_id == user.id
+            )
+        ).order_by(TransactionModel.created_at.desc()).limit(20).all()
+
+    # Summary stats
+    total_deposits = Decimal('0')
+    total_withdrawals = Decimal('0')
+    total_transfers_sent = Decimal('0')
+    total_transfers_received = Decimal('0')
+
+    for tx in recent_transactions:
+        if tx.status.value == 'COMPLETED':
+            if tx.tx_type.value == 'DEPOSIT':
+                total_deposits += tx.amount
+            elif tx.tx_type.value == 'WITHDRAW':
+                total_withdrawals += tx.amount
+            elif tx.tx_type.value == 'TRANSFER':
+                if tx.user_id == user.id:
+                    total_transfers_sent += tx.amount
+                elif tx.recipient_user_id == user.id:
+                    total_transfers_received += tx.amount
+
+    # Active sessions
+    active_sessions = []
+    if user:
+        from app.identity.models.user import Session
+        now = datetime.now(timezone.utc)
+        active_sessions = Session.query.filter_by(
+            user_id=user.id,
+            revoked_at=None
+        ).filter(Session.expires_at > now).order_by(Session.created_at.desc()).all()
+
+    # KYC info
+    kyc_info = {}
+    try:
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        kyc_info = calculate_kyc_tier(user.id)
+    except Exception:
+        kyc_info = {'tier': 0, 'tier_name': 'Unregistered'}
+
+    # Security events for this user
+    security_events = []
+    if user:
+        security_events = SecurityEventLog.query.filter_by(
+            user_id=user.id
+        ).order_by(SecurityEventLog.created_at.desc()).limit(50).all()
+
+    # FX conversions for this user
+    fx_conversions = []
+    if account:
+        try:
+            from app.wallet.models.fx import FXRateModel
+            # FX conversions are tracked in transactions with type FX or in a separate FX log
+            # For now, we'll note that FX activity exists
+            fx_conversions = TransactionModel.query.filter(
+                TransactionModel.user_id == user.id,
+                TransactionModel.tx_type == 'FX'
+            ).order_by(TransactionModel.created_at.desc()).limit(20).all()
+        except Exception:
+            pass
+
+    # Payout requests for this user
+    payout_requests = []
+    if account:
+        try:
+            from app.wallet.models.payout import PayoutRequest
+            payout_requests = PayoutRequest.query.filter_by(
+                agent_id=user.id
+            ).order_by(PayoutRequest.created_at.desc()).limit(20).all()
+        except Exception:
+            pass
+
+    # Adjustments for this user
+    adjustments = []
+    if account:
+        try:
+            adjustments = TransactionModel.query.filter(
+                TransactionModel.user_id == user.id,
+                TransactionModel.tx_type == 'ADJUSTMENT'
+            ).order_by(TransactionModel.created_at.desc()).limit(20).all()
+        except Exception:
+            pass
+
+    # Wallet creation tracker events (admin view)
+    creation_events = []
+    if account:
+        try:
+            from app.wallet.services.wallet_creation_tracker import WalletCreationTracker
+            creation_events = WalletCreationTracker.get_events_for_account(str(account.id))
+        except Exception:
+            pass
+
+    # Build comprehensive activity timeline
+    timeline = []
+
+    # 1. User account creation
+    timeline.append({
+        'timestamp': user.created_at.isoformat() if user.created_at else None,
+        'type': 'account_created',
+        'label': 'User Account Created',
+        'description': f'User account created for {user.email or user.username}',
+        'icon': 'fa-user-plus',
+        'color': 'blue'
+    })
+
+    # 2. Profile creation
+    if profile and profile.created_at:
+        timeline.append({
+            'timestamp': profile.created_at.isoformat() if profile.created_at else None,
+            'type': 'profile_created',
+            'label': 'Profile Created',
+            'description': f'Profile created for {profile.full_name or user.username}',
+            'icon': 'fa-id-card',
+            'color': 'green'
+        })
+
+    # 3. Wallet/account creation
+    if account and account.created_at:
+        timeline.append({
+            'timestamp': account.created_at.isoformat() if account.created_at else None,
+            'type': 'wallet_created',
+            'label': 'Wallet Created',
+            'description': f'Wallet created with currency {account.currency}',
+            'icon': 'fa-wallet',
+            'color': 'purple'
+        })
+
+    # 4. Wallet activation
+    if account and account.verified and account.terms_accepted_at:
+        timeline.append({
+            'timestamp': account.terms_accepted_at.isoformat() if account.terms_accepted_at else None,
+            'type': 'wallet_activated',
+            'label': 'Wallet Activated',
+            'description': 'Wallet activated with terms accepted',
+            'icon': 'fa-check-circle',
+            'color': 'green'
+        })
+
+    # 5. Wallet suspension/freeze events
+    if account and account.is_frozen and account.frozen_at:
+        timeline.append({
+            'timestamp': account.frozen_at.isoformat() if account.frozen_at else None,
+            'type': 'wallet_frozen',
+            'label': 'Wallet Frozen',
+            'description': f'Wallet frozen: {account.frozen_reason or "No reason provided"}',
+            'icon': 'fa-snowflake',
+            'color': 'red'
+        })
+
+    # 6. Security events
+    for event in security_events:
+        timeline.append({
+            'timestamp': event.created_at.isoformat() if event.created_at else None,
+            'type': 'security_event',
+            'label': f'Security Event: {event.event_type}',
+            'description': event.description or '',
+            'icon': 'fa-shield-alt',
+            'color': 'red' if event.severity.value == 'WARNING' else 'orange'
+        })
+
+    # 7. All transactions (chronological)
+    all_transactions = TransactionModel.query.filter(
+        or_(
+            TransactionModel.user_id == user.id,
+            TransactionModel.recipient_user_id == user.id
+        )
+    ).order_by(TransactionModel.created_at.asc()).all()
+
+    for tx in all_transactions:
+        timeline.append({
+            'timestamp': tx.created_at.isoformat() if tx.created_at else None,
+            'type': 'transaction',
+            'label': f'Transaction: {tx.tx_type.value}',
+            'description': f'{tx.amount} {tx.currency} - {tx.status.value}',
+            'icon': 'fa-exchange-alt',
+            'color': 'blue'
+        })
+
+    # 8. FX conversions
+    for fx in fx_conversions:
+        timeline.append({
+            'timestamp': fx.created_at.isoformat() if fx.created_at else None,
+            'type': 'fx_conversion',
+            'label': f'FX Conversion: {fx.tx_type.value}',
+            'description': f'{fx.amount} {fx.currency} - {fx.status.value}',
+            'icon': 'fa-exchange-alt',
+            'color': 'cyan'
+        })
+
+    # 9. Payout requests
+    for payout in payout_requests:
+        timeline.append({
+            'timestamp': payout.created_at.isoformat() if payout.created_at else None,
+            'type': 'payout',
+            'label': f'Payout Request: {payout.status}',
+            'description': f'{payout.amount} {payout.currency} via {payout.payment_method}',
+            'icon': 'fa-money-bill-wave',
+            'color': 'green'
+        })
+
+    # 10. Adjustments
+    for adj in adjustments:
+        timeline.append({
+            'timestamp': adj.created_at.isoformat() if adj.created_at else None,
+            'type': 'adjustment',
+            'label': f'Adjustment: {adj.tx_type.value}',
+            'description': f'{adj.amount} {adj.currency} - {adj.status.value}',
+            'icon': 'fa-wrench',
+            'color': 'orange'
+        })
+
+    # Sort timeline by timestamp (oldest first)
+    timeline.sort(key=lambda x: x['timestamp'] or '')
+
+    context = {
+        'user': user,
+        'profile': profile,
+        'account': account,
+        'recent_transactions': recent_transactions,
+        'all_transactions': all_transactions,
+        'total_deposits': total_deposits,
+        'total_withdrawals': total_withdrawals,
+        'total_transfers_sent': total_transfers_sent,
+        'total_transfers_received': total_transfers_received,
+        'active_sessions': active_sessions,
+        'kyc_info': kyc_info,
+        'user_roles': user.role_names if hasattr(user, 'role_names') else [],
+        'is_frozen': account.is_frozen if account else False,
+        'frozen_reason': account.frozen_reason if account else None,
+        'account_status': 'active' if account and account.verified else 'pending_activation' if account else 'no_wallet',
+        'has_access': _has_financial_access(current_user),
+        'security_events': security_events,
+        'timeline': timeline,
+        'account_created_at': account.created_at if account else None,
+        'account_activated_at': account.terms_accepted_at if account and account.verified else None,
+        'profile_created_at': profile.created_at if profile else None,
+        'user_created_at': user.created_at,
+        'fx_conversions': fx_conversions,
+        'payout_requests': payout_requests,
+        'adjustments': adjustments,
+        'total_transactions': len(all_transactions),
+        'total_fx_conversions': len(fx_conversions),
+        'total_payouts': len(payout_requests),
+        'total_adjustments': len(adjustments),
+        'creation_events': creation_events
+    }
+
+    return render_template('wallet/financial/account_detail.html', **context)
+
+
+@wallet_bp.route('/financial/account/<public_id>/freeze', methods=['POST'])
+@login_required
+def financial_freeze_account(public_id):
+    """
+    Freeze a user's wallet account (Owner, Super Admin, Admin, Wallet Admin only).
+    """
+    from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountModel
+    from app.extensions import db
+    from datetime import datetime
+
+    # Authorisation check (only high-level financial roles)
+    if not current_user.is_app_owner() and not any(role in current_user.role_names for role in ['super_admin', 'admin', 'wallet_admin']):
+        flash('You do not have permission to freeze accounts.', 'danger')
+        return redirect(url_for('wallet.financial_account_lookup'))
+
+    user = User.query.filter_by(public_id=public_id, is_deleted=False).first()
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('wallet.financial_account_lookup'))
+
+    account = AccountModel.query.filter_by(user_id=user.id).first()
+    if not account:
+        flash('User does not have a wallet account.', 'warning')
+        return redirect(url_for('wallet.financial_account_detail', public_id=public_id))
+
+    reason = request.form.get('reason', '').strip()
+    if not reason:
+        flash('Please provide a reason for freezing the account.', 'danger')
+        return redirect(url_for('wallet.financial_account_detail', public_id=public_id))
+
+    if account.is_frozen:
+        flash('Account is already frozen.', 'warning')
+        return redirect(url_for('wallet.financial_account_detail', public_id=public_id))
+
+    account.is_frozen = True
+    account.frozen_reason = reason
+    account.frozen_at = datetime.utcnow()
+    account.frozen_by = current_user.id
+    db.session.commit()
+
+    # Audit log
+    from app.audit.comprehensive_audit import AuditService
+    AuditService.security(
+        event_type="account_frozen",
+        severity="WARNING",
+        description=f"Account {account.id} frozen by {current_user.username}",
+        user_id=current_user.id,
+        extra_data={"target_user_id": user.id, "reason": reason}
+    )
+
+    flash(f'Account for {user.email} has been frozen.', 'success')
+    return redirect(url_for('wallet.financial_account_detail', public_id=public_id))
+
+
+@wallet_bp.route('/financial/account/<public_id>/unfreeze', methods=['POST'])
+@login_required
+def financial_unfreeze_account(public_id):
+    """
+    Unfreeze a user's wallet account (Owner, Super Admin, Admin, Wallet Admin only).
+    """
+    from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountModel
+    from app.extensions import db
+
+    # Authorisation check
+    if not current_user.is_app_owner() and not any(role in current_user.role_names for role in ['super_admin', 'admin', 'wallet_admin']):
+        flash('You do not have permission to unfreeze accounts.', 'danger')
+        return redirect(url_for('wallet.financial_account_lookup'))
+
+    user = User.query.filter_by(public_id=public_id, is_deleted=False).first()
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('wallet.financial_account_lookup'))
+
+    account = AccountModel.query.filter_by(user_id=user.id).first()
+    if not account:
+        flash('User does not have a wallet account.', 'warning')
+        return redirect(url_for('wallet.financial_account_detail', public_id=public_id))
+
+    if not account.is_frozen:
+        flash('Account is not frozen.', 'warning')
+        return redirect(url_for('wallet.financial_account_detail', public_id=public_id))
+
+    account.is_frozen = False
+    account.frozen_reason = None
+    account.frozen_at = None
+    account.frozen_by = None
+    db.session.commit()
+
+    from app.audit.comprehensive_audit import AuditService
+    AuditService.security(
+        event_type="account_unfrozen",
+        severity="INFO",
+        description=f"Account {account.id} unfrozen by {current_user.username}",
+        user_id=current_user.id,
+        extra_data={"target_user_id": user.id}
+    )
+
+    flash(f'Account for {user.email} has been unfrozen.', 'success')
+    return redirect(url_for('wallet.financial_account_detail', public_id=public_id))

@@ -29,6 +29,7 @@ from app.accommodation.models.booking import (
 # Booking Policy models
 from app.accommodation.models.booking_policy import PropertyBookingPolicy
 from app.accommodation.models.property_payment_method import PropertyPaymentMethod
+from app.accommodation.models.booking_payment import AccommodationBookingPayment
 from app.accommodation.models.guest_identity import GuestIdentityProfile
 from app.accommodation.models.platform_override import PlatformBookingPolicyOverride
 from app.accommodation.models.commission import BookingCommission
@@ -81,6 +82,7 @@ __all__ = [
     # Booking Policy
     'PropertyBookingPolicy',
     'PropertyPaymentMethod',
+    'AccommodationBookingPayment',
     'GuestIdentityProfile',
     'PlatformBookingPolicyOverride',
     'BookingCommission',

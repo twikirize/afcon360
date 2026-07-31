@@ -1375,9 +1375,11 @@ def error_logs():
         days = int(request.args.get('days', 7))
         page = request.args.get('page', 1, type=int)
 
-        # Query for ERROR_OCCURRED action
+        # Query for ERROR_OCCURRED and SYSTEM_ERROR actions
         since_date = datetime.utcnow() - timedelta(days=days)
-        query = AuditLog.query.filter_by(action='ERROR_OCCURRED')
+        query = AuditLog.query.filter(
+            AuditLog.action.in_(['ERROR_OCCURRED', 'SYSTEM_ERROR'])
+        )
         query = query.filter(AuditLog.created_at >= since_date)
 
         # Use pagination

@@ -237,6 +237,43 @@ def compliance_freeze_account():
         return jsonify({"error": str(e)}), 500
 
 
+@admin_api_bp.route('/compliance/thaw-account', methods=['POST'])
+@login_required
+@require_any_role('compliance_officer', 'admin', 'super_admin', 'owner')
+def compliance_thaw_account():
+    """Thaw a frozen account"""
+    data = request.get_json()
+    account_id = data.get('account_id')
+    reason = data.get('reason', 'Account thawed by admin')
+    
+    if not account_id:
+        return jsonify({"error": "account_id required"}), 400
+    
+    try:
+        account = AccountModel.query.get(account_id)
+        if not account:
+            return jsonify({"error": "Account not found"}), 404
+        
+        if not account.is_frozen:
+            return jsonify({"error": "Account is not frozen"}), 400
+        
+        account.is_frozen = False
+        account.frozen_reason = None
+        account.frozen_at = None
+        account.frozen_by = None
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Account {account_id} thawed"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
 # ============== SYSTEM ADMIN APIs ==============
 
 @admin_api_bp.route('/system/payment-providers', methods=['GET'])
@@ -372,7 +409,80 @@ def admin_process_payout(req_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ============== ADMIN WALLET APIs ==============
+# ============== FRAUD ALERT APIs ==============
+
+@admin_api_bp.route('/fraud-alerts', methods=['GET'])
+@login_required
+@require_any_role('admin', 'super_admin', 'compliance_officer', 'auditor')
+def list_fraud_alerts():
+    """List fraud alerts with optional filters."""
+    status = request.args.get('status')
+    user_id = request.args.get('user_id', type=int)
+    limit = request.args.get('limit', 50, type=int)
+    
+    try:
+        from app.wallet.models.fraud_alert import FraudAlert, FraudAlertStatus
+        
+        query = FraudAlert.query
+        if status:
+            query = query.filter_by(status=status)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+        
+        alerts = query.order_by(FraudAlert.created_at.desc()).limit(limit).all()
+        
+        return jsonify({
+            "status": "success",
+            "data": [alert.to_dict() for alert in alerts]
+        })
+    except Exception as e:
+        current_app.logger.error(f"List fraud alerts error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@admin_api_bp.route('/fraud-alerts/<int:alert_id>/review', methods=['POST'])
+@login_required
+@require_any_role('admin', 'super_admin', 'compliance_officer')
+def review_fraud_alert(alert_id):
+    """Review and update a fraud alert."""
+    data = request.get_json() or {}
+    action = data.get('action')
+    notes = data.get('notes', '')
+    
+    valid_actions = ['approve', 'reject', 'escalate', 'dismiss']
+    if action not in valid_actions:
+        return jsonify({"error": f"action must be one of: {valid_actions}"}), 400
+    
+    try:
+        from app.wallet.models.fraud_alert import FraudAlert, FraudAlertStatus
+        
+        alert = FraudAlert.query.get(alert_id)
+        if not alert:
+            return jsonify({"error": "Fraud alert not found"}), 404
+        
+        status_map = {
+            'approve': FraudAlertStatus.RESOLVED,
+            'reject': FraudAlertStatus.DISMISSED,
+            'escalate': FraudAlertStatus.ESCALATED,
+            'dismiss': FraudAlertStatus.DISMISSED
+        }
+        
+        alert.status = status_map[action]
+        alert.reviewed_by = current_user.id
+        alert.reviewed_at = datetime.now(timezone.utc)
+        alert.resolution_notes = notes
+        
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Fraud alert {action}d",
+            "alert": alert.to_dict()
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Review fraud alert error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @admin_api_bp.route('/wallets', methods=['GET'])
 @login_required

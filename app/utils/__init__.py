@@ -52,6 +52,12 @@ from app.utils.validators import(
     validate_payment,
     validate_rating,
 )
+from app.utils.immutable_fields import (
+    get_immutable_fields,
+    is_field_immutable,
+    filter_immutable_changes,
+    enforce_immutability,
+)
 
 # Add to __all__ list
 __all__ = [
@@ -92,4 +98,9 @@ __all__ = [
     'validate_booking_request',
     'validate_payment',
     'validate_rating',
+    # Immutable fields
+    'get_immutable_fields',
+    'is_field_immutable',
+    'filter_immutable_changes',
+    'enforce_immutability',
 ]

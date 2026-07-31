@@ -43,6 +43,19 @@ Accommodation             Transport             Events
 - **One line links them.** `wallet_txn_id` / `wallet_transaction_id` points from the booking record to the canonical `TransactionModel`.
 - **No duplicate ledgers.** Module-specific payment tables (`AccommodationBookingPayment`, transport `BookingPayment`) are thin indexes for fast queries, not sources of truth.
 
+### Payment Settings Wiring
+
+| Role | Can View | Can Edit | Where |
+|------|----------|----------|-------|
+| Owner | All settings globally | All settings globally | `/owner/settings/wallet` → Payment Methods |
+| Super Admin | All settings globally | All settings globally | Same as Owner |
+| Admin | All settings globally | All settings globally | Same as Owner |
+| Host | Own property only | Own property only | `/host/property/<id>/booking-policy` |
+
+**Global payment methods** are stored in `payment_method_configs` and managed by the Owner via `/owner/settings/wallet` → **Payment Methods** tab.  
+**Property-level timing and accepted methods** are stored in `property_booking_policy` and `property_payment_methods`, managed by the Host.  
+**Guest checkout** shows the intersection of globally enabled methods AND property-accepted methods AND property-allowed timings.
+
 ## System Architecture
 
 ### **Core Technologies**

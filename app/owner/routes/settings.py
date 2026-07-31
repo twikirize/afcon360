@@ -10,14 +10,16 @@ Provides organized settings pages for:
 - Role delegation management
 """
 
-from flask import Blueprint, render_template, request, jsonify, current_app
+from flask import Blueprint, render_template, request, jsonify, current_app, redirect, url_for, flash
 from functools import wraps
+from flask_login import login_required, current_user
+from app.extensions import db
 
 from app.auth.delegation import DelegationService, DelegationScope
 from app.audit.comprehensive_audit import AuditService
 
 
-owner_settings = Blueprint('owner_settings', __name__, url_prefix='/owner/settings')
+owner_settings = Blueprint('owner_settings', __name__, url_prefix='/settings')
 
 
 def require_owner_role(f):
@@ -56,37 +58,20 @@ def require_owner_role(f):
     return decorated_function
 
 
-@owner_settings.route('/wallet')
-@require_owner_role
-
-@app.before_request
 def inject_media_stats():
     from app.media.models import Media
-
-    # Get aggregate stats
+    from flask import g
     stats = {
         'total_processing_attempts': db.session.query(func.sum(Media.processing_attempts)).scalar() or 0,
         'total_notified': db.session.query(Media.query.notified).count() or 0,
         'total_media': Media.query.count()
     }
+    g.media_stats = stats
 
-    g.media_stats = stats  # Store in Flask global
-
-@owner_settings.route('/wallet')
-@require_owner_role
-
-@app.before_request
-inject_media_stats
 
 @owner_settings.route('/wallet')
 @require_owner_role
-
 def wallet_settings():
-    # Existing code to build config
-    ...
-
-    # Merge with media stats
-    return render_template('owner/wallet_settings.html', config=config, stats=g.media_stats)
     """Wallet settings page"""
     # Get current wallet configuration
     config = {
@@ -613,3 +598,124 @@ def save_api_access():
             'success': False,
             'error': 'Failed to save API access settings'
         })
+
+
+# ============================================================
+# PAYMENT METHOD MANAGEMENT (Owner Only)
+# ============================================================
+
+@owner_settings.route('/payment-methods', methods=['GET'])
+@require_owner_role
+def owner_payment_methods():
+    """List all payment methods for owner management"""
+    try:
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        
+        methods = PaymentMethodConfig.query.order_by(PaymentMethodConfig.id).all()
+        
+        method_data = []
+        for method in methods:
+            method_data.append({
+                'id': method.id,
+                'method_id': method.method_id,
+                'display_name': method.display_name,
+                'method_type': method.method_type,
+                'provider_name': method.provider_name,
+                'country_code': method.country_code,
+                'is_enabled': method.is_enabled,
+                'is_active': method.is_active,
+                'requires_phone': method.requires_phone,
+                'supported_currencies': method.supported_currencies,
+                'min_amount': float(method.min_amount),
+                'max_amount': float(method.max_amount),
+                'transaction_fee': float(method.transaction_fee),
+                'icon': _get_method_icon(method.method_type)
+            })
+        
+        return jsonify({
+            'success': True,
+            'payment_methods': method_data
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error getting payment methods: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@owner_settings.route('/payment-methods/<int:method_id>/toggle', methods=['POST'])
+@require_owner_role
+def owner_toggle_payment_method(method_id):
+    """Toggle payment method enabled/disabled status"""
+    try:
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        
+        method = PaymentMethodConfig.query.get_or_404(method_id)
+        data = request.get_json()
+        
+        enable = data.get('enabled', False)
+        method.is_enabled = enable
+        method.updated_by = getattr(current_user, 'id', 1)
+        
+        db.session.commit()
+        
+        action = "enabled" if enable else "disabled"
+        return jsonify({'success': True, 'message': f'Payment method {action} successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error toggling payment method {method_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@owner_settings.route('/cash-settings', methods=['GET', 'POST'])
+@require_owner_role
+def owner_cash_settings():
+    """Global cash payment configuration page"""
+    from app.models.system_config import SystemConfig
+
+    if request.method == 'POST':
+        try:
+            SystemConfig.set('payment_cash_globally_enabled', request.form.get('cash_globally_enabled') == 'on', value_type='bool', category='payments')
+            SystemConfig.set('payment_cash_development_mode', request.form.get('cash_development_mode') == 'on', value_type='bool', category='payments')
+            SystemConfig.set('payment_cash_requires_kyc', request.form.get('cash_requires_kyc') == 'on', value_type='bool', category='payments')
+            kyc_level = request.form.get('cash_min_kyc_level', '2')
+            SystemConfig.set('payment_cash_min_kyc_level', int(kyc_level) if kyc_level else 2, value_type='int', category='payments')
+            SystemConfig.set('payment_cash_requires_verified_phone', request.form.get('cash_requires_verified_phone') == 'on', value_type='bool', category='payments')
+            SystemConfig.set('payment_cash_requires_verified_email', request.form.get('cash_requires_verified_email') == 'on', value_type='bool', category='payments')
+            SystemConfig.set('payment_cash_requires_previous_booking', request.form.get('cash_requires_previous_booking') == 'on', value_type='bool', category='payments')
+            max_amount = request.form.get('cash_max_amount', '500000')
+            SystemConfig.set('payment_cash_max_amount', int(max_amount) if max_amount else 500000, value_type='int', category='payments')
+            deposit_pct = request.form.get('cash_default_deposit_pct', '30')
+            SystemConfig.set('payment_cash_default_deposit_pct', int(deposit_pct) if deposit_pct else 30, value_type='int', category='payments')
+
+            flash('Cash payment settings updated successfully.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error saving cash settings: {e}")
+            flash(f'Error saving settings: {str(e)}', 'danger')
+        return redirect(url_for('admin.owner.owner_settings.owner_cash_settings'))
+
+    settings = {
+        'cash_globally_enabled': SystemConfig.get('payment_cash_globally_enabled', True),
+        'cash_development_mode': SystemConfig.get('payment_cash_development_mode', True),
+        'cash_requires_kyc': SystemConfig.get('payment_cash_requires_kyc', True),
+        'cash_min_kyc_level': SystemConfig.get('payment_cash_min_kyc_level', 2),
+        'cash_requires_verified_phone': SystemConfig.get('payment_cash_requires_verified_phone', True),
+        'cash_requires_verified_email': SystemConfig.get('payment_cash_requires_verified_email', True),
+        'cash_requires_previous_booking': SystemConfig.get('payment_cash_requires_previous_booking', True),
+        'cash_max_amount': SystemConfig.get('payment_cash_max_amount', 500000),
+        'cash_default_deposit_pct': SystemConfig.get('payment_cash_default_deposit_pct', 30),
+    }
+    return render_template('owner/cash_settings.html', settings=settings)
+
+
+def _get_method_icon(method_type):
+    """Get appropriate icon for payment method type"""
+    icon_map = {
+        "wallet": "💳",
+        "mobile_money": "📱",
+        "card": "💳",
+        "cash": "💵",
+        "bank_transfer": "🏦"
+    }
+    return icon_map.get(method_type, "💳")

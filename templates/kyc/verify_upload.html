@@ -61,7 +61,7 @@
                 Required tiers: Tier 2 (National ID + selfie), Tier 3 (+ address + TIN), Tier 4 (+ income + bank reference).
               </p>
 
-              <form method="POST" action="{{ url_for('kyc.verify_upload') }}">
+              <form method="POST" action="{{ url_for('kyc.upload') }}">
                 <input type="hidden" name="kyc_type" value="individual">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -150,7 +150,7 @@
               </p>
 
               {% if user_orgs %}
-              <form method="POST" action="{{ url_for('kyc.verify_upload') }}">
+              <form method="POST" action="{{ url_for('kyc.upload') }}">
                 <input type="hidden" name="kyc_type" value="organization">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

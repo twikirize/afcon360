@@ -1135,13 +1135,26 @@ def host_booking_policy(property_id):
         db.session.add(policy)
         db.session.commit()
 
-    # Get available payment methods
-    from app.accommodation.services.payment_policy_service import PaymentPolicyService
-    payment_options = PaymentPolicyService.get_allowed_options(
-        property_id=property_id,
-        booking_amount=0,
-        guest_type='normal'
-    )
+    # Get available payment methods (all globally enabled methods, not just property-specific)
+    from app.wallet.models.payment_method import PaymentMethodConfig
+    all_payment_methods = PaymentMethodConfig.query.filter(
+        PaymentMethodConfig.is_enabled == True,
+        PaymentMethodConfig.is_active == True,
+    ).all()
+
+    payment_options = {
+        'payment_methods': [
+            {
+                'id': m.id,
+                'method_id': m.method_id,
+                'display_name': m.display_name,
+                'method_type': m.method_type,
+                'icon': m.method_type,
+            }
+            for m in all_payment_methods
+        ],
+        'allowed_methods': [m.method_id for m in all_payment_methods],
+    }
 
     if request.method == 'POST':
         try:
@@ -1173,22 +1186,40 @@ def host_booking_policy(property_id):
             PropertyPaymentMethod.query.filter_by(property_id=property_id).update({'enabled': False})
             for method_id_str in selected_methods:
                 try:
-                    method_id = int(method_id_str)
+                    config = PaymentMethodConfig.query.filter_by(method_id=method_id_str).first()
+                    if not config:
+                        continue
                     pm = PropertyPaymentMethod.query.filter_by(
                         property_id=property_id,
-                        wallet_method_id=method_id
+                        wallet_method_id=config.id
                     ).first()
                     if pm:
                         pm.enabled = True
                     else:
                         pm = PropertyPaymentMethod(
                             property_id=property_id,
-                            wallet_method_id=method_id,
+                            wallet_method_id=config.id,
                             enabled=True
                         )
                         db.session.add(pm)
                 except ValueError:
                     continue
+
+            # Save cash payment protection settings (gracefully handle missing columns)
+            try:
+                policy.allow_cash_payments = request.form.get('allow_cash_payments') == 'on'
+                policy.cash_requires_deposit = request.form.get('cash_requires_deposit') == 'on'
+                cash_deposit_pct = request.form.get('cash_deposit_percentage', '30')
+                policy.cash_deposit_percentage = Decimal(cash_deposit_pct) if cash_deposit_pct else Decimal('30')
+                cash_max = request.form.get('cash_max_amount', '500000')
+                policy.cash_max_amount = Decimal(cash_max) if cash_max else Decimal('500000')
+                cash_kyc = request.form.get('cash_min_kyc_level', '2')
+                policy.cash_min_kyc_level = int(cash_kyc) if cash_kyc else 2
+                cash_min_bookings = request.form.get('cash_min_previous_bookings', '0')
+                policy.cash_min_previous_bookings = int(cash_min_bookings) if cash_min_bookings else 0
+                policy.cash_requires_verified_guest = request.form.get('cash_requires_verified_guest') == 'on'
+            except Exception:
+                pass  # Columns may not exist yet — migration needed
 
             db.session.commit()
             flash('Booking policy updated successfully.', 'success')
@@ -1206,6 +1237,47 @@ def host_booking_policy(property_id):
         payment_options=payment_options,
         host_info=host_info
     )
+
+
+@accommodation_bp.route("/api/availability", methods=['GET'])
+@limiter.limit("30 per minute")
+def api_availability():
+    """
+    Live AJAX endpoint for real-time availability checking.
+    Returns count-based availability per room type, partial availability info,
+    and same-property/nearby alternatives (Tier 0-2 cascade).
+    """
+    from datetime import datetime as dt
+
+    property_id = request.args.get('property_id', type=int)
+    check_in_str = request.args.get('check_in', '')
+    check_out_str = request.args.get('check_out', '')
+    num_guests = request.args.get('num_guests', 2, type=int)
+    num_rooms = request.args.get('num_rooms', 1, type=int)
+
+    if not property_id or not check_in_str or not check_out_str:
+        return jsonify({'success': False, 'error': 'Missing required parameters'}), 400
+
+    try:
+        check_in = dt.strptime(check_in_str, '%Y-%m-%d').date()
+        check_out = dt.strptime(check_out_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid date format'}), 400
+
+    try:
+        from app.accommodation.services.availability_service import AvailabilityService
+        result = AvailabilityService.get_availability_cascade(
+            property_id=property_id,
+            check_in=check_in,
+            check_out=check_out,
+            num_guests=num_guests,
+            num_rooms=num_rooms,
+        )
+        status_code = 200 if 'error' not in result else 404
+        return jsonify({'success': 'error' not in result, **result}), status_code
+    except Exception as e:
+        current_app.logger.error(f"Availability API error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @accommodation_bp.route("/guest/checkout", methods=['GET', 'POST'], endpoint="guest_checkout")
@@ -1228,9 +1300,39 @@ def guest_checkout():
 
     if request.method == 'GET':
         booking_data = session.get('pending_booking')
+        
+        # If no session data, check query parameters (coming from detail page)
         if not booking_data:
-            flash('No booking in progress', 'warning')
-            return redirect(url_for('accommodation.guest_search'))
+            required_params = ['property_id', 'check_in', 'check_out', 'num_guests', 'total']
+            if all(param in request.args for param in required_params):
+                try:
+                    booking_data = {
+                        'property_id': int(request.args.get('property_id')),
+                        'room_type_id': int(request.args.get('room_type_id')) if request.args.get('room_type_id') and request.args.get('room_type_id') != 'None' else None,
+                        'host_user_id': int(request.args.get('host_user_id', 0)),
+                        'check_in': request.args.get('check_in'),
+                        'check_out': request.args.get('check_out'),
+                        'num_guests': int(request.args.get('num_guests', 1)),
+                        'nightly_rate': Decimal(request.args.get('nightly_rate', '0')),
+                        'nights': int(request.args.get('nights', 0)),
+                        'subtotal': Decimal(request.args.get('subtotal', '0')),
+                        'cleaning_fee': Decimal(request.args.get('cleaning_fee', '0')),
+                        'service_fee': Decimal(request.args.get('service_fee', '0')),
+                        'total': Decimal(request.args.get('total', '0')),
+                        'name': request.args.get('name', ''),
+                        'city': request.args.get('city', ''),
+                        'context_type': request.args.get('context_type', 'none'),
+                        'context_id': request.args.get('context_id', ''),
+                        'context_metadata': request.args.get('context_metadata', '{}'),
+                    }
+                    session['pending_booking'] = booking_data
+                except (ValueError, TypeError) as e:
+                    current_app.logger.warning(f"Invalid checkout query params: {e}")
+                    flash('Invalid booking data. Please try again.', 'danger')
+                    return redirect(url_for('accommodation.guest_search'))
+            else:
+                flash('No booking in progress', 'warning')
+                return redirect(url_for('accommodation.guest_search'))
 
         # Normalize session data types for template rendering
         numeric_fields = ['nightly_rate', 'subtotal', 'cleaning_fee', 'service_fee', 'total']
@@ -1248,6 +1350,37 @@ def guest_checkout():
                     booking_data[field] = int(booking_data[field])
                 except Exception:
                     booking_data[field] = 0
+
+        # Resolve property_id from booking data (single source of truth)
+        property_id = booking_data.get('property_id')
+
+        # Guard: property_id must be a valid positive integer for checkout
+        # Missing or invalid property_id is a data integrity violation that
+        # must never proceed to availability checks or inventory calculations
+        if not isinstance(property_id, int) or property_id <= 0:
+            current_app.logger.error(
+                f"Checkout blocked: invalid property_id={property_id!r} "
+                f"(expected positive integer). Booking data: {booking_data.get('check_in')} to "
+                f"{booking_data.get('check_out')}, guests={booking_data.get('num_guests')}"
+            )
+            flash('Booking data is incomplete or corrupted. Please restart your booking.', 'danger')
+            session.pop('pending_booking', None)
+            return redirect(url_for('accommodation.guest_search'))
+
+        # Check availability before showing checkout
+        from app.accommodation.services.availability_service import AvailabilityService
+        try:
+            check_in = datetime.strptime(booking_data['check_in'], '%Y-%m-%d').date()
+            check_out = datetime.strptime(booking_data['check_out'], '%Y-%m-%d').date()
+            is_available, blocked_dates, error = AvailabilityService.is_range_available(
+                int(property_id), check_in, check_out
+            )
+            if not is_available:
+                flash(f'Selected dates are no longer available: {error or "Please try different dates"}', 'danger')
+                session.pop('pending_booking', None)
+                return redirect(url_for('accommodation.guest_detail', identifier=property_id))
+        except (ValueError, KeyError) as e:
+            current_app.logger.warning(f"Availability check failed on checkout GET: {e}")
 
         # Load payment options for the property
         property_id = booking_data.get('property_id')
@@ -1441,10 +1574,12 @@ def guest_checkout():
         current_app.logger.info(f"✅ ALL CHECKS PASSED for property {property_id} - Proceeding with hold + payment")
 
         # ============================================================
-        # CHECK 9: Payment method required (redirect to full checkout page if missing)
+        # CHECK 9: Payment method and timing are required
         # ============================================================
         payment_method = data.get('payment_method', '').strip()
-        if not payment_method:
+        payment_timing = data.get('payment_timing', '').strip()
+
+        if not payment_method or not payment_timing:
             session['pending_booking'] = {
                 'property_id': property_id,
                 'room_type_id': room_type_id,
@@ -1464,7 +1599,88 @@ def guest_checkout():
                 'context_id': data.get('context_id', ''),
                 'context_metadata': data.get('context_metadata', '{}'),
             }
+            if not payment_method:
+                flash('Please select a payment method.', 'warning')
+            else:
+                flash('Please select how you want to pay.', 'warning')
             return redirect(url_for('accommodation.guest_checkout'))
+
+        # ============================================================
+        # STEP 1: Calculate pricing FIRST (needed for validation)
+        # ============================================================
+        from app.accommodation.services.pricing_service import PricingService
+        pricing = None
+        try:
+            pricing = PricingService.calculate_total(
+                property_obj, check_in, check_out, int(data['num_guests']), room_type_id=room_type_id
+            )
+        except ValueError as e:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash(f'Price calculation failed: {str(e)}', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        if not pricing:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('Price calculation failed: invalid pricing result.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        payment_options = PaymentPolicyService.get_allowed_options(
+            property_id=property_id,
+            booking_amount=pricing['total'],
+            guest_type='normal'
+        )
+
+        if payment_method not in payment_options.get('allowed_methods', []):
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('Invalid payment method selected.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        allowed_timings = payment_options.get('allowed_timings', [])
+        if allowed_timings and payment_timing not in allowed_timings:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('This payment option is not available for this property.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        # Check wallet requirements if wallet is selected
+        if payment_method == 'wallet':
+            from app.wallet.models import AccountModel
+            account = AccountModel.query.filter_by(user_id=current_user.id).first()
+            if not account:
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+                flash('You don\'t have a wallet account. Please choose another payment method or create a wallet first.', 'warning')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        # Resolve processor
+        processor_map = {
+            'wallet': WalletProcessor(),
+            'mobile_money': MobileMoneyProcessor(),
+            'card': CardProcessor(),
+            'invoice': InvoiceProcessor(),
+            'mock_gateway': MockGatewayProcessor(),
+        }
+        processor = processor_map.get(payment_method)
+        
+        # Handle cash payment (no processor needed)
+        if payment_method == 'cash':
+            charge_amount = Decimal('0')
+            payment_timing = 'pay_on_arrival'
+
+            # Check cash eligibility (fraud protection)
+            from app.accommodation.services.booking_service import check_cash_eligibility
+            total = pricing['total']
+            eligibility = check_cash_eligibility(
+                guest_user=current_user,
+                property_id=property_obj.id,
+                booking_amount=total
+            )
+            if not eligibility['allowed']:
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+                flash(f'Cash payment not available: {eligibility["reason"]}', 'warning')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+        elif not processor:
+            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+            flash('Invalid payment method selected.', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         # ============================================================
         # STEP 1: Create temporary hold on dates (NOT a booking yet)
@@ -1486,64 +1702,8 @@ def guest_checkout():
         current_app.logger.info(f"✅ Temporary hold created for property {property_id} ({check_in} → {check_out})")
 
         # ============================================================
-        # STEP 2: Calculate pricing (before payment)
-        # ============================================================
-        from app.accommodation.services.pricing_service import PricingService
-        try:
-            pricing = PricingService.calculate_total(
-                property_obj, check_in, check_out, int(data['num_guests']), room_type_id=room_type_id
-            )
-        except ValueError as e:
-            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-            flash(f'Price calculation failed: {str(e)}', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
-        # ============================================================
-        # STEP 3: Determine payment method and timing
-        # ============================================================
-        payment_method = data.get('payment_method', '').strip()
-        payment_timing = data.get('payment_timing', 'pay_now')
-
-        if not payment_method:
-            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-            flash('Please select a payment method to continue.', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
-        payment_options = PaymentPolicyService.get_allowed_options(
-            property_id=property_id,
-            booking_amount=pricing['total'],
-            guest_type='normal'
-        )
-
-        if payment_method not in payment_options.get('allowed_methods', []):
-            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-            flash('Invalid payment method selected.', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
-        # Check wallet requirements if wallet is selected
-        if payment_method == 'wallet':
-            from app.wallet.models import AccountModel
-            account = AccountModel.query.filter_by(user_id=current_user.id).first()
-            if not account:
-                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-                flash('You don\'t have a wallet account. Please choose another payment method or create a wallet first.', 'warning')
-                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
-        # Resolve processor
-        processor_map = {
-            'wallet': WalletProcessor(),
-            'mobile_money': MobileMoneyProcessor(),
-            'card': CardProcessor(),
-            'invoice': InvoiceProcessor(),
-            'mock_gateway': MockGatewayProcessor(),
-        }
-        processor = processor_map.get(payment_method)
-        if not processor:
-            AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-            flash('Invalid payment method selected.', 'danger')
-            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
         # Calculate charge amount based on timing
+        # ============================================================
         total = pricing['total']
         charge_amount = Decimal('0')
         deposit_amount = Decimal('0')
@@ -2952,6 +3112,420 @@ def host_calendar_unblock():
         "message": f"Released {released} night(s)",
         "released_count": released,
     })
+
+
+@accommodation_bp.route("/host/property/<int:property_id>/manage")
+@login_required
+@require_module_enabled("accommodation")
+def host_property_manage(property_id):
+    """Full property management dashboard with rooms, bookings, blocks, and notifications."""
+    prop = Property.query.get_or_404(property_id)
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    from app.accommodation.models.availability import (
+        BlockedDate,
+        AccommodationBlockedReason,
+    )
+    from app.accommodation.models.room import RoomType, InventoryBlock
+    from app.accommodation.models.booking import AccommodationBookingStatus
+    from datetime import date, timedelta
+
+    room_types = RoomType.query.filter_by(property_id=property_id).all()
+    today = date.today()
+
+    # Active bookings
+    bookings = (
+        AccommodationBooking.query.filter(
+            AccommodationBooking.property_id == property_id,
+            AccommodationBooking.status.in_(
+                [
+                    AccommodationBookingStatus.CONFIRMED.value,
+                    AccommodationBookingStatus.PENDING.value,
+                    AccommodationBookingStatus.PENDING_APPROVAL.value,
+                    AccommodationBookingStatus.CHECKED_IN.value,
+                ]
+            ),
+        )
+        .order_by(AccommodationBooking.check_in.asc())
+        .all()
+    )
+
+    # Blocked dates (future only)
+    blocked_dates = (
+        BlockedDate.query.filter(
+            BlockedDate.property_id == property_id,
+            BlockedDate.blocked_date >= today,
+        )
+        .order_by(BlockedDate.blocked_date.asc())
+        .all()
+    )
+
+    # Temporary holds
+    temp_holds = (
+        BlockedDate.query.filter(
+            BlockedDate.property_id == property_id,
+            BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
+            BlockedDate.blocked_date >= today,
+        )
+        .order_by(BlockedDate.blocked_date.asc())
+        .all()
+    )
+
+    # Inventory blocks (room-type level)
+    inventory_blocks = (
+        InventoryBlock.query.filter(
+            InventoryBlock.room_type_id.in_([rt.id for rt in room_types]),
+            InventoryBlock.date_range_end >= today,
+        )
+        .all()
+    )
+
+    # Recent history
+    history = (
+        AccommodationBooking.query.filter(
+            AccommodationBooking.property_id == property_id,
+            AccommodationBooking.status.in_(
+                [
+                    AccommodationBookingStatus.CHECKED_OUT.value,
+                    AccommodationBookingStatus.CANCELLED.value,
+                ]
+            ),
+        )
+        .order_by(AccommodationBooking.check_out.desc())
+        .limit(10)
+        .all()
+    )
+
+    # Occupancy stats
+    total_rooms = sum(rt.total_units for rt in room_types)
+    booked_rooms = 0
+    for rt in room_types:
+        booked_rooms += AccommodationBooking.query.filter(
+            AccommodationBooking.room_type_id == rt.id,
+            AccommodationBooking.check_in <= today,
+            AccommodationBooking.check_out > today,
+            AccommodationBooking.status.in_(
+                [
+                    AccommodationBookingStatus.CONFIRMED.value,
+                    AccommodationBookingStatus.CHECKED_IN.value,
+                ]
+            ),
+        ).count()
+    occupancy_rate = round((booked_rooms / total_rooms * 100), 1) if total_rooms > 0 else 0
+
+    # Notifications
+    notifications = _generate_property_notifications(prop, bookings, today)
+
+    return render_template(
+        "accommodation/host/property_manage.html",
+        property=prop,
+        room_types=room_types,
+        bookings=bookings,
+        blocked_dates=blocked_dates,
+        temp_holds=temp_holds,
+        inventory_blocks=inventory_blocks,
+        notifications=notifications,
+        history=history,
+        occupancy_rate=occupancy_rate,
+        total_rooms=total_rooms,
+        booked_rooms=booked_rooms,
+        today=today,
+    )
+
+
+@accommodation_bp.route(
+    "/host/property/<int:property_id>/room/<int:room_type_id>/availability"
+)
+@login_required
+@require_module_enabled("accommodation")
+def host_room_availability(property_id, room_type_id):
+    """Room-type availability calendar for the property management dashboard."""
+    prop = Property.query.get_or_404(property_id)
+    room_type = RoomType.query.get_or_404(room_type_id)
+
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    if room_type.property_id != property_id:
+        abort(404)
+
+    start_date = date.today()
+    end_date = start_date + timedelta(days=90)
+
+    calendar_data = HostService.get_property_calendar_snapshot(
+        property_id=property_id,
+        start_date=start_date,
+        end_date=end_date,
+        room_type_id=room_type_id,
+    )
+
+    return render_template(
+        "accommodation/host/room_availability.html",
+        property=prop,
+        room_type=room_type,
+        calendar_data=calendar_data,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@accommodation_bp.route("/host/property/<int:property_id>/block-date", methods=["POST"])
+@login_required
+@require_module_enabled("accommodation")
+def host_block_date(property_id):
+    """Block a single date or date range for a property."""
+    prop = Property.query.get_or_404(property_id)
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    date_range_start = request.form.get("date_range_start")
+    date_range_end = request.form.get("date_range_end")
+    reason = request.form.get("reason", "OWNER_BLOCKED")
+    room_type_id = request.form.get("room_type_id")
+
+    if not date_range_start:
+        flash("Start date is required.", "danger")
+        return redirect(
+            url_for("accommodation.host_property_manage", property_id=property_id)
+        )
+
+    try:
+        start = date.fromisoformat(date_range_start)
+        end = date.fromisoformat(date_range_end) if date_range_end else start
+    except ValueError:
+        flash("Invalid date format.", "danger")
+        return redirect(
+            url_for("accommodation.host_property_manage", property_id=property_id)
+        )
+
+    if end < start:
+        flash("End date must not be before start date.", "danger")
+        return redirect(
+            url_for("accommodation.host_property_manage", property_id=property_id)
+        )
+
+    # Validate reason
+    try:
+        AccommodationBlockedReason(reason)
+    except ValueError:
+        flash("Invalid block reason.", "danger")
+        return redirect(
+            url_for("accommodation.host_property_manage", property_id=property_id)
+        )
+
+    rt_id = int(room_type_id) if room_type_id else None
+
+    blocked_count = 0
+    current_date = start
+    while current_date <= end:
+        existing = BlockedDate.query.filter_by(
+            property_id=property_id, blocked_date=current_date
+        ).first()
+        if not existing:
+            blocked = BlockedDate(
+                property_id=property_id,
+                blocked_date=current_date,
+                reason=reason,
+                created_by=current_user.id,
+                note=f"Blocked by host: {reason}",
+                room_type_id=rt_id,
+            )
+            db.session.add(blocked)
+            blocked_count += 1
+        current_date += timedelta(days=1)
+
+    db.session.commit()
+    flash(f"Successfully blocked {blocked_count} date(s).", "success")
+    return redirect(
+        url_for("accommodation.host_property_manage", property_id=property_id)
+    )
+
+
+@accommodation_bp.route(
+    "/host/property/<int:property_id>/unblock-date/<int:block_id>", methods=["POST"]
+)
+@login_required
+@require_module_enabled("accommodation")
+def host_unblock_date(property_id, block_id):
+    """Release/unblock a blocked date."""
+    prop = Property.query.get_or_404(property_id)
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    blocked = BlockedDate.query.get_or_404(block_id)
+    if blocked.property_id != property_id:
+        abort(404)
+
+    if blocked.reason == AccommodationBlockedReason.BOOKED.value:
+        flash("Cannot unblock a date that is booked.", "warning")
+        return redirect(
+            url_for("accommodation.host_property_manage", property_id=property_id)
+        )
+
+    db.session.delete(blocked)
+    db.session.commit()
+    flash("Date unblocked successfully.", "success")
+    return redirect(
+        url_for("accommodation.host_property_manage", property_id=property_id)
+    )
+
+
+@accommodation_bp.route(
+    "/host/property/<int:property_id>/booking/<int:booking_id>/cancel", methods=["POST"]
+)
+@login_required
+@require_module_enabled("accommodation")
+def host_cancel_booking(property_id, booking_id):
+    """Cancel a booking (host/admin override)."""
+    prop = Property.query.get_or_404(property_id)
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    if booking.property_id != property_id:
+        abort(404)
+
+    reason = request.form.get("reason", "Host cancellation")
+
+    booking.status = AccommodationBookingStatus.CANCELLED.value
+    booking.cancelled_at = datetime.utcnow()
+    booking.cancelled_by_user_id = current_user.id
+    booking.cancellation_reason = reason
+
+    db.session.commit()
+    flash(f"Booking #{booking.booking_reference} cancelled.", "warning")
+    return redirect(
+        url_for("accommodation.host_property_manage", property_id=property_id)
+    )
+
+
+def _generate_property_notifications(property_obj, bookings, today):
+    """Generate notification items for the property dashboard."""
+    notifications = []
+    priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+    # Today's check-ins
+    for b in bookings:
+        if b.check_in == today:
+            notifications.append(
+                {
+                    "type": "checkin_today",
+                    "priority": "critical",
+                    "icon": "bi bi-door-open",
+                    "title": "Check-in TODAY!",
+                    "message": f"{b.guest_name} is checking in today",
+                    "booking_id": b.id,
+                    "guest_name": b.guest_name,
+                    "time": b.check_in.strftime("%b %d, %Y"),
+                }
+            )
+
+    # Today's check-outs
+    for b in bookings:
+        if b.check_out == today:
+            notifications.append(
+                {
+                    "type": "checkout_today",
+                    "priority": "critical",
+                    "icon": "bi bi-box-arrow-right",
+                    "title": "Check-out TODAY!",
+                    "message": f"{b.guest_name} is checking out today",
+                    "booking_id": b.id,
+                    "guest_name": b.guest_name,
+                    "time": b.check_out.strftime("%b %d, %Y"),
+                }
+            )
+
+    # Upcoming check-ins (next 3 days)
+    for b in bookings:
+        if b.check_in and b.check_in > today and (b.check_in - today).days <= 3:
+            days_until = (b.check_in - today).days
+            notifications.append(
+                {
+                    "type": "checkin",
+                    "priority": "high" if days_until <= 1 else "medium",
+                    "icon": "bi bi-calendar-event",
+                    "title": f"Check-in in {days_until} day(s)",
+                    "message": f"{b.guest_name} arrives on {b.check_in.strftime('%b %d, %Y')}",
+                    "booking_id": b.id,
+                    "guest_name": b.guest_name,
+                    "time": b.check_in.strftime("%b %d, %Y"),
+                }
+            )
+
+    # Upcoming check-outs (next 2 days)
+    for b in bookings:
+        if (
+            b.check_out
+            and b.check_out > today
+            and (b.check_out - today).days <= 2
+        ):
+            days_until = (b.check_out - today).days
+            notifications.append(
+                {
+                    "type": "checkout",
+                    "priority": "medium",
+                    "icon": "bi bi-box-arrow-left",
+                    "title": f"Check-out in {days_until} day(s)",
+                    "message": f"{b.guest_name} departs on {b.check_out.strftime('%b %d, %Y')}",
+                    "booking_id": b.id,
+                    "guest_name": b.guest_name,
+                    "time": b.check_out.strftime("%b %d, %Y"),
+                }
+            )
+
+    # Low availability warnings
+    for rt in property_obj.room_types:
+        available = rt.available_units
+        if available == 0:
+            notifications.append(
+                {
+                    "type": "sold_out",
+                    "priority": "high",
+                    "icon": "bi bi-fire",
+                    "title": f"Sold out: {rt.name}",
+                    "message": f"{rt.name} is fully booked",
+                    "room_type_id": rt.id,
+                    "room_type_name": rt.name,
+                }
+            )
+        elif available <= 2:
+            notifications.append(
+                {
+                    "type": "low_availability",
+                    "priority": "medium",
+                    "icon": "bi bi-exclamation-triangle",
+                    "title": f"Low availability: {rt.name}",
+                    "message": f"Only {available} unit(s) available",
+                    "room_type_id": rt.id,
+                    "room_type_name": rt.name,
+                }
+            )
+
+    notifications.sort(key=lambda x: priority_order.get(x.get("priority", "low"), 4))
+    return notifications[:10]
 
 
 @accommodation_bp.route("/host/bookings", endpoint="host_bookings")

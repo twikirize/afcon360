@@ -89,6 +89,7 @@ class BaseModel(TimestampMixin, db.Model):
             'payment_reference',  # AccommodationBookingPayment payment reference
             'method_id',  # PaymentMethodConfig.method_id - e.g. 'wallet', 'mobile_money_mtn_ug'
             'idempotency_key',  # AccommodationBooking / AccommodationBookingPayment idempotency key
+            'entity_id',  # DataChangeLog.entity_id - internal entity reference stored as string
         }
 
         # Check if this is an _id field that needs validation

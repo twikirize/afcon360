@@ -829,6 +829,15 @@
       {% endif %}
     {% endfor %}
 
+    <!-- Financial Account Lookup (Financial Roles Only) -->
+    {% if current_user.is_app_owner() or 'super_admin' in current_user.role_names or 'admin' in current_user.role_names or 'wallet_admin' in current_user.role_names or 'compliance_officer' in current_user.role_names or 'auditor' in current_user.role_names %}
+    <div class="sidebar-section">FINANCIAL</div>
+    <a href="{{ url_for('wallet.financial_account_lookup') }}"
+       class="nav-item {% if request.endpoint == 'wallet.financial_account_lookup' %}active{% endif %}">
+      <i class="fas fa-search-dollar"></i> Account Lookup
+    </a>
+    {% endif %}
+
     <!-- Show pending badge if needed -->
     {% if wallet_status and wallet_status.requires_activation %}
       <div class="alert alert-warning" style="margin:16px;padding:12px;font-size:12px;">
