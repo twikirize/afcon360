@@ -289,12 +289,11 @@ class BookingService:
             except ValueError as e:
                 return None, str(e)
 
-            # 6. CREATE BOOKING (DRAFT OR PENDING_APPROVAL STATE)
-            # Determine initial status based on property settings
-            # New bookings always start in DRAFT state
+            # 6. CREATE BOOKING
+            # New bookings always start in DRAFT and then move through the
+            # state machine so audit history is complete.
+            requires_host_approval = (not property.instant_book or property.require_host_approval)
             initial_status = AccommodationBookingStatus.DRAFT.value
-            if not property.instant_book or property.require_host_approval:
-                initial_status = AccommodationBookingStatus.PENDING_APPROVAL.value
 
             # Resolve booker identity for snapshots
             from app.identity.models.user import User
@@ -314,6 +313,7 @@ class BookingService:
                 nightly_rate=pricing['nightly_rate'],
                 cleaning_fee=pricing['cleaning_fee'],
                 service_fee=pricing['service_fee'],
+                taxes=pricing.get('taxes', Decimal('0')),
                 total_amount=pricing['total'],
                 currency=property.currency,
                 guest_name=guest_name,
@@ -406,6 +406,28 @@ class BookingService:
                         created_by=guest_user_id
                     )
 
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.HELD,
+                changed_by_user_id=guest_user_id,
+                reason="Inventory held for checkout",
+                ip_address=ip_address,
+                user_agent=user_agent,
+                trigger="booking_created",
+                metadata={"hold_expires_at": booking.expires_at.isoformat() if booking.expires_at else None},
+            )
+
+            if requires_host_approval:
+                BookingStateMachine.transition(
+                    booking,
+                    AccommodationBookingStatus.PENDING_APPROVAL,
+                    changed_by_user_id=guest_user_id,
+                    reason="Host approval required",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    trigger="host_approval_required",
+                )
+
             # 8. UPDATE GUEST PROFILE (create if not exists)
             from app.accommodation.models.guest_profile import GuestProfile
             profile = GuestProfile.query.filter_by(guest_user_id=guest_user_id).first()
@@ -494,18 +516,17 @@ class BookingService:
             )
             db.session.add(room_booking)
 
-            # Update booking
-            booking.status = AccommodationBookingStatus.CHECKED_IN.value
-            booking.checked_in_by = user_id
-            booking.is_checked_in = True
-            booking.checked_in_at = datetime.now(timezone.utc)
-
             BookingStateMachine.transition(
                 booking,
                 AccommodationBookingStatus.CHECKED_IN,
                 changed_by_user_id=user_id,
                 reason="Guest checked in",
+                trigger="guest_check_in",
             )
+
+            booking.checked_in_by = user_id
+            booking.is_checked_in = True
+            booking.checked_in_at = datetime.now(timezone.utc)
 
             db.session.commit()
             return True, None
@@ -533,7 +554,14 @@ class BookingService:
             return False, "Booking is already checked out"
 
         try:
-            booking.status = AccommodationBookingStatus.CHECKED_OUT.value
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.CHECKED_OUT,
+                changed_by_user_id=user_id,
+                reason="Guest checked out",
+                trigger="guest_check_out",
+            )
+
             booking.checked_out_by = user_id
             booking.is_checked_out = True
             booking.checked_out_at = datetime.now(timezone.utc)
@@ -548,13 +576,6 @@ class BookingService:
             for rb in booking.room_assignments:
                 if rb.status == "checked_in":
                     rb.check_out()
-
-            BookingStateMachine.transition(
-                booking,
-                AccommodationBookingStatus.CHECKED_OUT,
-                changed_by_user_id=user_id,
-                reason="Guest checked out",
-            )
 
             db.session.commit()
             return True, None
@@ -584,10 +605,20 @@ class BookingService:
         if not booking:
             return False, "Booking not found"
 
-        if booking.payment_status == AccommodationPaymentStatus.PAID.value:
+        if (
+            booking.status == AccommodationBookingStatus.CONFIRMED.value
+            and booking.payment_status == AccommodationPaymentStatus.PAID.value
+        ):
             return False, "Booking already paid and confirmed"
 
-        if booking.status != AccommodationBookingStatus.PENDING.value:
+        confirmable_statuses = {
+            AccommodationBookingStatus.DRAFT.value,
+            AccommodationBookingStatus.HELD.value,
+            AccommodationBookingStatus.PENDING.value,
+            AccommodationBookingStatus.PENDING_PAYMENT.value,
+            AccommodationBookingStatus.PAYMENT_PARTIAL.value,
+        }
+        if booking.status not in confirmable_statuses:
             return False, f"Cannot confirm booking in {booking.status!r} state"
 
         expires_at = booking.expires_at
@@ -659,14 +690,41 @@ class BookingService:
             except Exception as ledger_error:
                 logger.warning(f"Failed to update payment event for booking {booking_id}: {ledger_error}")
 
-            # 4. STATE TRANSITION (PENDING → CONFIRMED)
+            # 4. STATE TRANSITION (→ PENDING_PAYMENT → CONFIRMED)
+            if booking.status in [
+                AccommodationBookingStatus.DRAFT.value,
+                AccommodationBookingStatus.HELD.value,
+                AccommodationBookingStatus.PENDING.value,
+            ]:
+                if booking.status == AccommodationBookingStatus.DRAFT.value:
+                    BookingStateMachine.transition(
+                        booking,
+                        AccommodationBookingStatus.HELD,
+                        changed_by_user_id=booking.guest_user_id,
+                        reason="Inventory held before payment confirmation",
+                        ip_address=ip_address,
+                        user_agent=user_agent,
+                        trigger="payment_confirmation",
+                    )
+                BookingStateMachine.transition(
+                    booking,
+                    AccommodationBookingStatus.PENDING_PAYMENT,
+                    changed_by_user_id=booking.guest_user_id,
+                    reason="Payment received; awaiting confirmation",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    trigger="payment_confirmation",
+                )
+
             BookingStateMachine.transition(
                 booking,
                 AccommodationBookingStatus.CONFIRMED,
                 changed_by_user_id=booking.guest_user_id,
                 reason="Payment confirmed",
                 ip_address=ip_address,
-                user_agent=user_agent
+                user_agent=user_agent,
+                trigger="payment_confirmation",
+                metadata={"wallet_transaction_id": wallet_transaction_id},
             )
 
             db.session.commit()
@@ -783,6 +841,7 @@ class BookingService:
             return False, f"Cannot reject booking in {booking.status!r} state"
 
         try:
+            old_status = booking.status
             from app.accommodation.models.availability import BlockedDate
 
             # Release blocked dates
@@ -887,6 +946,7 @@ class BookingService:
             return False, msg, None
 
         try:
+            old_status = booking.status
             from app.accommodation.models.availability import BlockedDate
 
             # 1. RELEASE ALL BLOCKED DATES
@@ -909,7 +969,8 @@ class BookingService:
                 changed_by_user_id=cancelled_by_user_id,
                 reason=reason,
                 ip_address=ip_address,
-                user_agent=user_agent
+                user_agent=user_agent,
+                trigger="booking_cancelled"
             )
 
             booking.cancelled_at = datetime.now(timezone.utc)
@@ -918,7 +979,7 @@ class BookingService:
 
             # Record host policy violation if host cancels a confirmed/active booking
             if (cancelled_by_user_id == booking.host_user_id and
-                booking.status in [
+                old_status in [
                     AccommodationBookingStatus.CONFIRMED.value,
                     AccommodationBookingStatus.CHECKED_IN.value,
                 ]):
@@ -938,7 +999,8 @@ class BookingService:
                     changed_by_user_id=cancelled_by_user_id,
                     reason="Refund processed",
                     ip_address=ip_address,
-                    user_agent=user_agent
+                    user_agent=user_agent,
+                    trigger="refund_processed"
                 )
                 logger.info(f"Refund of ${refund} processed for booking {booking.booking_reference}")
 
@@ -982,7 +1044,7 @@ class BookingService:
         query = AccommodationBooking.query.filter_by(host_user_id=host_user_id)
         if status:
             try:
-                query = query.filter_by(status=AccommodationBookingStatus(status))
+                query = query.filter_by(status=AccommodationBookingStatus(status).value)
             except ValueError:
                 logger.warning(f"Invalid status filter: {status}")
         return query.order_by(AccommodationBooking.created_at.desc()).limit(limit).offset(offset).all()
@@ -992,7 +1054,7 @@ class BookingService:
         query = AccommodationBooking.query.filter_by(property_id=property_id)
         if status:
             try:
-                query = query.filter_by(status=AccommodationBookingStatus(status))
+                query = query.filter_by(status=AccommodationBookingStatus(status).value)
             except ValueError:
                 logger.warning(f"Invalid status filter: {status}")
         return query.order_by(AccommodationBooking.check_in.asc()).limit(limit).offset(offset).all()

@@ -4,7 +4,7 @@ Availability models - Property availability management
 Includes blocked dates and recurring availability rules
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Date,
     ForeignKey, Integer, Text,
@@ -88,6 +88,61 @@ class BlockedDate(BaseModel):
     def is_active(self):
         """Check if this blocked date is still in the future"""
         return self.blocked_date >= date.today()
+
+
+class RoomHold(BaseModel):
+    """
+    Short-lived inventory hold used during checkout.
+
+    Holds are intentionally separate from bookings so inventory can be reserved
+    before payment/approval and released safely when the checkout timer expires.
+    """
+    __tablename__ = "accommodation_room_holds"
+    __table_args__ = (
+        Index("idx_room_hold_property_dates", "property_id", "check_in", "check_out"),
+        Index("idx_room_hold_room_type_dates", "room_type_id", "check_in", "check_out"),
+        Index("idx_room_hold_expires", "status", "expires_at"),
+        CheckConstraint("check_out > check_in", name="ck_room_hold_dates_valid"),
+        CheckConstraint("hold_minutes > 0", name="ck_room_hold_minutes_positive"),
+        CheckConstraint("status IN ('active', 'released', 'expired', 'converted')", name="ck_room_hold_status_valid"),
+    )
+
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="SET NULL"), nullable=True, index=True)
+    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="SET NULL"), nullable=True, index=True)
+    guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    check_in = Column(Date, nullable=False)
+    check_out = Column(Date, nullable=False)
+    units = Column(Integer, nullable=False, default=1)
+    hold_minutes = Column(Integer, nullable=False, default=15)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="active", index=True)
+    release_reason = Column(Text, nullable=True)
+
+    property = relationship("Property")
+    room_type = relationship("RoomType")
+    booking = relationship("AccommodationBooking")
+
+    @property
+    def is_expired_flag(self) -> bool:
+        expires_at = self.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return self.status == "active" and expires_at <= datetime.now(timezone.utc)
+
+    def mark_released(self, reason: str = None):
+        self.status = "released"
+        self.release_reason = reason
+
+    def mark_expired(self):
+        self.status = "expired"
+        self.release_reason = "Hold expired"
+
+    def mark_converted(self, booking_id: int):
+        self.status = "converted"
+        self.booking_id = booking_id
+        self.release_reason = "Converted to booking"
 
 
 # ==========================================

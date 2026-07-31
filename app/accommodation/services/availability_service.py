@@ -3,11 +3,11 @@
 Availability Service - Check date availability and block/unblock dates
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 from sqlalchemy import and_
 from app.extensions import db
-from app.accommodation.models.availability import BlockedDate, AccommodationBlockedReason
+from app.accommodation.models.availability import BlockedDate, RoomHold, AccommodationBlockedReason
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 from app.accommodation.models.room import RoomType, InventoryBlock
 import logging
@@ -410,6 +410,18 @@ class AvailabilityService:
             from datetime import datetime, timezone
             expires_at = datetime.now(timezone.utc) + timedelta(minutes=hold_minutes)
 
+            hold = RoomHold(
+                property_id=property_id,
+                check_in=check_in,
+                check_out=check_out,
+                guest_user_id=created_by,
+                hold_minutes=hold_minutes,
+                expires_at=expires_at,
+                status="active",
+            )
+            db.session.add(hold)
+            db.session.flush()
+
             blocked_count = AvailabilityService.block_dates(
                 property_id=property_id,
                 check_in=check_in,
@@ -420,6 +432,8 @@ class AvailabilityService:
             )
 
             if blocked_count == 0:
+                hold.mark_released("Dates are already held")
+                db.session.commit()
                 return False, "Dates are already on hold"
 
             logger.info(
@@ -462,6 +476,18 @@ class AvailabilityService:
             query = query.filter(BlockedDate.created_by == created_by)
 
         result = query.delete(synchronize_session=False)
+
+        hold_query = RoomHold.query.filter(
+            RoomHold.property_id == property_id,
+            RoomHold.check_in == check_in,
+            RoomHold.check_out == check_out,
+            RoomHold.status == "active",
+        )
+        if created_by:
+            hold_query = hold_query.filter(RoomHold.guest_user_id == created_by)
+        for hold in hold_query.all():
+            hold.mark_released("Released by checkout flow")
+
         db.session.commit()
 
         logger.info(f"Released {result} temporary holds for property {property_id}")
@@ -534,6 +560,40 @@ class AvailabilityService:
 
         logger.info(f"Unblocked {result} dates for property {property_id} (booking: {booking_id}, reason: {reason})")
         return result
+
+
+    @staticmethod
+    def expire_room_holds(now: datetime = None) -> int:
+        """Expire active RoomHold records and release their temporary inventory blocks."""
+        now = now or datetime.now(timezone.utc)
+        expired_holds = RoomHold.query.filter(
+            RoomHold.status == "active",
+            RoomHold.expires_at <= now,
+        ).all()
+
+        expired_count = 0
+        for hold in expired_holds:
+            BlockedDate.query.filter(
+                BlockedDate.property_id == hold.property_id,
+                BlockedDate.blocked_date.between(hold.check_in, hold.check_out - timedelta(days=1)),
+                BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
+                BlockedDate.created_by == hold.guest_user_id,
+            ).delete(synchronize_session=False)
+
+            if hold.room_type_id:
+                AvailabilityService.release_room_type_blocks(
+                    room_type_id=hold.room_type_id,
+                    check_in=hold.check_in,
+                    check_out=hold.check_out,
+                    booking_id=hold.booking_id,
+                )
+
+            hold.mark_expired()
+            expired_count += 1
+
+        db.session.commit()
+        logger.info(f"Expired {expired_count} room holds")
+        return expired_count
 
     @staticmethod
     def get_available_dates(

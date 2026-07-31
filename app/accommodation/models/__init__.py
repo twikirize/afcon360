@@ -39,6 +39,7 @@ from app.accommodation.models.property_document import PropertyDocument
 # Availability models
 from app.accommodation.models.availability import (
     BlockedDate,
+    RoomHold,
     AvailabilityRule,
     AccommodationBlockedReason,
 )
@@ -68,6 +69,7 @@ __all__ = [
     'BookingStatusHistory',
     # Availability
     'BlockedDate',
+    'RoomHold',
     'AvailabilityRule',
     'AccommodationBlockedReason',
     # Review
