@@ -36,6 +36,7 @@ class BookingStateMachine:
         ],
         AccommodationBookingStatus.HELD: [
             AccommodationBookingStatus.PENDING_PAYMENT,
+            AccommodationBookingStatus.PENDING_APPROVAL,
             AccommodationBookingStatus.EXPIRED,
             AccommodationBookingStatus.CANCELLED,
         ],
@@ -44,20 +45,39 @@ class BookingStateMachine:
             AccommodationBookingStatus.CANCELLED,
             AccommodationBookingStatus.EXPIRED,
         ],
-        AccommodationBookingStatus.CONFIRMED: [
-            AccommodationBookingStatus.CANCELLED,
-            AccommodationBookingStatus.NO_SHOW,
-        ],
-        # CHECKED_IN is allowed conditionally (guard checks)
         AccommodationBookingStatus.PENDING_APPROVAL: [
             AccommodationBookingStatus.CONFIRMED,
             AccommodationBookingStatus.CANCELLED,
         ],
+        AccommodationBookingStatus.CONFIRMED: [
+            AccommodationBookingStatus.CHECKED_IN,
+            AccommodationBookingStatus.CANCELLED,
+            AccommodationBookingStatus.NO_SHOW,
+        ],
+        AccommodationBookingStatus.CHECKED_IN: [
+            AccommodationBookingStatus.CHECKED_OUT,
+        ],
+        AccommodationBookingStatus.CHECKED_OUT: [
+            AccommodationBookingStatus.CLOSED,
+        ],
+        AccommodationBookingStatus.CANCELLED: [
+            AccommodationBookingStatus.REFUNDED,
+        ],
+        AccommodationBookingStatus.CLOSED: [],
+        AccommodationBookingStatus.REFUNDED: [],
+        AccommodationBookingStatus.EXPIRED: [],
+        AccommodationBookingStatus.NO_SHOW: [],
         # Legacy states (maintained for backward compatibility)
         AccommodationBookingStatus.PENDING: [
+            AccommodationBookingStatus.PENDING_PAYMENT,
             AccommodationBookingStatus.CONFIRMED,
             AccommodationBookingStatus.CANCELLED,
             AccommodationBookingStatus.PENDING_APPROVAL,
+            AccommodationBookingStatus.EXPIRED,
+        ],
+        AccommodationBookingStatus.PAYMENT_PARTIAL: [
+            AccommodationBookingStatus.CONFIRMED,
+            AccommodationBookingStatus.CANCELLED,
         ],
     }
 
@@ -71,17 +91,40 @@ class BookingStateMachine:
         Check if booking can transition to new_status.
         Includes computed state logic for READY_FOR_CHECKIN.
         """
-        # Special case: CHECKED_IN requires readiness check
+        current_enum = AccommodationBookingStatus(booking.status)
+
+        if new_status not in cls.VALID_TRANSITIONS.get(current_enum, []):
+            return False
+
+        # CHECKED_IN is the computed READY_FOR_CHECKIN transition.
         if new_status == AccommodationBookingStatus.CHECKED_IN:
-            current_enum = AccommodationBookingStatus(booking.status)
+            return cls._can_check_in(booking)
+
+        # Payment-confirmed transitions must have a settled/guaranteed payment.
+        if (
+            new_status == AccommodationBookingStatus.CONFIRMED
+            and current_enum in [
+                AccommodationBookingStatus.PENDING_PAYMENT,
+                AccommodationBookingStatus.PAYMENT_PARTIAL,
+            ]
+        ):
+            return cls._payment_satisfied(booking)
+
+        # Host-approval transitions require the approval marker to be set first.
+        if (
+            new_status == AccommodationBookingStatus.CONFIRMED
+            and current_enum == AccommodationBookingStatus.PENDING_APPROVAL
+        ):
+            return bool(getattr(booking, "host_approved_at", None))
+
+        # Refunds must have a positive refund amount and a refunded payment status.
+        if new_status == AccommodationBookingStatus.REFUNDED:
             return (
-                current_enum == AccommodationBookingStatus.CONFIRMED
-                and cls._can_check_in(booking)
+                getattr(booking, "refund_amount", 0)
+                and booking.payment_status == AccommodationPaymentStatus.REFUNDED.value
             )
 
-        # Regular transition validation
-        current_enum = AccommodationBookingStatus(booking.status)
-        return new_status in cls.VALID_TRANSITIONS.get(current_enum, [])
+        return True
 
     @classmethod
     def _can_check_in(cls, booking) -> bool:
@@ -100,6 +143,17 @@ class BookingStateMachine:
         )
 
     @classmethod
+    def _payment_satisfied(cls, booking) -> bool:
+        """Return True when the booking has enough payment signal to confirm."""
+        return (
+            booking.payment_status in [
+                AccommodationPaymentStatus.PAID.value,
+                AccommodationPaymentStatus.PARTIALLY_PAID.value,
+            ]
+            or bool(getattr(booking, "payment_guaranteed", False))
+        )
+
+    @classmethod
     def _all_guests_registered(cls, booking) -> bool:
         """
         Check if all required guests are registered for this booking.
@@ -112,11 +166,7 @@ class BookingStateMachine:
             current_status: AccommodationBookingStatus
     ) -> list:
         """Return all valid next states from current_status"""
-        base_states = cls.VALID_TRANSITIONS.get(current_status, [])
-        # CHECKED_IN is conditionally available from CONFIRMED
-        if current_status == AccommodationBookingStatus.CONFIRMED:
-            return [AccommodationBookingStatus.CHECKED_IN] + base_states
-        return base_states
+        return cls.VALID_TRANSITIONS.get(current_status, [])
 
     @classmethod
     def is_terminal(
@@ -175,12 +225,14 @@ class BookingStateMachine:
             booking_id=booking.id,
             from_status=old_status_string,
             to_status=new_status_string,
-            changed_by_user_id=changed_by_user_id,
-            reason=reason,
-            ip_address=ip_address,
-            user_agent=user_agent,
+            changed_by=changed_by_user_id,
             trigger=trigger,
-            metadata=metadata or {},
+            change_metadata={
+                **(metadata or {}),
+                "reason": reason,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            },
         )
         db.session.add(history)
 

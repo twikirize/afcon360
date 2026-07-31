@@ -350,14 +350,30 @@ class AccommodationBooking(BaseModel):
             self.payment_method = "wallet"
 
     def confirm(self):
-        self.status = AccommodationBookingStatus.CONFIRMED.value
+        from app.accommodation.state_machine.booking_states import BookingStateMachine
+
+        BookingStateMachine.transition(
+            self,
+            AccommodationBookingStatus.CONFIRMED,
+            changed_by_user_id=self.guest_user_id,
+            reason="Booking confirmed",
+            trigger="model_confirm",
+        )
 
     def cancel(self, user_id, reason=None):
         can_cancel, msg, refund = self.can_cancel()
         if not can_cancel:
             return False, msg, 0
 
-        self.status = AccommodationBookingStatus.CANCELLED.value
+        from app.accommodation.state_machine.booking_states import BookingStateMachine
+
+        BookingStateMachine.transition(
+            self,
+            AccommodationBookingStatus.CANCELLED,
+            changed_by_user_id=user_id,
+            reason=reason,
+            trigger="model_cancel",
+        )
         self.cancelled_at = datetime.now(timezone.utc)
         self.cancelled_by_user_id = user_id
         self.cancellation_reason = reason
@@ -374,7 +390,14 @@ class AccommodationBooking(BaseModel):
 
         current_status = self.status_enum
 
-        if current_status not in [AccommodationBookingStatus.PENDING, AccommodationBookingStatus.CONFIRMED]:
+        if current_status not in [
+            AccommodationBookingStatus.DRAFT,
+            AccommodationBookingStatus.HELD,
+            AccommodationBookingStatus.PENDING,
+            AccommodationBookingStatus.PENDING_PAYMENT,
+            AccommodationBookingStatus.PENDING_APPROVAL,
+            AccommodationBookingStatus.CONFIRMED,
+        ]:
             return False, "Cannot cancel at this stage", 0
 
         days_until = (self.check_in - datetime.now(timezone.utc).date()).days

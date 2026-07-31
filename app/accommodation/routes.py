@@ -41,7 +41,7 @@ from app.accommodation.models.property import (
     AccommodationPropertyType,
     Property,
 )
-from app.accommodation.models.booking import AccommodationBooking, AccommodationPaymentStatus
+from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus, AccommodationPaymentStatus
 from app.accommodation.models.room import Room, RoomBooking, RoomType
 from app.accommodation.models.review import Review, AccommodationReviewStatus
 from app.identity.models.user import User
@@ -1891,23 +1891,44 @@ def guest_checkout():
         # STEP 7: Confirm booking
         # ============================================================
         if payment_timing in ('pay_now', 'deposit'):
-            # Already paid - confirm immediately
-            success, confirm_error = BookingService.confirm_booking(
-                booking.id,
-                wallet_transaction_id=txn_id,
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get('User-Agent')
-            )
+            if booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value:
+                # Request-to-book properties remain pending host approval even
+                # when a deposit/full payment has been captured.
+                db.session.commit()
+                current_app.logger.info(
+                    f"✅ Booking paid and awaiting host approval: {booking.booking_reference}"
+                )
+            else:
+                # Already paid - confirm immediately
+                success, confirm_error = BookingService.confirm_booking(
+                    booking.id,
+                    wallet_transaction_id=txn_id,
+                    ip_address=request.remote_addr,
+                    user_agent=request.headers.get('User-Agent')
+                )
 
-            if not success:
-                current_app.logger.error(f"❌ BOOKING CONFIRMATION FAILED: {confirm_error}")
-                flash(f'Booking confirmation failed: {confirm_error}', 'danger')
-                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+                if not success:
+                    current_app.logger.error(f"❌ BOOKING CONFIRMATION FAILED: {confirm_error}")
+                    flash(f'Booking confirmation failed: {confirm_error}', 'danger')
+                    return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
-            current_app.logger.info(f"✅ Booking confirmed: {booking.booking_reference}")
+                current_app.logger.info(f"✅ Booking confirmed: {booking.booking_reference}")
         else:
-            # pay_on_arrival or invoice - mark as pending approval
-            booking.status = AccommodationBookingStatus.PENDING_APPROVAL.value
+            # pay_on_arrival or invoice - move through the state machine so
+            # host approval requests are audited.
+            from app.accommodation.state_machine.booking_states import BookingStateMachine
+
+            if booking.status != AccommodationBookingStatus.PENDING_APPROVAL.value:
+                BookingStateMachine.transition(
+                    booking,
+                    AccommodationBookingStatus.PENDING_APPROVAL,
+                    changed_by_user_id=current_user.id,
+                    reason="Pay-on-arrival/invoice booking requires host approval",
+                    ip_address=request.remote_addr,
+                    user_agent=request.headers.get('User-Agent'),
+                    trigger="checkout_pending_approval",
+                    metadata={"payment_timing": payment_timing, "payment_method": payment_method},
+                )
             db.session.commit()
             current_app.logger.info(f"✅ Booking created (pending approval): {booking.booking_reference}")
 
@@ -3409,13 +3430,22 @@ def host_cancel_booking(property_id, booking_id):
 
     reason = request.form.get("reason", "Host cancellation")
 
-    booking.status = AccommodationBookingStatus.CANCELLED.value
-    booking.cancelled_at = datetime.utcnow()
-    booking.cancelled_by_user_id = current_user.id
-    booking.cancellation_reason = reason
+    success, error, refund = BookingService.cancel_booking(
+        booking.id,
+        cancelled_by_user_id=current_user.id,
+        reason=reason,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent'),
+    )
 
-    db.session.commit()
-    flash(f"Booking #{booking.booking_reference} cancelled.", "warning")
+    if not success:
+        flash(error or "Booking could not be cancelled.", "danger")
+        return redirect(
+            url_for("accommodation.host_property_manage", property_id=property_id)
+        )
+
+    refund_msg = f" Refund due: {refund}." if refund else ""
+    flash(f"Booking #{booking.booking_reference} cancelled.{refund_msg}", "warning")
     return redirect(
         url_for("accommodation.host_property_manage", property_id=property_id)
     )
