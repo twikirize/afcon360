@@ -6,7 +6,7 @@ Routes and templates call this — never touch models directly.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.fan.models import FanProfile, UserDashboardContext
 
@@ -39,7 +39,7 @@ def activate_fan_profile(user_id: int, favorite_teams=None, favorite_sports=None
             is_active=True,
             favorite_teams=json.dumps(favorite_teams or []),
             favorite_sports=json.dumps(favorite_sports or ['football']),
-            activated_at=datetime.utcnow()
+            activated_at=datetime.now(timezone.utc)
         )
         db.session.add(profile)
 
@@ -81,7 +81,7 @@ def update_fan_preferences(user_id: int, data: dict) -> FanProfile | None:
     if 'social_features_enabled' in data:
         profile.social_features_enabled = bool(data['social_features_enabled'])
 
-    profile.updated_at = datetime.utcnow()
+    profile.updated_at = datetime.now(timezone.utc)
     db.session.flush()
     return profile
 
@@ -113,7 +113,8 @@ def _set_dashboard_mode(user_id: int, mode: str):
     ctx = UserDashboardContext.query.filter_by(user_id=user_id).first()
     if ctx:
         ctx.current_mode = mode
-        ctx.last_updated = datetime.utcnow()
+        ctx.last_updated = datetime.now(timezone.utc)
     else:
         ctx = UserDashboardContext(user_id=user_id, current_mode=mode)
         db.session.add(ctx)
+

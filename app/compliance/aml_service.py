@@ -4,7 +4,7 @@ Anti-Money Laundering (AML) Screening Service
 Implements AML screening, transaction monitoring, and regulatory reporting.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Float
@@ -44,7 +44,7 @@ class AMLScreeningResult(db.Model):
     
     # Screening details
     screening_type = Column(String(50), nullable=False)  # user, transaction, beneficiary
-    screening_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    screening_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     risk_level = Column(String(20), nullable=False, index=True)
     risk_score = Column(Float, nullable=False)
     
@@ -67,7 +67,7 @@ class AMLScreeningResult(db.Model):
     review_notes = Column(Text, nullable=True)
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class AMLTransactionMonitor(db.Model):
@@ -78,7 +78,7 @@ class AMLTransactionMonitor(db.Model):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     
     # Monitoring period
-    monitoring_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    monitoring_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     period_type = Column(String(20), nullable=False)  # daily, weekly, monthly
     
     # Transaction statistics
@@ -102,7 +102,7 @@ class AMLTransactionMonitor(db.Model):
     alert_level = Column(String(20), nullable=False, default='none')  # none, low, medium, high
     alerts_generated = Column(JSON, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class AMLService:
@@ -128,7 +128,7 @@ class AMLService:
     def screen_user(self, user_id: int) -> AMLScreeningResult:
         """Screen user against sanctions and PEP lists."""
         from app.identity.models.user import User
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         
         if not user:
             raise ValueError("User not found")
@@ -137,7 +137,7 @@ class AMLService:
         screening = AMLScreeningResult(
             user_id=user_id,
             screening_type='user',
-            screening_date=datetime.utcnow(),
+            screening_date=datetime.now(timezone.utc),
             risk_level=AMLRiskLevel.MEDIUM.value,
             risk_score=0.5
         )
@@ -173,7 +173,7 @@ class AMLService:
             user_id=user_id,
             transaction_id=transaction_data.get('transaction_id'),
             screening_type='transaction',
-            screening_date=datetime.utcnow(),
+            screening_date=datetime.now(timezone.utc),
             risk_level=AMLRiskLevel.LOW.value,
             risk_score=0.1
         )
@@ -241,7 +241,7 @@ class AMLService:
         from app.wallet.models.transaction import Transaction
         
         # Calculate date range
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         if period == 'daily':
             start_date = end_date - timedelta(days=1)
         elif period == 'weekly':
@@ -385,7 +385,7 @@ class AMLService:
         
         # Age risk
         if user.date_of_birth:
-            age = datetime.utcnow().year - user.date_of_birth.year
+            age = datetime.now(timezone.utc).year - user.date_of_birth.year
             if age < 18:
                 risk_score += 0.8
                 risk_factors.append('under_18')
@@ -496,7 +496,7 @@ class AMLService:
     
     def get_sar_eligible_transactions(self, days: int = 30) -> List[Dict[str, Any]]:
         """Get transactions eligible for Suspicious Activity Report."""
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         results = AMLScreeningResult.query.filter(
             AMLScreeningResult.screening_date >= cutoff_date,
@@ -539,7 +539,7 @@ def require_aml_screening(f):
             ).order_by(AMLScreeningResult.screening_date.desc()).first()
             
             # Screen if no recent screening or if screening is old
-            if not recent_screening or (datetime.utcnow() - recent_screening.screening_date).days > 7:
+            if not recent_screening or (datetime.now(timezone.utc) - recent_screening.screening_date).days > 7:
                 screening = aml_service.screen_user(user_id)
                 
                 # Block high-risk users
@@ -550,3 +550,4 @@ def require_aml_screening(f):
         return f(*args, **kwargs)
     
     return decorated_function
+

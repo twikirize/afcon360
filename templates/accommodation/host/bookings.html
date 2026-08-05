@@ -32,6 +32,14 @@
                 <option value="cancelled" {{ 'selected' if current_status == 'cancelled' }}>Cancelled</option>
             </select>
         </div>
+        <div class="col-auto">
+            <label for="regFilter" class="form-label">Registration</label>
+            <select name="reg_status" id="regFilter" class="form-select">
+                <option value="">All</option>
+                <option value="complete" {{ 'selected' if current_reg == 'complete' }}>Complete</option>
+                <option value="incomplete" {{ 'selected' if current_reg == 'incomplete' }}>Incomplete</option>
+            </select>
+        </div>
         <div class="col-auto align-self-end">
             <button type="submit" class="btn btn-primary">Filter</button>
         </div>
@@ -45,6 +53,7 @@
                     <th>Property</th>
                     <th>Dates</th>
                     <th>Amount</th>
+                    <th>Guests</th>
                     <th>Status</th>
                     <th>Type</th>
                     <th>Actions</th>
@@ -65,6 +74,13 @@
                     </td>
                     <td>{{ booking.check_in.strftime('%b %d') }} - {{ booking.check_out.strftime('%b %d, %Y') }}</td>
                     <td>${{ "%.2f"|format(booking.total_amount) }}</td>
+                    <td>
+                        {% set reg_count = booking.guest_registrations | length %}
+                        {% set reg_completed = booking.guest_registrations | selectattr('status', 'in', ['completed', 'skipped']) | list | length %}
+                        <span class="badge {% if reg_completed == reg_count and reg_count > 0 %}bg-success{% else %}bg-warning{% endif %}">
+                            {{ reg_completed }}/{{ reg_count if reg_count > 0 else booking.num_guests }}
+                        </span>
+                    </td>
                     <td>
                         <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' }}">
                             {{ booking.status }}
@@ -103,7 +119,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">No bookings found.</td>
+                    <td colspan="8" class="text-center text-muted py-4">No bookings found.</td>
                 </tr>
                 {% endfor %}
             </tbody>

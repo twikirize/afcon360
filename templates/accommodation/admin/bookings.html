@@ -162,53 +162,96 @@
     {% endif %}
   </div>
 
-  <p class="result-count">
+<p class="result-count">
     {{ bookings.total }} {{ 'booking' if bookings.total == 1 else 'bookings' }} found
     {% if search_q %} · "<strong>{{ search_q }}</strong>"{% endif %}
     {% if status_filter and status_filter != 'all' %} · status: <strong>{{ status_filter | replace('_',' ') | title }}</strong>{% endif %}
-  </p>
+</p>
 
-  {# ── Table ── #}
+{# ── Quick Widgets ── #}
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <a href="{{ url_for('accommodation.admin_bookings', status='confirmed', q='') }}" class="card text-decoration-none shadow-sm">
+            <div class="card-body d-flex align-items-center">
+                <div class="bg-warning bg-opacity-10 rounded-circle p-3 me-3">
+                    <i class="fas fa-user-clock text-warning fa-lg"></i>
+                </div>
+                <div>
+                    <h6 class="mb-0">Unclaimed Bookings</h6>
+                    <small class="text-muted">Third-party bookings awaiting owner claim</small>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-6">
+        <a href="{{ url_for('accommodation.admin_bookings', status='confirmed', q='') }}" class="card text-decoration-none shadow-sm">
+            <div class="card-body d-flex align-items-center">
+                <div class="bg-danger bg-opacity-10 rounded-circle p-3 me-3">
+                    <i class="fas fa-exclamation-triangle text-danger fa-lg"></i>
+                </div>
+                <div>
+                    <h6 class="mb-0">Readiness Issues</h6>
+                    <small class="text-muted">Confirmed bookings with blocked check-in</small>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+{# ── Table ── #}
   {% if bookings.items %}
   <div class="data-card">
     <div class="table-scroll">
     <table>
       <thead>
         <tr>
-          <th>Reference</th>
-          <th>Guest</th>
-          <th>Property</th>
-          <th>Type</th>
-          <th>Check-In</th>
-          <th>Check-Out</th>
-          <th>Nights</th>
-          <th>Guests</th>
-          <th>Total</th>
-          <th>Booking Status</th>
-          <th>Payment</th>
-          <th>Booked At</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for bk in bookings.items %}
-        <tr>
-          <td>
-            <span style="font-family:monospace;font-size:.78rem;">{{ bk.booking_reference }}</span>
-          </td>
-          <td>
-            <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
-            <small class="text-muted">{{ bk.guest_email | truncate(28) }}</small>
-          </td>
+<th>Reference</th>
+           <th>Guest</th>
+           <th>Owner</th>
+           <th>Claimed</th>
+           <th>Property</th>
+           <th>Type</th>
+           <th>Check-In</th>
+           <th>Check-Out</th>
+           <th>Nights</th>
+           <th>Guests</th>
+           <th>Total</th>
+           <th>Booking Status</th>
+           <th>Payment</th>
+           <th>Booked At</th>
+           <th>Actions</th>
+         </tr>
+       </thead>
+       <tbody>
+         {% for bk in bookings.items %}
+         <tr>
+           <td>
+             <span style="font-family:monospace;font-size:.78rem;">{{ bk.booking_reference }}</span>
+           </td>
+           <td>
+             <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
+             <small class="text-muted">{{ bk.guest_email | truncate(28) }}</small>
+           </td>
+           <td>
+             <small>{{ bk.booking_owner.username | truncate(18) if bk.booking_owner else (bk.booked_by_user.username | truncate(18) if bk.booked_by_user else 'N/A') }}</small>
+           </td>
+           <td>
+             {% if bk.booking_type == 'third_party' %}
+             <span class="badge {% if bk.booking_owner_id %}bg-success{% else %}bg-warning{% endif %}">
+               {{ 'Yes' if bk.booking_owner_id else 'No' }}
+             </span>
+             {% else %}
+             <span class="badge bg-secondary">N/A</span>
+             {% endif %}
+           </td>
            <td>
              {% if bk.accommodation_property %}
              <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
              <small class="text-muted">{{ bk.accommodation_property.city }}</small>
-                {% else %}
-                <tr>
-                    <td colspan="13" class="text-center text-muted py-4">No bookings found.</td>
-                </tr>
-                {% endfor %}
+             {% else %}
+             <span class="text-muted">N/A</span>
+             {% endif %}
+           </td>
       </tbody>
     </table>
     </div>

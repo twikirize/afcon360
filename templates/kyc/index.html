@@ -10,12 +10,72 @@
 {% block content %}
 <div class="kyc-dashboard">
     <h1>KYC Verification Status</h1>
+
+    {# Visual progress tracker — CSS steps showing pending → processing → verified #}
     <div class="panel">
         <div class="panel-header">
             <div class="panel-title">Verification Progress</div>
         </div>
         <div class="panel-body">
-            <p>Your KYC verification status and requirements will appear here.</p>
+            {% set progress_pct = {1: '33', 2: '66', 3: '100'}.get(kyc_stage, '33') %}
+            <div class="kyc-progress-tracker" data-progress="{{ progress_pct }}"
+                 data-stage="{{ kyc_stage }}" data-status="{{ overall_status }}">
+
+                <ul class="progress-steps">
+                    {# Stage 1 — Submitted #}
+                    <li class="step-item {% if overall_status == 'not_started' %}active{% elif kyc_stage >= 1 %}completed{% endif %}">
+                        <span class="step-circle">
+                            <i class="step-icon bi bi-1-circle-fill"></i>
+                        </span>
+                        <span class="step-label">Submitted</span>
+                        <span class="step-sub">
+                            {% if overall_status == 'not_started' %}Start
+                            {% else %}Pending{% endif %}
+                        </span>
+                    </li>
+
+                    {# Stage 2 — Processing #}
+                    <li class="step-item {% if kyc_stage >= 2 %}active{% endif %} {% if overall_status == 'rejected' %}rejected{% endif %}">
+                        <span class="step-circle">
+                            {% if overall_status == 'rejected' %}
+                                <i class="step-icon bi bi-x-lg"></i>
+                            {% else %}
+                                <i class="step-icon bi bi-gear-fill"></i>
+                            {% endif %}
+                        </span>
+                        <span class="step-label">Processing</span>
+                        <span class="step-sub">
+                            {% if overall_status == 'rejected' %}Rejected
+                            {% elif kyc_stage >= 2 %}In Review
+                            {% else %}Awaiting{% endif %}
+                        </span>
+                    </li>
+
+                    {# Stage 3 — Verified #}
+                    <li class="step-item {% if kyc_stage >= 3 %}completed{% endif %}">
+                        <span class="step-circle">
+                            <i class="step-icon bi bi-check-lg"></i>
+                        </span>
+                        <span class="step-label">Verified</span>
+                        <span class="step-sub">
+                            {% if kyc_stage >= 3 %}Approved
+                            {% else %}Pending{% endif %}
+                        </span>
+                    </li>
+                </ul>
+            </div>
+
+            <p class="mt-3 mb-0 text-center text-secondary" style="font-size:0.85rem;">
+                {% if overall_status == 'not_started' %}
+                    You have not submitted any verification documents yet.
+                {% elif overall_status == 'verified' %}
+                    Your identity has been successfully verified.
+                {% elif overall_status == 'rejected' %}
+                    Your submission was rejected. Please review the feedback and resubmit.
+                {% else %}
+                    Your documents are being reviewed by our compliance team.
+                {% endif %}
+            </p>
         </div>
     </div>
 </div>

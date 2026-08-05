@@ -95,7 +95,7 @@ class AggregatorService:
     @staticmethod
     def get_aggregator(aggregator_id: int) -> Optional[Aggregator]:
         """Get aggregator by ID"""
-        return Aggregator.query.get(aggregator_id)
+        return db.session.get(Aggregator, aggregator_id)
     
     @staticmethod
     def get_all_aggregators(status: Optional[str] = None) -> List[Aggregator]:
@@ -127,7 +127,7 @@ class AggregatorService:
             Updated aggregator
         """
         try:
-            aggregator = Aggregator.query.get(aggregator_id)
+            aggregator = db.session.get(Aggregator, aggregator_id)
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
@@ -171,7 +171,7 @@ class AggregatorService:
     ) -> Aggregator:
         """Suspend an aggregator"""
         try:
-            aggregator = Aggregator.query.get(aggregator_id)
+            aggregator = db.session.get(Aggregator, aggregator_id)
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
@@ -206,7 +206,7 @@ class AggregatorService:
     ) -> Aggregator:
         """Activate a suspended aggregator"""
         try:
-            aggregator = Aggregator.query.get(aggregator_id)
+            aggregator = db.session.get(Aggregator, aggregator_id)
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
@@ -245,7 +245,7 @@ class AggregatorService:
             if mode not in ('testing', 'live'):
                 raise ValueError("Invalid mode. Must be 'testing' or 'live'.")
             
-            aggregator = Aggregator.query.get(aggregator_id)
+            aggregator = db.session.get(Aggregator, aggregator_id)
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
@@ -278,3 +278,4 @@ class AggregatorService:
         except Exception as e:
             db.session.rollback()
             raise e
+

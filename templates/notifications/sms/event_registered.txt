@@ -1,0 +1,1 @@
+AFCON360: You registered for {{ event_name }} on {{ event_date }}. Ref: {{ reference_id }}. See you there!

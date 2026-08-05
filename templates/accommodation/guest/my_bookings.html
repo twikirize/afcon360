@@ -57,12 +57,39 @@
                                 <span class="badge bg-{{ status_class.get(booking.status.value, 'secondary') }} px-3 py-2">
                                     {{ booking.status.value|replace('_', ' ')|title }}
                                 </span>
+                                {% if booking.status.value in ['confirmed', 'pending_approval'] %}
+{% set reg_count = booking.guest_registrations | length %}
+{% set reg_completed = booking.guest_registrations | selectattr('status', 'in', ['completed', 'skipped']) | list | length %}
+{% if reg_count > 0 %}
+<span class="badge bg-{{ 'success' if reg_completed == reg_count else 'warning' }} px-3 py-2 mt-1">
+    Guests: {{ reg_completed }}/{{ reg_count }} registered
+</span>
+{% else %}
+<span class="badge bg-secondary px-3 py-2 mt-1">
+    Guests: Not registered
+</span>
+{% endif %}
+{% if booking.booking_type == 'third_party' and booking.booked_by_user_id != current_user.id %}
+<span class="badge bg-info px-3 py-2 mt-1 ms-1">Booked for you</span>
+{% endif %}
+                                {% endif %}
                                 <p class="mt-2 mb-0">
                                     <strong>${{ "%.2f"|format(booking.total_amount) }}</strong>
                                 </p>
-                                <p class="mt-1 mb-0">
-                                    {{ booking_type_badge(booking) }}
-                                </p>
+<p class="mt-1 mb-0">
+    {{ booking_type_badge(booking) }}
+</p>
+{% if booking.booking_type == 'third_party' %}
+<div class="alert alert-info small mt-2 mb-0 py-2">
+    <i class="fas fa-info-circle me-1"></i>
+    This booking was made for you by <strong>{{ booking.booked_by_name_snapshot or 'the booker' }}</strong>.
+    {% if booking.booking_owner_id %}
+    The booking owner has claimed this reservation.
+    {% else %}
+    <a href="{{ url_for('accommodation.guest_claim_booking', token=booking.claim_token_hash) if booking.claim_token_hash else '#' }}">Claim ownership</a> if this is your booking.
+    {% endif %}
+</div>
+{% endif %}
                             </div>
                             <div class="col-md-2 text-end">
                                 <a href="{{ safe_url('accommodation.guest_confirmation', reference=booking.booking_reference) }}"

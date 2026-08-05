@@ -1,6 +1,6 @@
 # app/identity/models/compliance_settings.py
 from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, Enum, ForeignKey
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
 
@@ -20,10 +20,11 @@ class ComplianceSettings(BaseModel):
     is_enabled = Column(Boolean, default=True, nullable=False)
 
     updated_by = Column(BigInteger, ForeignKey("users.id"))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = {'extend_existing': True}
 
     def __repr__(self):
         return f"<ComplianceSettings {self.requirement} {self.enforcement_level} enabled={self.is_enabled}>"
+

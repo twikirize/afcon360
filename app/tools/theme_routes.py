@@ -46,7 +46,7 @@ def get_user_preferences():
         resp.headers['Cache-Control'] = 'private, max-age=60'
         return resp
 
-    pref = UserThemePreference.query.get(current_user.id)
+    pref = db.session.get(UserThemePreference, current_user.id)
     data = pref.settings if pref else {
         "font_scale": 1.0,
         "high_contrast": "off",
@@ -66,7 +66,7 @@ def get_user_preferences():
 @login_required
 def save_user_preferences():
     data = request.json
-    pref = UserThemePreference.query.get(current_user.id)
+    pref = db.session.get(UserThemePreference, current_user.id)
     if not pref:
         pref = UserThemePreference(user_id=current_user.id)
         db.session.add(pref)
@@ -121,7 +121,7 @@ def save_global_theme():
 @theme_bp.route('/event/<int:event_id>/api', methods=['GET'])
 def get_event_theme(event_id):
     from app.models.theme import EventTheme
-    event_theme = EventTheme.query.get(event_id)
+    event_theme = db.session.get(EventTheme, event_id)
     if event_theme:
         return jsonify(event_theme.settings)
     return jsonify({"use_global_branding": True})
@@ -132,7 +132,7 @@ def save_event_theme(event_id):
     # Add organizer check here if applicable
     data = request.json
     from app.models.theme import EventTheme
-    event_theme = EventTheme.query.get(event_id)
+    event_theme = db.session.get(EventTheme, event_id)
     if not event_theme:
         event_theme = EventTheme(event_id=event_id)
         db.session.add(event_theme)
@@ -164,7 +164,7 @@ def serve_event_theme_css(event_id):
 @theme_bp.route('/reset', methods=['POST'])
 @login_required
 def reset_preferences():
-    pref = UserThemePreference.query.get(current_user.id)
+    pref = db.session.get(UserThemePreference, current_user.id)
     if pref:
         db.session.delete(pref)
         db.session.commit()
@@ -205,7 +205,7 @@ def serve_user_theme_css():
     # Check if user has custom preferences
     user_css_filename = f'user-{current_user.id}.css'
     user_css_path = os.path.join(generated_dir, user_css_filename)
-    pref = UserThemePreference.query.get(current_user.id)
+    pref = db.session.get(UserThemePreference, current_user.id)
 
     # If user has preferences, generate or serve their CSS
     if pref:
@@ -223,3 +223,4 @@ def serve_user_theme_css():
         return send_from_directory(generated_dir, 'global-theme.css', mimetype='text/css')
 
     return "", 200, {'Content-Type': 'text/css'}
+

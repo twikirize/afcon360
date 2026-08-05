@@ -1,0 +1,8 @@
+{
+  "title": "KYC Rejected - AFCON360",
+  "body": "Your KYC verification was rejected. Please resubmit documents.",
+  "click_action": "/profile/kyc",
+  "data": {
+    "type": "kyc_rejected"
+  }
+}

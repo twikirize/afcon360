@@ -37,7 +37,7 @@ class Organisation(BaseModel):
     # -------------------
     # Legal Jurisdiction
     # -------------------
-    country = Column(String(2), nullable=False, index=True)   # ISO 3166-1
+    country = Column(String(2), nullable=False)   # ISO 3166-1
     region = Column(String(64), index=True)                   # State / Province
 
     # -------------------
@@ -100,7 +100,7 @@ class Organisation(BaseModel):
         nullable=False,
         index=True
     )
-    is_operational = Column(Boolean, default=False, nullable=False, index=True)
+    is_operational = Column(Boolean, default=False, nullable=False, )
 
     # -------------------
     # Ownership / Control
@@ -156,7 +156,7 @@ class Organisation(BaseModel):
     # -------------------
     # Lifecycle Flags
     # -------------------
-    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
 
     # -------------------
     # Relationships

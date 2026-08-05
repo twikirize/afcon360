@@ -26,6 +26,28 @@ def register_all_models():
     from app.wallet.models.audit import AuditLogModel
     from app.wallet.models.fx import FXRateModel, FXTransactionModel
 
+    # Accommodation domain
+    # NOTE: previously this domain had NO entry here at all (not even a
+    # try/except stub like the others). Its only path onto db.metadata was
+    # the accommodation_bp import in __init__.py, which is wrapped in a
+    # broad `except Exception` that silently swallows any import failure.
+    # That meant db.create_all() (used by scripts/setup_test_db_schema.py)
+    # could run with zero accommodation tables registered, with no error
+    # surfaced anywhere. This entry makes accommodation model registration
+    # independent of blueprint registration succeeding, matching every
+    # other domain in this file.
+    try:
+        from app.accommodation.models.property import Property
+        from app.accommodation.models.booking import AccommodationBooking
+        from app.accommodation.models.booking_policy import PropertyBookingPolicy
+    except ImportError as e:
+        # Deliberately NOT silent: if this fails, test/CI schema setup will
+        # be silently incomplete again. Log loudly instead of `pass`.
+        import logging
+        logging.getLogger("app").error(
+            f"[model_registry] Failed to import accommodation models: {e}"
+        )
+
     # Events domain
     try:
         from app.events.models import Event
@@ -68,6 +90,23 @@ def register_all_models():
         from app.admin.compliance.models import ComplianceCase, DataSubjectRequest, ComplianceReport
     except ImportError:
         pass
+
+    # Notification domain
+    try:
+        from app.notifications.models import (
+            Notification,
+            NotificationTemplate,
+            UserNotificationPreference,
+            NotificationLog,
+            CommunicationSettings,
+            NotificationAggregator,
+            Message,
+        )
+    except ImportError as e:
+        import logging
+        logging.getLogger("app").error(
+            f"[model_registry] Failed to import notification models: {e}"
+        )
 
     # KYC domain
     try:

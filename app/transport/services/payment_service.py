@@ -55,7 +55,7 @@ class PaymentService:
                 )
 
             # Get booking
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError(
                     message="Booking not found",
@@ -362,3 +362,4 @@ def get_payment_service():
             if _payment_service_instance is None:
                 _payment_service_instance = PaymentService()
     return _payment_service_instance
+

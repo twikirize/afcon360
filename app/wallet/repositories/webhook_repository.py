@@ -2,7 +2,7 @@
 Webhook Repository for managing webhook events
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy import desc, and_, or_
 from app.extensions import db
@@ -14,7 +14,7 @@ class WebhookRepository:
 
     @staticmethod
     def get_by_id(event_id: int) -> Optional[WebhookEvent]:
-        return WebhookEvent.query.get(event_id)
+        return db.session.get(WebhookEvent, event_id)
 
     @staticmethod
     def get_paginated(
@@ -68,7 +68,7 @@ class WebhookRepository:
             func.count(WebhookEvent.id).filter(WebhookEvent.status == 'failed').label('failed_count')
         ).group_by(WebhookEvent.provider).all()
 
-        last_24h = datetime.utcnow() - timedelta(hours=24)
+        last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
         recent_count = WebhookEvent.query.filter(
             WebhookEvent.created_at >= last_24h
         ).count()
@@ -93,17 +93,17 @@ class WebhookRepository:
 
     @staticmethod
     def retry_webhook(event_id: int) -> bool:
-        event = WebhookEvent.query.get(event_id)
+        event = db.session.get(WebhookEvent, event_id)
         if event and event.status == 'failed':
             event.status = 'queued'
-            event.next_retry_at = datetime.utcnow()
+            event.next_retry_at = datetime.now(timezone.utc)
             db.session.commit()
             return True
         return False
 
     @staticmethod
     def delete_webhook(event_id: int) -> bool:
-        event = WebhookEvent.query.get(event_id)
+        event = db.session.get(WebhookEvent, event_id)
         if event:
             db.session.delete(event)
             db.session.commit()
@@ -115,3 +115,4 @@ class WebhookRepository:
         deleted = WebhookEvent.query.filter(WebhookEvent.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
         return deleted
+

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Wallet Withdrawal</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #d93025;">
+    <h2 style="color: #d93025; margin-top: 0;">AFCON360 Wallet Withdrawal</h2>
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>Your wallet has been debited with <strong>UGX {{ amount }}</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Transaction Ref:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ tx_ref }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Payment Method:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ payment_method }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>New Balance:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">UGX {{ new_balance }}</td>
+      </tr>
+    </table>
+    <p style="color: #555; font-size: 14px;">Thank you for using AFCON360 East Africa Pamoja!</p>
+  </div>
+</body>
+</html>

@@ -35,7 +35,7 @@ class NotificationService:
             Notification result
         """
         try:
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError(
                     message="Booking not found",
@@ -130,7 +130,7 @@ class NotificationService:
                                  data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Send notification to driver"""
         try:
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             if not driver:
                 raise NotFoundError(
                     message="Driver not found",
@@ -206,7 +206,7 @@ class NotificationService:
 
         # Add driver info if available
         if booking.driver_id:
-            driver = DriverProfile.query.get(booking.driver_id)
+            driver = db.session.get(DriverProfile, booking.driver_id)
             if driver and driver.user:
                 template_data['driver_name'] = driver.user.name or 'Driver'
 
@@ -316,3 +316,4 @@ def get_notification_service():
             if _notification_service_instance is None:
                 _notification_service_instance = NotificationService()
     return _notification_service_instance
+

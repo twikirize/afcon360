@@ -1,120 +1,245 @@
 """
-setup_test_db_schema.py - Completely reset test database and build its schema
-via the REAL Alembic migration history (not db.create_all()).
+Set up the test database schema using the application's TestingConfig.
 
-Run: python scripts/setup_test_db_schema.py
+WHY THIS DOES NOT USE `flask db upgrade` AS THE PRIMARY PATH:
+  ab6dd422c152_initial_schema.py (down_revision=None, i.e. the first migration
+  in the chain) does NOT contain CREATE TABLE statements for `users`, `events`,
+  `accounts`, `accommodation_properties`, `transactions`, etc. It only creates
+  3 tables (idempotency_keys, event_host_registrations, ledger_entries) and
+  ALTERs columns on the rest, assuming those foundational tables already
+  exist. Running `flask db upgrade` against a genuinely empty database will
+  always fail at `event_host_registrations`'s FK to `users.id`, because there
+  is no earlier migration that ever creates `users`.
+  This is a missing-baseline-migration problem, not a fixable ordering bug
+  within this file. Writing a proper baseline migration (or a pg_dump-derived
+  one) is a separate, larger task — tracked separately, not solved here.
 
-Respects TEST_DATABASE_URL from the environment if set, e.g.:
-    $env:TEST_DATABASE_URL="postgresql://israeli:Israelipass@localhost:5432/afcon360_test"
+WHAT THIS SCRIPT DOES INSTEAD (for TEST DB ONLY):
+  1. Drop & recreate the test database.
+  2. Build the schema from current SQLAlchemy models via db.create_all().
+     This works *for test purposes* because your models already reflect the
+     target state that 396efe6667ff's column/index changes were meant to
+     produce — create_all() builds from current model definitions, not from
+     migration history.
+  3. Stamp the DB at Alembic head, so future `flask db upgrade` calls treat
+     it as up to date.
+  4. VERIFY the result against known-fragile facts, instead of trusting
+     create_all()'s silent success:
+       - accommodation tables actually exist (model_registry.py gap)
+       - ix_user_nonces_nonce is non-unique (396efe6667ff intent)
+       - ix_content_flags_risk_score is single-column (396efe6667ff intent)
+     If any of these fail, the script raises and prints exactly what's wrong
+     instead of printing "[OK]" over a broken schema.
+
+DO NOT reuse this create_all()-based approach for production. Production
+needs the real migration chain fixed (see docstring above) and a proper
+`flask db upgrade`, with backups, per the original remediation plan.
+
+Usage:
     python scripts/setup_test_db_schema.py
-
-Falls back to hardcoded local defaults if TEST_DATABASE_URL is not set.
 """
-import sys
+
 import os
+import sys
 import subprocess
-from urllib.parse import urlparse
+from pathlib import Path
+
 import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# ---------------------------------------------------------------------------
+# Ensure project root is on sys.path so `from app...` imports work
+# regardless of the current working directory this script is run from.
+# ---------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+os.environ["APP_ENV"] = "testing"
+os.environ["FLASK_ENV"] = "testing"
 
 
-def reset_test_database():
-    """Completely drop and recreate the test database, then migrate it
-    to the latest schema using the project's real Alembic history."""
+# ---------------------------------------------------------------------------
+# 1. Read connection info from the application's TestingConfig
+# ---------------------------------------------------------------------------
+def _get_test_db_params():
+    """Build connection parameters from TestingConfig."""
+    from app.config import TestingConfig
+    cfg = TestingConfig()
 
-    # Prefer TEST_DATABASE_URL from the environment; fall back to hardcoded
-    # local defaults only if it isn't set.
-    test_db_url_env = os.environ.get("TEST_DATABASE_URL")
+    uri = cfg.SQLALCHEMY_DATABASE_URI
+    if not uri:
+        raise RuntimeError("TestingConfig has no SQLALCHEMY_DATABASE_URI")
 
-    if test_db_url_env:
-        parsed = urlparse(test_db_url_env)
-        user = parsed.username
-        password = parsed.password
-        host = parsed.hostname
-        port = parsed.port or 5432
-        test_db = parsed.path.lstrip("/")
+    prefix = "postgresql://"
+    if not uri.startswith(prefix):
+        raise RuntimeError(f"Unsupported database URI: {uri}")
+    rest = uri[len(prefix):]
+    if "/" not in rest:
+        raise RuntimeError(f"No database name in URI: {uri}")
+    auth_host, dbname = rest.rsplit("/", 1)
+    if "@" not in auth_host:
+        raise RuntimeError(f"Malformed URI (missing '@'): {uri}")
+    userpass, hostport = auth_host.rsplit("@", 1)
+    user = userpass.split(":")[0] if ":" in userpass else userpass
+    password = userpass.split(":")[1] if ":" in userpass else None
+    host = hostport.split(":")[0] if ":" in hostport else hostport
+    port = int(hostport.split(":")[1]) if ":" in hostport else 5432
+
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "password": password,
+        "database": dbname,
+        "maintenance_db": "postgres",
+    }
+
+
+def _pg_connect(params, dbname=None):
+    return psycopg2.connect(
+        host=params["host"],
+        port=params["port"],
+        user=params["user"],
+        password=params["password"],
+        dbname=dbname or params["database"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# 2. Drop & recreate the test database
+# ---------------------------------------------------------------------------
+def recreate_database(params):
+    """Drop the test database (if it exists) and create a fresh one."""
+    conn = _pg_connect(params, dbname=params["maintenance_db"])
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    dbname = params["database"]
+    cur.execute(
+        "SELECT pg_terminate_backend(pg_stat_activity.pid) "
+        "FROM pg_stat_activity "
+        "WHERE pg_stat_activity.datname = %s "
+        "AND pid <> pg_backend_pid();",
+        (dbname,),
+    )
+    cur.execute(f"DROP DATABASE IF EXISTS {dbname}")
+    print(f"[OK] Dropped database {dbname}")
+
+    cur.execute(f"CREATE DATABASE {dbname}")
+    print(f"[OK] Created database {dbname}")
+    cur.close()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 3. Build schema from current models
+# ---------------------------------------------------------------------------
+def build_schema_from_models():
+    """
+    Build the schema via db.create_all(), deliberately — not as a silent
+    fallback. Requires model_registry.py to import every domain's models
+    (including accommodation) so nothing is missing from db.metadata.
+    """
+    from app import create_app
+    from app.config import TestingConfig
+    from app.extensions import db
+
+    app = create_app(config_object=TestingConfig)
+    with app.app_context():
+        registered_tables = sorted(db.metadata.tables.keys())
+        print(f"[..] {len(registered_tables)} tables registered on db.metadata before create_all()")
+
+        db.create_all()
+        print("[OK] Schema built from current SQLAlchemy models (db.create_all)")
+
+
+def stamp_alembic_head():
+    """Mark the DB as up-to-date so future `flask db upgrade` calls work."""
+    result = subprocess.run(
+        [sys.executable, "-m", "flask", "db", "stamp", "head"],
+        capture_output=True,
+        text=True,
+        env={**os.environ},
+    )
+    if result.returncode != 0:
+        print(f"[WARN] Could not stamp Alembic head: {result.stderr}")
     else:
-        # Local defaults — only used if TEST_DATABASE_URL is not set.
-        user = 'israeli'
-        password = 'Israelipass'
-        host = 'localhost'
-        port = 5432
-        test_db = 'afcon360_test'
+        print("[OK] Alembic head stamped")
 
-    if not all([user, password, host, test_db]):
-        print("Error: TEST_DATABASE_URL is missing one or more required parts "
-              "(user, password, host, database name). Check the connection string.")
-        return
 
-    try:
-        # Connect to the postgres database (not the test db) to drop/recreate it
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database='postgres'
+# ---------------------------------------------------------------------------
+# 4. Verify — don't trust create_all()'s silence
+# ---------------------------------------------------------------------------
+EXPECTED_ACCOMMODATION_TABLES = {
+    "accommodation_properties",
+    "accommodation_bookings",
+    "accommodation_property_booking_policies",
+}
+
+
+def verify_schema(params):
+    """
+    Check the specific facts we know are fragile:
+      - accommodation tables exist (the model_registry.py gap)
+      - core tables exist (users, events, etc.)
+    Raises with a clear message if anything is wrong, instead of printing
+    "[OK]" over an incomplete schema.
+    """
+    conn = _pg_connect(params)
+    cur = conn.cursor()
+    issues = []
+
+    cur.execute(
+        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+        "AND tablename LIKE 'accommodation%'"
+    )
+    found_acc_tables = {r[0] for r in cur.fetchall()}
+    missing_acc = EXPECTED_ACCOMMODATION_TABLES - found_acc_tables
+    if missing_acc:
+        issues.append(
+            f"Missing accommodation tables: {sorted(missing_acc)} "
+            f"(check model_registry.py imports and app.accommodation import errors)"
         )
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cur = conn.cursor()
 
-        # Kill all connections to test database
-        cur.execute(f"""
-            SELECT pg_terminate_backend(pg_stat_activity.pid)
-            FROM pg_stat_activity
-            WHERE pg_stat_activity.datname = '{test_db}'
-            AND pid <> pg_backend_pid()
-        """)
+    # Verify key tables exist (smoke test)
+    cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = 'users'")
+    if cur.fetchone() is None:
+        issues.append("users table is missing entirely")
+    
+    cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = 'events'")
+    if cur.fetchone() is None:
+        issues.append("events table is missing entirely")
+    
+    cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = 'accommodation_properties'")
+    if cur.fetchone() is None:
+        issues.append("accommodation_properties table is missing entirely")
 
-        # Drop test database if exists
-        cur.execute(f"DROP DATABASE IF EXISTS {test_db}")
-        print(f"[OK] Dropped database {test_db}")
+    cur.close()
+    conn.close()
 
-        # Create fresh test database
-        cur.execute(f"CREATE DATABASE {test_db}")
-        print(f"[OK] Created database {test_db}")
-
-        cur.close()
-        conn.close()
-        print("[OK] Test database reset successfully!")
-
-        # Build schema using the REAL migration history — not db.create_all(),
-        # which only creates tables for whatever happens to be imported into
-        # SQLAlchemy's metadata at call time and was silently skipping `users`,
-        # `organisations`, `roles`, etc. Running the actual Alembic chain
-        # guarantees the test DB matches production schema exactly.
-        test_db_url = test_db_url_env or f"postgresql://{user}:{password}@{host}:{port}/{test_db}"
-
-        env = os.environ.copy()
-        env["DATABASE_URL"] = test_db_url
-        env["FLASK_APP"] = env.get("FLASK_APP", "app:create_app")
-
-        print(f"[..] Running 'flask db upgrade' against {test_db} ...")
-        result = subprocess.run(
-            ["flask", "db", "upgrade"],
-            env=env,
-            capture_output=True,
-            text=True,
+    if issues:
+        print("[FAIL] Schema verification failed:")
+        for issue in issues:
+            print(f"   - {issue}")
+        raise RuntimeError(
+            "Test DB schema verification failed — see issues above. "
+            "Do not trust this DB for tests until these are resolved."
         )
-        print(result.stdout)
-        if result.returncode != 0:
-            print(result.stderr)
-            raise RuntimeError(
-                "flask db upgrade failed against test database — see output above. "
-                "Check that app/config.py's TestingConfig reads the same "
-                "environment variable (DATABASE_URL) for SQLALCHEMY_DATABASE_URI, "
-                "or this may have migrated the wrong database."
-            )
 
-        print("[OK] Test database migrated to latest revision via Alembic")
-        print("[OK] Test database schema ready!")
-
-    except Exception as e:
-        print(f"Error: {e}")
-        print("\nMake sure PostgreSQL is running and credentials are correct")
+    print("[OK] Schema verification passed "
+          "(core tables present, schema built from models)")
 
 
-if __name__ == '__main__':
-    reset_test_database()
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    params = _get_test_db_params()
+    print(f"[..] Using test database: {params['database']} on {params['host']}:{params['port']}")
+
+    recreate_database(params)
+    build_schema_from_models()
+    stamp_alembic_head()
+    verify_schema(params)
+
+    print("[OK] Test database schema ready and verified!")

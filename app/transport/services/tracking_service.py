@@ -66,7 +66,7 @@ class TrackingService:
 
             # Update database if entity is driver
             if entity_type == 'driver':
-                driver = DriverProfile.query.get(entity_id)
+                driver = db.session.get(DriverProfile, entity_id)
                 if driver:
                     driver.last_location = location_update
                     driver.location_updated_at = datetime.now(timezone.utc)
@@ -125,7 +125,7 @@ class TrackingService:
             else:
                 # Fallback to database
                 if entity_type == 'driver':
-                    driver = DriverProfile.query.get(entity_id)
+                    driver = db.session.get(DriverProfile, entity_id)
                     if driver and driver.last_location:
                         location_data = driver.last_location
                         source = 'database'
@@ -172,7 +172,7 @@ class TrackingService:
     def track_booking(booking_id: int) -> Dict[str, Any]:
         """Get tracking information for a booking"""
         try:
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError(
                     message="Booking not found",
@@ -343,3 +343,4 @@ def get_tracking_service():
             if _tracking_service_instance is None:
                 _tracking_service_instance = TrackingService()
     return _tracking_service_instance
+

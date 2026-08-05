@@ -1,7 +1,7 @@
 # app/identity/models/licence_document.py
 from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Date, ForeignKey, Enum, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
 
@@ -49,7 +49,7 @@ class OrganisationDocument(BaseModel):
         nullable=False
     )
 
-    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     verified_at = Column(DateTime)
     expires_at = Column(Date)
 
@@ -85,6 +85,7 @@ class OrganisationAuditLog(BaseModel):
     context = Column(JSON)
 
     changed_by = Column(BigInteger, ForeignKey("users.id"))
-    changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     organisation = relationship("Organisation", back_populates="audit_logs")
+

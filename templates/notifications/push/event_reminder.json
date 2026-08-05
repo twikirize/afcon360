@@ -1,0 +1,10 @@
+{
+  "title": "Event Reminder - AFCON360",
+  "body": "Reminder: {{ event_name }} starts in {{ time_remaining }}",
+  "click_action": "/events/registrations/{{ reference_id }}",
+  "data": {
+    "type": "event_reminder",
+    "event_name": "{{ event_name }}",
+    "time_remaining": "{{ time_remaining }}"
+  }
+}

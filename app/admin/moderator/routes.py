@@ -698,7 +698,7 @@ def bulk_submission_action():
 
     count = 0
     for sid in ids:
-        s = ContentSubmission.query.get(sid)
+        s = db.session.get(ContentSubmission, sid)
         if s and s.status == 'pending':
             s.status      = valid_actions[action]
             s.reviewed_by = current_user.id
@@ -1009,7 +1009,7 @@ def bulk_flag_action():
 
     count = 0
     for fid in flag_ids:
-        flag = ContentFlag.query.get(fid)
+        flag = db.session.get(ContentFlag, fid)
         if not flag or flag.status not in ('open', 'in_review'):
             continue
         if action in ('resolve', 'close'):
@@ -1314,7 +1314,7 @@ def bulk_user_action():
     for uid in user_ids:
         if uid == current_user.id:
             continue
-        u = User.query.get(uid)
+        u = db.session.get(User, uid)
         if not u:
             continue
         if action == 'suspend':
@@ -3547,4 +3547,5 @@ def transport_third_party_applications():
         applications=applications,
         title="Third-Party Applications"
     )
+
 

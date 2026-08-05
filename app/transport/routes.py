@@ -261,7 +261,7 @@ def bookings_show(id):
     try:
         # Get booking model with ownership check
         from app.transport.models import Booking
-        booking_model = Booking.query.get(id)
+        booking_model = db.session.get(Booking, id)
 
         if not booking_model:
             if request.is_json:
@@ -295,7 +295,7 @@ def bookings_show(id):
 def bookings_edit(id):
     """Edit a booking"""
     # Check ownership first
-    booking_model = Booking.query.get(id)
+    booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
     _require_ownership(booking_model, "customer_id")
@@ -310,7 +310,7 @@ def bookings_edit(id):
 def bookings_timeline(id):
     """Booking event timeline"""
     # Check ownership first
-    booking_model = Booking.query.get(id)
+    booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
     _require_ownership(booking_model, "customer_id")
@@ -325,7 +325,7 @@ def bookings_timeline(id):
 def bookings_payments(id):
     """Booking payment details"""
     # Check ownership first
-    booking_model = Booking.query.get(id)
+    booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
     _require_ownership(booking_model, "customer_id")
@@ -401,7 +401,7 @@ def drivers_show(id):
     """View driver profile"""
     try:
         # Get driver model with ownership check
-        driver_model = DriverProfile.query.get(id)
+        driver_model = db.session.get(DriverProfile, id)
 
         if not driver_model:
             if request.is_json:
@@ -574,7 +574,7 @@ def vehicles_show(id):
     """View vehicle details"""
     try:
         # Get vehicle model with ownership check
-        vehicle_model = Vehicle.query.get(id)
+        vehicle_model = db.session.get(Vehicle, id)
 
         if not vehicle_model:
             if request.is_json:
@@ -1431,3 +1431,4 @@ def moderate_action(entity_type, id, action):
             flash(f'Failed to flag: {flag}', 'danger')
     
     return redirect(url_for('transport.moderate'))
+

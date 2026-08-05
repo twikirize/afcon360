@@ -7,7 +7,7 @@ can view the complete creation timeline in the financial account lookup.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, DateTime, ForeignKey, Index, Text, BigInteger
 )
@@ -90,7 +90,7 @@ class WalletCreationEventModel(db.Model):
     # Timestamps
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=db.func.now(),
         nullable=False
     )

@@ -66,7 +66,7 @@ def api_accommodation_attendees(slug):
         if assignment:
             if assignment.accommodation_booking_id:
                 has_accommodation = True
-                booking = AccommodationBooking.query.get(assignment.accommodation_booking_id)
+                booking = db.session.get(AccommodationBooking, assignment.accommodation_booking_id)
                 if booking and booking.accommodation_property:
                     assigned_to = {
                         'type': 'hotel',
@@ -76,7 +76,7 @@ def api_accommodation_attendees(slug):
                     }
             elif assignment.community_host_id:
                 has_accommodation = True
-                host = Property.query.get(assignment.community_host_id)
+                host = db.session.get(Property, assignment.community_host_id)
                 if host:
                     assigned_to = {
                         'type': 'community_host',
@@ -217,7 +217,7 @@ def api_accommodation_assign(slug):
         
         # Verify inventory item exists and is available
         if inventory_type == 'hotel':
-            booking = AccommodationBooking.query.get(inventory_id)
+            booking = db.session.get(AccommodationBooking, inventory_id)
             if not booking:
                 return jsonify({'success': False, 'error': 'Hotel booking not found'}), 404
             
@@ -230,7 +230,7 @@ def api_accommodation_assign(slug):
                 return jsonify({'success': False, 'error': 'This room is already assigned to another attendee'}), 400
             
         elif inventory_type == 'community_host':
-            host = Property.query.get(inventory_id)
+            host = db.session.get(Property, inventory_id)
             if not host or host.property_type != AccommodationPropertyType.COMMUNITY_HOST:
                 return jsonify({'success': False, 'error': 'Community host not found'}), 404
             
@@ -487,3 +487,4 @@ def api_accommodation_bulk_assign_template(slug):
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename=bulk_assign_template_{slug}.csv"}
     )
+

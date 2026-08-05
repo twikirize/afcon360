@@ -5,7 +5,7 @@ Implements strong password requirements with validation and expiration.
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Tuple
 from flask import current_app
 from werkzeug.security import generate_password_hash
@@ -94,7 +94,7 @@ class PasswordPolicy:
         if not user.password_changed_at:
             return True, 0
         
-        days_since_change = (datetime.utcnow() - user.password_changed_at).days
+        days_since_change = (datetime.now(timezone.utc) - user.password_changed_at).days
         days_until_expiration = self.max_age_days - days_since_change
         
         return days_since_change >= self.max_age_days, days_until_expiration
@@ -138,7 +138,7 @@ def enforce_password_policy(f):
             from app.identity.models.user import User
             from app.auth.password_policy import PasswordPolicy
             
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if user:
                 policy = PasswordPolicy()
                 is_expired, days_left = policy.check_password_expiration(user)
@@ -152,3 +152,4 @@ def enforce_password_policy(f):
         return f(*args, **kwargs)
     
     return decorated_function
+

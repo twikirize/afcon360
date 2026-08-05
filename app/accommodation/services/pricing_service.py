@@ -7,6 +7,7 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Optional
 from app.accommodation.models.property import Property
+from app.utils.money import money
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class PricingService:
     @staticmethod
     def _money(value) -> Decimal:
         """Normalize values to two-decimal Decimal money amounts."""
-        return Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return money(value)
 
     @staticmethod
     def _percentage(value) -> Decimal:
@@ -55,7 +56,7 @@ class PricingService:
 
         if room_type_id:
             from app.accommodation.models.room import RoomType
-            room_type = RoomType.query.get(room_type_id)
+            room_type = db.session.get(RoomType, room_type_id)
             if not room_type or room_type.property_id != property.id:
                 raise ValueError("Room type not found or does not belong to this property")
             nightly_rate = PricingService._money(room_type.base_price_per_night)
@@ -177,3 +178,4 @@ class PricingService:
                 'policy': 'super_strict',
                 'explanation': 'Non-refundable booking'
             }
+

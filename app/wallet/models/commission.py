@@ -13,13 +13,13 @@ class AgentCommission(BaseModel):
     __tablename__ = 'agent_commissions'
 
     commission_ref = Column(String(64), unique=True, nullable=False)
-    agent_id = Column(BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    agent_id = Column(BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     amount = Column(Numeric(18, 6), nullable=False)
     currency = Column(String(10), nullable=False)
     source_type = Column(String(30), nullable=False)
     source_id = Column(String(64), nullable=False)
     recipient_id = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-    status = Column(String(20), nullable=False, default='pending', index=True)
+    status = Column(String(20), nullable=False, default='pending')
     paid_at = Column(DateTime(timezone=True), nullable=True)
     paid_by = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     extra_data = Column(db.JSON, nullable=True, default=dict)

@@ -17,7 +17,7 @@ class EventMetricsService:
     def get_event_metrics(event_id: int, days: int = 30) -> Dict:
         """Get comprehensive metrics for a specific event"""
         try:
-            event = Event.query.get(event_id)
+            event = db.session.get(Event, event_id)
             if not event:
                 return {"error": "Event not found"}
 
@@ -330,3 +330,4 @@ class EventMetricsService:
         except Exception as e:
             logger.error(f"Error getting revenue metrics: {e}")
             return {"error": str(e)}
+

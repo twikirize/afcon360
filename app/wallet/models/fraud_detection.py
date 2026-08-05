@@ -3,7 +3,7 @@ Fraud Detection Model
 Configuration for ML-based fraud detection and transaction scoring
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float, Index, BigInteger
 from app.extensions import db
 
@@ -21,7 +21,7 @@ class FraudDetectionConfig(db.Model):
     id = Column(BigInteger, primary_key=True)
     
     # General settings
-    enabled = Column(Boolean, default=False, nullable=False, index=True)
+    enabled = Column(Boolean, default=False, nullable=False, )
     algorithm_type = Column(String(50), default='rule_based')  # rule_based, ml_based, hybrid
     
     # Scoring thresholds
@@ -62,8 +62,8 @@ class FraudDetectionConfig(db.Model):
     
     # Metadata
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
@@ -100,3 +100,4 @@ class FraudDetectionConfig(db.Model):
     
     def __repr__(self):
         return f"<FraudDetectionConfig {self.id}: {self.algorithm_type} (enabled={self.enabled})>"
+

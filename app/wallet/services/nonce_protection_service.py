@@ -4,7 +4,7 @@ Manages user-specific nonce counters to prevent transaction replay attacks
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 from flask import current_app
 
@@ -114,7 +114,7 @@ class NonceProtectionService:
             nonce = str(uuid.uuid4())
             
             # Calculate expiration
-            expires_at = datetime.utcnow() + timedelta(minutes=config.nonce_ttl_minutes)
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=config.nonce_ttl_minutes)
             
             # Create nonce record
             user_nonce = UserNonce(
@@ -197,7 +197,7 @@ class NonceProtectionService:
                 }
             
             # Check expiration
-            if datetime.utcnow() > user_nonce.expires_at:
+            if datetime.now(timezone.utc) > user_nonce.expires_at:
                 return {
                     'valid': False,
                     'reason': 'Nonce expired',
@@ -222,7 +222,7 @@ class NonceProtectionService:
             
             # Mark nonce as used
             user_nonce.used = True
-            user_nonce.used_at = datetime.utcnow()
+            user_nonce.used_at = datetime.now(timezone.utc)
             db.session.commit()
             
             return {
@@ -275,11 +275,11 @@ class NonceProtectionService:
         """
         try:
             expired_count = UserNonce.query.filter(
-                UserNonce.expires_at < datetime.utcnow()
+                UserNonce.expires_at < datetime.now(timezone.utc)
             ).count()
             
             UserNonce.query.filter(
-                UserNonce.expires_at < datetime.utcnow()
+                UserNonce.expires_at < datetime.now(timezone.utc)
             ).delete()
             
             db.session.commit()
@@ -294,7 +294,7 @@ class NonceProtectionService:
     def _check_rate_limits(user_id: int, user_type: str, config: NonceProtectionConfig) -> None:
         """Check if user has exceeded rate limits"""
         try:
-            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
             
             # Get appropriate rate limit based on user type
             if user_type == 'aggregator':
@@ -313,3 +313,4 @@ class NonceProtectionService:
                 raise ValueError(f"Rate limit exceeded: {nonce_count}/{max_nonces} nonces per hour")
         except Exception as e:
             raise e
+

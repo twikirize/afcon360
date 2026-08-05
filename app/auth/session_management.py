@@ -4,7 +4,7 @@ Session Management with Timeout and Security
 Implements secure session handling with timeout, rotation, and invalidation.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 from flask import session, current_app, request, abort
 from flask_login import current_user
@@ -42,7 +42,7 @@ class SessionManager:
         if 'session_created_at' not in session:
             return True
         
-        session_age = datetime.utcnow() - datetime.fromisoformat(session['session_created_at'])
+        session_age = datetime.now(timezone.utc) - datetime.fromisoformat(session['session_created_at'])
         timeout_minutes = current_app.config.get('SESSION_TIMEOUT_MINUTES', self.default_timeout_minutes)
         
         return session_age.total_seconds() > (timeout_minutes * 60)
@@ -53,7 +53,7 @@ class SessionManager:
             return True
         
         last_rotation = datetime.fromisoformat(session['last_rotation'])
-        rotation_age = datetime.utcnow() - last_rotation
+        rotation_age = datetime.now(timezone.utc) - last_rotation
         
         return rotation_age.total_seconds() > (self.session_rotation_interval * 60)
     
@@ -76,8 +76,8 @@ class SessionManager:
             if key not in ['session_created_at', 'last_rotation', 'session_id']:
                 session[key] = value
         
-        session['session_created_at'] = datetime.utcnow().isoformat()
-        session['last_rotation'] = datetime.utcnow().isoformat()
+        session['session_created_at'] = datetime.now(timezone.utc).isoformat()
+        session['last_rotation'] = datetime.now(timezone.utc).isoformat()
         session['session_id'] = str(uuid.uuid4())
     
     def create_secure_session(self, user, remember_me: bool = False):
@@ -85,8 +85,8 @@ class SessionManager:
         session.clear()
         
         # Session metadata
-        session['session_created_at'] = datetime.utcnow().isoformat()
-        session['last_rotation'] = datetime.utcnow().isoformat()
+        session['session_created_at'] = datetime.now(timezone.utc).isoformat()
+        session['last_rotation'] = datetime.now(timezone.utc).isoformat()
         session['session_id'] = str(uuid.uuid4())
         session['user_agent_hash'] = self._hash_user_agent()
         session['ip_address'] = request.remote_addr
@@ -141,7 +141,7 @@ class SessionManager:
         if 'session_created_at' not in session:
             return {'expired': True, 'remaining_seconds': 0}
         
-        session_age = datetime.utcnow() - datetime.fromisoformat(session['session_created_at'])
+        session_age = datetime.now(timezone.utc) - datetime.fromisoformat(session['session_created_at'])
         timeout_seconds = session.get('timeout_minutes', self.default_timeout_minutes) * 60
         remaining_seconds = timeout_seconds - session_age.total_seconds()
         
@@ -220,3 +220,4 @@ def check_session_timeout():
         session['session_expires_in'] = session_info['remaining_seconds']
     
     return True
+

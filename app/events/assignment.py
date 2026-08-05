@@ -1,4 +1,4 @@
-﻿#app/events/routes/assignment.py
+#app/events/routes/assignment.py
 """Event Assignment Routes - Accommodation & Transport Management
 Integrates with EXISTING infrastructure:
 - EventAssignment model (accommodation_booking_id, transport_booking_id)
@@ -428,12 +428,12 @@ def export_assignments(event_id):
         accom_ref = ''
         if accom_booking_id:
             from app.accommodation.models.booking import AccommodationBooking
-            accom = AccommodationBooking.query.get(accom_booking_id)
+            accom = db.session.get(AccommodationBooking, accom_booking_id)
             accom_ref = accom.booking_reference if accom else ''
 
         transport_ref = ''
         if transport_booking_id:
-            transport = Booking.query.get(transport_booking_id)
+            transport = db.session.get(Booking, transport_booking_id)
             transport_ref = transport.booking_reference if transport else ''
 
         writer.writerow([
@@ -452,4 +452,5 @@ def export_assignments(event_id):
     response.headers['Content-Disposition'] = f'attachment; filename=event_{event_id}_assignments.csv'
     response.headers['Content-Type'] = 'text/csv'
     return response
+
 

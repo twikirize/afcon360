@@ -1,7 +1,7 @@
 # app/identity/models/compliance_audit_log.py
 from sqlalchemy import Column, BigInteger, String, DateTime, Enum, ForeignKey, JSON, Integer
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
 
@@ -36,6 +36,7 @@ class ComplianceAuditLog(BaseModel):
 
     # Who made the decision (system, admin, user)
     decided_by = Column(BigInteger, ForeignKey("users.id"))
-    decided_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    decided_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     reviewer = relationship("User", foreign_keys=[decided_by])
+

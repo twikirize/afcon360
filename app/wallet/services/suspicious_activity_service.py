@@ -6,7 +6,7 @@ notifies users and admins of potentially fraudulent activity.
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from flask import current_app
 from flask_login import current_user
@@ -98,7 +98,7 @@ class SuspiciousActivityService:
     @classmethod
     def _get_average_transaction_amount(cls, user_id: int, currency: str) -> Decimal:
         """Get average transaction amount for user in currency."""
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         
         result = db.session.query(
             db.func.avg(TransactionModel.amount)
@@ -133,7 +133,7 @@ class SuspiciousActivityService:
     @classmethod
     def _get_recent_transaction_count(cls, user_id: int, minutes: int = 5) -> int:
         """Count recent transactions within time window."""
-        window_start = datetime.utcnow() - timedelta(minutes=minutes)
+        window_start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         
         return db.session.query(TransactionModel).filter(
             TransactionModel.user_id == user_id,
@@ -143,7 +143,7 @@ class SuspiciousActivityService:
     @classmethod
     def _get_hourly_volume(cls, user_id: int, currency: str) -> Decimal:
         """Get transaction volume in the last hour."""
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
         
         result = db.session.query(
             db.func.sum(TransactionModel.amount)
@@ -162,7 +162,7 @@ class SuspiciousActivityService:
         recent = db.session.query(AuditLogModel).filter(
             AuditLogModel.actor_id == user_id,
             AuditLogModel.ip_address == ip_address,
-            AuditLogModel.created_at >= datetime.utcnow() - timedelta(days=30)
+            AuditLogModel.created_at >= datetime.now(timezone.utc) - timedelta(days=30)
         ).first()
         
         return recent is None
@@ -170,13 +170,13 @@ class SuspiciousActivityService:
     @classmethod
     def _is_off_hours(cls) -> bool:
         """Check if current time is off-hours (simplified: 12AM-5AM)."""
-        hour = datetime.utcnow().hour
+        hour = datetime.now(timezone.utc).hour
         return hour >= 0 and hour < 5
 
     @classmethod
     def _get_user_kyc_level(cls, user_id: int) -> int:
         """Get user's KYC level."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         return getattr(user, 'kyc_level', 0) or 0
 
     @classmethod
@@ -251,3 +251,4 @@ class SuspiciousActivityService:
             return query.order_by(FraudAlert.created_at.desc()).all()
         except Exception:
             return []
+

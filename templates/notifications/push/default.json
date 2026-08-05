@@ -1,0 +1,9 @@
+{
+  "title": "AFCON360 Notification",
+  "body": "{{ title }}: {{ message }}",
+  "click_action": "{{ link }}",
+  "data": {
+    "type": "notification",
+    "title": "{{ title }}"
+  }
+}

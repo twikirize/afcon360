@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Payment Receipt</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #fcd116;">
+    <h2 style="color: #1e293b; margin-top: 0;">Payment Receipt & Ledger Confirmation</h2>
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>We have credited your AFCON360 Fan Wallet with <strong>UGX {{ amount }}</strong>.</p>
+    <p><strong>Payment Method:</strong> {{ payment_method }}</p>
+    <p><strong>Transaction Ref:</strong> <code>{{ tx_ref }}</code></p>
+    <p><strong>New Ledger Balance:</strong> UGX {{ new_balance }}</p>
+  </div>
+</body>
+</html>

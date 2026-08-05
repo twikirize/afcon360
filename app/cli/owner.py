@@ -119,10 +119,10 @@ def register_owner_commands(app):
                 Panel(
                     "[yellow]⚠️  An owner is already assigned:[/yellow]\n\n"
                     + "\n".join(
-                        f"  👑  {User.query.get(ur.user_id).username}  "
-                        f"({User.query.get(ur.user_id).email})"
+                        f"  👑  {db.session.get(User, ur.user_id).username}  "
+                        f"({db.session.get(User, ur.user_id).email})"
                         for ur in existing
-                        if User.query.get(ur.user_id)
+                        if db.session.get(User, ur.user_id)
                     )
                     + "\n\n[dim]Use --force to add another owner.[/dim]",
                     title="Owner already exists",
@@ -205,7 +205,7 @@ def _list_current_owners(db, Role, User, UserRole):
     table.add_column("Verified")
 
     for ur in assignments:
-        u = User.query.get(ur.user_id)
+        u = db.session.get(User, ur.user_id)
         if u:
             table.add_row(
                 str(u.id),
@@ -217,3 +217,4 @@ def _list_current_owners(db, Role, User, UserRole):
 
     console.print(table)
     console.print(f"\n[dim]Role: owner (id={owner_role.id}, scope=global, level={owner_role.level})[/dim]")
+

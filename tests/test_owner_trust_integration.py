@@ -24,7 +24,7 @@ def test_owner_trust_integration():
         
         # 2. Test trust service integration
         from app.identity.models.user import User
-        test_user = User.query.get(2)
+        test_user = db.session.get(User, 2)
         if test_user:
             trust_level = EventTrustService.calculate_trust_level(test_user)
             should_auto, reason = EventTrustService.should_auto_publish(test_user, trust_level)
@@ -55,3 +55,4 @@ def test_owner_trust_integration():
 
 if __name__ == "__main__":
     test_owner_trust_integration()
+

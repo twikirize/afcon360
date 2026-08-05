@@ -1,0 +1,9 @@
+{
+  "title": "Booking Confirmed - AFCON360",
+  "body": "Your reservation for {{ item_name }} (Ref: {{ reference_id }}) is confirmed!",
+  "click_action": "/dashboard",
+  "data": {
+    "booking_ref": "{{ reference_id }}",
+    "total_ugx": "{{ total_ugx }}"
+  }
+}

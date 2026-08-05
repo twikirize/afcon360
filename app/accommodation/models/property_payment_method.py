@@ -33,7 +33,7 @@ class PropertyPaymentMethod(BaseModel):
     )
     property = relationship("Property", back_populates="payment_methods")
 
-    wallet_method_id = Column(BigInteger, nullable=False, index=True)
+    wallet_method_id = Column(BigInteger, nullable=False, )
     enabled = Column(Boolean, default=True)
 
     def __repr__(self):

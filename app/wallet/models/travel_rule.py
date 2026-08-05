@@ -3,7 +3,7 @@ Travel Rule Compliance Model
 FATF Travel Rule implementation for crypto/fiat transfers
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column,BigInteger, Integer, String, Boolean, DateTime, Text, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from app.extensions import db
@@ -22,7 +22,7 @@ class TravelRuleConfig(db.Model):
     id = Column(BigInteger, primary_key=True)
     
     # General settings
-    enabled = Column(Boolean, default=False, nullable=False, index=True)
+    enabled = Column(Boolean, default=False, nullable=False)
     
     # Thresholds
     fiat_threshold_usd = Column(Integer, default=1000)  # USD threshold for fiat transfers
@@ -52,8 +52,8 @@ class TravelRuleConfig(db.Model):
     
     # Metadata
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
@@ -97,7 +97,7 @@ class TravelRuleTransfer(db.Model):
     id = Column(BigInteger, primary_key=True)
     
     # Transaction reference
-    transaction_id = Column(UUID(as_uuid=True), ForeignKey('transactions.id'), nullable=False, index=True)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey('transactions.id'), nullable=False)
     
     # Originator information
     originator_name = Column(String(255), nullable=True)
@@ -137,8 +137,8 @@ class TravelRuleTransfer(db.Model):
     vasp_reported_at = Column(DateTime(timezone=True), nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
@@ -176,3 +176,4 @@ class TravelRuleTransfer(db.Model):
     
     def __repr__(self):
         return f"<TravelRuleTransfer {self.id}: {self.currency} {self.amount} ({self.status})>"
+

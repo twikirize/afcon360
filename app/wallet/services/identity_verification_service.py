@@ -8,7 +8,7 @@ password changes, email/phone updates, large transactions, and wallet activation
 from typing import Dict, Any, List, Optional
 from flask import current_app, session
 from flask_login import current_user
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
 from app.identity.models.user import User
@@ -56,7 +56,7 @@ class IdentityVerificationService:
         if not verified_at:
             return False
         
-        if datetime.utcnow() - verified_at > cls.SESSION_TTL:
+        if datetime.now(timezone.utc) - verified_at > cls.SESSION_TTL:
             session.pop(session_key, None)
             return False
         
@@ -70,7 +70,7 @@ class IdentityVerificationService:
             'user_id': user_id,
             'action': action_type,
             'methods_used': methods_used,
-            'verified_at': datetime.utcnow().isoformat()
+            'verified_at': datetime.now(timezone.utc).isoformat()
         }
 
     @classmethod
@@ -82,7 +82,7 @@ class IdentityVerificationService:
     @classmethod
     def verify_current_password(cls, user_id: int, password: str) -> Dict[str, Any]:
         """Verify current password."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {'success': False, 'reason': 'User not found'}
         
@@ -94,7 +94,7 @@ class IdentityVerificationService:
     @classmethod
     def verify_mfa(cls, user_id: int, mfa_code: str) -> Dict[str, Any]:
         """Verify MFA code."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {'success': False, 'reason': 'User not found'}
         
@@ -112,7 +112,7 @@ class IdentityVerificationService:
     @classmethod
     def verify_transaction_pin(cls, user_id: int, pin: str) -> Dict[str, Any]:
         """Verify transaction PIN."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {'success': False, 'reason': 'User not found'}
         
@@ -127,7 +127,7 @@ class IdentityVerificationService:
     @classmethod
     def verify_security_question(cls, user_id: int, answer: str) -> Dict[str, Any]:
         """Verify security question answer."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {'success': False, 'reason': 'User not found'}
         
@@ -143,7 +143,7 @@ class IdentityVerificationService:
     @classmethod
     def verify_email_otp(cls, user_id: int, otp_code: str) -> Dict[str, Any]:
         """Verify email OTP."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {'success': False, 'reason': 'User not found'}
         
@@ -157,7 +157,7 @@ class IdentityVerificationService:
     @classmethod
     def verify_phone_otp(cls, user_id: int, otp_code: str) -> Dict[str, Any]:
         """Verify phone OTP."""
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {'success': False, 'reason': 'User not found'}
         
@@ -216,3 +216,4 @@ class IdentityVerificationService:
             'action': action_type,
             'user_id': user_id
         }
+

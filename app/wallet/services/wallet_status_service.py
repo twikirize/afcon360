@@ -112,7 +112,7 @@ class WalletStatusService:
             owner_id = user if isinstance(user, int) else int(user)
             # Load organisation to get verification status
             from app.identity.models.organisation import Organisation
-            org = Organisation.query.get(owner_id)
+            org = db.session.get(Organisation, owner_id)
             if org:
                 org_verification_status = org.verification_status
                 # Map verification status to KYC level equivalent
@@ -371,7 +371,10 @@ class WalletStatusService:
                 "title": "KYC Verification Required",
                 "message": f"Complete KYC verification to unlock full features. Required: {', '.join(remaining)}",
                 "action": "Verify Now",
-                "action_url": "/kyc/verify"
+                # Must be an endpoint name (like the other branches), not a raw path.
+                # safe_url() cannot build a raw path and would fall back to '#',
+                # which the dashboard pane router then fetches as the current page.
+                "action_url": "kyc.index"
             }
         elif status.requires_pin_setup:
             return {
@@ -383,3 +386,4 @@ class WalletStatusService:
             }
 
         return None
+

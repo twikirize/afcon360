@@ -28,7 +28,7 @@ class RoomType(BaseModel):
         Index("idx_roomtype_active", "is_active"),
     )
 
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
     listing = relationship("Property", back_populates="room_types")
 
     # Room type identity
@@ -51,9 +51,10 @@ class RoomType(BaseModel):
     total_units = Column(Integer, nullable=False, default=1)
 
     # Status
-    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, )
 
     rooms = relationship("Room", back_populates="room_type", cascade="all, delete-orphan")
+    inventory_blocks = relationship("InventoryBlock", back_populates="room_type", cascade="all, delete-orphan")
 
     @property
     def booked_units(self) -> int:
@@ -113,12 +114,16 @@ class InventoryBlock(BaseModel):
     __table_args__ = (
         Index("idx_inv_block_range", "room_type_id", "date_range_start", "date_range_end"),
         Index("idx_inv_block_booking", "booking_id"),
+        CheckConstraint(
+            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK')",
+            name="ck_inventory_block_reason_valid"
+        ),
     )
 
-    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="CASCADE"), nullable=False)
     room_type = relationship("RoomType", back_populates="inventory_blocks")
 
-    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="SET NULL"), nullable=True, index=True)
+    booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="SET NULL"), nullable=True)
     booking = relationship("AccommodationBooking")
 
     date_range_start = Column(Date, nullable=False)
@@ -166,6 +171,10 @@ class Room(BaseModel):
     room_number = Column(String(20), nullable=False)
     floor = Column(String(20), nullable=True)
     name = Column(String(100), nullable=True)
+
+    # Whether this physical room is currently rentable at all (distinct from
+    # `status`, which tracks its current occupancy/maintenance state).
+    is_active = Column(Boolean, default=True, nullable=False, index=True, server_default='true')
 
     status = Column(String(50), nullable=False, default="available")
     is_maintenance = Column(Boolean, default=False, nullable=False)
@@ -265,8 +274,5 @@ class RoomBooking(BaseModel):
 # Relationship wiring (lazy imports to avoid circular dependencies)
 # -------------------------------
 
-from app.accommodation.models.property import Property  # noqa: E402
-
-Property.room_types = relationship("RoomType", back_populates="listing", cascade="all, delete-orphan")
-Property.rooms = relationship("Room", back_populates="listing", cascade="all, delete-orphan")
-RoomType.inventory_blocks = relationship("InventoryBlock", back_populates="room_type", cascade="all, delete-orphan")
+# Note: Property.room_types, Property.rooms, and RoomType.inventory_blocks
+# are now defined directly in their respective models to avoid circular imports.

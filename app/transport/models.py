@@ -141,13 +141,13 @@ class TimestampMixin:
     """Automatic timestamp fields"""
     created_at = db.Column(
         db.DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at = db.Column(
         db.DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     deleted_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
@@ -1039,7 +1039,7 @@ class Booking(TransportBase):
         """Generate unique booking reference"""
         import secrets
         import string
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         if not self.booking_reference:
             date_prefix = datetime.now().strftime('%y%m%d')
@@ -2329,7 +2329,7 @@ def handle_vehicle_breakdown(driver, broken_vehicle, replacement_vehicle,
 
 def get_driver_history(driver_id, days=30):
     """Get a driver's complete history for the last X days"""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone, timedelta, timezone
     from sqlalchemy import and_
 
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
@@ -2346,7 +2346,7 @@ def get_driver_history(driver_id, days=30):
 
 def get_vehicle_history(vehicle_id, days=30):
     """Get a vehicle's complete history for the last X days"""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone, timedelta, timezone
     from sqlalchemy import and_
 
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)

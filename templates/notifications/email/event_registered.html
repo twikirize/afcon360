@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Event Registered</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #7b1fa2;">
+    <h2 style="color: #7b1fa2; margin-top: 0;">AFCON360 Event Registration</h2>
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>You have successfully registered for <strong>{{ event_name }}</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Registration Ref:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ reference_id }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Event Date:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ event_date }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Venue:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ event_venue }}</td>
+      </tr>
+    </table>
+    <p style="color: #555; font-size: 14px;">We look forward to seeing you at AFCON360!</p>
+  </div>
+</body>
+</html>

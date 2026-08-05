@@ -101,7 +101,7 @@ def create_flag(user, entity_type: str, entity_id: int, reason: str, priority: s
 @transactional("Resolve content flag")
 def resolve_flag(user, flag_id: int, resolution_action: str, resolution_notes: str = None):
     from datetime import datetime, timezone
-    flag = ContentFlag.query.get(flag_id)
+    flag = db.session.get(ContentFlag, flag_id)
     if not flag:
         return False, "Flag not found"
     if flag.status == "resolved":
@@ -223,3 +223,4 @@ def get_owner_dashboard_data(user_id: int):
         "chart_labels": dates,
         "chart_data": counts
     }
+

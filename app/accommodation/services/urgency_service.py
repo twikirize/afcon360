@@ -1,5 +1,5 @@
 # OTA-grade urgency and social proof signals
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from app import db
 
 
@@ -14,7 +14,7 @@ class UrgencyService:
             # Recent confirmed bookings (last 7 days)
             recent = db.session.query(AccommodationBooking).filter(
                 AccommodationBooking.property_id == property_id,
-                AccommodationBooking.created_at >= datetime.utcnow() - timedelta(days=7),
+                AccommodationBooking.created_at >= datetime.now(timezone.utc) - timedelta(days=7),
                 AccommodationBooking.status.in_(['confirmed', 'completed'])
             ).count()
 
@@ -25,8 +25,8 @@ class UrgencyService:
             # High demand: many bookings in next 30 days
             upcoming = db.session.query(AccommodationBooking).filter(
                 AccommodationBooking.property_id == property_id,
-                AccommodationBooking.check_out_date >= datetime.utcnow().date(),
-                AccommodationBooking.check_in_date <= datetime.utcnow().date() + timedelta(days=30),
+                AccommodationBooking.check_out_date >= datetime.now(timezone.utc).date(),
+                AccommodationBooking.check_in_date <= datetime.now(timezone.utc).date() + timedelta(days=30),
                 AccommodationBooking.status.in_(['confirmed', 'pending'])
             ).count()
 
@@ -40,3 +40,4 @@ class UrgencyService:
 
 
 urgency_service = UrgencyService()
+

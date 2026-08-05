@@ -58,7 +58,7 @@ class AccommodationIdentityService:
 
         Returns: (can_host, reason)
         """
-        org = Organisation.query.get(organisation_id)
+        org = db.session.get(Organisation, organisation_id)
         if not org or org.is_deleted:
             return False, "Organisation not found or deleted"
 
@@ -99,7 +99,7 @@ class AccommodationIdentityService:
             ).first()
 
             if member:
-                org = Organisation.query.get(org_id)
+                org = db.session.get(Organisation, org_id)
                 # Check if member has transport/accommodation management permission
                 if member.has_permission("org.accommodation.manage") or member.has_permission("org.transport.manage"):
                     return {
@@ -271,7 +271,7 @@ class AccommodationIdentityService:
         try:
             if org_id:
                 # Organisation host
-                org = Organisation.query.get(org_id)
+                org = db.session.get(Organisation, org_id)
                 if not org:
                     return False, "Organisation not found", None
 
@@ -285,7 +285,7 @@ class AccommodationIdentityService:
                 }
             else:
                 # Individual host
-                user = User.query.get(user_id)
+                user = db.session.get(User, user_id)
                 if not user:
                     return False, "User not found", None
 
@@ -312,4 +312,5 @@ class AccommodationIdentityService:
             db.session.rollback()
             logger.error(f"Failed to register host: {e}", exc_info=True)
             return False, str(e), None
+
 

@@ -605,6 +605,28 @@ def dashboard():
             org_registration_config.value if org_registration_config else 'testing'
         )
 
+        # Accommodation statistics for dashboard widgets
+        unclaimed_count = 0
+        readiness_issues_count = 0
+        try:
+            from app.accommodation.models.booking import AccommodationBooking
+            from datetime import date as dt_date
+            today = dt_date.today()
+            unclaimed_count = AccommodationBooking.query.filter(
+                AccommodationBooking.booking_owner_id.is_(None),
+                AccommodationBooking.is_deleted == False,
+            ).count()
+            readiness_issues_count = AccommodationBooking.query.filter(
+                AccommodationBooking.is_deleted == False,
+                db.or_(
+                    AccommodationBooking.status != 'confirmed',
+                    AccommodationBooking.payment_status.not_in(('paid', 'partially_paid')),
+                    AccommodationBooking.check_in > today,
+                )
+            ).count()
+        except Exception as e:
+            logger.warning(f"Could not load accommodation dashboard widgets: {e}")
+
         return render_template('owner/dashboard.html',
                                # User stats
                                total_users=total_users,
@@ -656,7 +678,12 @@ def dashboard():
                                pending_events_list=pending_events_list,
 
                                # Organization registration mode
-                               org_registration_mode=org_registration_mode)
+                               org_registration_mode=org_registration_mode,
+
+                               # Accommodation dashboard widgets
+                               unclaimed_count=unclaimed_count,
+                               readiness_issues_count=readiness_issues_count,
+                               )
     except Exception as e:
         logger.error(f"Owner dashboard error: {e}")
         return render_template('owner/dashboard.html',
@@ -680,9 +707,14 @@ def dashboard():
                                pending_events=0,
                                total_registrations=0,
                                pending_events_list=[],
-                               
+
                                # Organization registration mode
-                               org_registration_mode='testing')
+                               org_registration_mode='testing',
+
+                               # Accommodation dashboard widgets
+                               unclaimed_count=0,
+                               readiness_issues_count=0,
+                               )
 
 # ============================================================================
 # Master Key: Impersonate by Role
@@ -780,7 +812,7 @@ def exit_impersonation():
         # Legacy flow fallback: if previous implementation swapped login
         original_id = session.get('original_actor_user_id') or session.get('impersonated_by')
         if original_id:
-            owner_user = User.query.get(original_id)
+            owner_user = db.session.get(User, original_id)
             if owner_user:
                 logout_user()
                 login_user(owner_user)
@@ -1376,7 +1408,7 @@ def error_logs():
         page = request.args.get('page', 1, type=int)
 
         # Query for ERROR_OCCURRED and SYSTEM_ERROR actions
-        since_date = datetime.utcnow() - timedelta(days=days)
+        since_date = datetime.now(timezone.utc) - timedelta(days=days)
         query = AuditLog.query.filter(
             AuditLog.action.in_(['ERROR_OCCURRED', 'SYSTEM_ERROR'])
         )
@@ -1442,7 +1474,7 @@ def add_super_admin():
             flash("Please select a user", "warning")
             return redirect(url_for('admin.owner.dashboard'))
 
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
@@ -1506,7 +1538,7 @@ def add_super_admin():
 def remove_super_admin(user_id):
     """Remove super admin privileges"""
     try:
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
@@ -1619,7 +1651,7 @@ def manual_kyc_upgrade(user_id):
 
         # Get user
         from app.identity.models.user import User
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.kyc_tier_management'))
@@ -2373,7 +2405,7 @@ def platform_accounts_transfer(account_id):
             flash('Invalid amount.', 'danger')
             return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
         
-        to_account = AccountModel.query.get(to_account_id)
+        to_account = db.session.get(AccountModel, to_account_id)
         if not to_account:
             flash('Destination account not found.', 'danger')
             return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
@@ -2414,3 +2446,4 @@ add_security_routes(owner_bp)
 
 # Register role management blueprint with owner blueprint
 owner_bp.register_blueprint(role_management)
+

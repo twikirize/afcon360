@@ -54,6 +54,91 @@
                             </div>
                         </div>
 
+                        <!-- Guest Requirements -->
+                        <h5 class="mb-3">Guest Requirements</h5>
+                        <div class="mb-4">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="require_guest_identity" id="require_guest_identity" class="form-check-input" {{ 'checked' if policy.require_guest_identity else '' }}>
+                                <label class="form-check-label" for="require_guest_identity">Require Guest Identity</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="require_guest_phone" id="require_guest_phone" class="form-check-input" {{ 'checked' if policy.require_guest_phone else '' }}>
+                                <label class="form-check-label" for="require_guest_phone">Require Guest Phone</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="require_guest_email" id="require_guest_email" class="form-check-input" {{ 'checked' if policy.require_guest_email else '' }}>
+                                <label class="form-check-label" for="require_guest_email">Require Guest Email</label>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Guest Verification Level</label>
+                                <select name="verification_level" class="form-select">
+                                    <option value="none" {% if policy.verification_level == 'none' %}selected{% endif %}>None - No verification required</option>
+                                    <option value="basic_identity" {% if policy.verification_level == 'basic_identity' %}selected{% endif %}>Basic Identity - Name + ID number</option>
+                                    <option value="document_upload" {% if policy.verification_level == 'document_upload' %}selected{% endif %}>Document Upload - ID scan required</option>
+                                    <option value="biometric_liveness" {% if policy.verification_level == 'biometric_liveness' %}selected{% endif %}>Biometric/Liveness - KYC provider check</option>
+                                    <option value="third_party_attestation" {% if policy.verification_level == 'third_party_attestation' %}selected{% endif %}>Third-party Attestation - External verification</option>
+                                </select>
+                                <small class="text-muted">Level of identity verification required before check-in (D-006).</small>
+                            </div>
+                        </div>
+
+                        <!-- Host-Configurable Registration Fields (D-024) -->
+                        <h5 class="mb-3">Guest Registration Requirements</h5>
+                        <div class="mb-4">
+                            <p class="text-muted small">Select the fields guests must complete during registration before check-in.</p>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="full_name" id="reg_full_name" class="form-check-input"
+                                               {{ 'checked' if 'full_name' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_full_name">Full Name</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="phone" id="reg_phone" class="form-check-input"
+                                               {{ 'checked' if 'phone' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_phone">Phone</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="email" id="reg_email" class="form-check-input"
+                                               {{ 'checked' if 'email' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_email">Email</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="id_document_type" id="reg_id_type" class="form-check-input"
+                                               {{ 'checked' if 'id_document_type' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_id_type">ID Document Type</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="id_document_number" id="reg_id_number" class="form-check-input"
+                                               {{ 'checked' if 'id_document_number' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_id_number">ID Document Number</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="date_of_birth" id="reg_dob" class="form-check-input"
+                                               {{ 'checked' if 'date_of_birth' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_dob">Date of Birth</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="required_registration_fields" value="nationality" id="reg_nationality" class="form-check-input"
+                                               {{ 'checked' if 'nationality' in (policy.required_registration_fields or []) else '' }}>
+                                        <label class="form-check-label" for="reg_nationality">Nationality</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Cancellation -->
                         <h5 class="mb-3">Cancellation Policy</h5>
                         <div class="mb-4">
@@ -137,6 +222,22 @@
                                         <input type="checkbox" name="cash_requires_verified_guest" id="cash_requires_verified_guest" class="form-check-input" {{ 'checked' if policy.cash_requires_verified_guest else '' }}>
                                         <label class="form-check-label" for="cash_requires_verified_guest">Require Verified Guest</label>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Security Deposit -->
+                        <h5 class="mb-3">Security Deposit</h5>
+                        <div class="mb-4">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="require_security_deposit" id="require_security_deposit" class="form-check-input" {{ 'checked' if policy.require_security_deposit else '' }}>
+                                <label class="form-check-label" for="require_security_deposit">Require Security Deposit</label>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Security Deposit Amount ($)</label>
+                                    <input type="number" name="security_deposit_amount" class="form-control" value="{{ policy.security_deposit_amount or 0 }}" min="0" step="0.01">
+                                    <small class="text-muted">Refundable hold for damages/incidentals (D-012).</small>
                                 </div>
                             </div>
                         </div>

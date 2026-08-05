@@ -55,6 +55,77 @@ TIER_INFO = {
 }
 
 
+# ── Shared verification-state helper ───────────────────────────────────────
+def _compute_verification_state(user_id):
+    """
+    Derive the current KYC verification stage for a user.
+
+    Returns a dict the progress tracker UI can consume directly:
+      stage          : 1 = Submitted, 2 = Processing, 3 = Verified
+      status         : not_started | processing | verified | rejected
+      progress       : 33 | 66 | 100  (fill % for the CSS connector line)
+      steps          : ordered list of step descriptors for the UI
+      message        : human-readable caption
+
+    Stage mapping:
+      1 = Submitted (pending)
+      2 = Processing (under review / manual_review)
+      3 = Verified (approved / verified)
+    Rejections hold at stage 2 and are flagged via status='rejected'.
+    """
+    records = KycService.get_user_kyc(user_id) if user_id else []
+    statuses = [r.status for r in records]
+
+    stage = 1
+    status = "not_started"
+    if "approved" in statuses or "verified" in statuses:
+        stage, status = 3, "verified"
+    elif "manual_review" in statuses or "pending" in statuses:
+        stage, status = 2, "processing"
+    elif "rejected" in statuses:
+        stage, status = 2, "rejected"
+    elif statuses:
+        stage, status = 2, "processing"
+
+    progress = {1: 33, 2: 66, 3: 100}.get(stage, 33)
+
+    # Step descriptors the UI maps onto the CSS tracker.
+    step_states = {
+        1: "completed" if status != "not_started" else "active",
+        2: ("rejected" if status == "rejected"
+            else ("active" if stage >= 2 else "upcoming")),
+        3: "completed" if stage >= 3 else "upcoming",
+    }
+    steps = [
+        {"key": "submitted", "label": "Submitted",
+         "state": step_states[1],
+         "sub": "Start" if status == "not_started" else "Pending"},
+        {"key": "processing", "label": "Processing",
+         "state": step_states[2],
+         "sub": ("Rejected" if status == "rejected"
+                 else ("In Review" if stage >= 2 else "Awaiting"))},
+        {"key": "verified", "label": "Verified",
+         "state": step_states[3],
+         "sub": "Approved" if stage >= 3 else "Pending"},
+    ]
+
+    messages = {
+        "not_started": "You have not submitted any verification documents yet.",
+        "verified": "Your identity has been successfully verified.",
+        "rejected": "Your submission was rejected. Please review the feedback and resubmit.",
+        "processing": "Your documents are being reviewed by our compliance team.",
+    }
+
+    return {
+        "stage": stage,
+        "status": status,
+        "progress": progress,
+        "steps": steps,
+        "message": messages.get(status, ""),
+        "record_count": len(records),
+    }
+
+
 # ── /kyc/ ───────────────────────────────────────────────────────────────────
 @kyc_bp.route("/", methods=["GET"])
 @login_required
@@ -65,10 +136,31 @@ def index():
     kyc_info = calculate_kyc_tier(user_id)
     records = KycService.get_user_kyc(user_id)
 
+    state = _compute_verification_state(user_id)
+
     return render_template('kyc/index.html',
                            kyc_info=kyc_info,
                            records=records,
-                           tier_requirements=TIER_INFO)
+                           tier_requirements=TIER_INFO,
+                           kyc_stage=state["stage"],
+                           overall_status=state["status"])
+
+
+# ── /kyc/api/state ──────────────────────────────────────────────────────────
+@kyc_bp.route("/api/state", methods=["GET"])
+@login_required
+def api_verification_state():
+    """
+    JSON endpoint the progress tracker UI polls to stay in sync with the
+    user's current verification state.
+    """
+    effective = RequestContext.get_effective_user()
+    user_id = effective.id if effective else None
+    state = _compute_verification_state(user_id)
+    return jsonify({
+        "user_id": current_user.public_id,   # External UUID only, never internal id
+        "verification": state,
+    })
 
 # ── /kyc/upgrade ─────────────────────────────────────────────────────────────
 @kyc_bp.route("/upgrade", methods=["GET"])

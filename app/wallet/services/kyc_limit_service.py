@@ -6,7 +6,7 @@ regulatory requirements and reduce fraud risk.
 """
 
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Tuple
 from flask import current_app
 from flask_login import current_user
@@ -81,7 +81,7 @@ class KYCLimitService:
     def get_user_kyc_level(cls, user_id: int) -> int:
         """Get effective KYC level for a user."""
         from app.identity.models.user import User
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return 0
         return getattr(user, 'kyc_level', 0) or 0
@@ -154,7 +154,7 @@ class KYCLimitService:
         Returns:
             Dict with 'allowed' (bool) and 'reason' (str if not allowed)
         """
-        account = AccountModel.query.get(account_id)
+        account = db.session.get(AccountModel, account_id)
         if not account:
             return {'allowed': False, 'reason': 'Account not found'}
         
@@ -175,10 +175,10 @@ class KYCLimitService:
         
         # Reset volume if period has elapsed
         reset_at = getattr(account, reset_column, None)
-        if reset_at and datetime.utcnow() > reset_at:
+        if reset_at and datetime.now(timezone.utc) > reset_at:
             current_volume = Decimal('0')
             setattr(account, volume_column, Decimal('0'))
-            setattr(account, reset_column, datetime.utcnow() + timedelta(days=1 if period == 'daily' else 30))
+            setattr(account, reset_column, datetime.now(timezone.utc) + timedelta(days=1 if period == 'daily' else 30))
             db.session.commit()
         
         if current_volume + amount > limit:
@@ -209,3 +209,4 @@ class KYCLimitService:
                 'deposit': limits['can_deposit']
             }
         }
+

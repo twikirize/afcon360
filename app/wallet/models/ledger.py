@@ -88,7 +88,7 @@ class LedgerEntryModel(db.Model):
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
     
     # Optional metadata for this specific leg
@@ -301,13 +301,13 @@ class AccountModel(db.Model):
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
     
     def __repr__(self):
@@ -347,3 +347,4 @@ class AccountModel(db.Model):
         self.frozen_at = None
         self.frozen_reason = None
         self.frozen_by = None
+

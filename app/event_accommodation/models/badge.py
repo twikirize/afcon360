@@ -26,8 +26,8 @@ class EventBadge(BaseModel):
         String(64), unique=True, nullable=False, index=True,
         default=lambda: str(uuid_lib.uuid4()),
     )
-    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
     badge_type = Column(String(50), nullable=False, default="community_host")
     visibility = Column(String(50), nullable=False, default="event_guests")  # event_guests, public, private
     approval_status = Column(String(30), nullable=False, default="pending")  # pending, approved, rejected

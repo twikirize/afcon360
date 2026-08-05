@@ -138,7 +138,7 @@ class Config:
     SESSION_TYPE             = "redis"
     SESSION_PERMANENT        = True
     PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
-    SESSION_USE_SIGNER       = True
+    #SESSION_USE_SIGNER       = True
     SESSION_COOKIE_HTTPONLY  = True
     SESSION_COOKIE_SAMESITE  = os.getenv("SESSION_COOKIE_SAMESITE", "Strict")
     SESSION_COOKIE_SECURE    = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"

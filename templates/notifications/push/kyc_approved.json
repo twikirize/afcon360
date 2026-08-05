@@ -1,0 +1,8 @@
+{
+  "title": "KYC Approved - AFCON360",
+  "body": "Your KYC verification has been approved. Welcome!",
+  "click_action": "/profile/kyc",
+  "data": {
+    "type": "kyc_approved"
+  }
+}

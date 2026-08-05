@@ -19,7 +19,7 @@ class GuestIdentityProfile(BaseModel):
         UniqueConstraint("user_id", name="uq_guest_identity_user"),
     )
 
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     user = relationship("User", foreign_keys=[user_id], backref="accommodation_guest_identity")
 
     # Identity documents

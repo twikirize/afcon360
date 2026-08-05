@@ -22,7 +22,7 @@ class SystemConfig(BaseModel):
     is_public = Column(Boolean, default=False)
     requires_restart = Column(Boolean, default=False)
     updated_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def __repr__(self):
         return f'<SystemConfig {self.key}={self.value}>'
@@ -104,3 +104,4 @@ class SystemConfig(BaseModel):
                 created += 1
         db.session.commit()
         return created
+

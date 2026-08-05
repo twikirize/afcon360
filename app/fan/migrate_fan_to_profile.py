@@ -9,7 +9,7 @@ Usage:
     >>> run_migration()
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 
 
@@ -49,7 +49,7 @@ def run_migration(dry_run=True):
             match_reminders=True,
             team_news=True,
             social_features_enabled=True,
-            activated_at=getattr(fan, 'created_at', datetime.utcnow()),
+            activated_at=getattr(fan, 'created_at', datetime.now(timezone.utc)),
         )
         db.session.add(profile)
         migrated += 1
@@ -63,3 +63,4 @@ def run_migration(dry_run=True):
         db.session.commit()
         print(f"\nMigration complete. Migrated: {migrated}, Skipped: {skipped}.")
         print("Verify data, then drop the old 'fans' table manually.")
+

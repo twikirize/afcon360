@@ -17,7 +17,7 @@ class EventVisibility(BaseModel):
         String(64), unique=True, nullable=False, index=True,
         default=lambda: str(uuid_lib.uuid4()),
     )
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
-    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True)  # NULL = global channel
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=True)  # NULL = global channel
     visible = Column(Boolean, default=True, nullable=False)
     discovered_by = Column(String(50), default="badge", nullable=False)  # badge, invitation, search

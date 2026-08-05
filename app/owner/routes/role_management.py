@@ -175,7 +175,7 @@ def assign_role():
             flash('User ID and role are required', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash('User not found', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
@@ -217,7 +217,7 @@ def revoke_role():
             flash('User ID is required', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash('User not found', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
@@ -349,3 +349,4 @@ def role_audit_log():
         logger.error(f"Error loading audit log: {e}")
         flash('Error loading audit log', 'danger')
         return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
+

@@ -1,0 +1,10 @@
+{
+  "title": "Booking Created - AFCON360",
+  "body": "Booking {{ reference_id }} for {{ item_name }} created. Total: UGX {{ total_ugx }}",
+  "click_action": "/accommodation/bookings/{{ reference_id }}",
+  "data": {
+    "type": "booking_created",
+    "reference_id": "{{ reference_id }}",
+    "total_ugx": "{{ total_ugx }}"
+  }
+}

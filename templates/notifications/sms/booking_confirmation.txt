@@ -1,0 +1,1 @@
+AFCON360: Booking {{ reference_id }} for {{ item_name }} confirmed! Total UGX {{ total_ugx }}. Show this SMS or your app QR pass upon check-in.

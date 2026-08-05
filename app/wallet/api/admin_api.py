@@ -216,7 +216,7 @@ def compliance_freeze_account():
         return jsonify({"error": "account_id and reason required"}), 400
     
     try:
-        account = AccountModel.query.get(account_id)
+        account = db.session.get(AccountModel, account_id)
         if not account:
             return jsonify({"error": "Account not found"}), 404
         
@@ -250,7 +250,7 @@ def compliance_thaw_account():
         return jsonify({"error": "account_id required"}), 400
     
     try:
-        account = AccountModel.query.get(account_id)
+        account = db.session.get(AccountModel, account_id)
         if not account:
             return jsonify({"error": "Account not found"}), 404
         
@@ -364,7 +364,7 @@ def admin_process_payout(req_id):
     if action not in ('approve', 'reject', 'mark_paid'):
         return jsonify({"error": "action must be one of: approve, reject, mark_paid"}), 400
 
-    payout = PayoutRequest.query.get(req_id)
+    payout = db.session.get(PayoutRequest, req_id)
     if not payout or payout.is_deleted:
         return jsonify({"error": "Payout request not found"}), 404
 
@@ -456,7 +456,7 @@ def review_fraud_alert(alert_id):
     try:
         from app.wallet.models.fraud_alert import FraudAlert, FraudAlertStatus
         
-        alert = FraudAlert.query.get(alert_id)
+        alert = db.session.get(FraudAlert, alert_id)
         if not alert:
             return jsonify({"error": "Fraud alert not found"}), 404
         
@@ -632,3 +632,4 @@ def reject_adjustment_request(request_id):
 
 
 __all__ = ['admin_api_bp']
+

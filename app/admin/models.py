@@ -176,7 +176,7 @@ class ModerationLog(BaseModel):
     submission_id = Column(BigInteger, ForeignKey("content_submissions.id"), nullable=False, index=True)
     moderator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String(20), nullable=False)  # approve | reject | claim
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     notes = Column(Text, nullable=True)
 
     # Relationships
@@ -185,3 +185,4 @@ class ModerationLog(BaseModel):
 
     def __repr__(self):
         return f"<ModerationLog {self.action} submission={self.submission_id} by moderator={self.moderator_id}>"
+

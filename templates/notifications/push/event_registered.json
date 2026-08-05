@@ -1,0 +1,10 @@
+{
+  "title": "Event Registered - AFCON360",
+  "body": "Registered for {{ event_name }} on {{ event_date }}",
+  "click_action": "/events/registrations/{{ reference_id }}",
+  "data": {
+    "type": "event_registered",
+    "event_name": "{{ event_name }}",
+    "reference_id": "{{ reference_id }}"
+  }
+}

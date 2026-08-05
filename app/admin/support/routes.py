@@ -67,7 +67,7 @@ def kyc_pending():
 def kyc_review(verification_id):
     """Review a specific KYC verification"""
     verification = IndividualVerification.query.get_or_404(verification_id)
-    user = User.query.get(verification.user_id)
+    user = db.session.get(User, verification.user_id)
     profile = get_profile_by_user(user.public_id) if user else None
 
     return render_template('admin/support/kyc_review.html',
@@ -89,7 +89,7 @@ def kyc_approve(verification_id):
     verification.verified_by = current_user.id
 
     # Also mark user as verified
-    user = User.query.get(verification.user_id)
+    user = db.session.get(User, verification.user_id)
     if user:
         user.is_verified = True
 
@@ -168,3 +168,4 @@ def support_tickets():
     # For now, return a placeholder
     return render_template('admin/support/tickets.html',
                           title="Support Tickets")
+

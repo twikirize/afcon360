@@ -1,6 +1,6 @@
 # app/identity/user.py
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta, timezone
 import json
 import uuid as uuid_lib
 from typing import List
@@ -48,8 +48,8 @@ class User(UserMixin, ProtectedModel):
     )
 
     username = Column(String(80), nullable=True, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    phone = Column(String(32), unique=True, nullable=True, index=True)
+    email = Column(String(255), unique=True, nullable=False)
+    phone = Column(String(32), unique=True, nullable=True)
     password_hash = Column(String(512), nullable=False)
     password_changed_at = Column(DateTime, nullable=True)
     password_expires_at = Column(DateTime, nullable=True)
@@ -58,7 +58,7 @@ class User(UserMixin, ProtectedModel):
     is_verified = Column(Boolean, default=False, nullable=False)
     email_verified = Column(Boolean, default=False, nullable=True, server_default='f')
     phone_verified = Column(Boolean, default=False, nullable=True, server_default='f')
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, )
     deleted_at = Column(DateTime, nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     locked_until = Column(DateTime, nullable=True)
@@ -190,7 +190,7 @@ class User(UserMixin, ProtectedModel):
     @classmethod
     def get_by_private_id(cls, internal_id: int):
         """Find user by internal BIGINT - use this for DB-only operations."""
-        return cls.query.get(internal_id)
+        return db.session.get(cls, internal_id)
 
     # ---------------------------
     # Flask-Login integration
@@ -670,7 +670,7 @@ class User(UserMixin, ProtectedModel):
         Returns:
             (can_delete, reason)
         """
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         from app.auth.helpers import is_owner, is_system_admin
         
         # Check protected account status
@@ -727,7 +727,7 @@ class User(UserMixin, ProtectedModel):
 
     def requires_approval_for_deletion(self) -> bool:
         """Check if account requires approval for deletion based on tenure/role."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         
         # New accounts (< 7 days) require approval
         if self.created_at:
@@ -885,7 +885,7 @@ class UserRole(ProtectedModel):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True, index=True
     )
-    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    assigned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship(
         "User", foreign_keys=[user_id], back_populates="roles", lazy="joined"
@@ -919,7 +919,7 @@ class MFASecret(ProtectedModel):
     backup_codes = Column(Text, nullable=True)  # Encrypted JSON backup codes
     device_name = Column(String(100), nullable=True)
     last_used = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="mfa_secrets", lazy="joined")
 
@@ -956,7 +956,7 @@ class MFASecret(ProtectedModel):
         if code in backup_codes:
             backup_codes.remove(code)
             self.store_backup_codes(backup_codes)
-            self.last_used = datetime.utcnow()
+            self.last_used = datetime.now(timezone.utc)
             return True
         return False
 
@@ -1003,8 +1003,8 @@ class APIKey(ProtectedModel):
 
     key_id = Column(String(64), nullable=False, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     key_hash = Column(String(512), nullable=False)
-    owner_type = Column(String(32), nullable=False, index=True)
-    owner_id = Column(BigInteger, nullable=False, index=True)
+    owner_type = Column(String(32), nullable=False)
+    owner_id = Column(BigInteger, nullable=False)
     scopes = Column(JSON, nullable=False, default=dict)
     revoked_at = Column(DateTime, nullable=True, index=True)
 
@@ -1086,3 +1086,4 @@ class APIKey(ProtectedModel):
         except Exception as e:
             import logging
             logging.error(f"Failed to audit API key revocation: {e}")
+

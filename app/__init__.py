@@ -19,7 +19,7 @@ import os
 import logging
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ============================================================================
 # ENVIRONMENT LOADING — layered: .env (base defaults) → .env.{APP_ENV} (overrides)
@@ -535,7 +535,7 @@ def create_app(config_object=None) -> Flask:
                     "request_method": request.method,
                     "request_path": request.path,  # Store path in meta instead
                     "traceback": error_traceback,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 db_session=db.session
             )
@@ -671,7 +671,7 @@ def create_app(config_object=None) -> Flask:
                     user = None
                 if not user:
                     try:
-                        user = User.query.get(impersonated_id)
+                        user = db.session.get(User, impersonated_id)
                     except Exception:
                         db.session.rollback()
                         user = None
@@ -974,6 +974,21 @@ def create_app(config_object=None) -> Flask:
         app.logger.info("✅ Wallet module registered")
     except Exception as e:
         app.logger.error(f"❌ Failed to register wallet module: {e}")
+
+    # Notifications module
+    try:
+        from app.notifications import notifications_api
+        app.register_blueprint(notifications_api)
+        app.logger.info("✅ Notifications module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register notifications module: {e}")
+
+    # Notification signal listeners (decoupled lifecycle notifications)
+    try:
+        from app.notifications.listeners import register_notification_listeners
+        register_notification_listeners()
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register notification listeners: {e}")
 
     # CSP Status Routes
     try:
@@ -1299,6 +1314,12 @@ def create_app(config_object=None) -> Flask:
             'get_wallet_banner': get_wallet_banner,
         }
 
+    @app.context_processor
+    def notification_context_processor():
+        """Inject notification + message badge counts and recent items into all templates."""
+        from app.notifications.context import inject_notification_context
+        return inject_notification_context()
+
     # Add format_number template filter
     @app.template_filter('format_number')
     def format_number_filter(value):
@@ -1493,7 +1514,7 @@ def create_app(config_object=None) -> Flask:
         if _cached is not None:
             # Reconstruct user from cached dict — query by PK only (no expensive joins)
             try:
-                user = User.query.get(_cached['id'])
+                user = db.session.get(User, _cached['id'])
                 if user:
                     _g._cached_user = user
                     _g._cached_user_pubid = str(user.public_id)

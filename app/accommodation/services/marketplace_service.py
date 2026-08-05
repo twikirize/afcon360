@@ -172,7 +172,7 @@ class MarketplaceService:
             (success, error_message)
         """
         try:
-            booking = AccommodationBooking.query.get(booking_id)
+            booking = db.session.get(AccommodationBooking, booking_id)
             if not booking:
                 return False, "Booking not found"
 
@@ -230,7 +230,7 @@ class MarketplaceService:
             (success, error_message)
         """
         try:
-            booking = AccommodationBooking.query.get(booking_id)
+            booking = db.session.get(AccommodationBooking, booking_id)
             if not booking:
                 return False, "Booking not found"
 
@@ -320,3 +320,4 @@ class MarketplaceService:
             AccommodationBooking.host_user_id == host_user_id,
             BookingCommission.status.in_(['released', 'refunded'])
         ).order_by(BookingCommission.released_at.desc()).limit(limit).all()
+

@@ -3,7 +3,7 @@ Wallet routes for the wallet system.
 Complete implementation with all endpoints for user wallet operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, jsonify
 from flask_login import login_required, current_user
@@ -159,7 +159,7 @@ def activate_wallet():
     from app.wallet.services.wallet_creation_tracker import (
         WalletCreationTracker, WalletCreationEvent
     )
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     db_user = User.query.filter_by(public_id=str(current_user.public_id)).first()
     if not db_user:
@@ -210,7 +210,7 @@ def activate_wallet():
 
         # Activate wallet
         account.verified = True
-        account.terms_accepted_at = datetime.utcnow()
+        account.terms_accepted_at = datetime.now(timezone.utc)
         db.session.commit()
 
         # Record activation in tracker
@@ -1762,7 +1762,7 @@ def financial_freeze_account(public_id):
     from app.identity.models.user import User
     from app.wallet.models.ledger import AccountModel
     from app.extensions import db
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Authorisation check (only high-level financial roles)
     if not current_user.is_app_owner() and not any(role in current_user.role_names for role in ['super_admin', 'admin', 'wallet_admin']):
@@ -1790,7 +1790,7 @@ def financial_freeze_account(public_id):
 
     account.is_frozen = True
     account.frozen_reason = reason
-    account.frozen_at = datetime.utcnow()
+    account.frozen_at = datetime.now(timezone.utc)
     account.frozen_by = current_user.id
     db.session.commit()
 

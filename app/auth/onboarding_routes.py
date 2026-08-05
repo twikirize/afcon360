@@ -415,7 +415,7 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
 
         # Set user's default org
         from app.identity.models.user import User as UserModel
-        db_user = UserModel.query.get(user.id)
+        db_user = db.session.get(UserModel, user.id)
         if db_user:
             db_user.default_org_id = org.id
 
@@ -579,3 +579,4 @@ def event_organiser_onboarding():
             flash("Something went wrong. Please try again.", "danger")
 
     return render_template("onboarding/event_organiser.html")
+

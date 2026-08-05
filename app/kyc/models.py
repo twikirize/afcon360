@@ -2,7 +2,7 @@
 from typing import Dict, Any, List
 from app.extensions import db
 from app.models.base import ProtectedModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 # User import is removed to avoid circular imports
 # SQLAlchemy relationships use string references
@@ -94,7 +94,7 @@ class KycRecord(ProtectedModel):
         
         # Age risk
         if self.user and self.user.date_of_birth:
-            age = datetime.utcnow().year - self.user.date_of_birth.year
+            age = datetime.now(timezone.utc).year - self.user.date_of_birth.year
             if age < 18:
                 risk_score += 0.8
                 risk_factors.append('under_age')
@@ -128,7 +128,7 @@ class KycRecord(ProtectedModel):
         """Check if document is expiring soon."""
         if not self.expiry_date:
             return False
-        return (self.expiry_date - datetime.utcnow()).days <= days
+        return (self.expiry_date - datetime.now(timezone.utc)).days <= days
     
     def get_kyc_tier_requirements(self) -> Dict[str, Any]:
         """Get KYC tier requirements based on record type."""
@@ -148,3 +148,4 @@ class KycRecord(ProtectedModel):
 
     def __repr__(self):
         return f"<KycRecord {self.id}: User {self.user_id} - {self.status} ({self.record_type})>"
+

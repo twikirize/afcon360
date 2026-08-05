@@ -10,6 +10,7 @@ from sqlalchemy import func, and_, desc
 
 from app.extensions import db
 from app.accommodation.utils import enum_value
+from app.utils.slugs import slugify, ensure_unique_slug
 from app.accommodation.models.property import (
     AccommodationCancellationPolicy,
     AccommodationPropertyStatus,
@@ -33,22 +34,6 @@ ACTIVE_BOOKING_STATUSES = [
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _slugify(text: str) -> str:
-    """Generate a lowercase slug safe for URLs."""
-    base = _SLUG_RE.sub("-", text.lower()).strip("-")
-    return base or "listing"
-
-
-def _ensure_unique_slug(base_slug: str) -> str:
-    """Ensure slug uniqueness by appending numeric suffixes when needed."""
-    slug = base_slug
-    suffix = 2
-    while Property.query.filter_by(slug=slug).first() is not None:
-        slug = f"{base_slug}-{suffix}"
-        suffix += 1
-    return slug
 
 
 def _extract_gallery(main_image: Optional[str], gallery_field: Optional[str]) -> List[str]:
@@ -101,7 +86,7 @@ class HostService:
         Management or bulk import.
         """
         title = data["title"].strip()
-        slug = _ensure_unique_slug(_slugify(title))
+        slug = ensure_unique_slug(slugify(title), db.session, Property)
 
         prop = Property(
             owner_user_id=owner_user_id,
@@ -405,7 +390,7 @@ class HostService:
             "channel_performance": advanced_analytics["channel_performance"],
             "seasonal_trends": advanced_analytics["seasonal_trends"],
             "booking_velocity": advanced_analytics["booking_velocity"],
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat()
         }
 
     @staticmethod
@@ -874,7 +859,7 @@ class HostService:
     @staticmethod
     def _calc_booking_velocity(property_ids: List[int]) -> Dict:
         """Bookings created in the last 30 days expressed as daily/weekly/monthly rate."""
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         count = (
             AccommodationBooking.query.filter(
                 AccommodationBooking.property_id.in_(property_ids),
@@ -926,7 +911,7 @@ class HostService:
         weekend = total - weekday
 
         # Month-over-month revenue growth
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         prev_month_end = this_month_start - timedelta(seconds=1)
         prev_month_start = prev_month_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -960,7 +945,7 @@ class HostService:
         Project revenue for the next 30 / 60 / 90 days based on the average
         daily revenue observed over the trailing 90-day window.
         """
-        ninety_days_ago = datetime.utcnow() - timedelta(days=90)
+        ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
         trailing = [
             float(b.total_amount or 0)
             for b in revenue_bookings
@@ -1532,7 +1517,7 @@ class HostService:
         Uses the formula: total_units - confirmed_bookings - blocked_units
         This is the real availability logic for multi-unit properties.
         """
-        room_type = RoomType.query.get(room_type_id)
+        room_type = db.session.get(RoomType, room_type_id)
         if not room_type:
             return 0
         
@@ -1571,3 +1556,4 @@ class HostService:
             rt.total_units = count
 
         db.session.commit()
+

@@ -222,7 +222,7 @@ def get_property_by_identifier(identifier: str) -> Optional[Dict]:
 
         # Try numeric ID
         if not prop and identifier.isdigit():
-            prop = Property.query.get(int(identifier))
+            prop = db.session.get(Property, int(identifier))
 
         # Try slug
         if not prop:
@@ -283,3 +283,4 @@ def list_hotels():
 def get_hotel(hotel_id):
     """Legacy function - gets hardcoded hotel"""
     return get_property_by_identifier(str(hotel_id))
+

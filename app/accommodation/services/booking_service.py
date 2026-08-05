@@ -13,6 +13,7 @@ import enum
 import logging
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.admin.models import ContentFlag
@@ -23,8 +24,7 @@ from app.accommodation.models.booking import (
     BookingContextType
 )
 from app.accommodation.models.availability import AccommodationBlockedReason
-from app.accommodation.models.room import InventoryBlock
-from app.accommodation.services.availability_service import AvailabilityService
+from app.accommodation.models.room import RoomType, InventoryBlock, Room
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
 
@@ -187,6 +187,14 @@ class BookingService:
         guest_instructions: str = None,
         room_type_id: Optional[int] = None,
         skip_hold_creation: bool = False,
+        payment_method: str = None,
+        payment_timing: str = None,
+        payment_guaranteed: bool = None,
+        guarantee_type: str = None,
+        # Booking Owner (D-003, D-004)
+        booking_owner_id: int = None,
+        owner_email: str = None,
+        claim_token_hash: str = None,
     ) -> Tuple[Optional[AccommodationBooking], Optional[str]]:
 
 
@@ -263,15 +271,27 @@ class BookingService:
             except Exception as e:
                 logger.warning(f"Anti-abuse check failed: {e}")
 
-            # 4. AVAILABILITY CHECK
-            # Verify counter-based availability if room_type_id is set
-            if room_type_id and not skip_hold_creation:
-                from app.accommodation.services.host_service import HostService
-                avail = HostService.available_units(room_type_id, check_in, check_out)
-                if avail <= 0:
-                    return None, "Selected dates are not available for this room type"
-
+            # 4. AVAILABILITY CHECK (concurrency-safe with row locking)
             if not skip_hold_creation:
+                from app.accommodation.services.availability_service import AvailabilityService
+                from app.accommodation.models.availability import BlockedDate
+
+                # Lock inventory rows for update to prevent double-booking
+                # the last available room. This serialises concurrent booking
+                # attempts for the same room/date combination.
+                if room_type_id:
+                    InventoryBlock.query.filter(
+                        InventoryBlock.room_type_id == room_type_id,
+                        InventoryBlock.date_range_start <= check_out,
+                        InventoryBlock.date_range_end >= check_in,
+                    ).with_for_update().all()
+                else:
+                    BlockedDate.query.filter(
+                        BlockedDate.property_id == property_id,
+                        BlockedDate.blocked_date >= check_in,
+                        BlockedDate.blocked_date < check_out,
+                    ).with_for_update().all()
+
                 is_available, blocked_dates, error = AvailabilityService.is_range_available(
                     property_id, check_in, check_out
                 )
@@ -297,7 +317,7 @@ class BookingService:
 
             # Resolve booker identity for snapshots
             from app.identity.models.user import User
-            booker_user = User.query.get(booked_by_user_id or guest_user_id)
+            booker_user = db.session.get(User, booked_by_user_id or guest_user_id)
             booker_name_snapshot = booker_user.username if booker_user else (primary_guest_name or guest_name)
             booker_email_snapshot = booker_user.email if booker_user else (primary_guest_email or guest_email)
 
@@ -341,6 +361,14 @@ class BookingService:
                 group_booking_id=group_booking_id,
                 room_number=room_number,
                 guest_instructions=guest_instructions,
+                payment_method=payment_method,
+                payment_timing=payment_timing,
+                payment_guaranteed=payment_guaranteed if payment_guaranteed is not None else False,
+                guarantee_type=guarantee_type or 'none',
+                # Booking Owner (D-003, D-004)
+                booking_owner_id=booking_owner_id,
+                owner_email=owner_email,
+                claim_token_hash=claim_token_hash,
             )
 
             booking.generate_reference()
@@ -382,6 +410,7 @@ class BookingService:
                 )
             else:
                 # Use unit-based blocking when room_type_id is set
+                from app.accommodation.services.availability_service import AvailabilityService
                 if booking.room_type_id:
                     success, err = AvailabilityService.block_room_type_units(
                         room_type_id=booking.room_type_id,
@@ -464,6 +493,19 @@ class BookingService:
 
             return booking, None
 
+        except IntegrityError as e:
+            db.session.rollback()
+            if idempotency_key:
+                existing = AccommodationBooking.query.filter_by(
+                    idempotency_key=idempotency_key,
+                    guest_user_id=guest_user_id
+                ).first()
+                if existing:
+                    logger.info(f"Duplicate booking race-condition resolved: {idempotency_key}")
+                    return existing, None
+            logger.error(f"Integrity error during booking creation: {e}", exc_info=True)
+            return None, "Unable to create booking. Please try again."
+
         except Exception as e:
             db.session.rollback()
             logger.error(f"Create booking failed for property {property_id}: {e}", exc_info=True)
@@ -478,22 +520,25 @@ class BookingService:
     def check_in(booking_id: int, user_id: int) -> Tuple[bool, Optional[str]]:
         """
         Check in a booking and assign room if not already assigned.
+        Enforces registration, payment, and date readiness via state machine.
         """
-        booking = AccommodationBooking.query.get(booking_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
         if not booking:
             return False, "Booking not found"
-
-        if booking.status != AccommodationBookingStatus.CONFIRMED.value:
-            return False, "Only confirmed bookings can be checked in"
 
         if booking.is_checked_in:
             return False, "Booking is already checked in"
 
         try:
-            # Assign room if not assigned
+            # Enforce state-machine readiness (payment, registration, date).
+            if not BookingStateMachine._can_check_in(booking):
+                return False, "Booking is not ready for check-in"
+
+            # Assign room if not assigned - must match booking's room type
             if not booking.assigned_room_id:
                 available_room = Room.query.filter(
                     Room.property_id == booking.property_id,
+                    Room.room_type_id == booking.room_type_id,
                     Room.is_active == True,
                     Room.status == "available",
                     Room.is_maintenance == False,
@@ -543,7 +588,7 @@ class BookingService:
         """
         Check out a booking and release the room.
         """
-        booking = AccommodationBooking.query.get(booking_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
         if not booking:
             return False, "Booking not found"
 
@@ -568,7 +613,7 @@ class BookingService:
 
             # Release assigned room
             if booking.assigned_room_id:
-                assigned_room = Room.query.get(booking.assigned_room_id)
+                assigned_room = db.session.get(Room, booking.assigned_room_id)
                 if assigned_room:
                     assigned_room.release()
 
@@ -642,6 +687,7 @@ class BookingService:
                 if avail <= 0:
                     return False, "Selected dates are no longer available for this room type. Please contact support."
 
+            from app.accommodation.services.availability_service import AvailabilityService
             is_available, blocked_dates, error = AvailabilityService.is_range_available(
                 booking.property_id,
                 booking.check_in,
@@ -676,6 +722,9 @@ class BookingService:
             booking.payment_status = AccommodationPaymentStatus.PAID.value
             booking.wallet_txn_id = wallet_transaction_id
             booking.paid_at = datetime.now(timezone.utc)
+            booking.payment_guaranteed = True
+            if not booking.guarantee_type or booking.guarantee_type == 'none':
+                booking.guarantee_type = 'payment_confirmed'
 
             # Update payment event ledger (thin wallet-linked index)
             try:
@@ -686,6 +735,7 @@ class BookingService:
                     payment_gateway="wallet" if booking.payment_method == "wallet" else booking.payment_method,
                     gateway_transaction_id=wallet_transaction_id,
                     wallet_txn_id=wallet_transaction_id,
+                    idempotency_key=booking.idempotency_key,
                 )
             except Exception as ledger_error:
                 logger.warning(f"Failed to update payment event for booking {booking_id}: {ledger_error}")
@@ -733,6 +783,13 @@ class BookingService:
                 f"Transaction: {wallet_transaction_id} | "
                 f"Amount: ${booking.total_amount}"
             )
+
+            # Emit notification signal (listener notifies guest + host)
+            try:
+                from app.notifications.signals import booking_confirmed
+                booking_confirmed.send(booking, booking=booking)
+            except Exception as _ne:
+                logger.warning(f"booking_confirmed signal failed: {_ne}")
 
             return True, None
 
@@ -807,6 +864,14 @@ class BookingService:
                 f"Booking approved: {booking.booking_reference} | "
                 f"By: {approved_by_user_id} | Reason: {reason}"
             )
+
+            # Emit notification signal (listener notifies guest + host)
+            try:
+                from app.notifications.signals import booking_confirmed
+                booking_confirmed.send(booking, booking=booking)
+            except Exception as _ne:
+                logger.warning(f"booking_confirmed signal failed: {_ne}")
+
             return True, None
 
         except InvalidStateTransition as e:
@@ -848,6 +913,7 @@ class BookingService:
             BlockedDate.query.filter_by(booking_id=booking.id).delete()
 
             # Also release InventoryBlock for room type bookings
+            from app.accommodation.services.availability_service import AvailabilityService
             if booking.room_type_id:
                 AvailabilityService.release_room_type_blocks(
                     room_type_id=booking.room_type_id,
@@ -897,7 +963,7 @@ class BookingService:
         Record a policy violation for a property and auto-suspend if threshold exceeded.
         """
         try:
-            prop = Property.query.get(property_id)
+            prop = db.session.get(Property, property_id)
             if not prop:
                 return False, "Property not found"
 
@@ -941,6 +1007,11 @@ class BookingService:
         if not booking:
             return False, "Booking not found", None
 
+        # Authority check (D-004): only the Booking Owner, the booker, or the host may cancel.
+        owner_id = booking.booking_owner_id or booking.booked_by_user_id
+        if cancelled_by_user_id not in (owner_id, booking.host_user_id):
+            return False, "You are not authorised to cancel this booking.", None
+
         can_cancel, msg, refund = booking.can_cancel()
         if not can_cancel:
             return False, msg, None
@@ -954,6 +1025,7 @@ class BookingService:
             logger.debug(f"Released dates for booking {booking.booking_reference}")
 
             # Also release InventoryBlock for room type bookings
+            from app.accommodation.services.availability_service import AvailabilityService
             if booking.room_type_id:
                 AvailabilityService.release_room_type_blocks(
                     room_type_id=booking.room_type_id,
@@ -1132,6 +1204,58 @@ class BookingService:
         return query.all()
 
     # -------------------------
+    # BOOKING OWNER CLAIM (D-003, D-004)
+    # -------------------------
+    @staticmethod
+    def generate_claim_token(booking_id: int) -> str:
+        """Generate a secure single-use claim token for a third-party booking."""
+        import hashlib
+        import secrets
+
+        booking = db.session.get(AccommodationBooking, booking_id)
+        if not booking:
+            raise ValueError(f"Booking {booking_id} not found")
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        booking.claim_token_hash = token_hash
+        db.session.commit()
+        return raw_token
+
+    @staticmethod
+    def claim_booking(token: str, user_id: int) -> Tuple[bool, Optional[str]]:
+        """
+        Claim a third-party booking by verifying the token and linking
+        the authenticated user as the Booking Owner.
+        """
+        import hashlib
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        booking = AccommodationBooking.query.filter_by(
+            claim_token_hash=token_hash
+        ).first()
+
+        if not booking:
+            return False, "Invalid or expired claim token."
+
+        if booking.booking_owner_id is not None:
+            return False, "This booking has already been claimed."
+
+        user = db.session.get(User, user_id)
+        if not user:
+            return False, "User not found."
+
+        booking.booking_owner_id = user_id
+        booking.owner_claimed_at = datetime.now(timezone.utc)
+        booking.claim_token_hash = None  # Single-use token
+        db.session.commit()
+
+        logger.info(
+            f"Booking {booking.booking_reference} claimed by user {user_id}"
+        )
+        return True, None
+
+    # -------------------------
     # PAYMENT LEDGER HELPERS
     # -------------------------
     @staticmethod
@@ -1152,9 +1276,40 @@ class BookingService:
         payment_gateway: str = None,
         gateway_transaction_id: str = None,
         failure_reason: str = None,
+        idempotency_key: str = None,
     ) -> Optional['AccommodationBookingPayment']:
-        """Create or update the thin payment event index for a booking."""
+        """Create or update the thin payment event index for a booking.
+
+        Idempotency: if *idempotency_key* is provided and a payment event
+        already exists with that key, the existing event is returned
+        immediately (and optionally updated if ``payment_status`` indicates
+        a terminal state).  This prevents duplicate rows when payment
+        callbacks or checkout steps are retried.
+        """
         from app.accommodation.models.booking_payment import AccommodationBookingPayment
+
+        # --- Idempotency guard ---
+        if idempotency_key:
+            existing = AccommodationBookingPayment.query.filter_by(
+                idempotency_key=idempotency_key
+            ).first()
+            if existing:
+                # If the caller is reporting a terminal state, update the
+                # existing record so it doesn't stay in 'pending' forever.
+                if payment_status in ("success", "failed", "refunded"):
+                    existing.payment_status = payment_status
+                    if wallet_txn_id:
+                        existing.wallet_txn_id = wallet_txn_id
+                    if failure_reason:
+                        existing.failure_reason = failure_reason
+                    db.session.commit()
+                logger.info(
+                    "Payment event idempotency hit for key=%s, booking=%s",
+                    idempotency_key, booking_id
+                )
+                return existing
+
+        # --- Normal path ---
         event = AccommodationBookingPayment.query.filter_by(
             booking_id=booking_id,
         ).order_by(AccommodationBookingPayment.created_at.desc()).first()
@@ -1166,6 +1321,7 @@ class BookingService:
                 payment_reference=AccommodationBookingPayment.generate_payment_reference(),
                 payment_status=payment_status,
                 payment_method=payment_method or "unknown",
+                idempotency_key=idempotency_key,
             )
             db.session.add(event)
         else:
@@ -1181,10 +1337,15 @@ class BookingService:
                 event.gateway_transaction_id = gateway_transaction_id
             if failure_reason:
                 event.failure_reason = failure_reason
+            if idempotency_key and not event.idempotency_key:
+                # Backfill key on an existing event that was created before
+                # this hardening.
+                event.idempotency_key = idempotency_key
 
         if payment_status == "failed":
             event.retry_count = (event.retry_count or 0) + 1
 
         db.session.commit()
         return event
+
 

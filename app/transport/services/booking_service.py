@@ -99,6 +99,13 @@ class BookingService:
                 request_id=request_id
             )
 
+            # Emit notification signal (listener notifies customer)
+            try:
+                from app.notifications.signals import transport_booking_created
+                transport_booking_created.send(booking, booking=booking)
+            except Exception as _ne:
+                logger.warning(f"transport_booking_created signal failed: {_ne}")
+
             return {
                 "success": True,
                 "message": "Booking created successfully",
@@ -135,7 +142,7 @@ class BookingService:
             return cached
 
         try:
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking or booking.is_deleted:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
@@ -154,7 +161,7 @@ class BookingService:
                        reason: Optional[str] = None) -> Dict[str, Any]:
         span = start_span("cancel_booking")
         try:
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
@@ -420,3 +427,4 @@ def get_booking_service() -> BookingService:
                 _booking_service_instance = BookingService()
                 logger.debug("BookingService singleton created")
     return _booking_service_instance
+

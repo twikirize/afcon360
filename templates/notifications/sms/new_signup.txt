@@ -1,0 +1,1 @@
+AFCON360: New signup - {{ username }} ({{ email }}). Role: {{ role }}. Please review.

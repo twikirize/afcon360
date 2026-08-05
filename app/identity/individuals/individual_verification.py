@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
 
@@ -56,7 +56,7 @@ class IndividualVerification(BaseModel):
     provider_id = Column(String(128))
     notes = Column(Text)
 
-    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     decided_at = Column(DateTime)
     expires_at = Column(DateTime)
 
@@ -71,3 +71,4 @@ class IndividualVerification(BaseModel):
         "User",
         foreign_keys=[reviewer_id]
     )
+

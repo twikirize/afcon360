@@ -48,8 +48,8 @@ class EventPaymentService:
         """
         try:
             # Get event and ticket type
-            event = Event.query.get(event_id)
-            ticket_type = TicketType.query.get(ticket_type_id)
+            event = db.session.get(Event, event_id)
+            ticket_type = db.session.get(TicketType, ticket_type_id)
             
             if not event or not ticket_type:
                 return {"success": False, "error": "Event or ticket type not found"}
@@ -452,7 +452,7 @@ class EventPaymentService:
             nationality = attendee_data.get("nationality")
         else:
             # Load from User
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if user:
                 full_name = getattr(user, "username", None) or getattr(user, "full_name", None) or user.email
                 email = user.email
@@ -482,7 +482,7 @@ class EventPaymentService:
         )
         
         # Generate references - need event slug and sequence
-        event = Event.query.get(event_id)
+        event = db.session.get(Event, event_id)
         if event:
             # Get next sequence number
             reg_count = db.session.query(db.func.count(EventRegistration.id)).filter_by(
@@ -574,3 +574,4 @@ class EventPaymentService:
             "bank_transfer": "🏦"
         }
         return icon_map.get(method_type, "💳")
+

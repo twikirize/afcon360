@@ -448,70 +448,107 @@
         </div>
       </div>
 
-      <!-- ORGANIZATIONS STATS ROW -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-icon orange-bg">
-            <i class="bi bi-building"></i>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ total_orgs or 0 }}</div>
-            <div class="stat-label">ORGANIZATIONS</div>
-            <div class="stat-meta">{{ pending_orgs or 0 }} pending approval</div>
-          </div>
-        </div>
+<!-- ORGANIZATIONS STATS ROW -->
+       <div class="stats-row">
+         <div class="stat-card">
+           <div class="stat-icon orange-bg">
+             <i class="bi bi-building"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value">{{ total_orgs or 0 }}</div>
+             <div class="stat-label">ORGANIZATIONS</div>
+             <div class="stat-meta">{{ pending_orgs or 0 }} pending approval</div>
+           </div>
+         </div>
 
-        <div class="stat-card">
-          <div class="stat-icon blue-bg">
-            <i class="bi bi-shield-lock"></i>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ total_roles or 0 }}</div>
-            <div class="stat-label">SYSTEM ROLES</div>
-            <div class="stat-meta">{{ super_admins|length if super_admins else 0 }} super admins</div>
-          </div>
-        </div>
+         <div class="stat-card">
+           <div class="stat-icon blue-bg">
+             <i class="bi bi-shield-lock"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value">{{ total_roles or 0 }}</div>
+             <div class="stat-label">SYSTEM ROLES</div>
+             <div class="stat-meta">{{ super_admins|length if super_admins else 0 }} super admins</div>
+           </div>
+         </div>
 
-        <div class="stat-card" style="border-left: 4px solid {{ '#10b981' if org_registration_mode == 'testing' else '#f59e0b' }};">
-          <div class="stat-icon {{ 'green-bg' if org_registration_mode == 'testing' else 'orange-bg' }}">
-            <i class="bi bi-{{ 'check-circle' if org_registration_mode == 'testing' else 'shield-check' }}"></i>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value" style="font-size: 1.1rem; text-transform: uppercase;">{{ org_registration_mode or 'TESTING' }}</div>
-            <div class="stat-label">ORG REGISTRATION</div>
-            <div class="stat-meta">
-              <a href="{{ safe_url('admin.owner.settings') }}" style="color: inherit; text-decoration: none;">
-                {{ 'Minimal requirements' if org_registration_mode == 'testing' else 'Full compliance required' }}
-                <i class="bi bi-gear" style="margin-left: 0.25rem;"></i>
-              </a>
-            </div>
-          </div>
-        </div>
+         <div class="stat-card" style="border-left: 4px solid {{ '#10b981' if org_registration_mode == 'testing' else '#f59e0b' }};">
+           <div class="stat-icon {{ 'green-bg' if org_registration_mode == 'testing' else 'orange-bg' }}">
+             <i class="bi bi-{{ 'check-circle' if org_registration_mode == 'testing' else 'shield-check' }}"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value" style="font-size: 1.1rem; text-transform: uppercase;">{{ org_registration_mode or 'TESTING' }}</div>
+             <div class="stat-label">ORG REGISTRATION</div>
+             <div class="stat-meta">
+               <a href="{{ safe_url('admin.owner.settings') }}" style="color: inherit; text-decoration: none;">
+                 {{ 'Minimal requirements' if org_registration_mode == 'testing' else 'Full compliance required' }}
+                 <i class="bi bi-gear" style="margin-left: 0.25rem;"></i>
+               </a>
+             </div>
+           </div>
+         </div>
 
-        <div class="stat-card gradient-dark">
-          <div class="stat-icon white-bg">
-            <i class="bi bi-shield-check"></i>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ pending_reviews_count or 0 }}</div>
-            <div class="stat-label">PENDING REVIEWS</div>
-            <div class="stat-meta">
-              <a href="{{ safe_url('admin.owner.compliance_dashboard') }}">View Compliance ?</a>
-            </div>
-          </div>
-        </div>
+         <div class="stat-card gradient-dark">
+           <div class="stat-icon white-bg">
+             <i class="bi bi-shield-check"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value">{{ pending_reviews_count or 0 }}</div>
+             <div class="stat-label">PENDING REVIEWS</div>
+             <div class="stat-meta">
+               <a href="{{ safe_url('admin.owner.compliance_dashboard') }}">View Compliance ?</a>
+             </div>
+           </div>
+         </div>
 
-        <div class="stat-card">
-          <div class="stat-icon green-bg">
-            <i class="bi bi-person-plus"></i>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">+{{ new_users_today or 0 }}</div>
-            <div class="stat-label">NEW TODAY</div>
-            <div class="stat-meta">New user registrations</div>
-          </div>
-        </div>
-      </div>
+         <div class="stat-card">
+           <div class="stat-icon green-bg">
+             <i class="bi bi-person-plus"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value">+{{ new_users_today or 0 }}</div>
+             <div class="stat-label">NEW TODAY</div>
+             <div class="stat-meta">New user registrations</div>
+           </div>
+         </div>
+       </div>
+
+       <!-- Accommodation Dashboard Widgets -->
+       {% if unclaimed_count is defined or readiness_issues_count is defined %}
+       <div class="stats-row">
+         {% if unclaimed_count is defined %}
+         <div class="stat-card border-warning" style="border-left: 4px solid #f59e0b;">
+           <div class="stat-icon amber-bg">
+             <i class="bi bi-user-clock"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value">{{ unclaimed_count }}</div>
+             <div class="stat-label">UNCLAIMED BOOKINGS</div>
+             <div class="stat-meta">Bookings awaiting owner claim</div>
+           </div>
+           <div class="stat-action">
+             <a href="{{ url_for('accommodation.admin_bookings', owner_claimed='no') }}" class="btn btn-sm btn-outline-warning">View</a>
+           </div>
+         </div>
+         {% endif %}
+
+         {% if readiness_issues_count is defined %}
+         <div class="stat-card border-danger" style="border-left: 4px solid #ef4444;">
+           <div class="stat-icon red-bg">
+             <i class="bi bi-door-closed"></i>
+           </div>
+           <div class="stat-info">
+             <div class="stat-value">{{ readiness_issues_count }}</div>
+             <div class="stat-label">CHECK-IN BLOCKERS</div>
+             <div class="stat-meta">Bookings not ready for check-in</div>
+           </div>
+           <div class="stat-action">
+             <a href="{{ url_for('accommodation.admin_bookings', status='pending') }}" class="btn btn-sm btn-outline-danger">View</a>
+           </div>
+         </div>
+         {% endif %}
+       </div>
+       {% endif %}
 
       {% if super_admin_can_toggle_modules %}
       <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.5rem;">

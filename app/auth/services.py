@@ -394,6 +394,16 @@ def register_user(
 
         db.session.commit()
 
+        # Fire signup notifications (user + admins) after commit
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.send_signup_notification(
+                user_id=user.id,
+                user_data={'username': username, 'email': email or '', 'role': 'user'},
+            )
+        except Exception as _notif_err:
+            logging.getLogger(__name__).warning(f"Signup notification failed: {_notif_err}")
+
         # Log completion
         ForensicAuditService.log_completion(
             audit_id=audit_id,

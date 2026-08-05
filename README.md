@@ -11,6 +11,7 @@ AFCON360 is a comprehensive Flask/PostgreSQL/Redis web application ecosystem tha
 - **Tourism Management**: Tourism services, activities, bookings
 - **Tournament Management**: Bracket management, scheduling
 - **Identity/KYC System**: User verification, organization verification, compliance
+- **Notification System**: Multi-channel notifications (email, SMS, push, in-app, webhook) with user preferences, templates, and Celery async delivery
 
 Each module operates independently but integrates seamlessly - users can pay for events via wallet, book transport to events, secure accommodation, and access tourism activities through a unified interface.
 
@@ -377,7 +378,34 @@ app/
 │   ├── __init__.py
 │   ├── analytics.py
 │   ├── module_toggle_service.py
+│   ├── notification_service.py     # ← Re-export from app/notifications/services.py
 │   └── sms_service.py
+│
+├── notifications/                  # Notification System (NEW)
+│   ├── __init__.py                 # Blueprint registration & service exports
+│   ├── models.py                   # Notification, NotificationTemplate, UserNotificationPreference, NotificationLog
+│   ├── services.py                 # Centralized NotificationService with cross-module integration
+│   ├── tasks.py                    # Celery async workers & beat scheduler
+│   ├── preferences.py              # User notification preference management
+│   ├── template_loader.py          # Jinja2 template loader for email/SMS/push
+│   ├── utils.py                    # Rate limiting, exponential backoff, idempotency
+│   ├── channel_handlers/           # Pluggable handlers per channel
+│   │   ├── __init__.py
+│   │   ├── email.py                # Email (SendGrid/SMTP)
+│   │   ├── sms.py                  # SMS (Twilio/Africa's Talking)
+│   │   ├── push.py                 # Push (Firebase Cloud Messaging)
+│   │   ├── in_app.py               # In-app persistent inbox
+│   │   └── webhook.py              # HTTP JSON callback webhooks
+│   ├── templates/                  # Email HTML, SMS txt, Push JSON templates
+│   │   ├── email/
+│   │   ├── sms/
+│   │   └── push/
+│   └── tests/                      # Notification system tests
+│       ├── __init__.py
+│       ├── test_models.py
+│       ├── test_services.py
+│       ├── test_channel_handlers.py
+│       └── test_integration.py
 │
 ├── tasks/                      # Background tasks
 │   ├── reconcile.py
@@ -579,12 +607,23 @@ app/
 - Enhanced fan/attendee dashboard
 - Event discovery and registration
 
-### **15. Services Module** (`app/services/`)
+### **15. Notification System** (`app/notifications/`)
+- Multi-channel notification delivery (email, SMS, push, in-app, webhook)
+- Centralized `NotificationService` with cross-module integration
+- Reusable notification templates per type and channel
+- Per-user, per-type, per-channel notification preferences
+- Celery async delivery with exponential backoff retry
+- Notification audit logging via `NotificationLog`
+- Contextual notifications for wallet, bookings, transport, events, KYC, and reviews
+- API endpoints at `/api/notifications`
+
+### **16. Services Module** (`app/services/`)
 - Analytics services
 - Module toggle service
 - SMS service
+- Notification service (re-export from `app/notifications/services.py`)
 
-### **16. Tasks Module** (`app/tasks/`)
+### **17. Tasks Module** (`app/tasks/`)
 - Webhook processing
 - Transaction reconciliation
 

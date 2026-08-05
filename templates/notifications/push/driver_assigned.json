@@ -1,0 +1,10 @@
+{
+  "title": "Driver Assigned - AFCON360",
+  "body": "Driver {{ driver_name }} assigned. ETA: {{ eta_minutes }} min",
+  "click_action": "/transport/bookings/{{ reference_id }}",
+  "data": {
+    "type": "driver_assigned",
+    "driver_name": "{{ driver_name }}",
+    "eta_minutes": "{{ eta_minutes }}"
+  }
+}

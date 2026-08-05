@@ -3,7 +3,7 @@ Aggregator Model
 Manages third-party aggregators for bulk wallet operations
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Index, BigInteger
 from app.extensions import db
 
@@ -30,7 +30,7 @@ class Aggregator(db.Model):
     description = Column(Text, nullable=True)
 
     # API credentials
-    api_key = Column(String(255), nullable=False, unique=True, index=True)
+    api_key = Column(String(255), nullable=False, unique=True)
     api_secret = Column(String(255), nullable=False)  # Will be encrypted
     webhook_url = Column(String(500), nullable=True)
     webhook_secret = Column(String(255), nullable=True)
@@ -52,7 +52,7 @@ class Aggregator(db.Model):
     live_api_secret = Column(String(255), nullable=True)
 
     # Configuration
-    status = Column(String(20), nullable=False, default='active', index=True)  # active, suspended, disabled
+    status = Column(String(20), nullable=False, default='active')
     tier = Column(String(20), nullable=False, default='standard')  # standard, premium, enterprise
 
     # Rate limits
@@ -79,8 +79,8 @@ class Aggregator(db.Model):
     company_name = Column(String(255), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     last_used_at = Column(DateTime(timezone=True), nullable=True)
 
     def to_dict(self, exclude_secret=True):
@@ -125,3 +125,4 @@ class Aggregator(db.Model):
 
     def __repr__(self):
         return f"<Aggregator {self.id}: {self.display_name} ({self.status})>"
+

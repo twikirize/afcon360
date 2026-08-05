@@ -15,7 +15,7 @@ from app.auth.policy import can
 from app.auth.decorators import require_role, admin_required
 from app.auth.helpers import has_global_role, highest_role
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def update_user_role(user_id):
         from app.identity.models.user import User
         from app.identity.models.roles_permission import Role, UserRole
         
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return jsonify({'success': False, 'error': 'User not found'})
         
@@ -223,7 +223,7 @@ def analytics_settings():
     """Analytics and reporting settings for admins"""
     from app.accommodation.models.property import Property
     from app.accommodation.models.booking import AccommodationBooking
-    from datetime import datetime, timedelta
+    from datetime import datetime, timezone, timedelta
     
     # Calculate key metrics
     total_properties = Property.query.count()
@@ -234,7 +234,7 @@ def analytics_settings():
     confirmed_bookings = AccommodationBooking.query.filter_by(status='confirmed').count()
     
     # Recent activity (last 30 days)
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     recent_bookings = AccommodationBooking.query.filter(
         AccommodationBooking.created_at >= thirty_days_ago
     ).count()
@@ -293,8 +293,8 @@ def moderation_settings():
     pending_reviews = Review.query.filter_by(status=AccommodationReviewStatus.PENDING.value).count()
     
     # Recent moderation activity
-    from datetime import datetime, timedelta
-    last_24h = datetime.utcnow() - timedelta(hours=24)
+    from datetime import datetime, timezone, timedelta
+    last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
     
     recent_moderations = {
         'properties_approved': Property.query.filter(
@@ -413,7 +413,7 @@ def impersonation_control():
     impersonated_user_id = session.get('impersonated_user_id')
     impersonated_user = None
     if impersonated_user_id:
-        impersonated_user = User.query.get(impersonated_user_id)
+        impersonated_user = db.session.get(User, impersonated_user_id)
     
     # Get available users for impersonation (only admins+ can impersonate)
     u_role = highest_role(current_user)
@@ -438,7 +438,7 @@ def start_impersonation(user_id):
     from app.identity.models.user import User
     
     try:
-        target_user = User.query.get(user_id)
+        target_user = db.session.get(User, user_id)
         if not target_user:
             return jsonify({'success': False, 'error': 'User not found'})
         
@@ -454,7 +454,7 @@ def start_impersonation(user_id):
         
         # Start impersonation
         session['impersonated_user_id'] = target_user.id
-        session['impersonation_started_at'] = datetime.utcnow().isoformat()
+        session['impersonation_started_at'] = datetime.now(timezone.utc).isoformat()
         session['impersonation_by'] = current_user.id
         session['impersonated_role'] = t_role
         
@@ -520,3 +520,4 @@ def save_config():
     except Exception as e:
         logger.error(f"Failed to save configuration: {e}")
         return jsonify({'success': False, 'error': 'Failed to save configuration'})
+

@@ -21,6 +21,9 @@
                     </div>
                     <div class="mt-2">
                         <span class="badge bg-success fs-6">{{ booking.status|replace('_', ' ')|title }}</span>
+                        {% if booking.status == 'pending_approval' %}
+                        <span class="badge bg-warning text-dark ms-1">Awaiting Host Approval</span>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -166,6 +169,61 @@
                             <strong>{{ booking.room_number|default('1', true) }}</strong>
                         </div>
                     </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- GUEST REGISTRATION -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Guest Registration</h5>
+                </div>
+                <div class="card-body">
+                    {% set registrations = [] %}
+                    {% if booking.guest_registrations %}
+                        {% set registrations = booking.guest_registrations %}
+                    {% endif %}
+                    {% if registrations %}
+                        <div class="list-group mb-3">
+                            {% for reg in registrations %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ reg.guest_name }}</strong>
+                                    <br><small class="text-muted">{{ reg.relationship_type|title }}</small>
+                                </div>
+                                <span class="badge bg-{{ 'success' if reg.status == 'completed' else 'warning' if reg.status == 'pending' else 'secondary' }}">
+                                    {{ reg.status|title }}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-2">No guests registered yet.</p>
+                    {% endif %}
+                    {% if booking.status in ['confirmed', 'pending_approval'] %}
+                    <a href="{{ safe_url('accommodation.guest_register', booking_id=booking.id) }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-user-plus me-1"></i> Register Guests
+                    </a>
+                    {% endif %}
+                    {% if booking.registration_deadline %}
+                    <p class="small text-muted mt-2 mb-0">
+                        <i class="fas fa-clock me-1"></i>
+                        Registration deadline: {{ booking.registration_deadline.strftime('%b %d, %Y %H:%M UTC') }}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if booking.approval_deadline %}
+            <!-- APPROVAL DEADLINE -->
+            <div class="card shadow-sm mb-4 border-warning">
+                <div class="card-body">
+                    <h6 class="mb-1"><i class="fas fa-clock me-2"></i>Host Approval Deadline</h6>
+                    <p class="mb-0 small text-muted">
+                        This booking requires host approval. The host has until
+                        <strong>{{ booking.approval_deadline.strftime('%b %d, %Y %H:%M UTC') }}</strong>
+                        to review your request.
+                    </p>
                 </div>
             </div>
             {% endif %}

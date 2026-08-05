@@ -247,7 +247,7 @@ class EventService:
 
         action = ACTION_MAP.get((event.status, new_status), 'status_change')
 
-        user = UserModel.query.get(user_id)
+        user = db.session.get(UserModel, user_id)
         if not user:
             return False, "User not found"
 
@@ -304,7 +304,7 @@ class EventService:
             from app.identity.models.user import User
             from app.events.models import Event, TicketType, EventStatus
 
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if not user:
                 return None, 'User not found'
 
@@ -1070,7 +1070,7 @@ class EventService:
         if not registration:
             return False, "Invalid QR code", None
 
-        event = Event.query.get(registration.event_id)
+        event = db.session.get(Event, registration.event_id)
         if event and event.end_date:
             if date.today() > event.end_date + timedelta(days=1):
                 return False, "This ticket has expired", None
@@ -1087,7 +1087,7 @@ class EventService:
 
         db.session.commit()
 
-        event = Event.query.get(registration.event_id)
+        event = db.session.get(Event, registration.event_id)
 
         result = {
             "name": registration.full_name, "ticket_type": registration.ticket_type,
@@ -1116,7 +1116,7 @@ class EventService:
     @classmethod
     def _registration_to_dict(cls, registration) -> Dict:
         Event = cls._get_event_model_class()
-        event = Event.query.get(registration.event_id)
+        event = db.session.get(Event, registration.event_id)
 
         event_dict = {
             "id": event.public_id if event else None, "slug": event.slug if event else None,
@@ -1276,7 +1276,7 @@ class EventService:
     @classmethod
     def get_event_model_by_id(cls, event_id: int):
         Event = cls._get_event_model_class()
-        return Event.query.get(event_id)
+        return db.session.get(Event, event_id)
 
     @classmethod
     def get_events_by_organisation(cls, organisation_id: int) -> List[Dict]:
@@ -1288,7 +1288,7 @@ class EventService:
     def get_events_managed_by_user(cls, user_id: int) -> List[Dict]:
         from app.identity.models.user import User
         Event = cls._get_event_model_class()
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return []
         events = []
@@ -1642,7 +1642,7 @@ class EventService:
                 assignment.accommodation_booking_id = booking_id
                 try:
                     from app.accommodation.models.booking import AccommodationBooking
-                    acc_booking = AccommodationBooking.query.get(booking_id)
+                    acc_booking = db.session.get(AccommodationBooking, booking_id)
                     if acc_booking:
                         acc_booking.event_id = event.id
                         acc_booking.event_participation_id = participation.id
@@ -1652,7 +1652,7 @@ class EventService:
                 assignment.transport_booking_id = booking_id
                 try:
                     from app.transport.models import Booking
-                    transport_booking = Booking.query.get(booking_id)
+                    transport_booking = db.session.get(Booking, booking_id)
                     if transport_booking:
                         transport_booking.event_id = event.id
                         transport_booking.event_participation_id = participation.id
@@ -1763,7 +1763,7 @@ class EventService:
             return False, "Cannot cancel past events"
         registration.status = "cancelled"
         if registration.ticket_type_id:
-            ticket_type = TicketType.query.get(registration.ticket_type_id)
+            ticket_type = db.session.get(TicketType, registration.ticket_type_id)
             if ticket_type and ticket_type.capacity and ticket_type.capacity > 0:
                 ticket_type.available_seats = (ticket_type.available_seats or 0) + 1
                 ticket_type.version = (ticket_type.version or 0) + 1

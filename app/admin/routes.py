@@ -181,6 +181,33 @@ def super_dashboard():
                     active_global_role = user_role.role.name
                     break
 
+        # Accommodation statistics for dashboard widgets
+        unclaimed_count = 0
+        readiness_issues_count = 0
+        try:
+            from app.accommodation.models.booking import AccommodationBooking
+            from app.accommodation.models.property import PropertyBookingPolicy
+            unclaimed_count = AccommodationBooking.query.filter(
+                AccommodationBooking.booking_owner_id.is_(None),
+                AccommodationBooking.is_deleted == False,
+            ).count()
+            readiness_issues_count = AccommodationBooking.query.filter(
+                AccommodationBooking.is_deleted == False,
+            ).count()
+            # Count bookings that are not ready for check-in
+            from datetime import date as dt_date
+            today = dt_date.today()
+            readiness_issues_count = AccommodationBooking.query.filter(
+                AccommodationBooking.is_deleted == False,
+                db.or_(
+                    AccommodationBooking.status != 'confirmed',
+                    AccommodationBooking.payment_status.not_in(('paid', 'partially_paid')),
+                    AccommodationBooking.check_in > today,
+                )
+            ).count()
+        except Exception as e:
+            logger.warning(f"Could not load accommodation dashboard stats: {e}")
+
         return render_template(
             "super_admin_dashboard.html",
             total_users=total_users,
@@ -208,6 +235,9 @@ def super_dashboard():
             user_growth='+0%',
             system_health='Healthy',
             security_score='95%',
+            # Accommodation dashboard widgets
+            unclaimed_count=unclaimed_count,
+            readiness_issues_count=readiness_issues_count,
         )
     except Exception as e:
         db.session.rollback()
@@ -262,7 +292,12 @@ def manage_users():
     try:
         users = User.query.order_by(User.created_at.desc()).all()
         user_roles_map = get_user_roles_map(users)
-        return render_template("admin/manage_users.html", users=users, user_roles_map=user_roles_map)
+        return render_template(
+            "admin/manage_users.html",
+            users=users,
+            user_roles_map=user_roles_map,
+            active_admin_page="users",
+        )
     except Exception as e:
         logger.error(f"Error loading users: {e}")
         flash("Error loading users.", "danger")
@@ -609,7 +644,7 @@ def stop_impersonating():
 
     original_user_id = session.get('impersonated_by')
     if original_user_id:
-        original_user = User.query.get(original_user_id)
+        original_user = db.session.get(User, original_user_id)
         if original_user:
             login_user(original_user)
             session.pop('impersonated_by', None)
@@ -737,7 +772,7 @@ def view_user(user_id):
         # Try to find by id as fallback
         try:
             user_id_int = int(user_id)
-            user = User.query.get(user_id_int)
+            user = db.session.get(User, user_id_int)
             if user:
                 print(f"DEBUG: Found user by integer id {user_id_int}")
         except ValueError:
@@ -2186,3 +2221,4 @@ def role_settings(role_name):
         logger.error(f"Error loading role settings: {e}")
         flash("Error loading settings.", "danger")
         return redirect(url_for('admin.dashboard'))
+

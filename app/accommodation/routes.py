@@ -70,7 +70,7 @@ from app.accommodation.models.moderation import PropertyModerationHistory
 def _increment_view_count(property_id, max_retries=3):
     for attempt in range(max_retries):
         try:
-            property_obj = Property.query.get(property_id)
+            property_obj = db.session.get(Property, property_id)
             if property_obj:
                 property_obj.views_last_24h = (property_obj.views_last_24h or 0) + 1
                 db.session.add(property_obj)
@@ -103,6 +103,14 @@ def moderate_property_approve(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.approve_property(property_id, current_user.id, notes)
     if success:
+        from app.accommodation.models.property import Property as _Prop
+        _prop = db.session.get(_Prop, property_id)
+        if _prop:
+            try:
+                from app.notifications.services import NotificationService
+                NotificationService.notify_property_approved(_prop)
+            except Exception as _ne:
+                current_app.logger.warning(f"Property approve notification failed: {_ne}")
         flash("Property approved successfully.", "success")
     else:
         flash(f"Error: {error}", "danger")
@@ -165,6 +173,14 @@ def moderate_property_reject(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.reject_property(property_id, current_user.id, reason, notes)
     if success:
+        from app.accommodation.models.property import Property as _Prop
+        _prop = db.session.get(_Prop, property_id)
+        if _prop:
+            try:
+                from app.notifications.services import NotificationService
+                NotificationService.notify_property_rejected(_prop, reason=reason)
+            except Exception as _ne:
+                current_app.logger.warning(f"Property reject notification failed: {_ne}")
         flash("Property rejected.", "success")
     else:
         flash(f"Error: {error}", "danger")
@@ -191,6 +207,14 @@ def moderate_property_suspend(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.suspend_property(property_id, current_user.id, reason, notes)
     if success:
+        from app.accommodation.models.property import Property as _Prop
+        _prop = db.session.get(_Prop, property_id)
+        if _prop:
+            try:
+                from app.notifications.services import NotificationService
+                NotificationService.notify_property_suspended(_prop, reason=reason)
+            except Exception as _ne:
+                current_app.logger.warning(f"Property suspend notification failed: {_ne}")
         flash("Property suspended.", "success")
     else:
         flash(f"Error: {error}", "danger")
@@ -840,6 +864,33 @@ def admin_bookings():
     )
 
 
+@accommodation_bp.route("/admin/booking/<int:booking_id>", endpoint="admin_booking_detail")
+@login_required
+@require_role('admin', 'owner', 'accommodation_admin', 'super_admin')
+def admin_booking_detail(booking_id):
+    """Admin view of a single booking with full details and audit log."""
+    from app.accommodation.models.commission import BookingCommission
+    from app.accommodation.services.identity_service import AccommodationIdentityService
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    prop = Property.query.get_or_404(booking.property_id)
+
+    # Authorization: admin, owner, accommodation_admin, or super_admin
+    if not AccommodationIdentityService.can_manage_property(
+        current_user, prop.owner_user_id, prop.owner_org_id
+    ) and not current_user.is_super_admin:
+        abort(403)
+
+    commission = BookingCommission.query.filter_by(booking_id=booking_id).first()
+    property_data = search_service.get_property_by_identifier(str(booking.property_id))
+    return render_template(
+        "accommodation/admin/booking_detail.html",
+        booking=booking,
+        property=property_data,
+        commission=commission,
+    )
+
+
 # ── Admin: Settings ──────────────────────────────────────────────────────────
 @accommodation_bp.route("/admin/settings", endpoint="admin_settings")
 @login_required
@@ -944,6 +995,7 @@ def guest_search():
 
 
 @accommodation_bp.route("/guest/api/search", endpoint="guest_api_search")
+@limiter.limit("30 per minute")
 def guest_api_search():
     """JSON API for accommodation search"""
     city = request.args.get('city')
@@ -1036,7 +1088,7 @@ def guest_detail(identifier):
         abort(404)
 
     if identifier.isdigit():
-        property_model = Property.query.get(int(identifier))
+        property_model = db.session.get(Property, int(identifier))
     else:
         property_model = Property.query.filter_by(public_id=identifier).first()
         if not property_model:
@@ -1109,7 +1161,7 @@ def guest_detail(identifier):
         selected_guests=guests,
         selected_room_type_id=selected_room_type_id,
         urgency=urgency,
-        now=datetime.utcnow()
+        now=datetime.now(timezone.utc)
     )
 # app/accommodation/routes.py - Add after host routes
 
@@ -1181,6 +1233,17 @@ def host_booking_policy(property_id):
 
             policy.is_active = request.form.get('is_active') == 'on'
 
+            # Verification level (D-006)
+            verification_level = request.form.get('verification_level', 'none')
+            if verification_level not in ('none', 'basic_identity', 'document_upload', 'biometric_liveness', 'third_party_attestation'):
+                verification_level = 'none'
+            policy.verification_level = verification_level
+
+            # Host-configurable registration fields (D-024)
+            reg_fields = request.form.getlist('required_registration_fields')
+            valid_fields = {'full_name', 'phone', 'email', 'id_document_type', 'id_document_number', 'date_of_birth', 'nationality'}
+            policy.required_registration_fields = [f for f in reg_fields if f in valid_fields]
+
             # Update payment methods
             selected_methods = request.form.getlist('payment_methods')
             PropertyPaymentMethod.query.filter_by(property_id=property_id).update({'enabled': False})
@@ -1221,6 +1284,11 @@ def host_booking_policy(property_id):
             except Exception:
                 pass  # Columns may not exist yet — migration needed
 
+            # Security deposit (D-012)
+            policy.require_security_deposit = request.form.get('require_security_deposit') == 'on'
+            security_deposit = request.form.get('security_deposit_amount', '0')
+            policy.security_deposit_amount = Decimal(security_deposit) if security_deposit else Decimal('0')
+
             db.session.commit()
             flash('Booking policy updated successfully.', 'success')
             return redirect(url_for('accommodation.host_booking_policy', property_id=property_id))
@@ -1247,7 +1315,7 @@ def api_availability():
     Returns count-based availability per room type, partial availability info,
     and same-property/nearby alternatives (Tier 0-2 cascade).
     """
-    from datetime import datetime as dt
+    from datetime import datetime, timezone as dt
 
     property_id = request.args.get('property_id', type=int)
     check_in_str = request.args.get('check_in', '')
@@ -1481,7 +1549,7 @@ def guest_checkout():
 
         # CHECK 3: Property exists in database
         from app.accommodation.models.property import Property
-        property_obj = Property.query.get(property_id)
+        property_obj = db.session.get(Property, property_id)
         if not property_obj:
             current_app.logger.error(f"❌ CHECKOUT FAILED: Property {property_id} not found in database")
             flash('Property not found', 'danger')
@@ -1686,20 +1754,23 @@ def guest_checkout():
         # STEP 1: Create temporary hold on dates (NOT a booking yet)
         # ============================================================
         from app.accommodation.services.availability_service import AvailabilityService
-        hold_success, hold_error = AvailabilityService.create_hold(
+        hold_success, hold_id = AvailabilityService.create_hold(
             property_id=property_obj.id,
             check_in=check_in,
             check_out=check_out,
             created_by=current_user.id,
-            hold_minutes=15
+            room_type_id=room_type_id,
+            units=1,
+            hold_minutes=15,
+            hold_type="payment",
         )
 
         if not hold_success:
-            current_app.logger.error(f"❌ CHECKOUT FAILED: Could not create hold - {hold_error}")
-            flash(hold_error or 'Could not hold dates. Please try again.', 'danger')
+            current_app.logger.error(f"❌ CHECKOUT FAILED: Could not create hold - {hold_id}")
+            flash(hold_id or 'Could not hold dates. Please try again.', 'danger')
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
-        current_app.logger.info(f"✅ Temporary hold created for property {property_id} ({check_in} → {check_out})")
+        current_app.logger.info(f"✅ Temporary hold created for property {property_id} ({check_in} → {check_out}), hold_id={hold_id}")
 
         # ============================================================
         # Calculate charge amount based on timing
@@ -1777,6 +1848,13 @@ def guest_checkout():
             guest_instructions=data.get('guest_instructions'),
             room_type_id=room_type_id,
             skip_hold_creation=True,
+            payment_method=payment_method,
+            payment_timing=payment_timing,
+            payment_guaranteed=(payment_method in ('wallet', 'card')) and charge_amount > 0,
+            guarantee_type='card_authorization' if payment_method == 'card' else ('wallet_balance' if payment_method == 'wallet' else 'none'),
+            # Booking Owner (D-003, D-004)
+            booking_owner_id=current_user.id if booking_type == 'third_party' else None,
+            owner_email=primary_guest_email if booking_type == 'third_party' else None,
         )
 
         if error:
@@ -1786,6 +1864,66 @@ def guest_checkout():
             return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         current_app.logger.info(f"✅ Booking created: {booking.booking_reference}")
+
+        # Link the RoomHold to the booking
+        if hold_id:
+            from app.accommodation.models.availability import RoomHold
+            room_hold = db.session.get(RoomHold, hold_id)
+            if room_hold and room_hold.status == "active":
+                room_hold.mark_converted(booking.id)
+                db.session.add(room_hold)
+            db.session.commit()
+
+        # Set phase-specific deadlines based on payment timing
+        now = datetime.now(timezone.utc)
+        if payment_timing == 'pay_now':
+            booking.hold_expires_at = now + timedelta(minutes=15)
+
+
+        current_app.logger.info(f"✅ Booking created: {booking.booking_reference}")
+
+        # Set phase-specific deadlines based on payment timing
+        now = datetime.now(timezone.utc)
+        if payment_timing == 'pay_now':
+            booking.hold_expires_at = now + timedelta(minutes=15)
+            booking.approval_deadline = None
+        elif payment_timing == 'deposit':
+            booking.hold_expires_at = now + timedelta(minutes=15)
+            booking.approval_deadline = None
+        elif payment_timing == 'pay_on_arrival':
+            booking.hold_expires_at = now + timedelta(minutes=15)
+            booking.approval_deadline = now + timedelta(hours=24)
+        elif payment_timing == 'invoice':
+            booking.hold_expires_at = now + timedelta(minutes=30)
+            booking.approval_deadline = now + timedelta(hours=48)
+
+        # Guest registration deadline: 48 hours before check-in
+        booking.registration_deadline = booking.check_in - timedelta(hours=48)
+
+        # Generate claim token for third-party bookings where owner has no account
+        if booking_type == 'third_party' and not primary_guest_id:
+            from app.accommodation.services.booking_service import BookingService
+            claim_token = BookingService.generate_claim_token(booking.id)
+            booking.claim_token_hash = claim_token
+            db.session.commit()
+            try:
+                from app.services.notification_service import NotificationService
+                NotificationService.send(
+                    user_id=current_user.id,
+                    notification_type='owner_claim_invite',
+                    title=f'Claim your booking: {booking.booking_reference}',
+                    message=f'{primary_guest_name}, you have been booked for {property_obj.title} from {check_in} to {check_out}. Click the link to claim and manage this booking.',
+                    channels=['in_app', 'email'],
+                    data={
+                        'booking_reference': booking.booking_reference,
+                        'claim_token': claim_token,
+                        'property_title': property_obj.title,
+                    },
+                )
+            except Exception as e:
+                current_app.logger.error(f"Failed to send owner claim invite: {e}")
+
+        db.session.commit()
 
         # ============================================================
         # STEP 4: Process payment (if required)
@@ -1881,6 +2019,7 @@ def guest_checkout():
                 payment_method=payment_method,
                 payment_gateway=payment_method,
                 gateway_transaction_id=txn_id,
+                idempotency_key=idempotency_key,
             )
         except Exception as ledger_error:
             current_app.logger.warning(f"Payment ledger write failed: {ledger_error}")
@@ -1931,6 +2070,27 @@ def guest_checkout():
                 )
             db.session.commit()
             current_app.logger.info(f"✅ Booking created (pending approval): {booking.booking_reference}")
+
+            # Extend hold expiration for approval bookings (48h SLA instead of 15min)
+            if booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value:
+                from app.accommodation.models.availability import RoomHold
+                from datetime import timedelta
+                hold = RoomHold.query.filter(
+                    RoomHold.property_id == booking.property_id,
+                    RoomHold.check_in == booking.check_in,
+                    RoomHold.check_out == booking.check_out,
+                    RoomHold.guest_user_id == current_user.id,
+                    RoomHold.status == "active",
+                ).order_by(RoomHold.created_at.desc()).first()
+                if hold and hold.hold_type == "payment":
+                    hold.hold_type = "approval"
+                    hold.approval_sla_hours = 48
+                    hold.expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+                    hold.hold_minutes = 48 * 60
+                    db.session.commit()
+                    current_app.logger.info(
+                        f"Extended hold to 48h approval SLA for booking {booking.booking_reference}"
+                    )
 
         session.pop('pending_booking', None)
 
@@ -2045,6 +2205,59 @@ def guest_profile():
     )
 
 
+@accommodation_bp.route("/guest/booking/claim/<token>", endpoint="guest_claim_booking")
+def guest_claim_booking(token):
+    """
+    Claim a third-party booking using a secure single-use token.
+    No login required — the page offers login or registration options.
+    """
+    from app.accommodation.services.booking_service import BookingService
+    from app.identity.models.user import User
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'claim':
+            # User is logging in or registering to claim the booking
+            email = request.form.get('email', '').strip().lower()
+            password = request.form.get('password', '')
+
+            user = User.query.filter_by(email=email).first()
+            if user and user.check_password(password):
+                success, msg = BookingService.claim_booking(token, user.id)
+                if success:
+                    flash('Booking claimed successfully! You can now manage this booking.', 'success')
+                    return redirect(url_for('accommodation.guest_my_bookings'))
+                flash(msg, 'danger')
+            elif user:
+                flash('Invalid password.', 'danger')
+            else:
+                # No account — redirect to registration with pre-filled email
+                flash('No account found with that email. Please create one first.', 'warning')
+                return redirect(url_for('auth.register', email=email))
+
+        elif action == 'register':
+            # Redirect to registration with the email pre-filled
+            email = request.form.get('email', '').strip().lower()
+            return redirect(url_for('auth.register', email=email))
+
+    # Resolve booking from token for display
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    booking = AccommodationBooking.query.filter_by(
+        claim_token_hash=token_hash
+    ).first()
+
+    if not booking:
+        flash('Invalid or expired claim link.', 'danger')
+        return redirect(url_for('accommodation.guest_search'))
+
+    return render_template(
+        'accommodation/guest/claim_booking.html',
+        booking=booking,
+        token=token,
+    )
+
+
 @accommodation_bp.route("/guest/confirmation/<reference>", endpoint="guest_confirmation")
 @login_required
 def guest_confirmation(reference):
@@ -2149,6 +2362,145 @@ def guest_submit_review(booking_id):
     )
 
 
+@accommodation_bp.route("/guest/booking/<int:booking_id>/register", methods=["GET", "POST"], endpoint="guest_register")
+@login_required
+def guest_register(booking_id):
+    """Guest registration for a booking (self, third-party, or group)."""
+    from app.accommodation.models.guest_registration import GuestRegistration
+    from app.accommodation.services.booking_service import BookingService
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    is_authorized = (
+        booking.booked_by_user_id == current_user.id or
+        booking.primary_guest_id == current_user.id or
+        booking.guest_user_id == current_user.id
+    )
+    if not is_authorized:
+        abort(403)
+
+    if booking.status not in [
+        AccommodationBookingStatus.CONFIRMED.value,
+        AccommodationBookingStatus.PENDING_APPROVAL.value,
+    ]:
+        flash("Registration is only available for confirmed or pending-approval bookings.", "warning")
+        return redirect(url_for("accommodation.guest_my_bookings"))
+
+    if request.method == "POST":
+        guest_name = request.form.get("guest_name", "").strip()
+        guest_email = request.form.get("guest_email", "").strip()
+        guest_phone = request.form.get("guest_phone", "").strip()
+        relationship_type = request.form.get("relationship_type", "adult")
+        id_document_type = request.form.get("id_document_type")
+        id_document_number = request.form.get("id_document_number", "").strip()
+        age = request.form.get("age", type=int)
+        date_of_birth = request.form.get("date_of_birth") or None
+        nationality = request.form.get("nationality") or None
+
+        # Validate host-configured required registration fields (D-024)
+        try:
+            policy = PropertyBookingPolicy.query.filter_by(
+                property_id=booking.property_id
+            ).first()
+            if policy and policy.required_registration_fields:
+                field_labels = {
+                    "full_name": "Full name",
+                    "phone": "Phone",
+                    "email": "Email",
+                    "id_document_type": "ID document type",
+                    "id_document_number": "ID document number",
+                    "date_of_birth": "Date of birth",
+                    "nationality": "Nationality",
+                }
+                field_values = {
+                    "full_name": guest_name,
+                    "phone": guest_phone,
+                    "email": guest_email,
+                    "id_document_type": id_document_type,
+                    "id_document_number": id_document_number,
+                    "date_of_birth": request.form.get("date_of_birth", "").strip(),
+                    "nationality": request.form.get("nationality", "").strip(),
+                }
+                for field in policy.required_registration_fields:
+                    value = field_values.get(field, "")
+                    if not value:
+                        label = field_labels.get(field, field)
+                        flash(f"{label} is required.", "danger")
+                        return redirect(request.url)
+        except Exception:
+            pass
+
+        if not guest_name:
+            flash("Guest name is required.", "danger")
+            return redirect(request.url)
+
+        registration = GuestRegistration(
+            booking_id=booking.id,
+            guest_user_id=current_user.id if relationship_type == "primary" else None,
+            guest_name=guest_name,
+            guest_email=guest_email,
+            guest_phone=guest_phone,
+            relationship_type=relationship_type,
+            age=age,
+            date_of_birth=date_of_birth,
+            nationality=nationality,
+            id_document_type=id_document_type,
+            id_document_number=id_document_number,
+            status="completed",
+            is_verified=False,
+            registration_source="self",
+        )
+        db.session.add(registration)
+        db.session.commit()
+
+        flash("Guest registration saved.", "success")
+        return redirect(url_for("accommodation.guest_my_bookings"))
+
+    existing = GuestRegistration.query.filter_by(booking_id=booking.id).all()
+
+    # Get host-configured required registration fields
+    try:
+        from app.accommodation.models.booking_policy import PropertyBookingPolicy
+        policy = PropertyBookingPolicy.query.filter_by(
+            property_id=booking.property_id
+        ).first()
+        required_fields = policy.required_registration_fields if policy else []
+    except Exception:
+        required_fields = []
+
+    return render_template(
+        "accommodation/guest/register.html",
+        booking=booking,
+        registrations=existing,
+        required_fields=required_fields,
+    )
+
+
+@accommodation_bp.route("/host/booking/<int:booking_id>/guest/<int:reg_id>/override", methods=["POST"], endpoint="host_override_registration")
+@login_required
+def host_override_registration(booking_id, reg_id):
+    """Host override for incomplete guest registration."""
+    from app.accommodation.models.guest_registration import GuestRegistration
+    from app.accommodation.services.identity_service import AccommodationIdentityService
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    registration = GuestRegistration.query.get_or_404(reg_id)
+
+    if registration.booking_id != booking.id:
+        abort(404)
+
+    host_info = _ensure_host_identity()
+    if not host_info or not AccommodationIdentityService.can_manage_property(current_user, booking.accommodation_property.owner_user_id, booking.accommodation_property.owner_org_id):
+        flash("You do not have permission to override registration.", "danger")
+        return redirect(url_for("accommodation.host_bookings"))
+
+    reason = request.form.get("reason", "Host override")
+    registration.mark_skipped(reason=reason, overridden_by_user_id=current_user.id)
+    db.session.commit()
+
+    flash("Guest registration overridden by host.", "success")
+    return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
+
+
 @accommodation_bp.route("/my-accommodation", endpoint="my_accommodation")
 @login_required
 def my_accommodation():
@@ -2161,7 +2513,7 @@ def my_accommodation():
     from app.accommodation.models.booking import AccommodationBooking, BookingContextType
     from app.accommodation.models.property import Property
     from sqlalchemy import or_, and_
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     current_user_id = current_user.id
     current_user_email = current_user.email
@@ -2222,7 +2574,7 @@ def my_accommodation():
     ).all()
 
     for booking in third_party_for_me:
-        booker = User.query.get(booking.booked_by_user_id)
+        booker = db.session.get(User, booking.booked_by_user_id)
         guest_stays.append({
             'type': 'booked_for_me',
             'source': 'booking',
@@ -2259,13 +2611,13 @@ def my_accommodation():
     ).all()
 
     for assignment in assignments:
-        event = Event.query.get(assignment.event_id)
+        event = db.session.get(Event, assignment.event_id)
         if not event:
             continue
 
         # Check if hotel booking
         if assignment.accommodation_booking_id:
-            booking = AccommodationBooking.query.get(assignment.accommodation_booking_id)
+            booking = db.session.get(AccommodationBooking, assignment.accommodation_booking_id)
             if booking and booking.accommodation_property:
                 guest_stays.append({
                     'type': 'event_assigned_hotel',
@@ -2299,7 +2651,7 @@ def my_accommodation():
 
         # Check if community host
         elif assignment.community_host_id:
-            property_obj = Property.query.get(assignment.community_host_id)
+            property_obj = db.session.get(Property, assignment.community_host_id)
             host_reg = EventHostRegistration.query.filter_by(
                 event_id=event.id,
                 property_id=assignment.community_host_id
@@ -2354,11 +2706,11 @@ def my_accommodation():
 
         # Get guest info
         if booking.primary_guest_id:
-            guest_user = User.query.get(booking.primary_guest_id)
+            guest_user = db.session.get(User, booking.primary_guest_id)
             guest_name = guest_user.username if guest_user else booking.primary_guest_name
             guest_email = guest_user.email if guest_user else booking.primary_guest_email
         elif booking.guest_user_id:
-            guest_user = User.query.get(booking.guest_user_id)
+            guest_user = db.session.get(User, booking.guest_user_id)
             guest_name = guest_user.username if guest_user else booking.guest_name
             guest_email = guest_user.email if guest_user else booking.guest_email
         else:
@@ -2421,7 +2773,7 @@ def my_accommodation():
             guest_stays=guest_stays,
             my_bookings=my_bookings,
             group_bookings=group_bookings,
-            now=datetime.utcnow()
+            now=datetime.now(timezone.utc)
         )
 
     return render_template(
@@ -2429,7 +2781,7 @@ def my_accommodation():
         guest_stays=guest_stays,
         my_bookings=my_bookings,
         group_bookings=group_bookings,
-        now=datetime.utcnow()
+        now=datetime.now(timezone.utc)
     )
 
 
@@ -2595,7 +2947,7 @@ def host_release_hold(block_id):
 
     block = BlockedDate.query.get_or_404(block_id)
 
-    prop = Property.query.get(block.property_id)
+    prop = db.session.get(Property, block.property_id)
     if not prop:
         flash('Property not found.', 'danger')
         return redirect(url_for('accommodation.host_dashboard'))
@@ -3567,6 +3919,7 @@ def host_bookings():
 
     booking_type = request.args.get('type', '').strip()
     status_filter = request.args.get('status', '').strip()
+    reg_filter = request.args.get('reg_status', '').strip()
 
     query = AccommodationBooking.query.join(Property, AccommodationBooking.property_id == Property.id)
     if host_info["type"] == "individual":
@@ -3581,12 +3934,23 @@ def host_bookings():
 
     bookings = query.order_by(AccommodationBooking.created_at.desc()).limit(200).all()
 
+    # Filter by registration status if requested
+    if reg_filter == 'complete':
+        bookings = [b for b in bookings if b.guest_registrations and all(
+            r.status in ('completed', 'skipped') for r in b.guest_registrations
+        )]
+    elif reg_filter == 'incomplete':
+        bookings = [b for b in bookings if not b.guest_registrations or any(
+            r.status not in ('completed', 'skipped') for r in b.guest_registrations
+        )]
+
     return render_template(
         "accommodation/host/bookings.html",
         host_info=host_info,
         bookings=bookings,
         current_type=booking_type,
         current_status=status_filter,
+        current_reg=reg_filter,
     )
 
 
@@ -3851,7 +4215,7 @@ def host_room_type_edit(room_type_id):
         room_type.is_active = request.form.get('is_active') != 'off'
         db.session.commit()
         flash('Room type updated.', 'success')
-        HostService.sync_room_type_inventory(property_id)
+        HostService.sync_room_type_inventory(prop.id)
     except Exception as e:
         db.session.rollback()
         logger.exception('Failed to update room type')
@@ -4119,16 +4483,30 @@ def admin_moderate_action(entity_type, id, action):
             item.is_verified = True
             item.verified_at = datetime.now(timezone.utc)
             item.verified_by = current_user.id
+            db.session.commit()
+            flash(f'{entity_type.capitalize()} approved successfully.', 'success')
         elif entity_type == 'booking':
-            item.status = 'confirmed'
+            reason_text = request.form.get('reason', 'Approved by moderator').strip()
+            success, error = BookingService.approve_booking(
+                booking_id=id,
+                approved_by_user_id=current_user.id,
+                reason=reason_text,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            if not success:
+                flash(f'Approval failed: {error}', 'danger')
+                return redirect(redirect_url)
+            db.session.expire_all()
+            flash('Booking approved successfully.', 'success')
         elif entity_type == 'review':
             item.status = "approved"
             item.is_published = True
             item.published_at = datetime.now(timezone.utc)
             item.moderated_by = current_user.id
             item.moderated_at = datetime.now(timezone.utc)
-        db.session.commit()
-        flash(f'{entity_type.capitalize()} approved successfully.', 'success')
+            db.session.commit()
+            flash(f'{entity_type.capitalize()} approved successfully.', 'success')
 
     elif action == 'reject':
         reason = request.form.get('reason', '').strip()
@@ -4139,16 +4517,28 @@ def admin_moderate_action(entity_type, id, action):
         if entity_type == 'property':
             item.status = "suspended"
             item.verification_notes = reason
+            db.session.commit()
+            flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
         elif entity_type == 'booking':
-            item.status = 'cancelled'
-            item.cancellation_reason = reason
+            reason_text = reason or 'Rejected by moderator'
+            success, error = BookingService.reject_booking(
+                booking_id=id,
+                rejected_by_user_id=current_user.id,
+                reason=reason_text,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent')
+            )
+            if not success:
+                flash(f'Rejection failed: {error}', 'danger')
+                return redirect(redirect_url)
+            flash('Booking rejected successfully.', 'warning')
         elif entity_type == 'review':
             item.status = "rejected"
             item.moderation_reason = reason
             item.moderated_by = current_user.id
             item.moderated_at = datetime.now(timezone.utc)
-        db.session.commit()
-        flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
+            db.session.commit()
+            flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
 
     elif action == 'flag':
         reason = request.form.get('reason', '').strip()
@@ -4241,6 +4631,7 @@ def explore():
 
 
 @accommodation_bp.route("/api/explore/search", endpoint="explore_search_api")
+@limiter.limit("30 per minute")
 def explore_search_api():
     """API for explore page - search properties within map bounds"""
     from flask_login import current_user
@@ -4394,3 +4785,4 @@ def explore_wishlist_api(property_id):
         db.session.commit()
         
         return jsonify({'success': True, 'message': 'Removed from wishlist'})
+

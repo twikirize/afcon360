@@ -222,7 +222,7 @@ class PromotionService:
     def apply_promo_code(booking_id: int, promo_code: str) -> Dict[str, Any]:
         """Apply promo code to a booking"""
         try:
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError(
                     message="Booking not found",
@@ -375,3 +375,4 @@ def get_promotion_service():
             if _promotion_service_instance is None:
                 _promotion_service_instance = PromotionService()
     return _promotion_service_instance
+

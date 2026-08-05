@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import unittest
 from unittest.mock import patch, MagicMock
 from flask import Flask
@@ -324,14 +324,14 @@ class TestRegistrationFlow(unittest.TestCase):
                 registration_fee=10.00,
                 payment_status='pending',
                 status='pending_payment',
-                created_at=datetime.utcnow() - timedelta(hours=3)  # 3 hours old
+                created_at=datetime.now(timezone.utc) - timedelta(hours=3)  # 3 hours old
             )
             registration.generate_refs(event.slug, 1)
             db.session.add(registration)
             db.session.commit()
 
             # Verify initial state
-            initial_ticket = TicketType.query.get(ticket.id)
+            initial_ticket = db.session.get(TicketType, ticket.id)
             self.assertEqual(initial_ticket.available_seats, 3)
 
             # Run the reaper task (simulated)
@@ -342,12 +342,12 @@ class TestRegistrationFlow(unittest.TestCase):
                     result = expire_pending_registrations()
 
             # Check that registration was expired
-            expired_reg = EventRegistration.query.get(registration.id)
+            expired_reg = db.session.get(EventRegistration, registration.id)
             self.assertEqual(expired_reg.status, 'expired')
             self.assertEqual(expired_reg.payment_status, 'expired')
 
             # Check that capacity was released
-            updated_ticket = TicketType.query.get(ticket.id)
+            updated_ticket = db.session.get(TicketType, ticket.id)
             # Available seats should still be 3 (since it was never decremented for pending)
             # Or maybe it was decremented and then released back
             # This depends on implementation
@@ -357,3 +357,4 @@ class TestRegistrationFlow(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

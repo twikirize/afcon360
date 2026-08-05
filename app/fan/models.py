@@ -2,7 +2,7 @@
 # Fan profile and dashboard context models
 # All models inherit from BaseModel per project convention
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
 
@@ -39,7 +39,7 @@ class FanProfile(BaseModel):
     social_features_enabled = db.Column(db.Boolean, default=True)
 
     # Additional timestamps (BaseModel provides created_at, updated_at)
-    activated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    activated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     deactivated_at = db.Column(db.DateTime, nullable=True)
 
     # Relationship back to User
@@ -50,12 +50,12 @@ class FanProfile(BaseModel):
 
     def activate(self):
         self.is_active = True
-        self.activated_at = datetime.utcnow()
+        self.activated_at = datetime.now(timezone.utc)
         self.deactivated_at = None
 
     def deactivate(self):
         self.is_active = False
-        self.deactivated_at = datetime.utcnow()
+        self.deactivated_at = datetime.now(timezone.utc)
 
     @property
     def favorite_teams_list(self):
@@ -96,7 +96,7 @@ class UserDashboardContext(BaseModel):
     )
 
     current_mode = db.Column(db.String(20), default='standard', nullable=False)
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user = db.relationship(
         'User',
@@ -105,3 +105,4 @@ class UserDashboardContext(BaseModel):
 
     def __repr__(self):
         return f'<UserDashboardContext user_id={self.user_id} mode={self.current_mode}>'
+

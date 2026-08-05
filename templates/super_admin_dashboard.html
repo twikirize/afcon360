@@ -399,7 +399,56 @@ function eventModerationAction(action, slug, extraData = {}) {
         </div>
       </div>
 
-      <!-- Quick Actions -->
+      <!-- NEW: Accommodation Statistics Card -->
+       <div class="sad-card">
+         <div class="sad-card-head">
+           <div class="sad-card-title">
+             <div class="sad-card-icon" style="background:rgba(62,207,142,0.12);color:var(--sad-green)">🏨</div>
+             Accommodation Overview
+           </div>
+           <a href="{{ url_for('accommodation.admin_bookings') }}" class="sad-btn sm">Manage Bookings →</a>
+         </div>
+         <div class="sad-card-body">
+           <div class="sad-stats" style="grid-template-columns:repeat(4,1fr)">
+             <div class="sad-stat s-blue">
+               <div class="sad-stat-label">Total Bookings</div>
+               <div class="sad-stat-value">{{ total_bookings|default(0) }}</div>
+             </div>
+             <div class="sad-stat s-amber">
+               <div class="sad-stat-label">Unclaimed Bookings</div>
+               <div class="sad-stat-value">{{ unclaimed_count|default(0) }}</div>
+               <div class="sad-stat-sub">Awaiting owner claim</div>
+             </div>
+             <div class="sad-stat s-red">
+               <div class="sad-stat-label">Readiness Issues</div>
+               <div class="sad-stat-value">{{ readiness_issues_count|default(0) }}</div>
+               <div class="sad-stat-sub">Blocked from check-in</div>
+             </div>
+             <div class="sad-stat s-green">
+               <div class="sad-stat-label">Active Properties</div>
+               <div class="sad-stat-value">{{ total_properties|default(0) }}</div>
+               <div class="sad-stat-sub">{{ active_hosts|default(0) }} hosts</div>
+             </div>
+           </div>
+           <div class="sad-alert info" style="margin-top:12px;font-size:11px">
+             {% if unclaimed_count > 0 %}
+               <a href="{{ url_for('accommodation.admin_bookings', owner_claimed='no') }}" style="color:var(--sad-amber)">
+                 ⚠️ {{ unclaimed_count }} booking(s) need owner assignment
+               </a>
+             {% endif %}
+             {% if readiness_issues_count > 0 %}
+               <a href="{{ url_for('accommodation.admin_bookings', status='pending') }}" style="color:var(--sad-red);margin-left:8px">
+                 🚫 {{ readiness_issues_count }} booking(s) have check-in blockers
+               </a>
+             {% endif %}
+             {% if unclaimed_count == 0 and readiness_issues_count == 0 %}
+               ✅ All accommodation bookings are in good standing
+             {% endif %}
+           </div>
+         </div>
+       </div>
+
+       <!-- Quick Actions -->
       <div class="sad-card">
         <div class="sad-card-head">
           <div class="sad-card-title">

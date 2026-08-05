@@ -29,6 +29,8 @@ class PropertyBookingPolicy(BaseModel):
         CheckConstraint("free_cancel_hours >= 0", name="ck_free_cancel_hours_positive"),
         CheckConstraint("reservation_hold_minutes >= 0", name="ck_hold_minutes_positive"),
         CheckConstraint("balance_due_days_before_checkin >= 0", name="ck_balance_due_days_positive"),
+        CheckConstraint("verification_level IN ('none','basic_identity','document_upload','biometric_liveness','third_party_attestation')", name="ck_verification_level_valid"),
+        CheckConstraint("security_deposit_amount >= 0", name="ck_security_deposit_positive"),
     )
 
     # -------------------------------
@@ -79,6 +81,13 @@ class PropertyBookingPolicy(BaseModel):
     require_guest_identity = Column(Boolean, default=False)
     require_guest_phone = Column(Boolean, default=True)
     require_guest_email = Column(Boolean, default=True)
+    # Guest identity verification level (D-006)
+    verification_level = Column(String(30), nullable=False, default="none", server_default="none")
+    # Values: none, basic_identity, document_upload, biometric_liveness, third_party_attestation
+
+    # Host-configurable required registration fields (D-024)
+    required_registration_fields = Column(JSON, default=list, server_default="[]")
+    # Options: full_name, phone, email, id_document_type, id_document_number, date_of_birth, nationality
 
     # Age restrictions
     minimum_age = Column(Integer, nullable=True)  # Minimum age to book
@@ -95,6 +104,12 @@ class PropertyBookingPolicy(BaseModel):
     cash_requires_previous_booking = Column(Boolean, default=False, nullable=False, server_default='false')
     cash_min_kyc_level = Column(Integer, default=2, server_default='2')
     cash_min_previous_bookings = Column(Integer, default=0, server_default='0')
+
+    # -------------------------------
+    # Security Deposit (D-012)
+    # -------------------------------
+    require_security_deposit = Column(Boolean, default=False, nullable=False, server_default='false')
+    security_deposit_amount = Column(Numeric(10, 2), default=0, server_default='0')
 
     # -------------------------------
     # Status

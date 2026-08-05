@@ -102,6 +102,7 @@ class AccommodationBooking(BaseModel):
         CheckConstraint("num_guests >= 1", name="ck_guests_positive"),
         CheckConstraint("num_nights >= 1", name="ck_nights_positive"),
         CheckConstraint("total_amount >= 0", name="ck_total_amount_positive"),
+        CheckConstraint("security_deposit_amount >= 0", name="ck_security_deposit_positive"),
     )
 
     # -------------------------------
@@ -113,13 +114,13 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     # Relationships
     # -------------------------------
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False, index=True)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="RESTRICT"), nullable=False)
     accommodation_property = relationship("Property", back_populates="bookings")
 
     room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="RESTRICT"), nullable=True, index=True)
     room_type = relationship("RoomType", backref="bookings")
 
-    guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True)
+    guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
     guest = relationship("User", foreign_keys=[guest_user_id], backref="accommodation_bookings")
 
     host_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -160,7 +161,7 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     # Booking Status (String storage)
     # -------------------------------
-    status = Column(String(50), default=AccommodationBookingStatus.DRAFT.value, nullable=False, index=True)
+    status = Column(String(50), default=AccommodationBookingStatus.DRAFT.value, nullable=False)
 
     # -------------------------------
     # Cancellation / Host Approval
@@ -187,8 +188,8 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     # Context Fields (String storage)
     # -------------------------------
-    context_type = Column(String(50), default=BookingContextType.NONE.value, nullable=False, index=True)  # ✅ Has default
-    context_id = Column(String(100), nullable=True, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
+    context_type = Column(String(50), default=BookingContextType.NONE.value, nullable=False)  # ✅ Has default
+    context_id = Column(String(100), nullable=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     context_metadata = Column(JSON, default=dict)
 
     # -------------------------------
@@ -204,6 +205,28 @@ class AccommodationBooking(BaseModel):
     checked_out_at = Column(DateTime(timezone=True), nullable=True)
 
     expires_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Separate deadlines for different booking phases
+    hold_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    approval_deadline = Column(DateTime(timezone=True), nullable=True, index=True)
+    registration_deadline = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    # ==========================================
+    # NEW: Booking Owner Identity (D-003, D-004)
+    # ==========================================
+    # The user who legally owns the booking. May differ from booked_by_user_id
+    # (the Creator) in third-party bookings.
+    booking_owner_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, index=True)
+    booking_owner = relationship("User", foreign_keys=[booking_owner_id])
+
+    # When the Owner authenticated and claimed the booking (third-party only)
+    owner_claimed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Email of the Owner if they do not yet have an AFCON360 account
+    owner_email = Column(String(255), nullable=True)
+
+    # Single-use secure token (hashed) for the Owner claiming flow
+    claim_token_hash = Column(String(64), nullable=True, index=True)
 
     # ==========================================
     # NEW: Multi-guest / Third-party booking fields
@@ -225,7 +248,7 @@ class AccommodationBooking(BaseModel):
     booking_type = Column(String(30), nullable=False, default='self')  # self, third_party, group, event_assigned
 
     # Group bookings (multiple rooms for same trip)
-    group_booking_id = Column(String(100), nullable=True, index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})  # UUID shared across multiple bookings
+    group_booking_id = Column(String(100), nullable=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})  # UUID shared across multiple bookings
     group_size = Column(Integer, nullable=True)  # Total people in group
     room_number = Column(Integer, nullable=True)  # Which room in group (1,2,3...)
 
@@ -254,6 +277,13 @@ class AccommodationBooking(BaseModel):
     balance_due_date = Column(Date, nullable=True)
 
     # ==========================================
+    # NEW: Security Deposit (D-012)
+    # ==========================================
+    security_deposit_amount = Column(Numeric(10, 2), default=0)
+    security_deposit_held = Column(Boolean, default=False)
+    security_deposit_released_at = Column(DateTime(timezone=True), nullable=True)
+
+    # ==========================================
     # NEW: Payment Guarantee
     # ==========================================
     payment_guaranteed = Column(Boolean, default=False)
@@ -277,6 +307,7 @@ class AccommodationBooking(BaseModel):
     status_history = relationship("BookingStatusHistory", back_populates="booking", cascade="all, delete-orphan")
     review = relationship("Review", back_populates="booking", uselist=False)
     room_assignments = relationship("RoomBooking", back_populates="booking", cascade="all, delete-orphan")
+    guest_registrations = relationship("GuestRegistration", back_populates="booking", cascade="all, delete-orphan")
 
     # ==========================================
     # PROPERTIES
@@ -308,22 +339,41 @@ class AccommodationBooking(BaseModel):
         Computed property - not stored in DB.
         Returns True if guest can check in.
         """
-        return (
-            self.status == AccommodationBookingStatus.CONFIRMED.value
-            and self.payment_status_enum in [
+        if (
+            self.status != AccommodationBookingStatus.CONFIRMED.value
+            or self.payment_status_enum not in [
                 AccommodationPaymentStatus.PAID,
                 AccommodationPaymentStatus.PARTIALLY_PAID,
             ]
-            and self.check_in <= date.today()
-            and self.all_required_guests_registered
-        )
+            or self.check_in > date.today()
+            or not self.all_required_guests_registered
+        ):
+            return False
+
+        # Check property-level guest identity requirement (D-005)
+        try:
+            policy = PropertyBookingPolicy.query.filter_by(
+                property_id=self.property_id
+            ).first()
+            if policy and policy.require_guest_identity:
+                return self.all_required_guests_registered
+        except Exception:
+            pass
+
+        return True
 
     @property
     def all_required_guests_registered(self) -> bool:
-        """Check if all required guests are registered for this booking"""
-        # This would typically check against guest registration model
-        # For now, return True if there's at least primary guest info
-        return bool(self.primary_guest_id or self.guest_user_id or self.guest_email)
+        """Check if all required guests are registered for this booking."""
+        try:
+            registrations = GuestRegistration.query.filter_by(booking_id=self.id).all()
+            if not registrations:
+                return False
+            return all(
+                r.status in ("completed", "skipped") for r in registrations
+            )
+        except Exception:
+            return bool(self.primary_guest_id or self.guest_user_id or self.guest_email)
 
     # -------------------------------
     # Core Methods
@@ -400,7 +450,7 @@ class AccommodationBooking(BaseModel):
         ]:
             return False, "Cannot cancel at this stage", 0
 
-        days_until = (self.check_in - datetime.now(timezone.utc).date()).days
+        days_until = (self.check_in - date.today()).days
         policy = self.accommodation_property.cancellation_policy
 
         if policy == "flexible":
@@ -410,6 +460,8 @@ class AccommodationBooking(BaseModel):
                 return True, "Full refund", self.total_amount
             elif days_until >= 1:
                 return True, "50% refund", self.total_amount * Decimal("0.5")
+            else:
+                return True, "No refund for same-day cancellation", Decimal("0.00")
         elif policy == "strict":
             if days_until >= 7:
                 return True, "50% refund", self.total_amount * Decimal("0.5")

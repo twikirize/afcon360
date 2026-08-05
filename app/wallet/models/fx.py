@@ -20,11 +20,11 @@ class FXRateModel(db.Model):
     __tablename__ = 'fx_rates'
 
     id = Column(BigInteger, primary_key=True)
-    base_currency = Column(String(3), nullable=False, index=True)  # e.g., USD
-    quote_currency = Column(String(3), nullable=False, index=True)  # e.g., UGX
+    base_currency = Column(String(3), nullable=False)  # e.g., USD
+    quote_currency = Column(String(3), nullable=False)  # e.g., UGX
     rate = Column(Numeric(20, 8), nullable=False)  # Exchange rate (1 base = rate quote)
     source = Column(String(50), nullable=False)  # Rate source (xe.com, central_bank, etc.)
-    timestamp = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     spread = Column(Numeric(10, 6), default=Decimal('0.01'))  # Platform spread in percentage
     
@@ -73,7 +73,7 @@ class FXTransactionModel(db.Model):
 
     id = Column(BigInteger, primary_key=True)
     transaction_id = Column(String(64), nullable=False, unique=True, index=True)
-    user_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False)
     
     # Source currency details
     source_currency = Column(String(3), nullable=False)
@@ -92,11 +92,11 @@ class FXTransactionModel(db.Model):
     platform_fee = Column(Numeric(20, 2), default=Decimal('0'))
     
     # Status
-    status = Column(String(20), nullable=False, default='pending', index=True)  # pending, completed, failed
+    status = Column(String(20), nullable=False, default='pending')  # pending, completed, failed
     error_message = Column(String(500), nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     __table_args__ = (
@@ -121,3 +121,4 @@ class FXTransactionModel(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
         }
+

@@ -1,0 +1,10 @@
+{
+  "title": "Booking Cancelled - AFCON360",
+  "body": "Booking {{ reference_id }} cancelled. Refund: UGX {{ total_ugx }}",
+  "click_action": "/accommodation/bookings/{{ reference_id }}",
+  "data": {
+    "type": "booking_cancelled",
+    "reference_id": "{{ reference_id }}",
+    "total_ugx": "{{ total_ugx }}"
+  }
+}

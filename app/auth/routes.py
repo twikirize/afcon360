@@ -57,7 +57,7 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         # Check if it's a backup code
         if backup_code or len(token) == 8:
             if mfa_secret.verify_backup_code(token.upper()):
-                mfa_secret.last_used = datetime.utcnow()
+                mfa_secret.last_used = datetime.now(timezone.utc)
                 db.session.commit()
                 return True
             return False
@@ -67,7 +67,7 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
             import pyotp
             totp = pyotp.TOTP(mfa_secret.secret)
             if totp.verify(token, valid_window=1):
-                mfa_secret.last_used = datetime.utcnow()
+                mfa_secret.last_used = datetime.now(timezone.utc)
                 db.session.commit()
                 return True
         
@@ -1283,3 +1283,4 @@ def test_csrf():
     token = generate_csrf_token()
     print(f"CSRF Token generated: {token}")
     return f"CSRF Token: {token} (check console for value)"
+

@@ -101,7 +101,7 @@ class ComplianceCaseService:
     @staticmethod
     def assign_case(case_id: int, assigned_to: int, assigned_by: int) -> Optional[ComplianceCase]:
         """Assign a compliance case to a user"""
-        case = ComplianceCase.query.get(case_id)
+        case = db.session.get(ComplianceCase, case_id)
         if not case:
             return None
         
@@ -134,7 +134,7 @@ class ComplianceCaseService:
         resolution: Optional[str] = None
     ) -> Optional[ComplianceCase]:
         """Update compliance case status"""
-        case = ComplianceCase.query.get(case_id)
+        case = db.session.get(ComplianceCase, case_id)
         if not case:
             return None
         
@@ -173,7 +173,7 @@ class ComplianceCaseService:
         new_priority: Optional[ComplianceCasePriority] = None
     ) -> Optional[ComplianceCase]:
         """Escalate a compliance case"""
-        case = ComplianceCase.query.get(case_id)
+        case = db.session.get(ComplianceCase, case_id)
         if not case:
             return None
         
@@ -333,7 +333,7 @@ class DataSubjectRequestService:
         verification_method: str
     ) -> Optional[DataSubjectRequest]:
         """Verify identity of data subject request"""
-        request = DataSubjectRequest.query.get(request_id)
+        request = db.session.get(DataSubjectRequest, request_id)
         if not request:
             return None
         
@@ -367,7 +367,7 @@ class DataSubjectRequestService:
         assigned_by: int
     ) -> Optional[DataSubjectRequest]:
         """Assign a data subject request"""
-        request = DataSubjectRequest.query.get(request_id)
+        request = db.session.get(DataSubjectRequest, request_id)
         if not request:
             return None
         
@@ -400,7 +400,7 @@ class DataSubjectRequestService:
         response_data: Optional[str] = None
     ) -> Optional[DataSubjectRequest]:
         """Complete a data subject request"""
-        request = DataSubjectRequest.query.get(request_id)
+        request = db.session.get(DataSubjectRequest, request_id)
         if not request:
             return None
         
@@ -433,7 +433,7 @@ class DataSubjectRequestService:
         rejection_reason: str
     ) -> Optional[DataSubjectRequest]:
         """Reject a data subject request"""
-        request = DataSubjectRequest.query.get(request_id)
+        request = db.session.get(DataSubjectRequest, request_id)
         if not request:
             return None
         
@@ -541,7 +541,7 @@ class ComplianceReportService:
         recommendations: Optional[str] = None
     ) -> Optional[ComplianceReport]:
         """Generate report data"""
-        report = ComplianceReport.query.get(report_id)
+        report = db.session.get(ComplianceReport, report_id)
         if not report:
             return None
         
@@ -562,7 +562,7 @@ class ComplianceReportService:
         approved_by: int
     ) -> Optional[ComplianceReport]:
         """Approve a compliance report"""
-        report = ComplianceReport.query.get(report_id)
+        report = db.session.get(ComplianceReport, report_id)
         if not report:
             return None
         
@@ -777,3 +777,4 @@ def compliance_status_light(entity):
         return "amber"
     else:
         return "red"
+

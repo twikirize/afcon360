@@ -4,7 +4,7 @@ Transaction model with DB-enforced idempotency.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import (
     Column, String, Numeric, DateTime, ForeignKey,
@@ -168,7 +168,7 @@ class TransactionModel(db.Model):
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
     
     completed_at = Column(
@@ -191,3 +191,4 @@ class TransactionModel(db.Model):
             f"<Transaction {self.id} {self.tx_type} "
             f"{self.amount} {self.currency} {self.status}>"
         )
+

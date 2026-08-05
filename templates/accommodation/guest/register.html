@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Guest Registration - {{ booking.booking_reference }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h4>Guest Registration</h4>
+                    <p class="mb-0 text-muted">Booking: {{ booking.booking_reference }}</p>
+                </div>
+                <div class="card-body">
+                    {% if booking.registration_deadline %}
+                    <div class="alert {{ 'alert-warning' if booking.registration_deadline <= booking.check_in else 'alert-info' }} small py-2 mb-3">
+                        <i class="fas fa-clock me-1"></i>
+                        Registration deadline: <strong>{{ booking.registration_deadline.strftime('%b %d, %Y') }}</strong>
+                        {% if booking.registration_deadline <= booking.check_in %}
+                        <br><strong>Overdue!</strong> Incomplete registration may block check-in.
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if registrations %}
+                        <h5>Registered Guests</h5>
+                        <ul class="list-group mb-3">
+                            {% for reg in registrations %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    {{ reg.guest_name }}
+                                    <span class="badge bg-{{ 'success' if reg.status == 'completed' else 'warning' }}">
+                                        {{ reg.status|title }}
+                                    </span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+
+                    {% if required_fields %}
+                    <p class="text-muted small mb-3">
+                        <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                        The following fields are <strong>required</strong> by the host:
+                        {% for field in required_fields %}
+                            <span class="badge bg-secondary">{{ field|replace('_', ' ')|title }}</span>
+                        {% endfor %}
+                    </p>
+                    {% endif %}
+
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Guest Name {% if 'full_name' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="text" name="guest_name" class="form-control"
+                                   {% if 'full_name' in required_fields %}required{% endif %}>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Email {% if 'email' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="email" name="guest_email" class="form-control"
+                                   {% if 'email' in required_fields %}required{% endif %}>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Phone {% if 'phone' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="text" name="guest_phone" class="form-control"
+                                   {% if 'phone' in required_fields %}required{% endif %}>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Relationship</label>
+                            <select name="relationship_type" class="form-select">
+                                <option value="primary">Primary Guest</option>
+                                <option value="adult">Adult</option>
+                                <option value="child">Child</option>
+                                <option value="infant">Infant</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                ID Document Type {% if 'id_document_type' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <select name="id_document_type" class="form-select"
+                                    {% if 'id_document_type' in required_fields %}required{% endif %}>
+                                <option value="">None</option>
+                                <option value="passport">Passport</option>
+                                <option value="national_id">National ID</option>
+                                <option value="drivers_license">Driver's License</option>
+                                <option value="birth_certificate">Birth Certificate</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                ID Document Number {% if 'id_document_number' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="text" name="id_document_number" class="form-control"
+                                   {% if 'id_document_number' in required_fields %}required{% endif %}>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Age</label>
+                            <input type="number" name="age" class="form-control" min="0" max="120">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Date of Birth {% if 'date_of_birth' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="date" name="date_of_birth" class="form-control"
+                                   {% if 'date_of_birth' in required_fields %}required{% endif %}>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Nationality {% if 'nationality' in required_fields %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="text" name="nationality" class="form-control"
+                                   {% if 'nationality' in required_fields %}required{% endif %}>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Registration</button>
+                        <a href="{{ url_for('accommodation.guest_my_bookings') }}" class="btn btn-secondary">Back to My Bookings</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

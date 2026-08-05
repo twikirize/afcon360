@@ -4,7 +4,7 @@ Immutable audit log for all financial operations.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, DateTime, ForeignKey, Index, Text
 )
@@ -124,7 +124,7 @@ class AuditLogModel(db.Model):
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         index=True
     )
     
@@ -192,7 +192,7 @@ class IdempotencyKeyModel(db.Model):
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
     
     client_ip = Column(
@@ -202,3 +202,4 @@ class IdempotencyKeyModel(db.Model):
     
     def __repr__(self):
         return f"<IdempotencyKey {self.key_value} type={self.resource_type}>"
+

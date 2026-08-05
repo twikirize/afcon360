@@ -263,7 +263,7 @@ class ComplianceEngine:
         checks = []
         required_actions = []
         
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return ComplianceResult(
                 can_proceed=False,
@@ -370,3 +370,4 @@ __all__ = [
     'CountryComplianceConfig', 'SanctionsService', 'AMLTransactionMonitor',
     'check_transaction', 'is_sanctioned', 'should_report_str', 'get_country_requirements'
 ]
+

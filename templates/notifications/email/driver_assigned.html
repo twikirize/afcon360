@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Driver Assigned</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #fcd116;">
+    <h2 style="color: #1e293b; margin-top: 0;">AFCON360 Driver Assigned</h2>
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>Your transport booking has a driver assigned.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Booking Reference:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ reference_id }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Driver Name:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ driver_name }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Vehicle:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ vehicle_type }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Estimated Arrival:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ eta_minutes }} minutes</td>
+      </tr>
+    </table>
+    <p style="color: #555; font-size: 14px;">Thank you for using AFCON360 Transport!</p>
+  </div>
+</body>
+</html>

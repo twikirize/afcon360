@@ -8,12 +8,12 @@ class PayoutRequest(BaseModel):
     __tablename__ = 'payout_requests'
 
     request_ref = Column(String(64), unique=True, nullable=False)
-    agent_id = Column(BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    agent_id = Column(BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     amount = Column(Numeric(18, 6), nullable=False)
     currency = Column(String(10), nullable=False)
     payment_method = Column(String(30), nullable=False)
     payment_details = Column(db.JSON, nullable=False)
-    status = Column(String(20), nullable=False, default='pending', index=True)
+    status = Column(String(20), nullable=False, default='pending')
     approved_by = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     paid_by = Column(BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)

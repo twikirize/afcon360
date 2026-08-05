@@ -3,7 +3,7 @@ Payment Provider Configuration Model
 Stores API keys and settings securely in database with encryption
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger
 from app.extensions import db
 from app.models.base import BaseModel
@@ -44,8 +44,8 @@ class PaymentProviderConfig(BaseModel):
     is_enabled = Column(Boolean, default=True, nullable=False)  # Kill switch
     
     # Metadata
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     updated_by = Column(BigInteger, nullable=True)  # User ID who last updated
     
     # Audit
@@ -294,7 +294,7 @@ class WalletSystemConfig(BaseModel):
     kyc_tier_required = Column(String(20), default='tier_2', nullable=False)
 
     # Audit
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     updated_by = Column(BigInteger, nullable=True)
     
     @classmethod
@@ -337,3 +337,4 @@ class WalletSystemConfig(BaseModel):
 
 
 __all__ = ['PaymentProviderConfig', 'WalletSystemConfig']
+

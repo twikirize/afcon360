@@ -10,7 +10,7 @@ RULE #3 - Every financial op = ONE db.session.begin() block, zero compensation.
 """
 
 from decimal import Decimal, ROUND_DOWN, getcontext
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 from uuid import UUID
 from flask import current_app, request
@@ -178,10 +178,10 @@ class WalletService:
         monthly_volume = account.monthly_volume or Decimal('0')
         
         # Reset if period has elapsed
-        if account.monthly_volume_reset_at and datetime.utcnow() > account.monthly_volume_reset_at:
+        if account.monthly_volume_reset_at and datetime.now(timezone.utc) > account.monthly_volume_reset_at:
             monthly_volume = Decimal('0')
             account.monthly_volume = Decimal('0')
-            account.monthly_volume_reset_at = datetime.utcnow() + timedelta(days=30)
+            account.monthly_volume_reset_at = datetime.now(timezone.utc) + timedelta(days=30)
             db.session.commit()
         
         if monthly_volume + amount > monthly_limit:
@@ -315,6 +315,11 @@ class WalletService:
 
         self.db.add(wallet)
         self.db.commit()
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_wallet_created(user_id=user_id)
+        except Exception as _ne:
+            logging.getLogger(__name__).warning(f"Wallet creation notification failed: {_ne}")
         return wallet
 
     def audit_log(self, wallet_id: int, user_id: int, action: str, new_value: Dict, reason: str):
@@ -343,7 +348,7 @@ class WalletService:
         """
         from app.identity.models.user import User
 
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return None
 
@@ -1383,7 +1388,7 @@ class WalletService:
         
         # Security check: Only Super Admins or Owners can approve (unless auto-approve for small amounts)
         if not is_auto_approve:
-            approver = User.query.get(approved_by_id)
+            approver = db.session.get(User, approved_by_id)
             if not approver or not (approver.has_global_role('owner', 'super_admin')):
                  raise PermissionError("Only Super Admins or Owners can approve adjustments")
 
@@ -1421,7 +1426,7 @@ class WalletService:
         # Notify approval
         try:
             from app.wallet.services.wallet_notifications import notify_adjustment_approved
-            approver = User.query.get(approved_by_id)
+            approver = db.session.get(User, approved_by_id)
             notify_adjustment_approved(
                 request_id=request_obj.public_id,
                 approved_by=approver.username or approver.email,
@@ -1446,7 +1451,7 @@ class WalletService:
         from app.identity.models.user import User
         
         # Security check: Only Super Admins or Owners can reject (or the original requester)
-        rejecter = User.query.get(rejected_by_id)
+        rejecter = db.session.get(User, rejected_by_id)
         request_obj = AdjustmentRequestModel.query.filter_by(public_id=request_id).first()
         
         if not request_obj:
@@ -1487,7 +1492,7 @@ class WalletService:
     def approve_transaction(transaction_id: int, approved_by: int) -> bool:
         """Approve a pending transaction."""
         from app.wallet.models.transaction import TransactionModel, TransactionStatus
-        tx = TransactionModel.query.get(transaction_id)
+        tx = db.session.get(TransactionModel, transaction_id)
         if tx and tx.status == TransactionStatus.PENDING:
             tx.status = TransactionStatus.COMPLETED
             tx.updated_at = datetime.now(timezone.utc)
@@ -1500,7 +1505,7 @@ class WalletService:
     def reject_transaction(transaction_id: int, reason: str, rejected_by: int) -> bool:
         """Reject a pending transaction."""
         from app.wallet.models.transaction import TransactionModel, TransactionStatus
-        tx = TransactionModel.query.get(transaction_id)
+        tx = db.session.get(TransactionModel, transaction_id)
         if tx and tx.status == TransactionStatus.PENDING:
             tx.status = TransactionStatus.FAILED
             tx.failure_reason = reason
@@ -1513,7 +1518,7 @@ class WalletService:
     def verify_payment_method(payment_id: int, verified_by: int) -> bool:
         """Verify a user's payment method."""
         from app.wallet.models.wallet import PaymentMethod
-        pm = PaymentMethod.query.get(payment_id)
+        pm = db.session.get(PaymentMethod, payment_id)
         if pm:
             pm.is_verified = True
             pm.verified_at = datetime.now(timezone.utc)

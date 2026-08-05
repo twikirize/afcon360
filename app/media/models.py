@@ -258,10 +258,10 @@ class Media(BaseModel):
     processing_metadata = Column(JSONB, nullable=True)
 
     # Module context — which module and which entity this belongs to
-    module = Column(String(50), nullable=False, index=True)
+    module = Column(String(50), nullable=False)
     # entity_id is the PUBLIC UUID of the owning entity (not BIGINT)
     # e.g., property.public_id, user.public_id, kyc_record.reference_code
-    entity_id = Column(String(64), nullable=False, index=True)
+    entity_id = Column(String(64), nullable=False)
 
     # Uploader — internal BIGINT FK (never exposed)
     uploaded_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -282,7 +282,7 @@ class Media(BaseModel):
     original_filename = Column(String(255), nullable=True)
     file_size = Column(Integer, nullable=True)
     mime_type = Column(String(100), nullable=True)
-    sha256_hash = Column(String(64), nullable=True, index=True)
+    sha256_hash = Column(String(64), nullable=True)
     perceptual_hash = Column(String(64), nullable=True, index=True)
 
     # Image/video dimensions
@@ -332,7 +332,7 @@ class MediaProcessingJob(BaseModel):
     __tablename__ = "media_processing_jobs"
 
     media_id = Column(BigInteger, ForeignKey("media.id", ondelete="CASCADE"), nullable=False)
-    celery_task_id = Column(String(64), nullable=True, index=True)
+    celery_task_id = Column(String(64), nullable=True)
     job_type = Column(String(50), nullable=False)  # optimize, thumbnail, validate
     status = Column(String(20), nullable=False, default="queued")
     started_at = Column(DateTime, nullable=True)

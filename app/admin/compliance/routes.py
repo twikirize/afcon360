@@ -113,7 +113,7 @@ def view_kyc(kyc_id):
     # Get related compliance case if exists
     compliance_case = None
     if kyc_record.compliance_case_id:
-        compliance_case = ComplianceCase.query.get(kyc_record.compliance_case_id)
+        compliance_case = db.session.get(ComplianceCase, kyc_record.compliance_case_id)
     
     return render_template('admin/compliance/view_kyc.html',
                           kyc_record=kyc_record,
@@ -250,7 +250,7 @@ def view_org(org_id):
     # Get related compliance case if exists
     compliance_case = None
     if org.compliance_case_id:
-        compliance_case = ComplianceCase.query.get(org.compliance_case_id)
+        compliance_case = db.session.get(ComplianceCase, org.compliance_case_id)
     
     return render_template('admin/compliance/view_org.html',
                           org=org,
@@ -521,3 +521,4 @@ def case_history():
     return render_template('admin/compliance/case_history.html',
                           cases=history_cases,
                           title="Case History")
+

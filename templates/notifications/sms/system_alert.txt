@@ -1,0 +1,1 @@
+AFCON360 ALERT: {{ alert_title }}. {{ alert_message }}. Check your dashboard for details.

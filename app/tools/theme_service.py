@@ -41,7 +41,7 @@ class ThemeService:
         """Generates static/css/generated/event-{event_id}.css for an event."""
         try:
             from app.models.theme import EventTheme
-            event_theme = EventTheme.query.get(event_id)
+            event_theme = db.session.get(EventTheme, event_id)
             if not event_theme:
                 return ""
 
@@ -72,7 +72,7 @@ class ThemeService:
     @classmethod
     def update_user_theme_css(cls, user_id):
         """Generates static/css/generated/user-{user_id}.css for a user."""
-        pref = UserThemePreference.query.get(user_id)
+        pref = db.session.get(UserThemePreference, user_id)
         if not pref:
             return ""
 
@@ -141,3 +141,4 @@ class ThemeService:
             f.write(content)
 
         return content
+

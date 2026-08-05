@@ -1,0 +1,1 @@
+AFCON360: Driver {{ driver_name }} assigned to booking {{ reference_id }}. ETA: {{ eta_minutes }} min. Vehicle: {{ vehicle_type }}.

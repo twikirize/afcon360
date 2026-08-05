@@ -102,13 +102,13 @@ class FinancialAuditLog(BaseModel):
     transaction_type = Column(SQLEnum(TransactionType), nullable=False)
 
     # Parties involved
-    from_user_id = Column(BigInteger, index=True)  # Sender
+    from_user_id = Column(BigInteger)  # Sender
     to_user_id = Column(BigInteger, index=True)  # Receiver
-    organisation_id = Column(BigInteger, index=True)  # If org transaction
+    organisation_id = Column(BigInteger)  # If org transaction
 
     # Financial details
     amount = Column(Numeric(20, 4), nullable=False)  # Exact decimal precision
-    currency = Column(String(3), nullable=False, index=True)  # ISO 4217
+    currency = Column(String(3), nullable=False)  # ISO 4217
 
     # Exchange rate info (if currency conversion)
     exchange_rate = Column(Numeric(20, 8))
@@ -126,14 +126,14 @@ class FinancialAuditLog(BaseModel):
     to_balance_after = Column(Numeric(20, 4))
 
     # Transaction status and metadata
-    status = Column(String(32), nullable=False, index=True)  # pending, completed, failed, reversed
+    status = Column(String(32), nullable=False)  # pending, completed, failed, reversed
     payment_method = Column(String(64))  # bank_transfer, mobile_money, card, etc.
     payment_provider = Column(String(64))  # MTN, Airtel, Visa, etc.
     external_reference = Column(String(255))  # Provider's transaction ID
 
     # Risk and compliance
     risk_score = Column(Numeric(5, 2))  # 0.00 to 100.00
-    aml_flagged = Column(Boolean, default=False, index=True)
+    aml_flagged = Column(Boolean, default=False)
     requires_review = Column(Boolean, default=False, index=True)
     reviewed_by = Column(BigInteger)
     reviewed_at = Column(DateTime)
@@ -225,7 +225,7 @@ class APIAuditLog(BaseModel):
 
 
     # API identification
-    service_name = Column(String(64), nullable=False, index=True)  # "flutterwave", "mtn_momo"
+    service_name = Column(String(64), nullable=False)  # "flutterwave", "mtn_momo"
     endpoint = Column(String(255), nullable=False)
     method = Column(String(10), nullable=False)  # GET, POST, etc.
 
@@ -243,7 +243,7 @@ class APIAuditLog(BaseModel):
     response_time_ms = Column(Integer)  # Latency tracking
 
     # Status
-    status = Column(SQLEnum(APICallStatus), nullable=False, index=True)
+    status = Column(SQLEnum(APICallStatus), nullable=False)
     error_message = Column(Text)
     retry_count = Column(Integer, default=0)
 
@@ -313,8 +313,8 @@ class DataAccessLog(BaseModel):
 
 
     # Access details
-    accessed_by = Column(BigInteger, nullable=False, index=True)  # Who accessed
-    subject_user_id = Column(BigInteger, nullable=False, index=True)  # Whose data
+    accessed_by = Column(BigInteger, nullable=False)  # Who accessed
+    subject_user_id = Column(BigInteger, nullable=False)  # Whose data
 
     access_type = Column(SQLEnum(DataAccessType), nullable=False)
     data_category = Column(String(64), nullable=False)  # "kyc_documents", "financial_records"
@@ -460,14 +460,14 @@ class DataChangeLog(BaseModel):
     # ADD THIS LINE - public_id for IDGuard compliance
     public_id = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
 
-    entity_type = Column(String(64), nullable=False, index=True)
-    entity_id = Column(String(128), nullable=False, index=True)
+    entity_type = Column(String(64), nullable=False)
+    entity_id = Column(String(128), nullable=False)
     operation = Column(String(32), nullable=False)  # create, update, delete, freeze, unfreeze
 
     old_value = Column(JSON)
     new_value = Column(JSON)
 
-    changed_by = Column(BigInteger, index=True)
+    changed_by = Column(BigInteger)
     ip_address = Column(String(64))
     user_agent = Column(String(512))
 
@@ -653,8 +653,8 @@ class AuditService:
         """Log role change action"""
         try:
             from app.models.user import User
-            target_user = User.query.get(user_id)
-            performed_by_user = User.query.get(changed_by)
+            target_user = db.session.get(User, user_id)
+            performed_by_user = db.session.get(User, changed_by)
             
             audit_log = AuditLog(
                 user_id=changed_by,
@@ -684,7 +684,7 @@ class AuditService:
         """Log role management action (toggle permissions, etc.)"""
         try:
             from app.models.user import User
-            performed_by_user = User.query.get(user_id)
+            performed_by_user = db.session.get(User, user_id)
             
             audit_log = AuditLog(
                 user_id=user_id,
@@ -714,8 +714,8 @@ class AuditService:
             
             result = []
             for log in logs:
-                target_user = User.query.get(log.details.get('target_user_id')) if log.details else None
-                performed_by_user = User.query.get(log.user_id) if log.user_id else None
+                target_user = db.session.get(User, log.details.get('target_user_id')) if log.details else None
+                performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
                 
                 result.append({
                     'timestamp': log.created_at,
@@ -759,8 +759,8 @@ class AuditService:
             
             result = []
             for log in items:
-                target_user = User.query.get(log.details.get('target_user_id')) if log.details else None
-                performed_by_user = User.query.get(log.user_id) if log.user_id else None
+                target_user = db.session.get(User, log.details.get('target_user_id')) if log.details else None
+                performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
                 
                 result.append({
                     'timestamp': log.created_at,
@@ -791,3 +791,4 @@ class AuditService:
             ip_address=ip_address,
             **kwargs
         )
+

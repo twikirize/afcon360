@@ -9,7 +9,7 @@ import subprocess
 import shutil
 import gzip
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from flask import current_app
 from sqlalchemy import text
@@ -79,7 +79,7 @@ class BackupService:
             backup_type=BackupType.DATABASE,
             backup_schedule=schedule,
             status='running',
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             metadata={'compression': self.compression_enabled}
         )
         db.session.add(backup_record)
@@ -87,7 +87,7 @@ class BackupService:
         
         try:
             # Generate backup filename
-            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
             filename = f"database_{schedule}_{timestamp}.sql"
             if self.compression_enabled:
                 filename += ".gz"
@@ -142,7 +142,7 @@ class BackupService:
             backup_record.file_size = file_size
             backup_record.checksum = checksum
             backup_record.status = 'completed'
-            backup_record.completed_at = datetime.utcnow()
+            backup_record.completed_at = datetime.now(timezone.utc)
             
             db.session.commit()
             
@@ -156,7 +156,7 @@ class BackupService:
         except Exception as e:
             backup_record.status = 'failed'
             backup_record.error_message = str(e)
-            backup_record.completed_at = datetime.utcnow()
+            backup_record.completed_at = datetime.now(timezone.utc)
             db.session.commit()
             
             current_app.logger.error(f"Database backup failed: {e}")
@@ -168,7 +168,7 @@ class BackupService:
             backup_type=BackupType.FILES,
             backup_schedule=schedule,
             status='running',
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             metadata={'compression': self.compression_enabled}
         )
         db.session.add(backup_record)
@@ -176,7 +176,7 @@ class BackupService:
         
         try:
             # Generate backup filename
-            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
             filename = f"files_{schedule}_{timestamp}.tar"
             if self.compression_enabled:
                 filename += ".gz"
@@ -220,7 +220,7 @@ class BackupService:
             backup_record.file_size = file_size
             backup_record.checksum = checksum
             backup_record.status = 'completed'
-            backup_record.completed_at = datetime.utcnow()
+            backup_record.completed_at = datetime.now(timezone.utc)
             
             db.session.commit()
             
@@ -234,7 +234,7 @@ class BackupService:
         except Exception as e:
             backup_record.status = 'failed'
             backup_record.error_message = str(e)
-            backup_record.completed_at = datetime.utcnow()
+            backup_record.completed_at = datetime.now(timezone.utc)
             db.session.commit()
             
             current_app.logger.error(f"Files backup failed: {e}")
@@ -246,14 +246,14 @@ class BackupService:
             backup_type=BackupType.CONFIG,
             backup_schedule=schedule,
             status='running',
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc)
         )
         db.session.add(backup_record)
         db.session.commit()
         
         try:
             # Generate backup filename
-            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
             filename = f"config_{schedule}_{timestamp}.json"
             if self.compression_enabled:
                 filename += ".gz"
@@ -288,7 +288,7 @@ class BackupService:
             backup_record.file_size = file_size
             backup_record.checksum = checksum
             backup_record.status = 'completed'
-            backup_record.completed_at = datetime.utcnow()
+            backup_record.completed_at = datetime.now(timezone.utc)
             
             db.session.commit()
             
@@ -302,7 +302,7 @@ class BackupService:
         except Exception as e:
             backup_record.status = 'failed'
             backup_record.error_message = str(e)
-            backup_record.completed_at = datetime.utcnow()
+            backup_record.completed_at = datetime.now(timezone.utc)
             db.session.commit()
             
             current_app.logger.error(f"Configuration backup failed: {e}")
@@ -401,7 +401,7 @@ class BackupService:
     def get_backup_status(self) -> Dict[str, Any]:
         """Get backup system status."""
         recent_backups = BackupRecord.query.filter(
-            BackupRecord.started_at >= datetime.utcnow() - timedelta(days=7)
+            BackupRecord.started_at >= datetime.now(timezone.utc) - timedelta(days=7)
         ).order_by(BackupRecord.started_at.desc()).all()
         
         status = {
@@ -530,3 +530,4 @@ class BackupScheduler:
 
 # Global backup scheduler instance
 backup_scheduler = BackupScheduler()
+

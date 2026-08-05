@@ -29,7 +29,7 @@ class MatchingService:
         """
         try:
             # Get booking details
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError(
                     message="Booking not found",
@@ -192,11 +192,11 @@ class MatchingService:
     def assign_driver_to_booking(booking_id: int, driver_id: int, force_assignment: bool = False) -> Dict[str, Any]:
         """Assign a driver to a booking"""
         try:
-            booking = Booking.query.get(booking_id)
+            booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             if not driver:
                 raise NotFoundError("Driver not found", resource_type="driver", resource_id=driver_id)
 
@@ -270,3 +270,4 @@ def get_matching_service():
             if _matching_service_instance is None:
                 _matching_service_instance = MatchingService()
     return _matching_service_instance
+

@@ -51,7 +51,7 @@ class OrganisationMember(BaseModel):
     )
 
     user_id         = Column(BigInteger, ForeignKey("users.id",          ondelete="CASCADE"),  nullable=False, index=True)
-    organisation_id = Column(BigInteger, ForeignKey("organisations.id",  ondelete="CASCADE"),  nullable=False, index=True)
+    organisation_id = Column(BigInteger, ForeignKey("organisations.id",  ondelete="CASCADE"),  nullable=False)
 
     # Optional free-text job title (display purposes only)
     job_title = Column(String(128), nullable=True)
@@ -181,10 +181,10 @@ class OrgUserRole(BaseModel):
         Index("ix_org_user_role_member", "organisation_member_id"),
     )
 
-    organisation_member_id = Column(BigInteger, ForeignKey("organisation_members.id", ondelete="CASCADE"), nullable=False, index=True)
+    organisation_member_id = Column(BigInteger, ForeignKey("organisation_members.id", ondelete="CASCADE"), nullable=False)
     role_id                = Column(BigInteger, ForeignKey("org_roles.id",            ondelete="CASCADE"), nullable=False, index=True)
     assigned_by            = Column(BigInteger, ForeignKey("users.id",                ondelete="SET NULL"), nullable=True,  index=True)
-    assigned_at            = Column(DateTime, default=datetime.utcnow, nullable=False)
+    assigned_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     organisation_member = relationship("OrganisationMember", back_populates="roles",         lazy="joined")
     role                = relationship("OrgRole",            lazy="joined")
@@ -222,7 +222,7 @@ class OrgRole(BaseModel):
     )
 
     name            = Column(String(64),  nullable=False, index=True)
-    organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False, index=True)
+    organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
     description     = Column(Text, nullable=True)
 
     # Link to the global seed template (e.g. "finance_manager")
@@ -318,7 +318,7 @@ class OrgMemberPermission(BaseModel):
     permission_id = Column(BigInteger, ForeignKey("permissions.id",          ondelete="CASCADE"), nullable=False, index=True)
     granted       = Column(Boolean, default=True, nullable=False)   # True = grant, False = explicit deny
     granted_by    = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    granted_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    granted_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     member     = relationship("OrganisationMember", back_populates="direct_permissions")
     permission = relationship("Permission")
@@ -330,3 +330,4 @@ class OrgMemberPermission(BaseModel):
             f"<OrgMemberPermission member_id={self.member_id} "
             f"perm_id={self.permission_id} action={action}>"
         )
+

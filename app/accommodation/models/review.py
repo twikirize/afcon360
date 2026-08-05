@@ -59,10 +59,10 @@ class Review(BaseModel):
     booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     booking = relationship("AccommodationBooking", back_populates="review")
 
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
     property = relationship("Property", back_populates="reviews")
 
-    reviewer_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reviewer_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     reviewer = relationship("User", foreign_keys=[reviewer_id], backref="accommodation_reviews")
 
     # -------------------------------
@@ -86,7 +86,7 @@ class Review(BaseModel):
     # -------------------------------
     # Moderation
     # -------------------------------
-    status = Column(String(50), default="pending", nullable=False, index=True)
+    status = Column(String(50), default="pending", nullable=False)
     moderated_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     moderation_reason = Column(Text, nullable=True)
     moderated_at = Column(DateTime(timezone=True), nullable=True)

@@ -1,4 +1,4 @@
-from datetime import datetime, date, timezone
+from datetime import datetime, timezone, date, timezone
 import re
 from sqlalchemy import (
     Enum as SAEnum,
@@ -75,8 +75,8 @@ class UserProfile(BaseModel):
     address = Column(String(256), nullable=True)
     city = Column(String(128), nullable=True)
     country = Column(String(64), nullable=True)
-    phone_number = Column(String(32), nullable=True, index=True)
-    email = Column(String(128), nullable=True, index=True)
+    phone_number = Column(String(32), nullable=True)
+    email = Column(String(128), nullable=True)
 
     # ── Fan / tournament identity (optional, tournament skin uses these) ──
     fan_team = Column(String(64), nullable=True, index=True)
@@ -122,7 +122,7 @@ class UserProfile(BaseModel):
     profile_completed = Column(Boolean, default=False, nullable=False)
 
     # Soft delete
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, )
     deleted_at = Column(DateTime, nullable=True)
 
     # Lifecycle tracking
@@ -305,7 +305,7 @@ class UserProfileAudit(BaseModel):
     field_name = Column(String(64), nullable=False)
     old_value = Column(Text, nullable=True)
     attempted_value = Column(Text, nullable=True)
-    attempted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    attempted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     attempted_by_user_id = Column(BigInteger, nullable=True)
 
     user_profile = relationship("UserProfile", backref="audit_logs")
@@ -393,7 +393,7 @@ class ProfileChangeRequest(BaseModel):
             {
                 "action": action,
                 "performed_by": performed_by,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "notes": notes,
             }
         )
@@ -537,3 +537,4 @@ if __name__ == '__main__':
         print("❌ FAILED - integer should have been rejected")
     except ValueError as e:
         print(f"✅ PASSED - integer correctly rejected: {e}")
+

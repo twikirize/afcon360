@@ -208,7 +208,7 @@ class AvailabilityService:
         from app.accommodation.models.property import Property
         from app.accommodation.services.host_service import HostService
 
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return {'error': 'Property not found'}
 
@@ -286,7 +286,7 @@ class AvailabilityService:
         from app.accommodation.services.host_service import HostService
         from sqlalchemy import func
 
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return []
 
@@ -391,56 +391,105 @@ class AvailabilityService:
             check_in: date,
             check_out: date,
             created_by: int,
-            hold_minutes: int = 15
+            room_type_id: int = None,
+            units: int = 1,
+            hold_minutes: int = 15,
+            hold_type: str = "payment",
+            approval_sla_hours: int = 48,
     ) -> Tuple[bool, Optional[str]]:
         """
         Create a temporary hold on dates (pre-booking hold).
+
+        For single-unit properties: uses BlockedDate (property-wide)
+        For multi-unit hotels: uses InventoryBlock (room-type scoped)
 
         Args:
             property_id: The property ID
             check_in: Start date
             check_out: End date (exclusive)
             created_by: User ID creating the hold
-            hold_minutes: How long the hold lasts before auto-release
+            room_type_id: Room type ID for multi-unit properties
+            units: Number of rooms/units to hold
+            hold_minutes: How long the hold lasts before auto-release (payment holds)
+            hold_type: "payment" (15 min) or "approval" (approval_sla_hours)
+            approval_sla_hours: Hours before approval hold expires
 
         Returns:
             (success, error_message)
         """
         try:
             from datetime import datetime, timezone
-            expires_at = datetime.now(timezone.utc) + timedelta(minutes=hold_minutes)
 
+            if hold_type == "approval":
+                expires_at = datetime.now(timezone.utc) + timedelta(hours=approval_sla_hours)
+                effective_minutes = approval_sla_hours * 60
+            else:
+                expires_at = datetime.now(timezone.utc) + timedelta(minutes=hold_minutes)
+                effective_minutes = hold_minutes
+
+            # Determine if this is a multi-unit property
+            is_multi_unit = False
+            if room_type_id:
+                from app.accommodation.models.room import RoomType
+                room_type = db.session.get(RoomType, room_type_id)
+                if room_type and room_type.total_units > 1:
+                    is_multi_unit = True
+
+            if is_multi_unit and room_type_id:
+                # Multi-unit: use InventoryBlock for room-type-scoped blocking
+                available = AvailabilityService.get_available_units(
+                    room_type_id, check_in, check_out
+                )
+                if available < units:
+                    return False, f"Only {available} unit(s) available, requested {units}"
+
+                block = InventoryBlock(
+                    room_type_id=room_type_id,
+                    date_range_start=check_in,
+                    date_range_end=check_out,
+                    units_blocked=units,
+                    reason=AccommodationBlockedReason.TEMPORARY_HOLD.value,
+                    booking_id=None,  # Will be set later when booking is created
+                    created_by=created_by,
+                )
+                db.session.add(block)
+                db.session.flush()
+            else:
+                # Single-unit: use property-wide BlockedDate
+                blocked_count = AvailabilityService.block_dates(
+                    property_id=property_id,
+                    check_in=check_in,
+                    check_out=check_out,
+                    reason=AccommodationBlockedReason.TEMPORARY_HOLD,
+                    created_by=created_by,
+                    expires_at=expires_at
+                )
+
+                if blocked_count == 0:
+                    return False, "Dates are already on hold"
+
+            # Create RoomHold record for tracking/expiration
             hold = RoomHold(
                 property_id=property_id,
+                room_type_id=room_type_id,
                 check_in=check_in,
                 check_out=check_out,
                 guest_user_id=created_by,
-                hold_minutes=hold_minutes,
+                units=units,
+                hold_minutes=effective_minutes,
                 expires_at=expires_at,
                 status="active",
+                hold_type=hold_type,
+                approval_sla_hours=approval_sla_hours if hold_type == "approval" else None,
             )
             db.session.add(hold)
             db.session.flush()
 
-            blocked_count = AvailabilityService.block_dates(
-                property_id=property_id,
-                check_in=check_in,
-                check_out=check_out,
-                reason=AccommodationBlockedReason.TEMPORARY_HOLD,
-                created_by=created_by,
-                expires_at=expires_at
-            )
-
-            if blocked_count == 0:
-                hold.mark_released("Dates are already held")
-                db.session.commit()
-                return False, "Dates are already on hold"
-
             logger.info(
-                f"Temporary hold created for property {property_id} "
+                f"Temporary {hold_type} hold created for property {property_id} "
                 f"by user {created_by} ({check_in} → {check_out})"
             )
-            return True, None
+            return True, hold.id
 
         except Exception as e:
             db.session.rollback()
@@ -499,22 +548,43 @@ class AvailabilityService:
         Release temporary holds that have expired.
 
         Args:
-            hold_minutes: Maximum age of holds before they're considered expired
+            hold_minutes: Maximum age of payment holds before they're considered expired.
+                          Approval holds use their own approval_sla_hours.
 
         Returns:
             Number of expired holds released
         """
         from datetime import datetime, timezone
-        expired_time = datetime.now(timezone.utc) - timedelta(minutes=hold_minutes)
+        now = datetime.now(timezone.utc)
 
-        expired_holds = BlockedDate.query.filter(
+        # Expire old BlockedDate-based holds (legacy cleanup)
+        expired_time = now - timedelta(minutes=hold_minutes)
+
+        expired_blocked = BlockedDate.query.filter(
             BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
             BlockedDate.created_at < expired_time
         ).all()
 
-        count = len(expired_holds)
-        for hold in expired_holds:
+        count = len(expired_blocked)
+        for hold in expired_blocked:
             db.session.delete(hold)
+
+        # Expire RoomHold records
+        expired_room_holds = RoomHold.query.filter(
+            RoomHold.status == "active",
+            RoomHold.expires_at <= now,
+        ).all()
+
+        for hold in expired_room_holds:
+            if hold.hold_type == "approval":
+                # Approval holds expire based on approval_sla_hours
+                if hold.approval_sla_hours and hold.expires_at <= now:
+                    hold.mark_expired()
+                    count += 1
+            else:
+                # Payment holds expire based on hold_minutes
+                hold.mark_expired()
+                count += 1
 
         db.session.commit()
 
@@ -628,7 +698,7 @@ class AvailabilityService:
 
         Formula: total_units - confirmed_bookings - inventory_blocks
         """
-        room_type = RoomType.query.get(room_type_id)
+        room_type = db.session.get(RoomType, room_type_id)
         if not room_type:
             return 0
 
@@ -694,7 +764,7 @@ class AvailabilityService:
         Creates or updates an InventoryBlock record for the room type.
         """
         try:
-            room_type = RoomType.query.get(room_type_id)
+            room_type = db.session.get(RoomType, room_type_id)
             if not room_type:
                 return False, "Room type not found"
 
@@ -760,3 +830,4 @@ class AvailabilityService:
             logger.info(f"Released {result} inventory block(s) for room_type {room_type_id} on {check_in} to {check_out}")
 
         return result
+

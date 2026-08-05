@@ -1,0 +1,1 @@
+AFCON360: New review ({{ rating }} stars) for {{ property_title }} by {{ reviewer_name }}. Comment: {{ review_comment }}.

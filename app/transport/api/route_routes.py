@@ -181,12 +181,12 @@ class ScheduledRouteDetailResource(Resource):
                     "active_bookings": active_bookings,
                 },
                 "current_driver": (
-                    DriverProfile.query.get(route.current_driver_id)
+                    db.session.get(DriverProfile, route.current_driver_id)
                     .to_dict(exclude=["license_number_encrypted"])
                     if route.current_driver_id else None
                 ),
                 "current_vehicle": (
-                    Vehicle.query.get(route.current_vehicle_id).to_dict()
+                    db.session.get(Vehicle, route.current_vehicle_id).to_dict()
                     if route.current_vehicle_id else None
                 ),
             },
@@ -337,3 +337,4 @@ class ScheduledRouteAssignmentResource(Resource):
             db.session.rollback()
             logger.error(f"Error assigning route {route_id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}, 500
+

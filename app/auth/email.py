@@ -64,7 +64,7 @@ def verify_email_code(user_id: int, code: str) -> Tuple[bool, str]:
     """
     try:
         # Get the user to find their email
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return False, "User not found"
 
@@ -100,3 +100,4 @@ def verify_email_code(user_id: int, code: str) -> Tuple[bool, str]:
         from flask import current_app
         current_app.logger.error(f"Email verification failed for user {user_id}: {e}")
         return False, f"Verification failed: {str(e)}"
+

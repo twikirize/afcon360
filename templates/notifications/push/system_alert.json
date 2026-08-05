@@ -1,0 +1,9 @@
+{
+  "title": "System Alert - AFCON360",
+  "body": "{{ alert_title }}: {{ alert_message }}",
+  "click_action": "/admin/alerts",
+  "data": {
+    "type": "system_alert",
+    "alert_title": "{{ alert_title }}"
+  }
+}

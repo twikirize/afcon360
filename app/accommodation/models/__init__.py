@@ -44,6 +44,8 @@ from app.accommodation.models.availability import (
     AccommodationBlockedReason,
 )
 
+from app.accommodation.models.guest_registration import GuestRegistration
+
 # Review models
 from app.accommodation.models.review import Review, AccommodationReviewStatus
 from app.accommodation.models.room import RoomType, Room, RoomBooking
@@ -72,6 +74,7 @@ __all__ = [
     'RoomHold',
     'AvailabilityRule',
     'AccommodationBlockedReason',
+    'GuestRegistration',
     # Review
     'Review',
     'AccommodationReviewStatus',

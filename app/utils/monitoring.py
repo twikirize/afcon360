@@ -4,7 +4,7 @@ Monitoring utilities for AFCON360
 """
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Optional, Dict, Any
 import threading
@@ -171,7 +171,7 @@ def track_booking_funnel_event(event_name: str, properties: dict = None):
     log = structlog.get_logger() if _has_structlog() else None
     payload = {
         'event': event_name,
-        'ts': __import__('datetime').datetime.utcnow().isoformat(),
+        'ts': __import__('datetime').datetime.now(timezone.utc).isoformat(),
         **(properties or {})
     }
     if log:
@@ -185,3 +185,4 @@ def _has_structlog():
         import structlog; return True
     except ImportError:
         return False
+

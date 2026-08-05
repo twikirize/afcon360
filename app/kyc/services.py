@@ -138,7 +138,7 @@ class KycService:
             user_agent=user_agent
         )
 
-        record = KycRecord.query.get(record_id)
+        record = db.session.get(KycRecord, record_id)
         if not record:
             ForensicAuditService.log_completion(
                 audit_id=audit_id,
@@ -178,6 +178,13 @@ class KycService:
         except Exception as e:
             current_app.logger.warning(f"Could not log KYC approval: {e}")
 
+        # Emit notification signal (listener dispatches to user + admins)
+        try:
+            from app.notifications.signals import kyc_approved
+            kyc_approved.send(record, user_id=record.user_id, record=record)
+        except Exception as _ne:
+            current_app.logger.warning(f"kyc_approved signal failed: {_ne}")
+
         # Log completion
         ForensicAuditService.log_completion(
             audit_id=audit_id,
@@ -194,7 +201,7 @@ class KycService:
         """
         Reject a KYC record.
         """
-        record = KycRecord.query.get(record_id)
+        record = db.session.get(KycRecord, record_id)
         if not record:
             raise ValueError(f"KYC record {record_id} not found")
 
@@ -222,6 +229,13 @@ class KycService:
             )
         except Exception as e:
             current_app.logger.warning(f"Could not log KYC rejection: {e}")
+
+        # Emit notification signal
+        try:
+            from app.notifications.signals import kyc_rejected
+            kyc_rejected.send(record, user_id=record.user_id, reason=rejection_reason, record=record)
+        except Exception as _ne:
+            current_app.logger.warning(f"kyc_rejected signal failed: {_ne}")
 
         return record
 
@@ -370,7 +384,7 @@ class KycService:
 
         for record_id in record_ids:
             try:
-                record = KycRecord.query.get(record_id)
+                record = db.session.get(KycRecord, record_id)
                 if not record:
                     errors.append(f"Record {record_id} not found")
                     continue
@@ -402,7 +416,7 @@ class KycService:
         Refer a KYC record to compliance for further review.
         Creates a compliance case and updates the KYC record.
         """
-        record = KycRecord.query.get(record_id)
+        record = db.session.get(KycRecord, record_id)
         if not record:
             raise ValueError(f"KYC record {record_id} not found")
 
@@ -449,7 +463,7 @@ class KycService:
         Approve a KYC record from compliance perspective.
         Updates both KYC status and compliance status.
         """
-        record = KycRecord.query.get(record_id)
+        record = db.session.get(KycRecord, record_id)
         if not record:
             raise ValueError(f"KYC record {record_id} not found")
 
@@ -503,7 +517,7 @@ class KycService:
         Reject a KYC record from compliance perspective.
         Updates both KYC status and compliance status.
         """
-        record = KycRecord.query.get(record_id)
+        record = db.session.get(KycRecord, record_id)
         if not record:
             raise ValueError(f"KYC record {record_id} not found")
 
@@ -565,3 +579,4 @@ class KycService:
         ).order_by(
             KycRecord.referred_at.asc()
         ).limit(limit).all()
+

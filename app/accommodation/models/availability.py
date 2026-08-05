@@ -107,8 +107,8 @@ class RoomHold(BaseModel):
         CheckConstraint("status IN ('active', 'released', 'expired', 'converted')", name="ck_room_hold_status_valid"),
     )
 
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
-    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="SET NULL"), nullable=True, index=True)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
+    room_type_id = Column(BigInteger, ForeignKey("accommodation_room_types.id", ondelete="SET NULL"), nullable=True)
     booking_id = Column(BigInteger, ForeignKey("accommodation_bookings.id", ondelete="SET NULL"), nullable=True, index=True)
     guest_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -116,11 +116,15 @@ class RoomHold(BaseModel):
     check_out = Column(Date, nullable=False)
     units = Column(Integer, nullable=False, default=1)
     hold_minutes = Column(Integer, nullable=False, default=15)
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    status = Column(String(20), nullable=False, default="active", index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(20), nullable=False, default="active")
     release_reason = Column(Text, nullable=True)
 
-    property = relationship("Property")
+    # Distinguish between a short payment hold and a longer approval hold.
+    hold_type = Column(String(30), nullable=False, default="payment", server_default='payment', index=True)
+    approval_sla_hours = Column(Integer, nullable=True)
+
+    accommodation_property = relationship("Property", foreign_keys=[property_id])
     room_type = relationship("RoomType")
     booking = relationship("AccommodationBooking")
 

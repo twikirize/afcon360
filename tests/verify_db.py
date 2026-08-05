@@ -4,19 +4,19 @@ from pathlib import Path
 
 
 def fix_datetime_utcnow(file_path):
-    """Replace datetime.utcnow() with datetime.now(timezone.utc)"""
+    """Replace datetime.now(timezone.utc) with datetime.now(timezone.utc)"""
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
     # Check if file uses datetime.utcnow
-    if 'datetime.utcnow()' not in content:
+    if 'datetime.now(timezone.utc)' not in content:
         return False
 
     # Add timezone import if needed
-    if 'from datetime import datetime' in content:
+    if 'from datetime import datetime, timezone' in content:
         if 'from datetime import timezone' not in content and 'datetime.timezone' not in content:
             content = content.replace(
-                'from datetime import datetime',
+                'from datetime import datetime, timezone',
                 'from datetime import datetime, timezone'
             )
     elif 'import datetime' in content:
@@ -29,7 +29,7 @@ def fix_datetime_utcnow(file_path):
         # Add timezone import
         content = 'from datetime import timezone\n' + content
 
-    # Replace datetime.utcnow()
+    # Replace datetime.now(timezone.utc)
     content = re.sub(
         r'datetime\.utcnow\(\)',
         'datetime.now(timezone.utc)',

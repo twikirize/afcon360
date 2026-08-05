@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, DateTime, JSON, Text
 from app.models.base import ProtectedModel
 
@@ -6,7 +6,7 @@ from app.models.base import ProtectedModel
 class ReconciliationRun(ProtectedModel):
     __tablename__ = "reconciliation_runs"
 
-    started_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     summary = Column(JSON, nullable=True)
     status = Column(String(32), default="running", nullable=False)
@@ -27,4 +27,5 @@ class ReconciliationIssue(ProtectedModel):
     issue_type = Column(String(64), nullable=False)
     details = Column(JSON, nullable=True)
     resolved = Column(String(8), default="no", nullable=False)
+
 

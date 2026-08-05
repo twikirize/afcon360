@@ -15,7 +15,7 @@ import pytest
 from decimal import Decimal
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from app import create_app
 from app.extensions import db
@@ -403,7 +403,7 @@ class TestDailyLimit:
                 entry_type=EntryType.DEBIT,
                 amount=Decimal('100'),
                 currency='USD',
-                created_at=datetime.utcnow()  # Within 24 hours
+                created_at=datetime.now(timezone.utc)  # Within 24 hours
             )
             db.session.add(ledger_entry)
         db.session.commit()
@@ -490,3 +490,4 @@ class TestTransactionStatus:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+

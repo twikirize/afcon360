@@ -74,7 +74,9 @@ def make_celery(app=None):
         include=[
             "app.tasks.webhook_processor",
             "app.tasks.cleanup",
+            "app.tasks.accommodation_reminders",
             "app.media.tasks",
+            "app.notifications.tasks",
             # add future task modules here
         ],
     )
@@ -91,6 +93,26 @@ def make_celery(app=None):
         "cleanup-expired-holds": {
             "task": "accommodation.cleanup_expired_holds",
             "schedule": 300.0,  # every 5 minutes
+        },
+        "accommodation-registration-reminders": {
+            "task": "accommodation.send_registration_reminders",
+            "schedule": 3600.0,  # every 1 hour
+        },
+        "accommodation-expire-unapproved-bookings": {
+            "task": "accommodation.expire_unapproved_bookings",
+            "schedule": 3600.0,  # every 1 hour
+        },
+        "notifications-schedule-reminders": {
+            "task": "notifications.schedule_reminders",
+            "schedule": 60.0,  # every 60 seconds
+        },
+        "notifications-resend-failed": {
+            "task": "notifications.resend_failed",
+            "schedule": 300.0,  # every 5 minutes
+        },
+        "notifications-cleanup-old": {
+            "task": "notifications.cleanup_old",
+            "schedule": 86400.0,  # every 24 hours
         },
     }
 

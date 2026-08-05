@@ -206,7 +206,7 @@ class TravelRuleService:
             Updated travel rule transfer record
         """
         try:
-            travel_rule_transfer = TravelRuleTransfer.query.get(record_id)
+            travel_rule_transfer = db.session.get(TravelRuleTransfer, record_id)
             if not travel_rule_transfer:
                 raise ValueError(f"Travel rule record {record_id} not found")
             
@@ -264,7 +264,7 @@ class TravelRuleService:
         """
         try:
             config = TravelRuleConfig.query.first()
-            travel_rule_transfer = TravelRuleTransfer.query.get(record_id)
+            travel_rule_transfer = db.session.get(TravelRuleTransfer, record_id)
             
             if not config or not config.auto_report_to_vasp:
                 return {
@@ -283,7 +283,7 @@ class TravelRuleService:
             
             # Mark as reported
             travel_rule_transfer.reported_to_vasp = True
-            travel_rule_transfer.vasp_reported_at = datetime.utcnow()
+            travel_rule_transfer.vasp_reported_at = datetime.now(timezone.utc)
             travel_rule_transfer.vasp_response = 'Success: Information transmitted to VASP'
             
             db.session.commit()
@@ -300,3 +300,4 @@ class TravelRuleService:
                 'success': False,
                 'reason': str(e)
             }
+

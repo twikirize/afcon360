@@ -22,7 +22,7 @@ class EventAccommodationOpportunity(BaseModel):
         String(64), unique=True, nullable=False, index=True,
         default=lambda: str(uuid_lib.uuid4()),
     )
-    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     created_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)

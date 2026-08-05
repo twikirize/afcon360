@@ -10,7 +10,7 @@ Features:
 - Ownership verification
 """
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from flask import session, request, current_app
 import logging
@@ -53,7 +53,7 @@ class WalletCreationTracker:
         if cls.SESSION_KEY not in session:
             session[cls.SESSION_KEY] = {
                 "steps": [],
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "session_id": session.get("_id", "unknown"),
                 "ip": request.remote_addr if request else "unknown",
                 "user_agent": request.user_agent.string if request and request.user_agent else "unknown",
@@ -105,13 +105,13 @@ class WalletCreationTracker:
 
             step = {
                 "event": event.value,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "user_id": user_id,
                 "metadata": metadata or {}
             }
 
             data["steps"].append(step)
-            data["last_updated"] = datetime.utcnow().isoformat()
+            data["last_updated"] = datetime.now(timezone.utc).isoformat()
             data["status"] = event.value
 
             session.modified = True

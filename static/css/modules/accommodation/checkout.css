@@ -9,6 +9,11 @@
     padding: 2rem 0;
 }
 
+/* ── Utility Classes ── */
+.hidden-section {
+    display: none;
+}
+
 /* ── Main Card ── */
 .checkout-main-card {
     border: none;
@@ -132,6 +137,11 @@
     font-size: 0.8rem;
     color: #6b7280;
     margin-top: 0.25rem;
+}
+
+/* ── Payment Method Wrapper ── */
+.payment-method-wrapper {
+    /* timing-based visibility is controlled by JS */
 }
 
 /* ── Payment Method Cards ── */
@@ -542,5 +552,93 @@
 
     .checkout-main-card .card-header h4 {
         font-size: 1.1rem;
+    }
+}
+
+/* ── Wizard Styles ── */
+.step-indicator {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+
+.step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+}
+
+.step::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #dee2e6;
+    z-index: -1;
+}
+
+.step:first-child::before {
+    left: 50%;
+}
+
+.step:last-child::before {
+    right: 50%;
+}
+
+.step-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #dee2e6;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.step.active .step-number {
+    background: #0d6efd;
+}
+
+.step.completed .step-number {
+    background: #198754;
+}
+
+.step-label {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.step.active .step-label {
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+.wizard-step {
+    display: none;
+}
+
+.wizard-step.active {
+    display: block;
+}
+
+.btn-wizard {
+    min-width: 120px;
+}
+
+@media (max-width: 480px) {
+    .step-label {
+        font-size: 0.7rem;
+    }
+
+    .step-number {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
     }
 }

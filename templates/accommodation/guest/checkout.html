@@ -14,313 +14,288 @@
                 <div class="card checkout-main-card">
                     <div class="card-header">
                         <h4><i class="fas fa-credit-card me-2"></i> Complete Your Booking</h4>
-                        <p class="mb-0 small opacity-75">Fill in the details below to confirm your reservation</p>
+                        <p class="mb-0 small opacity-75">Step-by-step wizard to confirm your reservation</p>
                     </div>
                     <div class="card-body">
+                        <!-- Step indicator -->
+                        <div class="step-indicator" id="stepIndicator">
+                            <div class="step active" data-step="1">
+                                <span class="step-number">1</span>
+                                <span class="step-label">Guest Details</span>
+                            </div>
+                            <div class="step" data-step="2">
+                                <span class="step-number">2</span>
+                                <span class="step-label">Special Requests</span>
+                            </div>
+                            <div class="step" data-step="3">
+                                <span class="step-number">3</span>
+                                <span class="step-label">Payment</span>
+                            </div>
+                            <div class="step" data-step="4">
+                                <span class="step-number">4</span>
+                                <span class="step-label">Review & Confirm</span>
+                            </div>
+                        </div>
+
                         <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest_checkout') }}">
                             <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
 
-                            <div class="alert alert-info border-0 rounded-3 mb-4" style="background: #f0f4ff;">
-                                <i class="fas fa-user-circle me-2"></i>
-                                <strong>Booking as:</strong> {{ current_user.username or current_user.email }}
-                                <br>
-                                <small class="text-muted">You are the booker and payer for this reservation.</small>
-                            </div>
-
-                            <div class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">1</span>
-                                    Who is staying?
-                                </div>
-                                <div class="booking-type-grid">
-                                    <div class="booking-type-card" onclick="selectBookingType('self')">
-                                        <input type="radio" name="booking_type" value="self" id="bookingSelf" class="form-check-input" checked>
-                                        <label class="form-check-label" for="bookingSelf">
-                                            <i class="fas fa-user"></i> Myself
-                                        </label>
-                                        <div class="description">I will be staying at this property</div>
-                                    </div>
-                                    <div class="booking-type-card" onclick="selectBookingType('third_party')">
-                                        <input type="radio" name="booking_type" value="third_party" id="bookingThirdParty" class="form-check-input">
-                                        <label class="form-check-label" for="bookingThirdParty">
-                                            <i class="fas fa-users"></i> Someone Else
-                                        </label>
-                                        <div class="description">I'm booking for a guest</div>
-                                    </div>
-                                    <div class="booking-type-card" onclick="selectBookingType('group')">
-                                        <input type="radio" name="booking_type" value="group" id="bookingGroup" class="form-check-input">
-                                        <label class="form-check-label" for="bookingGroup">
-                                            <i class="fas fa-hotel"></i> Multiple Rooms
-                                        </label>
-                                        <div class="description">Book multiple rooms for a group</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="thirdPartySection" style="display: none;" class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">2</span>
-                                    Guest Details
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-semibold">Guest Full Name <span class="text-danger">*</span></label>
-                                        <input type="text" name="primary_guest_name" class="form-control form-control-lg" placeholder="Full name of person staying">
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-semibold">Guest Email <span class="text-danger">*</span></label>
-                                        <input type="email" name="primary_guest_email" class="form-control form-control-lg" placeholder="Email for booking confirmation">
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-semibold">Guest Phone</label>
-                                        <input type="tel" name="primary_guest_phone" class="form-control form-control-lg" placeholder="Phone number">
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label fw-semibold">Special Instructions for Guest</label>
-                                        <textarea name="guest_instructions" class="form-control" rows="2" placeholder="Door code, parking instructions, etc."></textarea>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="groupSection" style="display: none;" class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">2</span>
-                                    Group Booking Details
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-4 mb-3">
-                                        <label class="form-label fw-semibold">Total Rooms Needed</label>
-                                        <input type="number" name="total_rooms" id="totalRooms" class="form-control form-control-lg" min="1" max="20" value="2">
-                                    </div>
-                                    <div class="col-md-4 mb-3">
-                                        <label class="form-label fw-semibold">Room Number</label>
-                                        <input type="number" name="room_number" id="roomNumber" class="form-control form-control-lg" min="1" value="1" readonly>
-                                    </div>
-                                    <div class="col-md-4 mb-3">
-                                        <label class="form-label fw-semibold">Guests in this Room</label>
-                                        <input type="number" name="num_guests" class="form-control form-control-lg" value="{{ booking.num_guests }}" min="1" max="{{ booking.max_guests }}">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">3</span>
-                                    Your Contact Information
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-semibold">Your Name</label>
-                                        <input type="text" class="form-control form-control-lg" value="{{ current_user.username or current_user.email }}" disabled>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-semibold">Your Email</label>
-                                        <input type="email" class="form-control form-control-lg" value="{{ current_user.email }}" disabled>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-semibold">Your Phone</label>
-                                        <input type="tel" name="guest_phone" class="form-control form-control-lg" value="{{ current_user.phone or '' }}" placeholder="Phone for booking updates">
-                                        <small class="text-muted">We'll send booking updates here</small>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mb-4" id="paymentMethodsContainer">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">4</span>
-                                    Payment Method <span class="text-danger">*</span>
-                                </div>
-                                <div class="payment-method-grid" id="paymentMethodsGrid">
-                                    {% if payment_options and payment_options.payment_methods %}
-                                        {% set allowed_methods = ['wallet', 'cash'] %}
-                                        {% for method in payment_options.payment_methods %}
-                                            {% if method.method_id in allowed_methods %}
-                                            <div class="payment-method-wrapper" data-timing="{{ 'pay_on_arrival' if method.is_cash or method.method_id == 'cash' else 'pay_now,deposit' }}">
-                                            <div class="payment-method-card" onclick="selectPaymentMethod('{{ method.method_id }}')">
-                                                <input type="radio" name="payment_method" value="{{ method.method_id }}"
-                                                       id="pm_{{ method.method_id }}" class="form-check-input">
-                                                <label class="form-check-label" for="pm_{{ method.method_id }}">
-                                                    <i class="fas fa-{{ method.icon or 'wallet' }}"></i>
-                                                    {{ method.display_name }}
-                                                </label>
-                                                <div class="method-description">
-                                                    {% if method.method_id == 'wallet' %}
-                                                    Pay with your wallet balance
-                                                    {% elif method.method_id == 'cash' %}
-                                                    <span class="text-success">✓ Pay on arrival</span>
-                                                    {% else %}
-                                                    {{ method.method_type|title }}
-                                                    {% endif %}
-                                                </div>
-                                                {% if method.method_id == 'wallet' %}
-                                                <div class="wallet-balance">
-                                                    Available: <span class="amount">UGX {{ wallet_balance|default('0.00') }}</span>
-                                                </div>
-                                                {% endif %}
-                                            </div>
-                                            </div>
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% else %}
-                                        <div class="alert alert-warning">No payment methods available. Please contact the host.</div>
-                                    {% endif %}
-                                </div>
-                                <div id="payment-method-feedback" class="checkout-feedback">
-                                    Please select a payment method.
-                                </div>
-                            </div>
-
-                            <div class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">5</span>
-                                    Payment Timing <span class="text-danger">*</span>
-                                </div>
-                                <div class="timing-grid">
-                                    {% if payment_options and payment_options.allowed_timings %}
-                                        {% for timing in payment_options.allowed_timings %}
-                                        <div class="timing-card" onclick="selectTiming('{{ timing }}')">
-                                            <input type="radio" name="payment_timing" value="{{ timing }}"
-                                                   id="timing_{{ timing }}" class="form-check-input">
-                                            <label class="form-check-label" for="timing_{{ timing }}">
-                                                <i class="fas
-                                                    {% if timing == 'pay_now' %}fa-bolt text-success
-                                                    {% elif timing == 'deposit' %}fa-hand-holding-usd text-warning
-                                                    {% elif timing == 'pay_on_arrival' %}fa-hotel text-primary
-                                                    {% else %}fa-file-invoice text-info{% endif %}
-                                                "></i>
-                                                {{ timing|replace('_', ' ')|title }}
-                                                {% if timing == 'pay_now' %}
-                                                <span class="badge-timing badge-instant">Instant</span>
-                                                {% elif timing == 'deposit' %}
-                                                <span class="badge-timing badge-deposit">Deposit</span>
-                                                {% elif timing == 'pay_on_arrival' %}
-                                                <span class="badge-timing badge-arrival">On Arrival</span>
-                                                {% endif %}
+                            <!-- Step 1: Guest Details -->
+                            <div class="wizard-step active" id="step1">
+                                <div class="mb-4">
+                                    <div class="checkout-section-title">Who is staying?</div>
+                                    <div class="booking-type-grid">
+                                        <div class="booking-type-card" data-booking-type="self">
+                                            <input type="radio" name="booking_type" value="self" id="bookingSelf" class="form-check-input" checked>
+                                            <label class="form-check-label" for="bookingSelf">
+                                                <i class="fas fa-user"></i> Myself
                                             </label>
-                                            <div class="timing-description">
-                                                {% if timing == 'pay_now' %}
-                                                Pay full amount now. Instant confirmation.
-                                                {% elif timing == 'deposit' %}
-                                                Pay a deposit now, balance later.
-                                                {% elif timing == 'pay_on_arrival' %}
-                                                No payment now. Pay when you check in.
-                                                {% endif %}
-                                            </div>
+                                            <div class="description">I will be staying at this property</div>
                                         </div>
-                                        {% endfor %}
-                                    {% else %}
-                                        <div class="alert alert-warning">No payment timing options available.</div>
-                                    {% endif %}
+                                        <div class="booking-type-card" data-booking-type="third_party">
+                                            <input type="radio" name="booking_type" value="third_party" id="bookingThirdParty" class="form-check-input">
+                                            <label class="form-check-label" for="bookingThirdParty">
+                                                <i class="fas fa-users"></i> Someone Else
+                                            </label>
+                                            <div class="description">I'm booking for a guest</div>
+                                        </div>
+                                        <div class="booking-type-card" data-booking-type="group">
+                                            <input type="radio" name="booking_type" value="group" id="bookingGroup" class="form-check-input">
+                                            <label class="form-check-label" for="bookingGroup">
+                                                <i class="fas fa-hotel"></i> Multiple Rooms
+                                            </label>
+                                            <div class="description">Book multiple rooms for a group</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div id="payment-timing-feedback" class="checkout-feedback">
-                                    Please select a payment option.
+
+                                <div id="thirdPartySection" class="hidden-section mb-4">
+                                    <div class="checkout-section-title">Guest Details</div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Guest Full Name <span class="text-danger">*</span></label>
+                                            <input type="text" name="primary_guest_name" class="form-control form-control-lg" placeholder="Full name of person staying">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Guest Email <span class="text-danger">*</span></label>
+                                            <input type="email" name="primary_guest_email" class="form-control form-control-lg" placeholder="Email for booking confirmation">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Guest Phone</label>
+                                            <input type="tel" name="primary_guest_phone" class="form-control form-control-lg" placeholder="Phone number">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label fw-semibold">Special Instructions for Guest</label>
+                                            <textarea name="guest_instructions" class="form-control" rows="2" placeholder="Door code, parking instructions, etc."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="groupSection" class="hidden-section mb-4">
+                                    <div class="checkout-section-title">Group Booking Details</div>
+                                    <div class="row">
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label fw-semibold">Total Rooms Needed</label>
+                                            <input type="number" name="total_rooms" id="totalRooms" class="form-control form-control-lg" min="1" max="20" value="2">
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label fw-semibold">Room Number</label>
+                                            <input type="number" name="room_number" id="roomNumber" class="form-control form-control-lg" min="1" value="1" readonly>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label fw-semibold">Guests in this Room</label>
+                                            <input type="number" name="num_guests" class="form-control form-control-lg" value="{{ booking.num_guests }}" min="1" max="{{ booking.max_guests }}">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <div class="checkout-section-title">Your Contact Information</div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Your Name</label>
+                                            <input type="text" class="form-control form-control-lg" value="{{ current_user.username or current_user.email }}" disabled>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Your Email</label>
+                                            <input type="email" class="form-control form-control-lg" value="{{ current_user.email }}" disabled>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Your Phone</label>
+                                            <input type="tel" name="guest_phone" class="form-control form-control-lg" value="{{ current_user.phone or '' }}" placeholder="Phone for booking updates">
+                                            <small class="text-muted">We'll send booking updates here</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="text-end">
+                                    <button type="button" class="btn btn-primary btn-wizard" data-next-step="2">Next: Special Requests <i class="fas fa-arrow-right ms-1"></i></button>
                                 </div>
                             </div>
 
-                            <div id="depositSection" class="deposit-section">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <label class="fw-semibold">Deposit Percentage</label>
-                                        <input type="number" name="deposit_percentage" class="form-control"
-                                               value="{{ payment_options.timing.deposit_percentage if payment_options and payment_options.timing else 0 }}"
-                                               min="0" max="100" step="0.01">
-                                        <small class="text-muted">Percentage of total to pay now. Balance due before check-in.</small>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="payment-summary" id="payment-summary">
-                                <i class="fas fa-info-circle me-2"></i>
-                                <span class="summary-text" id="payment-summary-text">Please select a payment option above.</span>
-                            </div>
-
-                            <div class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">6</span>
-                                    Booking Details
-                                </div>
-                                <div class="booking-details-box">
-                                    <div class="detail-item">
-                                        <i class="fas fa-building"></i>
-                                        <strong>Property:</strong> {{ booking.name }}
-                                    </div>
-                                    <div class="detail-item">
-                                        <i class="fas fa-map-marker-alt"></i>
-                                        <strong>Location:</strong> {{ booking.city }}
-                                    </div>
-                                    <div class="detail-item">
-                                        <i class="fas fa-calendar-check"></i>
-                                        <strong>Check-in:</strong> {{ booking.check_in }}
-                                    </div>
-                                    <div class="detail-item">
-                                        <i class="fas fa-calendar-times"></i>
-                                        <strong>Check-out:</strong> {{ booking.check_out }}
-                                    </div>
-                                    <div class="detail-item">
-                                        <i class="fas fa-users"></i>
-                                        <strong>Guests:</strong> <span id="guestCountDisplay">{{ booking.num_guests }}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <input type="hidden" name="property_id" value="{{ booking.property_id }}">
-                            <input type="hidden" name="room_type_id" value="{{ booking.room_type_id or '' }}">
-                            <input type="hidden" name="host_user_id" value="{{ booking.host_user_id }}">
-                            <input type="hidden" name="check_in" value="{{ booking.check_in }}">
-                            <input type="hidden" name="check_out" value="{{ booking.check_out }}">
-                            <input type="hidden" name="group_booking_id" id="groupBookingId" value="">
-
-                            <div class="mb-4">
-                                <div class="checkout-section-title">
-                                    <span class="step-badge">7</span>
-                                    Special Requests
-                                </div>
+                            <!-- Step 2: Special Requests -->
+                            <div class="wizard-step" id="step2">
+                                <div class="checkout-section-title">Special Requests (Optional)</div>
                                 <textarea name="special_requests" class="form-control" rows="3"
                                           placeholder="Any special requests? (e.g., late check-in, dietary requirements)"></textarea>
                                 <small class="text-muted">We'll pass these on to the host</small>
+
+                                <div class="d-flex justify-content-between mt-4">
+                                    <button type="button" class="btn btn-outline-secondary btn-wizard" data-prev-step="1"><i class="fas fa-arrow-left me-1"></i> Back</button>
+                                    <button type="button" class="btn btn-primary btn-wizard" data-next-step="3">Next: Payment <i class="fas fa-arrow-right ms-1"></i></button>
+                                </div>
                             </div>
 
-                            <div class="form-check mb-4">
-                                <input type="checkbox" class="form-check-input" id="terms" required>
-                                <label class="form-check-label" for="terms">
-                                    I agree to the <a href="#" target="_blank">terms and conditions</a> and
-                                    <a href="#" target="_blank">cancellation policy</a>
-                                </label>
+                            <!-- Step 3: Payment -->
+                            <div class="wizard-step" id="step3">
+                                <div class="mb-4">
+                                    <div class="checkout-section-title">Payment Method <span class="text-danger">*</span></div>
+                                    <div class="payment-method-grid" id="paymentMethodsGrid">
+                                        {% if payment_options and payment_options.payment_methods %}
+                                            {% set allowed_methods = ['wallet', 'cash'] %}
+                                            {% for method in payment_options.payment_methods %}
+                                                {% if method.method_id in allowed_methods %}
+                                                <div class="payment-method-wrapper" data-timing="{{ 'pay_on_arrival' if method.is_cash or method.method_id == 'cash' else 'pay_now,deposit' }}">
+                                                <div class="payment-method-card" data-method-id="{{ method.method_id }}">
+                                                    <input type="radio" name="payment_method" value="{{ method.method_id }}"
+                                                           id="pm_{{ method.method_id }}" class="form-check-input">
+                                                    <label class="form-check-label" for="pm_{{ method.method_id }}">
+                                                        <i class="fas fa-{{ method.icon or 'wallet' }}"></i>
+                                                        {{ method.display_name }}
+                                                    </label>
+                                                    <div class="method-description">
+                                                        {% if method.method_id == 'wallet' %}
+                                                        Pay with your wallet balance
+                                                        {% elif method.method_id == 'cash' %}
+                                                        <span class="text-success">✓ Pay on arrival</span>
+                                                        {% else %}
+                                                        {{ method.method_type|title }}
+                                                        {% endif %}
+                                                    </div>
+                                                    {% if method.method_id == 'wallet' %}
+                                                    <div class="wallet-balance">
+                                                        Available: <span class="amount">UGX {{ wallet_balance|default('0.00') }}</span>
+                                                    </div>
+                                                    {% endif %}
+                                                </div>
+                                                </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="alert alert-warning">No payment methods available. Please contact the host.</div>
+                                        {% endif %}
+                                    </div>
+                                    <div id="payment-method-feedback" class="checkout-feedback">Please select a payment method.</div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <div class="checkout-section-title">Payment Timing <span class="text-danger">*</span></div>
+                                    <div class="timing-grid">
+                                        {% if payment_options and payment_options.allowed_timings %}
+                                            {% for timing in payment_options.allowed_timings %}
+                                            <div class="timing-card" data-timing-value="{{ timing }}">
+                                                <input type="radio" name="payment_timing" value="{{ timing }}"
+                                                       id="timing_{{ timing }}" class="form-check-input">
+                                                <label class="form-check-label" for="timing_{{ timing }}">
+                                                    <i class="fas
+                                                        {% if timing == 'pay_now' %}fa-bolt text-success
+                                                        {% elif timing == 'deposit' %}fa-hand-holding-usd text-warning
+                                                        {% elif timing == 'pay_on_arrival' %}fa-hotel text-primary
+                                                        {% else %}fa-file-invoice text-info{% endif %}
+                                                    "></i>
+                                                    {{ timing|replace('_', ' ')|title }}
+                                                    {% if timing == 'pay_now' %}
+                                                    <span class="badge-timing badge-instant">Instant</span>
+                                                    {% elif timing == 'deposit' %}
+                                                    <span class="badge-timing badge-deposit">Deposit</span>
+                                                    {% elif timing == 'pay_on_arrival' %}
+                                                    <span class="badge-timing badge-arrival">On Arrival</span>
+                                                    {% endif %}
+                                                </label>
+                                                <div class="timing-description">
+                                                    {% if timing == 'pay_now' %}
+                                                    Pay full amount now. Instant confirmation.
+                                                    {% elif timing == 'deposit' %}
+                                                    Pay a deposit now, balance later.
+                                                    {% elif timing == 'pay_on_arrival' %}
+                                                    No payment now. Pay when you check in.
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="alert alert-warning">No payment timing options available.</div>
+                                        {% endif %}
+                                    </div>
+                                    <div id="payment-timing-feedback" class="checkout-feedback">Please select a payment option.</div>
+                                </div>
+
+                                <div id="depositSection" class="deposit-section">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="fw-semibold">Deposit Percentage</label>
+                                            <input type="number" name="deposit_percentage" class="form-control"
+                                                   value="{{ payment_options.timing.deposit_percentage if payment_options and payment_options.timing else 0 }}"
+                                                   min="0" max="100" step="0.01">
+                                            <small class="text-muted">Percentage of total to pay now. Balance due before check-in.</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="payment-summary" id="payment-summary">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <span class="summary-text" id="payment-summary-text">Please select a payment option above.</span>
+                                </div>
+
+                                <div class="d-flex justify-content-between mt-4">
+                                    <button type="button" class="btn btn-outline-secondary btn-wizard" data-prev-step="2"><i class="fas fa-arrow-left me-1"></i> Back</button>
+                                    <button type="button" class="btn btn-primary btn-wizard" data-next-step="4" data-validate>Next: Review <i class="fas fa-arrow-right ms-1"></i></button>
+                                </div>
                             </div>
 
-                            <button type="submit" class="btn btn-checkout-submit w-100 btn-lg" id="submit-btn">
-                                <i class="fas fa-credit-card"></i> Confirm Booking
-                            </button>
+                            <!-- Step 4: Review & Confirm -->
+                            <div class="wizard-step" id="step4">
+                                <div class="booking-details-box mb-4">
+                                    <div class="detail-item"><i class="fas fa-building"></i> <strong>Property:</strong> {{ booking.name }}</div>
+                                    <div class="detail-item"><i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> {{ booking.city }}</div>
+                                    <div class="detail-item"><i class="fas fa-calendar-check"></i> <strong>Check-in:</strong> {{ booking.check_in }}</div>
+                                    <div class="detail-item"><i class="fas fa-calendar-times"></i> <strong>Check-out:</strong> {{ booking.check_out }}</div>
+                                    <div class="detail-item"><i class="fas fa-users"></i> <strong>Guests:</strong> <span id="guestCountDisplay">{{ booking.num_guests }}</span></div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <div class="checkout-section-title">Price Summary</div>
+                                    <div class="price-item"><span>${{ "%.2f"|format(booking.nightly_rate|float) }} × {{ booking.nights|int }} nights</span><span>${{ "%.2f"|format(booking.subtotal|float) }}</span></div>
+                                    <div class="price-item"><span>Cleaning fee</span><span>${{ "%.2f"|format(booking.cleaning_fee|float) }}</span></div>
+                                    <div class="price-item"><span>Service fee</span><span>${{ "%.2f"|format(booking.service_fee|float) }}</span></div>
+                                    <div class="price-item total"><span>Total</span><span class="amount">${{ "%.2f"|format(booking.total|float) }}</span></div>
+                                    <span class="payment-label" id="payment-method-label"><i class="fas fa-info-circle"></i> Select a payment method</span>
+                                </div>
+
+                                <div class="form-check mb-4">
+                                    <input type="checkbox" class="form-check-input" id="terms" required>
+                                    <label class="form-check-label" for="terms">
+                                        I agree to the <a href="#" target="_blank">terms and conditions</a> and
+                                        <a href="#" target="_blank">cancellation policy</a>
+                                    </label>
+                                </div>
+
+                                <!-- Hidden fields preserved from previous steps -->
+                                <input type="hidden" name="property_id" value="{{ booking.property_id }}">
+                                <input type="hidden" name="room_type_id" value="{{ booking.room_type_id or '' }}">
+                                <input type="hidden" name="host_user_id" value="{{ booking.host_user_id }}">
+                                <input type="hidden" name="check_in" value="{{ booking.check_in }}">
+                                <input type="hidden" name="check_out" value="{{ booking.check_out }}">
+                                <input type="hidden" name="group_booking_id" id="groupBookingId" value="">
+
+                                <div class="d-flex justify-content-between mt-4">
+                                    <button type="button" class="btn btn-outline-secondary btn-wizard" data-prev-step="3"><i class="fas fa-arrow-left me-1"></i> Back</button>
+                                    <button type="submit" class="btn btn-checkout-submit btn-lg btn-wizard" id="submit-btn">
+                                        <i class="fas fa-credit-card me-1"></i> Confirm Booking
+                                    </button>
+                                </div>
+                            </div>
                         </form>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-4">
-                <div class="card price-summary-card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-receipt me-2"></i> Price Summary</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="price-item">
-                            <span>${{ "%.2f"|format(booking.nightly_rate|float) }} × {{ booking.nights|int }} nights</span>
-                            <span>${{ "%.2f"|format(booking.subtotal|float) }}</span>
-                        </div>
-                        <div class="price-item">
-                            <span>Cleaning fee</span>
-                            <span>${{ "%.2f"|format(booking.cleaning_fee|float) }}</span>
-                        </div>
-                        <div class="price-item">
-                            <span>Service fee</span>
-                            <span>${{ "%.2f"|format(booking.service_fee|float) }}</span>
-                        </div>
-                        <div class="price-item total">
-                            <span>Total</span>
-                            <span class="amount">${{ "%.2f"|format(booking.total|float) }}</span>
-                        </div>
-                        <span class="payment-label" id="payment-method-label">
-                            <i class="fas fa-info-circle"></i> Select a payment method
-                        </span>
                     </div>
                 </div>
             </div>
@@ -328,249 +303,7 @@
     </div>
 </div>
 
-<script>
-let groupBookingId = null;
-
-function selectBookingType(type) {
-    document.getElementById('bookingSelf').checked = (type === 'self');
-    document.getElementById('bookingThirdParty').checked = (type === 'third_party');
-    document.getElementById('bookingGroup').checked = (type === 'group');
-
-    document.querySelectorAll('.booking-type-card').forEach(card => {
-        card.classList.toggle('selected', card.querySelector('input[type="radio"]').checked);
-    });
-
-    document.getElementById('thirdPartySection').style.display = type === 'third_party' ? 'block' : 'none';
-    document.getElementById('groupSection').style.display = type === 'group' ? 'block' : 'none';
-
-    if (type === 'group' && !groupBookingId) {
-        groupBookingId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        document.getElementById('groupBookingId').value = groupBookingId;
-    }
-}
-
-function selectPaymentMethod(methodId) {
-    const wasAlreadySelected = document.querySelector(`[name="payment_method"][value="${methodId}"]`)?.checked;
-
-    document.querySelectorAll('[name="payment_method"]').forEach(el => {
-        el.checked = false;
-    });
-    document.querySelectorAll('.payment-method-card').forEach(card => {
-        card.classList.remove('selected');
-    });
-
-    if (!wasAlreadySelected) {
-        const radio = document.querySelector(`[name="payment_method"][value="${methodId}"]`);
-        if (radio) {
-            radio.checked = true;
-            radio.closest('.payment-method-card')?.classList.add('selected');
-        }
-
-        const labels = {
-            'wallet': 'Paid from your AFCON360 wallet',
-            'cash': 'Pay with cash on arrival'
-        };
-        const labelEl = document.getElementById('payment-method-label');
-        if (labelEl && labels[methodId]) {
-            labelEl.innerHTML = `<i class="fas fa-info-circle"></i> ${labels[methodId]}`;
-        }
-    } else {
-        const labelEl = document.getElementById('payment-method-label');
-        if (labelEl) {
-            labelEl.innerHTML = '<i class="fas fa-info-circle"></i> Select a payment method';
-        }
-    }
-
-    document.getElementById('payment-method-feedback')?.classList.remove('show');
-}
-
-function selectTiming(timing) {
-    const wasAlreadySelected = document.querySelector(`[name="payment_timing"][value="${timing}"]`)?.checked;
-
-    document.querySelectorAll('[name="payment_timing"]').forEach(el => {
-        el.checked = false;
-    });
-    document.querySelectorAll('.timing-card').forEach(card => {
-        card.classList.remove('selected');
-    });
-
-    if (!wasAlreadySelected) {
-        const radio = document.querySelector(`[name="payment_timing"][value="${timing}"]`);
-        if (radio) {
-            radio.checked = true;
-            radio.closest('.timing-card')?.classList.add('selected');
-        }
-
-        document.getElementById('depositSection').style.display = timing === 'deposit' ? 'block' : 'none';
-
-        const methodWrappers = document.querySelectorAll('.payment-method-wrapper');
-        const methodRadios = document.querySelectorAll('[name="payment_method"]');
-
-        methodWrappers.forEach(wrapper => wrapper.style.display = 'block');
-        methodRadios.forEach(radio => radio.checked = false);
-
-        let firstVisible = null;
-        let hasVisible = false;
-
-        methodWrappers.forEach((wrapper) => {
-            const allowedTimings = wrapper.dataset.timing ? wrapper.dataset.timing.split(',') : [];
-            const isVisible = allowedTimings.includes(timing) || allowedTimings.includes('all');
-
-            if (!isVisible) {
-                wrapper.style.display = 'none';
-            } else {
-                hasVisible = true;
-                if (!firstVisible) {
-                    firstVisible = wrapper.querySelector('[name="payment_method"]');
-                }
-            }
-        });
-
-        if (firstVisible) {
-            selectPaymentMethod(firstVisible.value);
-        }
-
-        const container = document.getElementById('paymentMethodsContainer');
-        const noMethodsMsg = document.getElementById('noPaymentMethodsMsg');
-
-        if (!hasVisible) {
-            if (!noMethodsMsg) {
-                const msg = document.createElement('div');
-                msg.id = 'noPaymentMethodsMsg';
-                msg.className = 'alert alert-warning mt-2';
-                msg.textContent = 'No payment methods available for this option. Please select a different payment timing.';
-                container.appendChild(msg);
-            }
-        } else if (noMethodsMsg) {
-            noMethodsMsg.remove();
-        }
-
-        const summaryText = document.getElementById('payment-summary-text');
-        const total = {{ booking.total|float }};
-        const currency = '$';
-
-        switch(timing) {
-            case 'pay_now':
-                summaryText.textContent = `You will be charged ${currency}${total.toFixed(2)} now. Booking confirmed immediately.`;
-                break;
-            case 'deposit':
-                const depositPct = parseFloat(document.querySelector('[name="deposit_percentage"]')?.value || 0);
-                const depositAmount = total * (depositPct / 100);
-                summaryText.textContent = `You will be charged ${currency}${depositAmount.toFixed(2)} now (${depositPct}% deposit). Balance of ${currency}${(total - depositAmount).toFixed(2)} due before check-in.`;
-                break;
-            case 'pay_on_arrival':
-                summaryText.textContent = `No payment now. You'll pay ${currency}${total.toFixed(2)} when you check in. Booking requires host approval.`;
-                break;
-            case 'invoice':
-                summaryText.textContent = `We'll send you an invoice for ${currency}${total.toFixed(2)}. Payment due in 30 days.`;
-                break;
-            default:
-                summaryText.textContent = `You will be charged ${currency}${total.toFixed(2)} now.`;
-        }
-
-        const submitBtn = document.getElementById('submit-btn');
-        const timingLabels = {
-            'pay_now': 'Pay Now',
-            'deposit': 'Pay Deposit',
-            'pay_on_arrival': 'Book Now',
-            'invoice': 'Request Invoice'
-        };
-        const icons = {
-            'pay_now': 'fa-credit-card',
-            'deposit': 'fa-hand-holding-usd',
-            'pay_on_arrival': 'fa-hotel',
-            'invoice': 'fa-file-invoice'
-        };
-        if (submitBtn) {
-            submitBtn.innerHTML = `<i class="fas ${icons[timing] || 'fa-credit-card'} me-1"></i> ${timingLabels[timing] || 'Confirm'}`;
-        }
-    } else {
-        document.getElementById('depositSection').style.display = 'none';
-        document.querySelectorAll('.payment-method-wrapper').forEach(wrapper => wrapper.style.display = 'block');
-        document.querySelectorAll('[name="payment_method"]').forEach(radio => radio.checked = false);
-        document.querySelectorAll('.payment-method-card').forEach(card => card.classList.remove('selected'));
-
-        document.getElementById('payment-summary-text').textContent = 'Please select a payment option above.';
-        document.getElementById('submit-btn').innerHTML = '<i class="fas fa-credit-card me-1"></i> Confirm Booking';
-
-        const labelEl = document.getElementById('payment-method-label');
-        if (labelEl) {
-            labelEl.innerHTML = '<i class="fas fa-info-circle"></i> Select a payment method';
-        }
-    }
-
-    document.getElementById('payment-timing-feedback')?.classList.remove('show');
-}
-
-document.querySelector('[name="deposit_percentage"]')?.addEventListener('change', function() {
-    const selectedTiming = document.querySelector('[name="payment_timing"]:checked');
-    if (selectedTiming && selectedTiming.value === 'deposit') {
-        selectTiming('deposit');
-    }
-});
-
-document.getElementById('checkout-form').addEventListener('submit', function(e) {
-    let hasError = false;
-
-    const timingSelected = document.querySelector('[name="payment_timing"]:checked');
-    if (!timingSelected) {
-        e.preventDefault();
-        const feedback = document.getElementById('payment-timing-feedback');
-        feedback.textContent = 'Please select a payment option.';
-        feedback.classList.add('show');
-        hasError = true;
-    }
-
-    const methodSelected = document.querySelector('[name="payment_method"]:checked');
-    if (!methodSelected) {
-        e.preventDefault();
-        const feedback = document.getElementById('payment-method-feedback');
-        feedback.textContent = 'Please select a payment method.';
-        feedback.classList.add('show');
-        hasError = true;
-    }
-
-    if (hasError) {
-        const firstError = document.querySelector('.checkout-feedback.show');
-        if (firstError) {
-            firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        return false;
-    }
-
-    return true;
-});
-
-document.querySelector('[name="num_guests"]')?.addEventListener('change', function() {
-    document.getElementById('guestCountDisplay').innerText = this.value;
-});
-
-document.getElementById('totalRooms')?.addEventListener('change', function() {
-    let roomNumberInput = document.getElementById('roomNumber');
-    let currentRoom = parseInt(roomNumberInput.value);
-    let totalRooms = parseInt(this.value);
-
-    if (currentRoom > totalRooms) {
-        roomNumberInput.value = totalRooms;
-    }
-    roomNumberInput.max = totalRooms;
-    roomNumberInput.readOnly = false;
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    const selectedTiming = document.querySelector('[name="payment_timing"]:checked');
-    if (selectedTiming) {
-        document.getElementById('depositSection').style.display = selectedTiming.value === 'deposit' ? 'block' : 'none';
-        selectTiming(selectedTiming.value);
-    }
-    const firstPayment = document.querySelector('[name="payment_method"]');
-    if (firstPayment) {
-        selectPaymentMethod(firstPayment.value);
-    }
-    const firstBooking = document.querySelector('[name="booking_type"]');
-    if (firstBooking && !document.querySelector('[name="booking_type"]:checked')) {
-        selectBookingType('self');
-    }
-});
-</script>
+{% block module_scripts %}
+<script src="{{ url_for('static', filename='js/modules/accommodation/checkout.js') }}"></script>
+{% endblock %}
 {% endblock %}

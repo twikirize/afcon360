@@ -62,7 +62,7 @@ def owner_required(f):
                 from app.identity.models.user import User
                 from app.identity.models.roles_permission import Role
                 try:
-                    user = User.query.get(current_user.id)
+                    user = db.session.get(User, current_user.id)
                     if user:
                         owner_role = Role.query.filter_by(name='owner', scope='global').first()
                         if owner_role:
@@ -114,3 +114,4 @@ def owner_password_confirm_required(f):
         return f(*args, **kwargs)
 
     return decorated_function
+

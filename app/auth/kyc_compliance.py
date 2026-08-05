@@ -157,7 +157,7 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
     # Determine if identifier is integer (BIGINT id) or string (public_id)
     if isinstance(user_identifier, int):
         # It's an internal ID
-        user = User.query.get(user_identifier)
+        user = db.session.get(User, user_identifier)
     else:
         # Assume it's a public_id (UUID string)
         user = User.query.filter_by(public_id=user_identifier).first()
@@ -247,7 +247,7 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
 
     # Determine if identifier is integer (BIGINT id) or string (public_id)
     if isinstance(user_identifier, int):
-        user = User.query.get(user_identifier)
+        user = db.session.get(User, user_identifier)
     else:
         user = User.query.filter_by(public_id=user_identifier).first()
 
@@ -317,7 +317,7 @@ def check_transaction_allowed(user_identifier, amount: float) -> Tuple[bool, str
 
     # Determine if identifier is integer (BIGINT id) or string (public_id)
     if isinstance(user_identifier, int):
-        user = User.query.get(user_identifier)
+        user = db.session.get(User, user_identifier)
     else:
         user = User.query.filter_by(public_id=user_identifier).first()
 
@@ -443,7 +443,7 @@ def require_org_kyc_tier(min_tier: int, org_id_param: str = 'org_id'):
                 abort(400, description="Organization ID required")
 
             # Check organization KYC status (simplified - implement full KYB later)
-            org = Organisation.query.get(org_id)
+            org = db.session.get(Organisation, org_id)
             if not org:
                 abort(404, description="Organization not found")
 
@@ -474,7 +474,7 @@ def require_org_kyc_tier(min_tier: int, org_id_param: str = 'org_id'):
 def flag_for_aml_review(user_id: int, amount: float, transaction_type: str):
     """Flag transaction for AML review."""
     from app.identity.models.user import User
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
@@ -497,7 +497,7 @@ def flag_for_aml_review(user_id: int, amount: float, transaction_type: str):
 def report_to_fia(user_id: int, amount: float, transaction_type: str):
     """Report large transaction to Financial Intelligence Authority."""
     from app.identity.models.user import User
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
@@ -521,7 +521,7 @@ def report_to_fia(user_id: int, amount: float, transaction_type: str):
 def check_pep_status(user_id: int) -> bool:
     """Check if user is a Politically Exposed Person."""
     from app.identity.models.user import User
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
@@ -540,7 +540,7 @@ def check_pep_status(user_id: int) -> bool:
 def check_sanctions_list(user_id: int) -> bool:
     """Check if user appears on sanctions lists."""
     from app.identity.models.user import User
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
@@ -558,7 +558,7 @@ def get_user_kyc_tier(user_identifier) -> int:
 
     # Determine if identifier is integer (BIGINT id) or string (public_id)
     if isinstance(user_identifier, int):
-        user = User.query.get(user_identifier)
+        user = db.session.get(User, user_identifier)
     else:
         user = User.query.filter_by(public_id=user_identifier).first()
 
@@ -574,7 +574,7 @@ def get_missing_requirements(user_identifier, target_tier: int) -> List[str]:
 
     # Determine if identifier is integer (BIGINT id) or string (public_id)
     if isinstance(user_identifier, int):
-        user = User.query.get(user_identifier)
+        user = db.session.get(User, user_identifier)
     else:
         user = User.query.filter_by(public_id=user_identifier).first()
 
@@ -618,3 +618,4 @@ def can_upgrade_to_tier(user_identifier, target_tier: int) -> Tuple[bool, List[s
 
     missing = get_missing_requirements(user_identifier, target_tier)
     return len(missing) == 0, missing
+

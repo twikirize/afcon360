@@ -26,7 +26,7 @@ class PropertyTrustService:
 
         owner = None
         if property.owner_user_id:
-            owner = User.query.get(property.owner_user_id)
+            owner = db.session.get(User, property.owner_user_id)
 
         # 1. Identity Signals (Max 50 points)
         if owner:
@@ -88,3 +88,4 @@ class PropertyTrustService:
         # Clamp score between 0 and 100
         final_score = max(0.0, min(100.0, score))
         return round(final_score, 2), breakdown
+

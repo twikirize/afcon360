@@ -92,6 +92,11 @@ def db_session(app):
         yield db.session
         db.session.remove()
 
+@pytest.fixture(scope='session')
+def test_db(db_session):
+    """Alias for db_session for backward compatibility with tests using test_db"""
+    yield db_session
+
 @pytest.fixture(autouse=True)
 def clean_db(db_session):
     yield

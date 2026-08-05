@@ -132,15 +132,43 @@ class BookingStateMachine:
         Computed READY_FOR_CHECKIN status.
         Not stored in DB - always derived from current state.
         """
-        return (
-            booking.status == AccommodationBookingStatus.CONFIRMED.value
-            and booking.payment_status in [
-                AccommodationPaymentStatus.PAID.value,
-                AccommodationPaymentStatus.PARTIALLY_PAID.value,
-            ]
-            and booking.check_in <= date.today()
-            and cls._all_guests_registered(booking)
-        )
+        if booking.status != AccommodationBookingStatus.CONFIRMED.value:
+            return False
+
+        if booking.check_in > date.today():
+            return False
+
+        # Paid / deposit-paid bookings are always eligible.
+        if booking.payment_status in [
+            AccommodationPaymentStatus.PAID.value,
+            AccommodationPaymentStatus.PARTIALLY_PAID.value,
+        ]:
+            return cls._all_guests_registered(booking)
+
+        # Pay-on-arrival / cash bookings: allow UNPAID if guest/cash is eligible.
+        if booking.payment_status == AccommodationPaymentStatus.UNPAID.value:
+            return cls._cash_eligible_at_checkin(booking) and cls._all_guests_registered(booking)
+
+        return False
+
+    @classmethod
+    def _cash_eligible_at_checkin(cls, booking) -> bool:
+        """Return True when an UNPAID booking is allowed to check in with cash."""
+        from app.accommodation.services.booking_service import check_cash_eligibility
+        from app.identity.models.user import User
+        guest_user_id = getattr(booking, "guest_user_id", None)
+        if not guest_user_id:
+            return False
+        try:
+            guest_user = db.session.get(User, guest_user_id)
+            result = check_cash_eligibility(
+                guest_user=guest_user,
+                property_id=booking.property_id,
+                booking_amount=booking.total_amount or 0,
+            )
+            return bool(result.get("allowed")) if isinstance(result, dict) else False
+        except Exception:
+            return False
 
     @classmethod
     def _payment_satisfied(cls, booking) -> bool:
@@ -157,8 +185,20 @@ class BookingStateMachine:
     def _all_guests_registered(cls, booking) -> bool:
         """
         Check if all required guests are registered for this booking.
+        A guest is considered registered if a GuestRegistration record exists
+        with status completed or skipped (host override).
         """
-        return bool(booking.primary_guest_id or booking.guest_user_id or booking.guest_email)
+        try:
+            from app.accommodation.models.guest_registration import GuestRegistration
+            registrations = GuestRegistration.query.filter_by(booking_id=booking.id).all()
+            if not registrations:
+                return False
+            return all(
+                r.status in ("completed", "skipped") for r in registrations
+            )
+        except Exception:
+            # If the model/table doesn't exist yet, fall back to legacy check
+            return bool(booking.primary_guest_id or booking.guest_user_id or booking.guest_email)
 
     @classmethod
     def get_next_states(
@@ -248,3 +288,4 @@ class BookingStateMachine:
         )
 
         return booking
+

@@ -1,0 +1,10 @@
+{
+  "title": "New Signup - AFCON360",
+  "body": "New user {{ username }} ({{ email }}) signed up as {{ role }}",
+  "click_action": "/admin/users",
+  "data": {
+    "type": "new_signup",
+    "username": "{{ username }}",
+    "role": "{{ role }}"
+  }
+}

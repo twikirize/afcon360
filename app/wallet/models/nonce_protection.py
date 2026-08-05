@@ -3,7 +3,7 @@ Nonce Replay Protection Model
 Manages user-specific nonce counters to prevent transaction replay attacks
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import Column, Integer, String, DateTime, Text, Index, Boolean, BigInteger
 from app.extensions import db
 
@@ -23,11 +23,11 @@ class UserNonce(db.Model):
     id = Column(BigInteger, primary_key=True)
     
     # User identification
-    user_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False)
     user_type = Column(String(20), default='user')  # user, aggregator, admin
     
     # Nonce information
-    nonce = Column(String(255), nullable=False, unique=True, index=True)
+    nonce = Column(String(255), nullable=False, unique=True)
     nonce_type = Column(String(50), default='transaction')  # transaction, api_call, webhook
     
     # Transaction details
@@ -40,7 +40,7 @@ class UserNonce(db.Model):
     voided = Column(Boolean, default=False)
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
     
@@ -96,8 +96,8 @@ class NonceProtectionConfig(db.Model):
     
     # Metadata
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
@@ -120,3 +120,4 @@ class NonceProtectionConfig(db.Model):
     
     def __repr__(self):
         return f"<NonceProtectionConfig {self.id}: enabled={self.enabled}>"
+

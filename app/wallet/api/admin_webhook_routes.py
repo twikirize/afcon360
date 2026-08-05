@@ -1,4 +1,4 @@
-﻿"""
+"""
 app/wallet/api/admin_webhook_routes.py
 
 Admin endpoints for WebhookEvent dead-letter queue management.
@@ -83,7 +83,7 @@ def retry_webhook(event_id):
     Only works on dead_letter or failed events.
     Will NOT requeue already processed events (safety guard).
     """
-    event = WebhookEvent.query.get(event_id)
+    event = db.session.get(WebhookEvent, event_id)
     if not event:
         return jsonify({"error": "Webhook event not found"}), 404
 
@@ -191,7 +191,7 @@ def webhook_stats():
 @require_any_role("admin", "super_admin", "owner")
 def get_webhook_detail(event_id):
     """Get full detail of a single webhook event including full payload."""
-    event = WebhookEvent.query.get(event_id)
+    event = db.session.get(WebhookEvent, event_id)
     if not event:
         return jsonify({"error": "Not found"}), 404
 

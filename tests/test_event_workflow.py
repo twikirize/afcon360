@@ -5,7 +5,7 @@ Test event workflow including creation, updates, and lifecycle management.
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import unittest
 from flask import Flask
 from sqlalchemy import event
@@ -77,8 +77,8 @@ class TestEventWorkflow(unittest.TestCase):
                 'description': 'A test event for workflow testing',
                 'city': 'Kampala',
                 'venue': 'Test Venue',
-                'start_date': (datetime.utcnow() + timedelta(days=30)).strftime('%Y-%m-%d'),
-                'end_date': (datetime.utcnow() + timedelta(days=31)).strftime('%Y-%m-%d'),
+                'start_date': (datetime.now(timezone.utc) + timedelta(days=30)).strftime('%Y-%m-%d'),
+                'end_date': (datetime.now(timezone.utc) + timedelta(days=31)).strftime('%Y-%m-%d'),
                 'category': 'conference',
                 'currency': 'USD'
             }
@@ -113,8 +113,8 @@ class TestEventWorkflow(unittest.TestCase):
                     description='A test event for workflow testing',
                     city='Kampala',
                     venue='Test Venue',
-                    start_date=datetime.utcnow() + timedelta(days=30),
-                    end_date=datetime.utcnow() + timedelta(days=31),
+                    start_date=datetime.now(timezone.utc) + timedelta(days=30),
+                    end_date=datetime.now(timezone.utc) + timedelta(days=31),
                     status='draft',
                     category='conference',
                     currency='USD',
@@ -146,7 +146,7 @@ class TestEventWorkflow(unittest.TestCase):
             db.session.commit()
 
             # Verify
-            updated_event = Event.query.get(event.id)
+            updated_event = db.session.get(Event, event.id)
             self.assertEqual(updated_event.status, 'active')
 
     def test_event_update(self):
@@ -169,7 +169,7 @@ class TestEventWorkflow(unittest.TestCase):
             db.session.commit()
 
             # Verify updates
-            updated_event = Event.query.get(event.id)
+            updated_event = db.session.get(Event, event.id)
             self.assertEqual(updated_event.name, 'Updated Name')
             self.assertEqual(updated_event.city, 'Entebbe')
 
@@ -240,7 +240,7 @@ class TestEventWorkflow(unittest.TestCase):
             db.session.commit()
 
             # Verify
-            cancelled_event = Event.query.get(event.id)
+            cancelled_event = db.session.get(Event, event.id)
             self.assertEqual(cancelled_event.status, 'cancelled')
             self.assertEqual(cancelled_event.cancellation_reason, 'Low registration')
 
@@ -313,11 +313,11 @@ class TestEventWorkflow(unittest.TestCase):
             db.session.commit()
 
             # Soft delete
-            event.deleted_at = datetime.utcnow()
+            event.deleted_at = datetime.now(timezone.utc)
             db.session.commit()
 
             # Verify it's marked as deleted
-            deleted_event = Event.query.get(event.id)
+            deleted_event = db.session.get(Event, event.id)
             self.assertIsNotNone(deleted_event.deleted_at)
 
             # Should still exist in database
@@ -325,3 +325,4 @@ class TestEventWorkflow(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

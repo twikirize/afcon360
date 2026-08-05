@@ -1,0 +1,10 @@
+{
+  "title": "New Review - AFCON360",
+  "body": "{{ rating }}-star review for {{ property_title }} by {{ reviewer_name }}",
+  "click_action": "/accommodation/reviews/{{ reference_id }}",
+  "data": {
+    "type": "review_received",
+    "rating": "{{ rating }}",
+    "property_title": "{{ property_title }}"
+  }
+}

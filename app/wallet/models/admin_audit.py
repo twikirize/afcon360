@@ -3,7 +3,7 @@ Admin Audit Log Model
 Tracks all admin actions for compliance and accountability
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Index, BigInteger
 from app.extensions import db
 
@@ -26,16 +26,16 @@ class AdminAuditLog(db.Model):
     id = Column(BigInteger, primary_key=True)
     
     # Who performed the action
-    admin_id = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
+    admin_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
     admin_name = Column(String(255), nullable=False)
     admin_role = Column(String(50), nullable=False)
     
     # What action was performed
-    action_type = Column(String(50), nullable=False, index=True)  # e.g., 'approve', 'reject', 'configure', 'modify'
+    action_type = Column(String(50), nullable=False)  # e.g., 'approve', 'reject', 'configure', 'modify'
     action_category = Column(String(50), nullable=False)  # e.g., 'aggregator', 'fraud_detection', 'payment_gateway'
     
     # What was affected
-    target_type = Column(String(50), nullable=False, index=True)  # e.g., 'aggregator', 'user', 'transaction'
+    target_type = Column(String(50), nullable=False)  # e.g., 'aggregator', 'user', 'transaction'
     target_id = Column(String(255), nullable=True)
     target_name = Column(String(255), nullable=True)
     
@@ -49,7 +49,7 @@ class AdminAuditLog(db.Model):
     user_agent = Column(Text, nullable=True)
     
     # Metadata
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
@@ -89,4 +89,5 @@ class AdminAuditLog(db.Model):
     @property
     def timestamp(self):
         return self.created_at
+
 

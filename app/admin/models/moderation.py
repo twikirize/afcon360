@@ -74,20 +74,20 @@ class ContentFlag(BaseModel):
 
     # Core identification
     id = Column(BigInteger, primary_key=True)
-    entity_type = Column(String(50), nullable=False, index=True)  # user, content_submission, manageable_item, etc.
-    entity_id = Column(BigInteger, nullable=False, index=True)
+    entity_type = Column(String(50), nullable=False)  # user, content_submission, manageable_item, etc.
+    entity_id = Column(BigInteger, nullable=False)
     
     # Content analysis for enterprise moderation
-    content_hash = Column(String(64), nullable=True, index=True)  # For duplicate detection
+    content_hash = Column(String(64), nullable=True)  # For duplicate detection
     content_type = Column(String(50), nullable=False, index=True)  # post, comment, listing, profile, etc.
-    risk_score = Column(Float, default=0.0, index=True)  # AI-calculated risk score (0-100)
+    risk_score = Column(Float, default=0.0)  # AI-calculated risk score (0-100)
     category = Column(String(50), nullable=False, index=True)  # spam, hate, violence, fraud, etc.
     severity = Column(String(20), default="medium")  # low, medium, high, critical
     
     # Flag details
     reason = Column(Text, nullable=False)
-    priority = Column(String(20), default="normal", index=True)  # low, normal, medium, high, critical
-    status = Column(String(20), default="open", index=True)  # open, in_review, resolved, escalated, closed
+    priority = Column(String(20), default="normal")  # low, normal, medium, high, critical
+    status = Column(String(20), default="open")  # open, in_review, resolved, escalated, closed
     
     # AI detection and automation
     detection_source = Column(String(50), default="human")  # ai, human, hybrid, automated
@@ -116,7 +116,7 @@ class ContentFlag(BaseModel):
     final_resolution = Column(Boolean, default=False)
     
     # SLA tracking (enterprise feature)
-    sla_due_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    sla_due_at = Column(DateTime(timezone=True), nullable=False)
     sla_breached = Column(Boolean, default=False)
     sla_priority = Column(String(20), default="normal")  # immediate, urgent, normal, low
     processing_time_seconds = Column(Integer, nullable=True)
@@ -139,8 +139,8 @@ class ContentFlag(BaseModel):
     regional_policy_applied = Column(Boolean, default=False)
     
     # Metadata
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     extra_data = Column(JSON, default=dict)  # Additional context, evidence, etc.
 
     # Legacy fields for compatibility
@@ -210,7 +210,7 @@ class ModerationLog(BaseModel):
     submission_id = Column(BigInteger, ForeignKey("content_submissions.id"), nullable=False, index=True)
     moderator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String(20), nullable=False)  # approve | reject | claim
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     notes = Column(Text, nullable=True)
 
     # Relationships
@@ -219,3 +219,4 @@ class ModerationLog(BaseModel):
 
     def __repr__(self):
         return f"<ModerationLog {self.action} submission={self.submission_id} by moderator={self.moderator_id}>"
+

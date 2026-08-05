@@ -1,0 +1,1 @@
+AFCON360: Booking {{ reference_id }} cancelled. Refund: UGX {{ total_ugx }}. Reason: {{ cancellation_reason }}.

@@ -17,7 +17,15 @@ def safe_url(endpoint: str, **kwargs) -> str:
     """
     if not endpoint:
         return '#'
-    
+
+    # Callers sometimes pass an already-built path/URL instead of an endpoint
+    # name. url_for() cannot build those and would raise, degrading to '#'.
+    # A '#' is dangerous here: the dashboard pane router fetches data-pane-url
+    # values, and fetch('#?_pane=1') resolves back to the current page, which
+    # re-injects the whole dashboard into itself. Pass real paths through.
+    if endpoint.startswith(('/', 'http://', 'https://')):
+        return endpoint
+
     try:
         # Check if we're in app context
         if not has_request_context() and not current_app:

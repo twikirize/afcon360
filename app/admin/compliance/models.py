@@ -1,7 +1,7 @@
 """
 Compliance models for regulatory compliance, case management, and data subject requests
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from app.extensions import db
 
@@ -110,9 +110,9 @@ class ComplianceCase(db.Model):
     resolved_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
     
     # Audit
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships - Fixed to specify foreign_keys to avoid ambiguity
     user = db.relationship('User', foreign_keys=[user_id], backref='compliance_cases_user')
@@ -175,9 +175,9 @@ class DataSubjectRequest(db.Model):
     sla_due_at = db.Column(db.DateTime, nullable=True, index=True)
     
     # Audit
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='data_subject_requests')
@@ -235,9 +235,9 @@ class ComplianceReport(db.Model):
     distributed_at = db.Column(db.DateTime, nullable=True)
     
     # Audit
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_compliance_reports')
@@ -249,5 +249,6 @@ class ComplianceReport(db.Model):
     
     def __repr__(self):
         return f'<ComplianceReport {self.report_number}: {self.title}>'
+
 
 

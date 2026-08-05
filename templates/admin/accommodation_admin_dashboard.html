@@ -363,6 +363,25 @@
         </a>
     </div>
 
+    <!-- Accommodation Dashboard Widgets -->
+    <div class="stats-grid">
+      <div class="stat-card" style="border-left: 4px solid #f59e0b;">
+        <div class="stat-icon" style="color: #f59e0b;"><i class="bi bi-user-clock"></i></div>
+        <div class="stat-value">{{ unclaimed_count|default(0) }}</div>
+        <div class="stat-label">Unclaimed Bookings</div>
+        <div class="stat-change">Awaiting owner claim</div>
+        <a href="{{ url_for('accommodation.admin_bookings', owner_claimed='no') }}" class="btn btn-sm btn-outline-warning mt-2">View</a>
+      </div>
+
+      <div class="stat-card" style="border-left: 4px solid #ef4444;">
+        <div class="stat-icon" style="color: #ef4444;"><i class="bi bi-door-closed"></i></div>
+        <div class="stat-value">{{ readiness_issues_count|default(0) }}</div>
+        <div class="stat-label">Check-in Blockers</div>
+        <div class="stat-change">Bookings not ready for check-in</div>
+        <a href="{{ url_for('accommodation.admin_bookings', status='pending') }}" class="btn btn-sm btn-outline-danger mt-2">View</a>
+      </div>
+    </div>
+
     <!-- Module Settings -->
     <div class="quick-actions">
         <a href="{{ url_for('accommodation.admin_settings') }}" class="action-card">

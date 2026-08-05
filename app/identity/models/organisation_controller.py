@@ -1,7 +1,7 @@
 # app/identity/models/organisation_controller.py
 from sqlalchemy import Column, BigInteger, Date, DateTime, Enum, ForeignKey,String
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
 
@@ -16,7 +16,7 @@ class OrganisationController(BaseModel):
     added_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
     role = Column(String(64))
-    appointed_at = Column(DateTime, default=datetime.utcnow)
+    appointed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     organisation = relationship(
         "Organisation",
@@ -34,3 +34,4 @@ class OrganisationController(BaseModel):
         "User",
         foreign_keys=[added_by]
     )
+

@@ -343,10 +343,11 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertIsNotNone(attendee)
         self.assertEqual(attendee['name'], 'Test User')
 
-        updated_reg = EventRegistration.query.get(registration.id)
+        updated_reg = db.session.get(EventRegistration, registration.id)
         self.assertEqual(updated_reg.status, 'checked_in')
         self.assertIsNotNone(updated_reg.checked_in_at)
 
 
 if __name__ == '__main__':
     unittest.main()
+

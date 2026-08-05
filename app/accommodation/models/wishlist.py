@@ -19,8 +19,8 @@ class Wishlist(BaseModel):
         Index("idx_wishlist_property", "property_id"),
     )
 
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
 
     # Relationships
     user = relationship("User", backref="accommodation_wishlists")

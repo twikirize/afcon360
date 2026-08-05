@@ -55,6 +55,28 @@ def accommodation_admin_dashboard():
             is_deleted=False
         ).order_by(Property.created_at.desc()).limit(5).all()
         
+        # Accommodation statistics for dashboard widgets
+        unclaimed_count = 0
+        readiness_issues_count = 0
+        try:
+            from app.accommodation.models.booking import AccommodationBooking
+            from datetime import date as dt_date
+            today = dt_date.today()
+            unclaimed_count = AccommodationBooking.query.filter(
+                AccommodationBooking.booking_owner_id.is_(None),
+                AccommodationBooking.is_deleted == False,
+            ).count()
+            readiness_issues_count = AccommodationBooking.query.filter(
+                AccommodationBooking.is_deleted == False,
+                db.or_(
+                    AccommodationBooking.status != 'confirmed',
+                    AccommodationBooking.payment_status.not_in(('paid', 'partially_paid')),
+                    AccommodationBooking.check_in > today,
+                )
+            ).count()
+        except Exception as e:
+            logger.warning(f"Could not load accommodation dashboard widgets: {e}")
+
         return render_template(
             "admin/accommodation_admin_dashboard.html",
             total_properties=total_properties,
@@ -63,6 +85,8 @@ def accommodation_admin_dashboard():
             average_rating=average_rating,
             recent_properties=recent_properties,
             pending_properties=pending_properties,
+            unclaimed_count=unclaimed_count,
+            readiness_issues_count=readiness_issues_count,
         )
     except Exception as e:
         logger.error(f"Error loading accommodation admin dashboard: {e}")

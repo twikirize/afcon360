@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Booking Confirmation</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #008751;">
+    <h2 style="color: #008751; margin-top: 0;">AFCON360 Booking Confirmed!</h2>
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>Your reservation for <strong>{{ item_name }}</strong> has been processed successfully.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Booking Reference:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ reference_id }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Total Amount:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">UGX {{ total_ugx }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Date / Venue:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ booking_date }}</td>
+      </tr>
+    </table>
+    <p style="color: #555; font-size: 14px;">Thank you for celebrating African football with AFCON360 East Africa Pamoja!</p>
+  </div>
+</body>
+</html>

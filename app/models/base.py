@@ -30,16 +30,16 @@ class TimestampMixin:
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,  # ← Python-side: populates before INSERT
+        default=lambda: datetime.now(timezone.utc),  # ← Python-side: populates before INSERT
         server_default=func.now(),  # ← DB-side: fallback for raw SQL inserts
         index=True
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,  # ← Python-side: populates before INSERT
+        default=lambda: datetime.now(timezone.utc),  # ← Python-side: populates before INSERT
         server_default=func.now(),
-        onupdate=datetime.utcnow,  # ← Python-side onupdate too, for consistency
+        onupdate=lambda: datetime.now(timezone.utc),  # ← Python-side onupdate too, for consistency
         index=True
     )
 
@@ -159,3 +159,4 @@ def fix_sqlite_autoincrement(mapper, connection, target):
 def _set_updated_at(mapper, connection, target):
     if hasattr(target, 'updated_at'):
         target.updated_at = datetime.now(timezone.utc)
+

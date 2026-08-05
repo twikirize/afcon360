@@ -142,7 +142,7 @@ def bulk_verify_users():
 
         verified_count = 0
         for user_id in user_ids:
-            user = User.query.get(int(user_id))
+            user = db.session.get(User, int(user_id))
             if user and not user.is_verified:
                 user.is_verified = True
                 verified_count += 1
@@ -172,7 +172,7 @@ def bulk_activate_users():
 
         activated_count = 0
         for user_id in user_ids:
-            user = User.query.get(int(user_id))
+            user = db.session.get(User, int(user_id))
             if user and not user.is_active:
                 user.is_active = True
                 activated_count += 1
@@ -202,7 +202,7 @@ def bulk_deactivate_users():
 
         deactivated_count = 0
         for user_id in user_ids:
-            user = User.query.get(int(user_id))
+            user = db.session.get(User, int(user_id))
             if user and user.is_active and user.id != current_user.id:
                 user.is_active = False
                 deactivated_count += 1
@@ -458,4 +458,5 @@ def wallet_webhook_detail(event_id):
 def wallet_webhooks_stats():
     """Render webhook queue health dashboard UI."""
     return render_template('wallet/webhooks_stats.html')
+
 

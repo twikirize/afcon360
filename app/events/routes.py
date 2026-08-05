@@ -2403,7 +2403,7 @@ def contact_organizer(event_id):
         if not message_text:
             return jsonify({'success': False, 'error': 'Message is required'}), 400
         
-        event = Event.query.get(event_id)
+        event = db.session.get(Event, event_id)
         if not event:
             return jsonify({'success': False, 'error': 'Event not found'}), 404
         
@@ -2418,7 +2418,7 @@ def contact_organizer(event_id):
         db.session.commit()
         
         # Send email to organizer
-        organizer = User.query.get(event.organizer_id) if event.organizer_id else None
+        organizer = db.session.get(User, event.organizer_id) if event.organizer_id else None
         if organizer and organizer.email:
             msg = Message(
                 subject=f"[AFCON360] New message about {event.name}",
@@ -2459,7 +2459,7 @@ def mark_message_read(message_id):
     try:
         from app.events.models import OrganizerMessage
         
-        message = OrganizerMessage.query.get(message_id)
+        message = db.session.get(OrganizerMessage, message_id)
         if not message:
             return jsonify({'success': False, 'error': 'Message not found'}), 404
         

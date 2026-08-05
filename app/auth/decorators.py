@@ -67,7 +67,7 @@ def get_fresh_user():
         Redirect: To logout if user is not found or inactive (security measure)
     """
     from flask_login import current_user
-    user = User.query.get(current_user.id)
+    user = db.session.get(User, current_user.id)
     
     # Security: User not found in DB (deleted/invalid session)
     if not user:
@@ -765,3 +765,4 @@ def can_moderate_content(content_type: str = None) -> Callable:
 require_super_admin = require_role("super_admin", "owner")
 require_admin_or_owner = require_role("admin", "super_admin", "owner")
 require_moderator = require_moderator_role
+

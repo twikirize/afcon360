@@ -197,14 +197,14 @@ def test_payment_method(method_id):
         
         # Test connection logic here
         # For now, simulate a test
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         if method.api_key and method.api_secret:
-            method.last_tested_at = datetime.utcnow()
+            method.last_tested_at = datetime.now(timezone.utc)
             method.last_test_result = 'success'
             method.last_error_message = None
         else:
-            method.last_tested_at = datetime.utcnow()
+            method.last_tested_at = datetime.now(timezone.utc)
             method.last_test_result = 'failed'
             method.last_error_message = 'API credentials not configured'
         
@@ -299,3 +299,4 @@ def _get_method_icon(method_type):
         "bank_transfer": "🏦"
     }
     return icon_map.get(method_type, "💳")
+

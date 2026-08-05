@@ -1,0 +1,11 @@
+{
+  "title": "Wallet Withdrawal - AFCON360",
+  "body": "UGX {{ amount }} debited from your wallet. New balance: UGX {{ new_balance }}",
+  "click_action": "/wallet",
+  "data": {
+    "type": "wallet_withdrawal",
+    "amount": "{{ amount }}",
+    "balance": "{{ new_balance }}",
+    "tx_ref": "{{ tx_ref }}"
+  }
+}

@@ -108,17 +108,13 @@ class Property(BaseModel):
             "verification_status IN ('unverified', 'pending', 'verified', 'rejected')",
             name="ck_verification_status_valid"
         ),
-        CheckConstraint(
-            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK')",
-            name="ck_inventory_block_reason_valid"
-        ),
     )
 
     # -------------------------------
     # Ownership (supports both individual and organisation)
     # -------------------------------
-    owner_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    owner_org_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=True, index=True)
+    owner_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    owner_org_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=True)
 
     # -------------------------------
     # Identity
@@ -138,7 +134,7 @@ class Property(BaseModel):
     # -------------------------------
     address_line1 = Column(String(255), nullable=False)
     address_line2 = Column(String(255), nullable=True)
-    city = Column(String(100), nullable=False, index=True)
+    city = Column(String(100), nullable=False)
     state = Column(String(100), nullable=True)
     country = Column(String(2), nullable=False)
     postal_code = Column(String(20), nullable=True)
@@ -201,7 +197,7 @@ class Property(BaseModel):
     # -------------------------------
     # Status Flags & Architecture Columns
     # -------------------------------
-    status = Column(String(50), default="draft", nullable=False, index=True)
+    status = Column(String(50), default="draft", nullable=False)
     visibility = Column(
         String(30),
         default="public",
@@ -228,9 +224,9 @@ class Property(BaseModel):
         nullable=False,
         server_default="0.0"
     )
-    is_verified = Column(Boolean, default=False, nullable=False, index=True)
+    is_verified = Column(Boolean, default=False, nullable=False, )
     is_featured = Column(Boolean, default=False, index=True)
-    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
 
     # -------------------------------
     # Verification
@@ -311,6 +307,9 @@ class Property(BaseModel):
         back_populates="property",
         cascade="all, delete-orphan",
     )
+
+    room_types = relationship("RoomType", back_populates="listing", cascade="all, delete-orphan")
+    rooms = relationship("Room", back_populates="listing", cascade="all, delete-orphan")
 
     # -------------------------------
     # Core Methods

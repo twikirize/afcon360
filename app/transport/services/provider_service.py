@@ -373,7 +373,7 @@ class ProviderService:
     def get_driver(self, driver_id: int) -> Optional[DriverProfile]:
         """Get driver by ID"""
         try:
-            return DriverProfile.query.get(driver_id)
+            return db.session.get(DriverProfile, driver_id)
         except Exception as e:
             logger.error(f"Error getting driver {driver_id}: {e}", exc_info=True)
             return None
@@ -392,7 +392,7 @@ class ProviderService:
     def get_driver_rating(self, driver_id: int) -> float:
         """Get driver's average rating"""
         try:
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             if driver:
                 return float(driver.average_rating) if driver.average_rating else 0.0
             return 0.0
@@ -403,7 +403,7 @@ class ProviderService:
     def get_driver_vehicle(self, driver_id: int) -> Optional[Dict[str, Any]]:
         """Get driver's current vehicle"""
         try:
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             if driver and driver.current_vehicle:
                 return {
                     'id': driver.current_vehicle.id,
@@ -420,7 +420,7 @@ class ProviderService:
     def get_driver_online_status(self, driver_id: int) -> bool:
         """Get driver's online status"""
         try:
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             return driver.is_online if driver else False
         except Exception as e:
             logger.error(f"Error getting driver online status: {e}", exc_info=True)
@@ -429,7 +429,7 @@ class ProviderService:
     def get_driver_availability(self, driver_id: int) -> bool:
         """Get driver's availability"""
         try:
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             return driver.is_available if driver else False
         except Exception as e:
             logger.error(f"Error getting driver availability: {e}", exc_info=True)
@@ -438,7 +438,7 @@ class ProviderService:
     def get_vehicle(self, vehicle_id: int) -> Optional[Vehicle]:
         """Get vehicle by ID"""
         try:
-            return Vehicle.query.get(vehicle_id)
+            return db.session.get(Vehicle, vehicle_id)
         except Exception as e:
             logger.error(f"Error getting vehicle {vehicle_id}: {e}", exc_info=True)
             return None
@@ -1052,7 +1052,7 @@ class ProviderService:
                              user_id: Optional[int] = None) -> Dict[str, Any]:
         """Update driver status"""
         try:
-            driver = DriverProfile.query.get(driver_id)
+            driver = db.session.get(DriverProfile, driver_id)
             if not driver:
                 raise NotFoundError(
                     message="Driver not found",
@@ -1269,3 +1269,4 @@ def get_provider_service() -> ProviderService:
                 _provider_service_instance = ProviderService()
                 logger.debug("ProviderService singleton created")
     return _provider_service_instance
+

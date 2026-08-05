@@ -1,0 +1,8 @@
+{
+  "title": "Email Verification - AFCON360",
+  "body": "Please verify your email address to complete registration.",
+  "click_action": "/auth/verify-email",
+  "data": {
+    "type": "verification_email"
+  }
+}

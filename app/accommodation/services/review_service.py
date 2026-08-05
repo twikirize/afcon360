@@ -38,7 +38,7 @@ class ReviewService:
             (review, error_message)
         """
         try:
-            booking = AccommodationBooking.query.get(booking_id)
+            booking = db.session.get(AccommodationBooking, booking_id)
             if not booking:
                 return None, "Booking not found"
 
@@ -81,7 +81,7 @@ class ReviewService:
     def approve_review(review_id: int, moderator_id: int) -> Tuple[bool, Optional[str]]:
         """Approve a review and publish it."""
         try:
-            review = Review.query.get(review_id)
+            review = db.session.get(Review, review_id)
             if not review:
                 return False, "Review not found"
 
@@ -98,7 +98,7 @@ class ReviewService:
     def reject_review(review_id: int, moderator_id: int, reason: str) -> Tuple[bool, Optional[str]]:
         """Reject a review."""
         try:
-            review = Review.query.get(review_id)
+            review = db.session.get(Review, review_id)
             if not review:
                 return False, "Review not found"
 
@@ -114,7 +114,7 @@ class ReviewService:
     def respond_to_review(review_id: int, host_id: int, response_text: str) -> Tuple[bool, Optional[str]]:
         """Host responds to a published review."""
         try:
-            review = Review.query.get(review_id)
+            review = db.session.get(Review, review_id)
             if not review:
                 return False, "Review not found"
 
@@ -123,7 +123,7 @@ class ReviewService:
 
             # Verify host owns the property
             from app.accommodation.models.property import Property
-            prop = Property.query.get(review.property_id)
+            prop = db.session.get(Property, review.property_id)
             if not prop or not prop.is_owned_by(host_id):
                 return False, "You do not own this property"
 
@@ -148,7 +148,7 @@ class ReviewService:
             Review.is_published.is_(True),
         ).scalar()
 
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if prop:
             prop.overall_rating = float(avg) if avg else None
             prop.total_reviews = count or 0
@@ -166,3 +166,4 @@ class ReviewService:
     def get_booking_review(booking_id: int) -> Optional[Review]:
         """Get review for a specific booking."""
         return Review.query.filter_by(booking_id=booking_id).first()
+

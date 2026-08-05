@@ -133,7 +133,7 @@ class ReconciliationService:
         # If I am the recipient, I should have COMPLETED transactions where recipient_user_id == my_user_id.
         
         from app.wallet.models.ledger import AccountModel
-        account = AccountModel.query.get(account_id)
+        account = db.session.get(AccountModel, account_id)
         received_transfers = self.db.query(db.func.sum(TransactionModel.amount)).filter(
             TransactionModel.recipient_user_id == account.user_id,
             TransactionModel.currency == currency,
@@ -142,3 +142,4 @@ class ReconciliationService:
         ).scalar() or Decimal('0')
 
         return (deposits + received_transfers) - (withdrawals + sent_transfers)
+

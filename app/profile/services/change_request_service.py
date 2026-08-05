@@ -145,7 +145,7 @@ class ProfileChangeRequestService:
             ValueError: If request not found or already processed
             PermissionError: If user lacks approval power at this level
         """
-        request = ProfileChangeRequest.query.get(request_id)
+        request = db.session.get(ProfileChangeRequest, request_id)
         if not request:
             raise ValueError("Request not found")
 
@@ -154,7 +154,7 @@ class ProfileChangeRequestService:
 
         approver = db.session.get(type(request).__table__.columns, approver_id)
         from app.identity.models.user import User
-        approver = User.query.get(approver_id)
+        approver = db.session.get(User, approver_id)
         if not approver:
             raise ValueError("Approver not found")
 
@@ -171,7 +171,7 @@ class ProfileChangeRequestService:
                 raise ValueError("This request does not require admin approval")
             request.admin_approved = True
             request.admin_approved_by = approver_id
-            request.admin_approved_at = datetime.utcnow()
+            request.admin_approved_at = datetime.now(timezone.utc)
             request.admin_approval_notes = notes
 
         elif approval_level == "compliance":
@@ -181,7 +181,7 @@ class ProfileChangeRequestService:
                 raise PermissionError("Only Compliance Officer can approve compliance-level changes")
             request.compliance_approved = True
             request.compliance_approved_by = approver_id
-            request.compliance_approved_at = datetime.utcnow()
+            request.compliance_approved_at = datetime.now(timezone.utc)
             request.compliance_approval_notes = notes
 
         elif approval_level == "super_admin":
@@ -191,7 +191,7 @@ class ProfileChangeRequestService:
                 raise PermissionError("Only Super Admin can approve super admin-level changes")
             request.super_admin_approved = True
             request.super_admin_approved_by = approver_id
-            request.super_admin_approved_at = datetime.utcnow()
+            request.super_admin_approved_at = datetime.now(timezone.utc)
             request.super_admin_approval_notes = notes
 
         elif approval_level == "owner":
@@ -201,7 +201,7 @@ class ProfileChangeRequestService:
                 raise PermissionError("Only Owner can approve owner-level changes")
             request.owner_approved = True
             request.owner_approved_by = approver_id
-            request.owner_approved_at = datetime.utcnow()
+            request.owner_approved_at = datetime.now(timezone.utc)
             request.owner_approval_notes = notes
 
         else:
@@ -212,7 +212,7 @@ class ProfileChangeRequestService:
         # Check if fully approved
         if request.is_fully_approved():
             request.status = "approved"
-            request.approved_at = datetime.utcnow()
+            request.approved_at = datetime.now(timezone.utc)
             request.add_audit_trail_entry("fully_approved", approver_id)
 
             # Apply the change
@@ -239,7 +239,7 @@ class ProfileChangeRequestService:
         Returns:
             The updated ProfileChangeRequest
         """
-        request = ProfileChangeRequest.query.get(request_id)
+        request = db.session.get(ProfileChangeRequest, request_id)
         if not request:
             raise ValueError("Request not found")
 
@@ -248,12 +248,12 @@ class ProfileChangeRequestService:
 
         rejector = db.session.get(type(request).__table__.columns, rejector_id)
         from app.identity.models.user import User
-        rejector = User.query.get(rejector_id)
+        rejector = db.session.get(User, rejector_id)
         if not rejector:
             raise ValueError("Rejector not found")
 
         request.status = "rejected"
-        request.rejected_at = datetime.utcnow()
+        request.rejected_at = datetime.now(timezone.utc)
         request.rejected_by = rejector_id
         request.rejection_reason = reason
         request.add_audit_trail_entry("rejected", rejector_id, reason)
@@ -283,7 +283,7 @@ class ProfileChangeRequestService:
 
         # Apply the change
         setattr(profile, request.field_name, request.requested_value)
-        request.applied_at = datetime.utcnow()
+        request.applied_at = datetime.now(timezone.utc)
         request.applied_by = applied_by
         request.status = "applied"
         request.add_audit_trail_entry("change_applied", applied_by)
@@ -301,7 +301,7 @@ class ProfileChangeRequestService:
 
         Returns a dict with the status of each approval level.
         """
-        request = ProfileChangeRequest.query.get(request_id)
+        request = db.session.get(ProfileChangeRequest, request_id)
         if not request:
             raise ValueError("Request not found")
 

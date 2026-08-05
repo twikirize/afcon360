@@ -1,0 +1,1 @@
+AFCON360: Wallet withdrawal of UGX {{ amount }} processed. New balance: UGX {{ new_balance }}. Ref: {{ tx_ref }}.

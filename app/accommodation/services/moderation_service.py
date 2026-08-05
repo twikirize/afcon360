@@ -53,7 +53,7 @@ class ModerationService:
             return property_obj.owner_user_id
         elif property_obj.owner_org_id:
             from app.identity.models.organisation import Organisation
-            org = Organisation.query.get(property_obj.owner_org_id)
+            org = db.session.get(Organisation, property_obj.owner_org_id)
             if org:
                 return org.primary_contact_user_id
         return None
@@ -65,7 +65,7 @@ class ModerationService:
             return property_obj.owner_user.email if property_obj.owner_user else None
         elif property_obj.owner_org_id:
             from app.identity.models.organisation import Organisation
-            org = Organisation.query.get(property_obj.owner_org_id)
+            org = db.session.get(Organisation, property_obj.owner_org_id)
             if org:
                 return org.email
         return None
@@ -134,7 +134,7 @@ class ModerationService:
         Approve a property - moves to APPROVED status.
         Property must be in submitted, pending_review, or under_review.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -187,7 +187,7 @@ class ModerationService:
         Publish a property - moves to PUBLISHED status.
         Property must be in APPROVED status and pass readiness checks.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -244,7 +244,7 @@ class ModerationService:
         Reject a property - moves to DRAFT status with rejection reason.
         Property must be in submitted, under_review, or pending_review.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -295,7 +295,7 @@ class ModerationService:
         Request changes for a property - moves to NEEDS_INFORMATION status.
         Property must be in submitted, under_review, or pending_review.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -346,7 +346,7 @@ class ModerationService:
         Suspend a property - moves to SUSPENDED status.
         Can be applied to active, published, or approved properties.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -398,7 +398,7 @@ class ModerationService:
         Reinstate a suspended property - moves to PENDING_REVIEW status.
         Only applies to suspended properties.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -449,7 +449,7 @@ class ModerationService:
         Archive a property - soft-delete to ARCHIVED status.
         Data is retained and can be restored via restore_archived_property.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 
@@ -516,7 +516,7 @@ class ModerationService:
         Restore an archived property back to draft status.
         Clears soft-delete flags so the host can edit and resubmit.
         """
-        prop = Property.query.get(property_id)
+        prop = db.session.get(Property, property_id)
         if not prop:
             return False, "Property not found."
 

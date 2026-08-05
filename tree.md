@@ -10,6 +10,58 @@
 │   │   utils.py
 │   │   __init__.py
 │   │   
+│   ├───notifications
+│   │   ├───email
+│   │   │   booking_cancelled.html
+│   │   │   booking_confirmation.html
+│   │   │   booking_created.html
+│   │   │   default.html
+│   │   │   driver_assigned.html
+│   │   │   event_registered.html
+│   │   │   event_reminder.html
+│   │   │   kyc_approved.html
+│   │   │   kyc_rejected.html
+│   │   │   new_signup.html
+│   │   │   password_reset.html
+│   │   │   payment_receipt.html
+│   │   │   review_received.html
+│   │   │   system_alert.html
+│   │   │   verification_email.html
+│   │   │   wallet_deposit.html
+│   │   │   wallet_withdrawal.html
+│   │   ├───sms
+│   │   │   booking_cancelled.txt
+│   │   │   booking_confirmation.txt
+│   │   │   booking_created.txt
+│   │   │   default.txt
+│   │   │   driver_assigned.txt
+│   │   │   event_registered.txt
+│   │   │   kyc_approved.txt
+│   │   │   kyc_rejected.txt
+│   │   │   new_signup.txt
+│   │   │   password_reset.txt
+│   │   │   review_received.txt
+│   │   │   system_alert.txt
+│   │   │   verification_email.txt
+│   │   │   wallet_deposit.txt
+│   │   │   wallet_withdrawal.txt
+│   │   └───push
+│   │       │   booking_cancelled.json
+│   │       │   booking_confirmation.json
+│   │       │   booking_created.json
+│   │       │   default.json
+│   │       │   driver_assigned.json
+│   │       │   event_registered.json
+│   │       │   event_reminder.json
+│   │       │   kyc_approved.json
+│   │       │   kyc_rejected.json
+│   │       │   new_signup.json
+│   │       │   password_reset.json
+│   │       │   review_received.json
+│   │       │   system_alert.json
+│   │       │   verification_email.json
+│   │       │   wallet_deposit.json
+│   │       │   wallet_withdrawal.json
 │   ├───accommodation
 │   │   │   forms.py
 │   │   │   listeners.py
@@ -684,6 +736,33 @@
 │   │           notification_service.cpython-313.pyc
 │   │           __init__.cpython-313.pyc
 │   │           
+│   ├───notifications
+│   │   │   __init__.py
+│   │   │   models.py
+│   │   │   services.py
+│   │   │   tasks.py
+│   │   │   preferences.py
+│   │   │   routes.py
+│   │   │   settings.py
+│   │   │   context.py
+│   │   │   signals.py
+│   │   │   listeners.py
+│   │   │   template_loader.py
+│   │   │   utils.py
+│   │   │   README.md
+│   │   │   
+│   │   ├───channel_handlers
+│   │   │   │   __init__.py
+│   │   │   │   email.py
+│   │   │   │   sms.py
+│   │   │   │   push.py
+│   │   │   │   in_app.py
+│   │   │   │   webhook.py
+│   │   │   │   
+│   │   │   └───__pycache__
+│   │   ├───integrations
+│   │   │   │   __init__.py
+│   │   │   
 │   ├───tasks
 │   │   │   cleanup.py
 │   │   │   reconcile.py
@@ -1893,3 +1972,8 @@
 │   │           env_setup.html
 │   │           index.html
 │  
+
+└───tests
+    ├───notifications
+    │   ├───__init__.py
+    │   └───test_models.py

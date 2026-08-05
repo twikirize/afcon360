@@ -43,6 +43,7 @@ class AccommodationBookingPayment(BaseModel):
         Index("idx_ac_book_payment_wallet_txn", "wallet_txn_id"),
         Index("idx_ac_book_payment_reference", "payment_reference", unique=True),
         UniqueConstraint("booking_id", "payment_reference", name="uq_ac_booking_payment_ref"),
+        Index("idx_ac_book_payment_idempotency", "idempotency_key"),
     )
 
     booking_id = Column(
@@ -53,11 +54,14 @@ class AccommodationBookingPayment(BaseModel):
     )
     booking = relationship("AccommodationBooking", backref="payment_events")
 
+    # Idempotency key for payment callback deduplication (P1 audit requirement)
+    idempotency_key = Column(String(256), unique=True, nullable=True)
+
     # Canonical wallet reference
-    wallet_txn_id = Column(String(255), nullable=True, index=True)
+    wallet_txn_id = Column(String(255), nullable=True)
 
     # Human-readable reference for guests/hosts
-    payment_reference = Column(String(50), unique=True, nullable=False, index=True)
+    payment_reference = Column(String(50), unique=True, nullable=False)
 
     # Cached payment state (derived from TransactionModel)
     payment_status = Column(String(30), nullable=False, default="pending")

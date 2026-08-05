@@ -252,7 +252,7 @@ class Event(BaseModel):
         default=OwnerType.INDIVIDUAL.value,
     )
     # For INDIVIDUAL → user id; for ORGANIZATION → org id; for SYSTEM → 0
-    current_owner_id = Column(BigInteger, nullable=False, index=True)
+    current_owner_id = Column(BigInteger, nullable=False)
 
     # ── Organisation context ───────────────────────────────────────────────
     organization_id = Column(
@@ -260,7 +260,7 @@ class Event(BaseModel):
         ForeignKey("organisations.id", ondelete="SET NULL"),
         nullable=True, index=True,
     )
-    is_system_event     = Column(Boolean,    default=False, nullable=False, index=True)
+    is_system_event     = Column(Boolean,    default=False, nullable=False, )
     original_creator_id = Column(
         BigInteger,
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -866,7 +866,7 @@ class DiscountCode(BaseModel):
     discount_type  = Column(String(20), nullable=False)
     discount_value = Column(Numeric(10, 2), nullable=False)
     currency       = Column(String(3),      default="USD")
-    valid_from     = Column(DateTime(timezone=True),       nullable=False, default=datetime.utcnow)
+    valid_from     = Column(DateTime(timezone=True),       nullable=False, default=lambda: datetime.now(timezone.utc))
     valid_until    = Column(DateTime(timezone=True),       nullable=True)
     usage_limit    = Column(Integer,        nullable=True)
     used_count     = Column(Integer,        default=0, nullable=False)
@@ -983,7 +983,7 @@ class EventTransferLog(BaseModel):
     to_owner_type     = Column(String(20), nullable=False)
     to_owner_id       = Column(BigInteger, nullable=False)
     transferred_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    transferred_at    = Column(DateTime(timezone=True),   default=datetime.utcnow)
+    transferred_at    = Column(DateTime(timezone=True),   default=lambda: datetime.now(timezone.utc))
     extra_data        = Column(JSON,       default=dict)
 
     event          = relationship("Event", foreign_keys=[event_id])
@@ -1022,7 +1022,7 @@ class EventHostRegistration(BaseModel):
     special_instructions = Column(Text, nullable=True)
     
     # Timestamps
-    registered_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    registered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     approved_at = Column(DateTime(timezone=True), nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     rejected_at = Column(DateTime(timezone=True), nullable=True)
@@ -1065,7 +1065,7 @@ class EventAssignment(BaseModel):
     accommodation_booking_id  = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
     transport_booking_id      = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
     meal_booking_id           = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
-    community_host_id         = Column(BigInteger, nullable=True, index=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    community_host_id         = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
     managed_by                = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     notes                     = Column(Text, nullable=True)
     schedule_json             = Column(JSON, default=dict)
@@ -1115,3 +1115,4 @@ class OrganizerMessage(BaseModel):
 
     def __repr__(self):
         return f'<OrganizerMessage {self.id}: event {self.event_id}, user {self.user_id}>'
+
