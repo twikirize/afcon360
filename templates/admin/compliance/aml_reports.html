@@ -1,0 +1,52 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}Regulatory Reports — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Regulatory Reports{% endblock %}
+
+{% block content %}
+{{ aml_nav('reports') }}
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-file-shield"></i> Regulatory Filings (STR/SAR/CTR/IWTR/TFR)</div>
+    <span class="badge badge-blue">{{ reports.total }} total</span>
+  </div>
+  <div class="card-body">
+    {% if reports.items %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Report #</th><th>Type</th><th>Subject</th><th>Risk</th><th>Due</th><th>Status</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          {% for r in reports.items %}
+          <tr>
+            <td class="mono">{{ r.report_number }}</td>
+            <td><span class="badge badge-blue">{{ r.report_type|upper }}</span></td>
+            <td>{{ r.subject_name or r.subject_identifier or ('User #' + r.subject_user_id|string if r.subject_user_id else '-') }}</td>
+            <td>{{ r.risk_score if r.risk_score is not none else '-' }}</td>
+            <td class="mono">{{ r.due_at.strftime('%Y-%m-%d') if r.due_at else '-' }}</td>
+            <td>
+              {% if r.status == 'filed' %}<span class="badge badge-green">Filed</span>
+              {% elif r.status == 'submitted' %}<span class="badge badge-blue">Submitted</span>
+              {% elif r.status == 'accepted' %}<span class="badge badge-green">Accepted</span>
+              {% elif r.status == 'rejected' %}<span class="badge badge-red">Rejected</span>
+              {% else %}<span class="badge badge-orange">Draft</span>{% endif %}
+            </td>
+            <td><a href="{{ url_for('admin.compliance.aml_report_detail', report_id=r.id) }}" class="btn btn-sm btn-primary">View</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if reports.pages > 1 %}
+    <div class="pagination">
+      {% for p in reports.iter_pages() %}{% if p %}<a href="{{ url_for('admin.compliance.aml_reports', page=p) }}" class="pg-btn {{ 'active' if p==reports.page }}">{{ p }}</a>{% else %}<span class="pg-btn disabled">…</span>{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state"><div class="empty-icon"><i class="fas fa-inbox"></i></div><p>No regulatory reports yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,300 @@
+/* Host Bookings — scoped styles (avoids global .btn / table overrides) */
+
+.host-bookings {
+  --hb-green: #1f8a4c;
+  --hb-green-dark: #16683a;
+  --hb-gold: #f2b705;
+  --hb-text: #1f2933;
+  --hb-muted: #6b7785;
+  --hb-border: #e4e8ee;
+  --hb-bg: #ffffff;
+  --hb-bg-alt: #f7f9fc;
+  --hb-radius: 12px;
+  --hb-shadow: 0 2px 14px rgba(20, 40, 60, 0.06);
+}
+
+.host-bookings .hb-title {
+  font-family: var(--font-head, inherit);
+  font-size: clamp(1.4rem, 1.1rem + 1.4vw, 2rem);
+  font-weight: 800;
+  color: var(--hb-text);
+  margin: 0;
+}
+
+.host-bookings .hb-subtitle {
+  color: var(--hb-muted);
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+}
+
+/* ---------- Filter bar ---------- */
+.host-bookings .hb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: flex-end;
+  padding: 1rem 1.1rem;
+  background: var(--hb-bg-alt);
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+  margin-bottom: 1.25rem;
+}
+
+.host-bookings .hb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 150px;
+  flex: 1 1 160px;
+}
+
+.host-bookings .hb-field label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hb-muted);
+  margin: 0;
+}
+
+.host-bookings .hb-select,
+.host-bookings .hb-btn {
+  height: 44px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.host-bookings .hb-select {
+  width: 100%;
+  padding: 0 0.85rem;
+  background: var(--hb-bg);
+  border: 1px solid var(--hb-border);
+  color: var(--hb-text);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b7785' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  cursor: pointer;
+}
+
+.host-bookings .hb-select:focus {
+  outline: none;
+  border-color: var(--hb-green);
+  box-shadow: 0 0 0 3px rgba(31, 138, 76, 0.15);
+}
+
+.host-bookings .hb-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 0; /* align baseline with fields via height */
+}
+
+.host-bookings .hb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0 1.25rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.host-bookings .hb-btn-primary {
+  background: var(--hb-green);
+  color: #fff;
+  border-color: var(--hb-green);
+}
+
+.host-bookings .hb-btn-primary:hover {
+  background: var(--hb-green-dark);
+  border-color: var(--hb-green-dark);
+  box-shadow: 0 4px 14px rgba(22, 104, 58, 0.25);
+}
+
+.host-bookings .hb-btn-ghost {
+  background: transparent;
+  color: var(--hb-green);
+  border-color: var(--hb-green);
+}
+
+.host-bookings .hb-btn-ghost:hover {
+  background: var(--hb-gold);
+  color: var(--hb-text);
+  border-color: var(--hb-gold);
+}
+
+/* ---------- Table ---------- */
+.host-bookings .hb-table-wrap {
+  background: var(--hb-bg);
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius);
+  box-shadow: var(--hb-shadow);
+  overflow: hidden;
+}
+
+.host-bookings .hb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.host-bookings .hb-table thead th {
+  background: var(--hb-bg-alt);
+  color: var(--hb-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--hb-border);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.host-bookings .hb-table tbody td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--hb-border);
+  color: var(--hb-text);
+  vertical-align: middle;
+}
+
+.host-bookings .hb-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.host-bookings .hb-table tbody tr:hover {
+  background: var(--hb-bg-alt);
+}
+
+.host-bookings .hb-col-text { text-align: left; }
+.host-bookings .hb-col-center { text-align: center; }
+
+.host-bookings .hb-th-center {
+  text-align: center !important;
+}
+
+/* Guest cell */
+.host-bookings .hb-guest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+  color: var(--hb-text);
+  text-decoration: none;
+}
+
+.host-bookings .hb-guest:hover {
+  color: var(--hb-green);
+}
+
+.host-bookings .hb-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(31, 138, 76, 0.12);
+  color: var(--hb-green);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.host-bookings .hb-link {
+  color: var(--hb-text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.host-bookings .hb-link:hover {
+  color: var(--hb-green);
+}
+
+.host-bookings .hb-muted {
+  color: var(--hb-muted);
+}
+
+/* Pills / badges */
+.host-bookings .hb-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.host-bookings .hb-pill .hb-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.host-bookings .hb-pill-success { background: rgba(31, 138, 76, 0.12); color: var(--hb-green-dark); }
+.host-bookings .hb-pill-success .hb-dot { background: var(--hb-green); }
+.host-bookings .hb-pill-warning { background: rgba(242, 183, 5, 0.16); color: #966d00; }
+.host-bookings .hb-pill-warning .hb-dot { background: var(--hb-gold); }
+.host-bookings .hb-pill-info { background: rgba(41, 128, 185, 0.12); color: #25628f; }
+.host-bookings .hb-pill-info .hb-dot { background: #2980b9; }
+.host-bookings .hb-pill-secondary { background: rgba(107, 119, 133, 0.14); color: var(--hb-muted); }
+.host-bookings .hb-pill-secondary .hb-dot { background: var(--hb-muted); }
+.host-bookings .hb-pill-danger { background: rgba(220, 53, 69, 0.12); color: #b32437; }
+.host-bookings .hb-pill-danger .hb-dot { background: #dc3545; }
+.host-bookings .hb-pill-dark { background: rgba(31, 41, 51, 0.12); color: #2a3540; }
+.host-bookings .hb-pill-dark .hb-dot { background: #1f2933; }
+
+.host-bookings .hb-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  background: rgba(41, 128, 185, 0.12);
+  color: #25628f;
+}
+
+/* Actions */
+.host-bookings .hb-actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.host-bookings .hb-btn-sm {
+  height: 36px;
+  padding: 0 0.85rem;
+  font-size: 0.82rem;
+  border-radius: 9px;
+}
+
+.host-bookings .hb-empty {
+  text-align: center;
+  color: var(--hb-muted);
+  padding: 2.5rem 1rem;
+  font-size: 0.95rem;
+}
+
+/* Mobile: horizontal scroll guard + comfortable touch targets */
+@media (max-width: 768px) {
+  .host-bookings .hb-table-wrap { overflow-x: auto; }
+  .host-bookings .hb-field { flex: 1 1 100%; }
+  .host-bookings .hb-actions { flex: 1 1 100%; }
+  .host-bookings .hb-btn { flex: 1 1 auto; }
+}

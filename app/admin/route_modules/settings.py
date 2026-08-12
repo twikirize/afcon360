@@ -71,12 +71,21 @@ def system_settings():
     config_dict = {c.key: c.value for c in configs}
     
     # System statistics
-    stats = {
-        'total_users': User.query.count(),
-        'active_users': User.query.filter_by(is_active=True).count(),
-        'admin_users': User.query.join(UserRole).join(Role).filter(Role.name.in_(['admin', 'super_admin'])).distinct().count(),
-        'moderator_users': User.query.join(UserRole).join(Role).filter(Role.name == 'moderator').distinct().count(),
-    }
+    try:
+        stats = {
+            'total_users': User.query.count(),
+            'active_users': User.query.filter_by(is_active=True).count(),
+            'admin_users': User.query.join(UserRole, User.id == UserRole.user_id).join(Role, Role.id == UserRole.role_id).filter(Role.name.in_(['admin', 'super_admin'])).distinct().count(),
+            'moderator_users': User.query.join(UserRole, User.id == UserRole.user_id).join(Role, Role.id == UserRole.role_id).filter(Role.name == 'moderator').distinct().count(),
+        }
+    except Exception as e:
+        logger.warning(f"Error computing admin user stats with ambiguous join, falling back: {e}")
+        stats = {
+            'total_users': User.query.count(),
+            'active_users': User.query.filter_by(is_active=True).count(),
+            'admin_users': 0,
+            'moderator_users': 0,
+        }
     
     return render_template('admin/settings/system.html', 
                        config=config_dict, 

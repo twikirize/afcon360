@@ -1,0 +1,152 @@
+{# ============================================================================
+   AFCON360 — Unified Message Center (ONE page, filtered by query param)
+   ----------------------------------------------------------------------------
+   One template renders ALL messages — read or unread, inbox or archived or
+   sent. Filtering is by ?filter= (all|unread|archived|sent), NOT separate
+   templates.
+
+   One message TYPE rendering: a KYC-update, a booking note, or a support reply
+   all render through this single row with conditional badges — never one
+   template per message type.
+
+   The "Sent" folder is a PLATFORM capability: normal users cannot send system
+   messages (e.g. support telling a user "please update your KYC"). The Sent tab
+   is only shown to roles in SENT_VIEW_ROLES (support, mods, compliance, module
+   admins, owners). A regular user simply does not see it.
+
+   Loaded by communication_pages.messages_page.
+   ============================================================================ #}
+{% extends "base.html" %}
+
+{% block title %}Messages · AFCON360{% endblock %}
+
+{% block content %}
+<div class="afc-inbox">
+  <header class="afc-inbox__head">
+    <div>
+      <h1 class="afc-inbox__title"><i class="bi bi-chat-dots me-2"></i>Messages</h1>
+      <p class="afc-inbox__sub">
+        {% if unread_total %}{{ unread_total }} unread{% else %}No new messages{% endif %}
+        · {{ total }} total
+      </p>
+    </div>
+    {% if can_view_sent %}
+      <a class="afc-inbox__compose" href="{{ url_for('communication_pages.messages', filter='sent') }}">
+        <i class="bi bi-send me-1"></i>Sent
+      </a>
+    {% endif %}
+  </header>
+
+  <nav class="afc-inbox__tabs" aria-label="Message filters">
+    <a class="afc-tab{% if filter_kind == 'all' %} is-active{% endif %}"
+       href="{{ url_for('communication_pages.messages') }}">All</a>
+    <a class="afc-tab{% if filter_kind == 'unread' %} is-active{% endif %}"
+       href="{{ url_for('communication_pages.messages', filter='unread') }}">
+      Unread{% if unread_total %} <span class="afc-tab__count">{{ unread_total }}</span>{% endif %}</a>
+    <a class="afc-tab{% if filter_kind == 'archived' %} is-active{% endif %}"
+       href="{{ url_for('communication_pages.messages', filter='archived') }}">
+      Archived{% if archived_total %} <span class="afc-tab__count">{{ archived_total }}</span>{% endif %}</a>
+    {% if can_view_sent %}
+      <a class="afc-tab{% if filter_kind == 'sent' %} is-active{% endif %}"
+         href="{{ url_for('communication_pages.messages', filter='sent') }}">
+        Sent{% if sent_total %} <span class="afc-tab__count">{{ sent_total }}</span>{% endif %}</a>
+    {% endif %}
+  </nav>
+
+  <div class="afc-inbox__list">
+    {% if not messages %}
+      <div class="afc-inbox__empty">
+        <i class="bi bi-chat-square-text"></i>
+        <p>
+          {% if filter_kind == 'archived' %}No archived messages.
+          {% elif filter_kind == 'sent' %}You haven't sent any platform messages.
+          {% elif filter_kind == 'unread' %}No unread messages.
+          {% else %}No messages yet.{% endif %}
+        </p>
+      </div>
+    {% else %}
+      {% for day_label, items in grouped %}
+        <div class="afc-inbox__day">{{ day_label }}</div>
+        {% for m in items %}
+          {% set _is_sent = (m.sender_id == current_user.id) %}
+          {% set _other = (m.recipient if _is_sent else m.sender) %}
+          <a class="afc-row afc-msg{% if not m.is_read and not _is_sent %} is-unread{% endif %}"
+             id="msg-{{ m.id }}"
+             {% if focus_id and m.id == focus_id %}data-focus="1"{% endif %}
+             href="{{ url_for('communication_pages.message_detail', message_id=m.public_id if m.public_id is defined else m.id) }}">
+            <span class="afc-row__mod afc-row__mod--msg
+                       {% if m.direction == 'system' %}is-system{% elif _is_sent %}is-sent{% endif %}">
+              <i class="bi {{
+                'bi-megaphone' if m.direction == 'system'
+                else ('bi-send' if _is_sent else 'bi-person')
+              }}"></i>
+            </span>
+            <span class="afc-row__body">
+              <span class="afc-row__top">
+                <span class="afc-row__subject">
+                  {{ m.subject or 'Message' }}
+                </span>
+                {% if not m.is_read and not _is_sent %}<span class="afc-row__dot"></span>{% endif %}
+              </span>
+              <span class="afc-row__text">{{ m.body }}</span>
+              <span class="afc-row__meta">
+                {# Conditional badge by message nature — single template #}
+                {% if m.direction == 'system' %}
+                  <span class="afc-row__tag is-system">System</span>
+                {% elif _is_sent %}
+                  <span class="afc-row__tag is-sent">Sent → {{ _other.username if _other else 'user' }}</span>
+                {% else %}
+                  <span class="afc-row__tag">From: {{ _other.username if _other else 'user' }}</span>
+                {% endif %}
+                {% if m.priority == 'high' %}<span class="afc-row__tag is-high">Important</span>{% endif %}
+                <span class="afc-row__time">{{ m.created_at.strftime('%I:%M %p') if m.created_at else '' }}</span>
+              </span>
+            </span>
+          </a>
+        {% endfor %}
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+<style{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}>
+.afc-inbox{max-width:760px;margin:0 auto;padding:24px 16px 64px}
+.afc-inbox__head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+.afc-inbox__title{font-size:1.4rem;margin:0}
+.afc-inbox__sub{margin:4px 0 0;opacity:.6;font-size:.85rem}
+.afc-inbox__compose{font-size:.8rem;color:#4a7fb5;text-decoration:none;border:1px solid rgba(74,127,181,.4);
+  padding:5px 12px;border-radius:999px}
+.afc-inbox__compose:hover{background:rgba(74,127,181,.15)}
+.afc-inbox__tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.afc-tab{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:inherit;
+  text-decoration:none;font-size:.82rem}
+.afc-tab.is-active{background:rgba(74,127,181,.2);border-color:#4a7fb5;color:#fff}
+.afc-tab__count{background:rgba(255,255,255,.14);border-radius:999px;padding:0 6px;font-size:.7rem}
+.afc-inbox__day{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;opacity:.5;margin:18px 4px 6px}
+.afc-inbox__empty{text-align:center;opacity:.5;padding:48px 0}
+.afc-inbox__empty i{font-size:2rem;display:block;margin-bottom:8px}
+.afc-row{display:flex;gap:12px;padding:14px;border-radius:12px;text-decoration:none;color:inherit;
+  border:1px solid transparent;margin-bottom:6px;background:rgba(255,255,255,.02)}
+.afc-row:hover{background:rgba(255,255,255,.05)}
+.afc-row.is-unread{background:rgba(74,127,181,.07);border-color:rgba(74,127,181,.2)}
+.afc-row__mod{flex:0 0 auto;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center;font-size:1.1rem;color:#4a7fb5;background:rgba(74,127,181,.18);
+  border:1px solid rgba(74,127,181,.36)}
+.afc-row__mod.is-system{color:#d4af37;background:rgba(212,175,55,.18);border-color:rgba(212,175,55,.36)}
+.afc-row__mod.is-sent{color:#7a8290;background:rgba(122,130,144,.18);border-color:rgba(122,130,144,.36)}
+.afc-row__body{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.afc-row__top{display:flex;align-items:center;gap:8px}
+.afc-row__subject{font-weight:600;font-size:.92rem}
+.afc-row__dot{width:8px;height:8px;border-radius:50%;background:#4a7fb5;flex:0 0 auto}
+.afc-row__text{font-size:.82rem;opacity:.75;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.afc-row__meta{display:flex;gap:8px;align-items:center;margin-top:2px;flex-wrap:wrap}
+.afc-row__tag{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;padding:1px 7px;
+  border-radius:4px;font-weight:700;color:#4a7fb5;background:rgba(74,127,181,.18)}
+.afc-row__tag.is-system{color:#d4af37;background:rgba(212,175,55,.18)}
+.afc-row__tag.is-sent{color:#7a8290;background:rgba(122,130,144,.18)}
+.afc-row__tag.is-high{color:#e63946;background:rgba(230,57,70,.18)}
+.afc-row__time{font-size:.7rem;opacity:.5}
+</style>
+{% endblock %}

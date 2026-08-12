@@ -442,6 +442,14 @@ def home():
         .order_by(func.count(Property.id).desc()) \
         .limit(6).all()
 
+    if request.args.get('_pane') == '1':
+        # Loaded inside the unified user dashboard pane — render fragment only
+        return render_template(
+            "accommodation/home_pane.html",
+            featured_properties=featured_properties,
+            popular_destinations=popular_destinations
+        )
+
     return render_template("accommodation/home.html",
                            featured_properties=featured_properties,
                            popular_destinations=popular_destinations)
@@ -824,13 +832,15 @@ def admin_bookings():
     from sqlalchemy import func
 
     page = request.args.get('page', 1, type=int)
-    status_filter = request.args.get('status', 'all')
+    status_filters = request.args.getlist('status')
+    if 'all' in status_filters:
+        status_filters = []
     search_q = request.args.get('q', '').strip()
 
     q = AccommodationBooking.query
 
-    if status_filter != 'all':
-        q = q.filter(AccommodationBooking.status == status_filter)
+    if status_filters:
+        q = q.filter(AccommodationBooking.status.in_(status_filters))
 
     if search_q:
         q = q.filter(
@@ -858,7 +868,7 @@ def admin_bookings():
     return render_template(
         "accommodation/admin/bookings.html",
         bookings=bookings,
-        status_filter=status_filter,
+        status_filters=status_filters,
         search_q=search_q,
         status_counts=status_counts,
     )
@@ -1332,6 +1342,9 @@ def api_availability():
     except ValueError:
         return jsonify({'success': False, 'error': 'Invalid date format'}), 400
 
+    if check_out <= check_in:
+        return jsonify({'success': False, 'error': 'Check-out date must be after check-in date.'}), 400
+
     try:
         from app.accommodation.services.availability_service import AvailabilityService
         result = AvailabilityService.get_availability_cascade(
@@ -1353,6 +1366,8 @@ def api_availability():
 @limiter.limit("5 per minute")
 def guest_checkout():
     """Enhanced checkout supporting self-booking, book-for-others, and multi-room"""
+    from app.accommodation.services.booking_service import BookingService
+    from datetime import timedelta
 
     # ============================================================
     # DEBUG: Log incoming data for troubleshooting
@@ -1907,7 +1922,7 @@ def guest_checkout():
             booking.claim_token_hash = claim_token
             db.session.commit()
             try:
-                from app.services.notification_service import NotificationService
+                from app.notifications.services import NotificationService
                 NotificationService.send(
                     user_id=current_user.id,
                     notification_type='owner_claim_invite',
@@ -1960,7 +1975,7 @@ def guest_checkout():
                 AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
 
                 try:
-                    from app.services.notification_service import NotificationService
+                    from app.notifications.services import NotificationService
                     NotificationService.send(
                         user_id=current_user.id,
                         notification_type='payment_failed',
@@ -2098,7 +2113,7 @@ def guest_checkout():
         # STEP 8: Send notifications
         # ============================================================
         try:
-            from app.services.notification_service import NotificationService
+            from app.notifications.services import NotificationService
             if payment_success and payment_timing in ('pay_now', 'deposit'):
                 NotificationService.send(
                     user_id=current_user.id,
@@ -2284,6 +2299,47 @@ def guest_confirmation(reference):
         "accommodation/guest/confirmation.html",
         booking=booking,
         property=property_data
+    )
+
+
+@accommodation_bp.route("/guest/pass/<reference>", endpoint="guest_pass")
+@login_required
+def guest_pass(reference):
+    """Scannable booking pass (QR code) for guest check-in."""
+    booking = BookingService.get_booking_by_reference(reference)
+
+    if not booking:
+        flash('Booking not found', 'danger')
+        return redirect(url_for('accommodation.guest_my_bookings'))
+
+    is_authorized = (
+        booking.booked_by_user_id == current_user.id or
+        booking.guest_user_id == current_user.id or
+        booking.primary_guest_id == current_user.id or
+        booking.host_user_id == current_user.id
+    )
+    if not is_authorized:
+        abort(403)
+
+    property_data = search_service.get_property_by_identifier(str(booking.property_id))
+
+    # Build the canonical, scannable pass URL and encode it into a QR code so
+    # hosts can scan it directly at check-in. Uses the configured public base
+    # URL so the QR works on any device, not just the request host.
+    from app.utils.url import absolute_url_for
+    from app.utils.qr import qr_data_uri
+    try:
+        pass_url = absolute_url_for('accommodation.guest_pass', reference=reference)
+    except Exception:
+        pass_url = url_for('accommodation.guest_pass', reference=reference)
+    qr_uri = qr_data_uri(pass_url, box_size=8, border=4)
+
+    return render_template(
+        "accommodation/guest/pass.html",
+        booking=booking,
+        property=property_data,
+        qr_uri=qr_uri,
+        pass_url=pass_url,
     )
 
 
@@ -2476,17 +2532,21 @@ def guest_register(booking_id):
 
 
 @accommodation_bp.route("/host/booking/<int:booking_id>/guest/<int:reg_id>/override", methods=["POST"], endpoint="host_override_registration")
+@accommodation_bp.route("/host/booking/<int:booking_id>/registration/override", methods=["POST"], endpoint="host_override_registration_all")
 @login_required
-def host_override_registration(booking_id, reg_id):
-    """Host override for incomplete guest registration."""
+def host_override_registration(booking_id, reg_id=None):
+    """
+    Host override for incomplete guest registration.
+
+    The registration deadline is a soft limit, so this is the safety valve that
+    lets a host admit a guest who never registered online. With ``reg_id`` it
+    overrides a single manifest entry; without it, it clears the whole booking
+    so the guest can be checked in and their details captured on arrival.
+    """
     from app.accommodation.models.guest_registration import GuestRegistration
     from app.accommodation.services.identity_service import AccommodationIdentityService
 
     booking = AccommodationBooking.query.get_or_404(booking_id)
-    registration = GuestRegistration.query.get_or_404(reg_id)
-
-    if registration.booking_id != booking.id:
-        abort(404)
 
     host_info = _ensure_host_identity()
     if not host_info or not AccommodationIdentityService.can_manage_property(current_user, booking.accommodation_property.owner_user_id, booking.accommodation_property.owner_org_id):
@@ -2494,7 +2554,37 @@ def host_override_registration(booking_id, reg_id):
         return redirect(url_for("accommodation.host_bookings"))
 
     reason = request.form.get("reason", "Host override")
-    registration.mark_skipped(reason=reason, overridden_by_user_id=current_user.id)
+
+    if reg_id is not None:
+        registration = GuestRegistration.query.get_or_404(reg_id)
+        if registration.booking_id != booking.id:
+            abort(404)
+        registration.mark_skipped(reason=reason, overridden_by_user_id=current_user.id)
+    else:
+        pending = [
+            r for r in GuestRegistration.query.filter_by(booking_id=booking.id).all()
+            if r.status not in ("completed", "skipped")
+        ]
+        if pending:
+            for registration in pending:
+                registration.mark_skipped(reason=reason, overridden_by_user_id=current_user.id)
+        else:
+            # Nobody registered at all - record the override so the manifest
+            # reflects that the host admitted the guest knowingly.
+            placeholder = GuestRegistration(
+                booking_id=booking.id,
+                guest_name=booking.primary_guest_name or booking.guest_name,
+                guest_email=booking.primary_guest_email or booking.guest_email,
+                guest_phone=booking.primary_guest_phone or booking.guest_phone,
+                relationship_type="primary",
+                status="pending",
+                is_verified=False,
+                registration_source="host",
+            )
+            db.session.add(placeholder)
+            db.session.flush()
+            placeholder.mark_skipped(reason=reason, overridden_by_user_id=current_user.id)
+
     db.session.commit()
 
     flash("Guest registration overridden by host.", "success")
@@ -2828,6 +2918,373 @@ def guest_cancel_booking(reference):
         flash(message, 'danger')
 
     return redirect(url_for('accommodation.guest_my_bookings'))
+
+
+# ============================================================================
+# GUEST DASHBOARD (URL prefix: /guest)
+# ============================================================================
+
+@accommodation_bp.route("/guest/dashboard", endpoint="guest_dashboard")
+@login_required
+def guest_dashboard():
+    """Unified guest dashboard: stays, payments, check-in/out, reviews, complaints."""
+    from app.accommodation.services.guest_dashboard_service import GuestDashboardService
+
+    data = GuestDashboardService.get_dashboard_data(current_user.id)
+
+    # When loaded inside the shared shell (?_pane=1) return a fragment only so it
+    # injects into the right pane without nesting the full page layout.
+    if request.args.get("_pane") == "1":
+        return render_template(
+            "accommodation/guest/dashboard_pane.html",
+            **data,
+            now=datetime.now(timezone.utc),
+        )
+
+    return render_template(
+        "accommodation/guest/dashboard.html",
+        **data,
+        now=datetime.now(timezone.utc),
+    )
+
+
+@accommodation_bp.route("/guest/complaints", endpoint="guest_complaints")
+@login_required
+def guest_complaints():
+    """List the guest's complaints and provide a create form."""
+    from app.accommodation.models.feedback import AccommodationComplaint
+
+    complaints = (
+        AccommodationComplaint.query.filter_by(user_id=current_user.id)
+        .filter(AccommodationComplaint.is_deleted == False)  # noqa: E712
+        .order_by(AccommodationComplaint.created_at.desc())
+        .all()
+    )
+
+    # Bookings the guest can attach a complaint to.
+    from app.accommodation.models.booking import AccommodationBooking
+    from sqlalchemy import or_
+    bookings = (
+        AccommodationBooking.query.filter(
+            or_(
+                AccommodationBooking.guest_user_id == current_user.id,
+                AccommodationBooking.primary_guest_id == current_user.id,
+                AccommodationBooking.booked_by_user_id == current_user.id,
+            ),
+            AccommodationBooking.is_deleted == False,  # noqa: E712
+        )
+        .order_by(AccommodationBooking.check_in.desc())
+        .limit(50)
+        .all()
+    )
+
+    return render_template(
+        "accommodation/guest/complaints.html",
+        complaints=complaints,
+        bookings=bookings,
+        now=datetime.now(timezone.utc),
+    )
+
+
+@accommodation_bp.route("/guest/complaints/new", methods=["POST"], endpoint="guest_complaint_new")
+@login_required
+@limiter.limit("10 per minute")
+def guest_complaint_new():
+    """Create a new complaint for a stay or property."""
+    from app.accommodation.models.feedback import AccommodationComplaint
+
+    category = request.form.get("category", "other")
+    subject = (request.form.get("subject") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    booking_id = request.form.get("booking_id") or None
+    property_id = request.form.get("property_id") or None
+    priority = request.form.get("priority", "medium")
+
+    if not subject or not description:
+        flash("Subject and description are required.", "warning")
+        return redirect(url_for("accommodation.guest_complaints"))
+
+    complaint = AccommodationComplaint(
+        user_id=current_user.id,
+        category=category,
+        subject=subject,
+        description=description,
+        priority=priority,
+        status="open",
+    )
+    if booking_id and booking_id.isdigit():
+        complaint.booking_id = int(booking_id)
+        booking = AccommodationBooking.query.get(int(booking_id))
+        if booking:
+            complaint.property_id = booking.property_id
+            complaint.host_user_id = booking.host_user_id
+    elif property_id and property_id.isdigit():
+        complaint.property_id = int(property_id)
+
+    complaint.generate_reference()
+    db.session.add(complaint)
+    db.session.commit()
+
+    try:
+        from app.notifications.services import NotificationService
+        NotificationService.send(
+            user_id=current_user.id,
+            notification_type="accommodation_complaint_opened",
+            title="Complaint received",
+            message=f"Your complaint '{subject}' has been logged. Reference {complaint.reference}.",
+            channels=["in_app"],
+        )
+    except Exception:
+        pass
+
+    flash(f"Complaint submitted. Reference: {complaint.reference}", "success")
+    return redirect(url_for("accommodation.guest_complaints"))
+
+
+@accommodation_bp.route("/guest/complaints/<reference>", endpoint="guest_complaint_detail")
+@login_required
+def guest_complaint_detail(reference):
+    """View a single complaint."""
+    from app.accommodation.models.feedback import AccommodationComplaint
+
+    complaint = AccommodationComplaint.query.filter_by(
+        reference=reference, user_id=current_user.id
+    ).filter(AccommodationComplaint.is_deleted == False).first_or_404()  # noqa: E712
+
+    return render_template(
+        "accommodation/guest/complaint_detail.html",
+        complaint=complaint,
+        now=datetime.now(timezone.utc),
+    )
+
+
+@accommodation_bp.route("/guest/booking/<int:booking_id>/amend", methods=["GET", "POST"], endpoint="guest_amend_booking")
+@login_required
+def guest_amend_booking(booking_id):
+    """Request an amendment to a booking (dates, guests, or special requests)."""
+    from app.accommodation.models.feedback import AccommodationBookingAmendment
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    is_authorized = (
+        booking.booked_by_user_id == current_user.id
+        or booking.primary_guest_id == current_user.id
+        or booking.guest_user_id == current_user.id
+    )
+    if not is_authorized:
+        abort(403)
+
+    if booking.status not in [
+        AccommodationBookingStatus.CONFIRMED.value,
+        AccommodationBookingStatus.PENDING_APPROVAL.value,
+    ]:
+        flash("This booking can no longer be amended.", "warning")
+        return redirect(url_for("accommodation.guest_dashboard"))
+
+    if request.method == "POST":
+        amendment_type = request.form.get("amendment_type", "other")
+        reason = (request.form.get("reason") or "").strip()
+
+        amendment = AccommodationBookingAmendment(
+            booking_id=booking.id,
+            requested_by_user_id=current_user.id,
+            amendment_type=amendment_type,
+            current_check_in=booking.check_in,
+            current_check_out=booking.check_out,
+            current_guests=booking.num_guests,
+            reason=reason,
+            status="pending",
+        )
+
+        if amendment_type == "dates":
+            ci = request.form.get("requested_check_in")
+            co = request.form.get("requested_check_out")
+            try:
+                if ci:
+                    amendment.requested_check_in = datetime.strptime(ci, "%Y-%m-%d").date()
+                if co:
+                    amendment.requested_check_out = datetime.strptime(co, "%Y-%m-%d").date()
+            except ValueError:
+                flash("Invalid date format.", "warning")
+                return redirect(request.url)
+        elif amendment_type == "guests":
+            try:
+                amendment.requested_guests = int(request.form.get("requested_guests", booking.num_guests))
+            except (ValueError, TypeError):
+                amendment.requested_guests = booking.num_guests
+        elif amendment_type == "special_requests":
+            amendment.requested_special_requests = (request.form.get("requested_special_requests") or "").strip()
+
+        db.session.add(amendment)
+        db.session.commit()
+        flash("Amendment request submitted. The host will review it shortly.", "success")
+        return redirect(url_for("accommodation.guest_dashboard"))
+
+    return render_template(
+        "accommodation/guest/amend.html",
+        booking=booking,
+        now=datetime.now(timezone.utc),
+    )
+
+
+@accommodation_bp.route("/guest/booking/<int:booking_id>/check-in", methods=["POST"], endpoint="guest_self_checkin")
+@login_required
+@limiter.limit("20 per minute")
+def guest_self_checkin(booking_id):
+    """Guest self check-in (when eligible)."""
+    from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    is_authorized = (
+        booking.guest_user_id == current_user.id
+        or booking.primary_guest_id == current_user.id
+        or booking.booked_by_user_id == current_user.id
+    )
+    if not is_authorized:
+        abort(403)
+
+    try:
+        BookingStateMachine.transition(
+            booking,
+            AccommodationBookingStatus.CHECKED_IN,
+            changed_by_user_id=current_user.id,
+            reason="Guest self check-in",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+            trigger="guest_self_checkin",
+        )
+        booking.is_checked_in = True
+        booking.checked_in_at = datetime.now(timezone.utc)
+        booking.checked_in_by = current_user.id
+        db.session.commit()
+        flash("You are checked in. Enjoy your stay!", "success")
+    except InvalidStateTransition:
+        flash("Check-in is not available yet (date, payment, or registration may be incomplete).", "warning")
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error(f"Guest check-in failed: {exc}")
+        flash("Check-in could not be completed. Please try again or contact the host.", "danger")
+
+    return redirect(url_for("accommodation.guest_dashboard"))
+
+
+@accommodation_bp.route("/guest/booking/<int:booking_id>/check-out", methods=["POST"], endpoint="guest_self_checkout")
+@login_required
+@limiter.limit("20 per minute")
+def guest_self_checkout(booking_id):
+    """Guest self check-out (when checked in)."""
+    from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    is_authorized = (
+        booking.guest_user_id == current_user.id
+        or booking.primary_guest_id == current_user.id
+        or booking.booked_by_user_id == current_user.id
+    )
+    if not is_authorized:
+        abort(403)
+
+    try:
+        BookingStateMachine.transition(
+            booking,
+            AccommodationBookingStatus.CHECKED_OUT,
+            changed_by_user_id=current_user.id,
+            reason="Guest self check-out",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+            trigger="guest_self_checkout",
+        )
+        booking.is_checked_out = True
+        booking.checked_out_at = datetime.now(timezone.utc)
+        booking.checked_out_by = current_user.id
+        db.session.commit()
+        flash("You are checked out. We hope you enjoyed your stay!", "success")
+    except InvalidStateTransition:
+        flash("Check-out is not available. You must be checked in first.", "warning")
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error(f"Guest check-out failed: {exc}")
+        flash("Check-out could not be completed. Please try again or contact the host.", "danger")
+
+    return redirect(url_for("accommodation.guest_dashboard"))
+
+
+@accommodation_bp.route("/guest/booking/<int:booking_id>/pay", methods=["POST"], endpoint="guest_pay_booking")
+@login_required
+@limiter.limit("10 per minute")
+def guest_pay_booking(booking_id):
+    """Pay the outstanding balance for a booking via the guest wallet."""
+    from decimal import Decimal as _D
+    from app.accommodation.services.payment_processors.wallet_processor import WalletProcessor
+    from app.accommodation.services.booking_service import BookingService
+
+    booking = AccommodationBooking.query.get_or_404(booking_id)
+    is_authorized = (
+        booking.guest_user_id == current_user.id
+        or booking.primary_guest_id == current_user.id
+        or booking.booked_by_user_id == current_user.id
+    )
+    if not is_authorized:
+        abort(403)
+
+    amount_due = _D(str(booking.amount_due or 0))
+    if amount_due <= _D("0.00"):
+        try:
+            amount_due = max(_D("0.00"), _D(str(booking.total_amount or 0)) - _D(str(booking.amount_paid or 0)))
+        except Exception:
+            amount_due = _D("0.00")
+
+    if amount_due <= _D("0.00"):
+        flash("There is no outstanding balance to pay.", "info")
+        return redirect(url_for("accommodation.guest_dashboard"))
+
+    # Use a fresh idempotency key for this balance capture.
+    idempotency_key = f"bal-{booking.booking_reference}-{uuid.uuid4().hex[:8]}"
+    booking.idempotency_key = idempotency_key
+    db.session.commit()
+
+    processor = WalletProcessor()
+    try:
+        currency = booking.currency or "USD"
+        success, txn_id, error = processor.charge(
+            user_id=current_user.id,
+            amount=amount_due,
+            currency=currency,
+            description=f"Balance payment for booking {booking.booking_reference}",
+            idempotency_key=idempotency_key,
+            metadata={"balance_payment": True, "booking_id": booking.id},
+        )
+        if not success:
+            db.session.rollback()
+            flash(f"Payment failed: {error}", "danger")
+            return redirect(url_for("accommodation.guest_dashboard"))
+
+        booking.amount_paid = (booking.amount_paid or _D("0.00")) + amount_due
+        booking.amount_due = _D("0.00")
+        booking.payment_status = AccommodationPaymentStatus.PAID.value
+        booking.wallet_txn_id = txn_id
+        booking.paid_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        try:
+            BookingService.update_payment_event(
+                booking_id=booking.id,
+                payment_status="success",
+                wallet_txn_id=txn_id,
+                payment_method="wallet",
+                payment_gateway="wallet",
+                gateway_transaction_id=txn_id,
+                idempotency_key=idempotency_key,
+            )
+        except Exception:
+            pass
+
+        flash(f"Balance of {amount_due} {currency} paid successfully.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error(f"Guest balance payment failed: {exc}")
+        flash("Payment could not be processed. Please try again.", "danger")
+
+    return redirect(url_for("accommodation.guest_dashboard"))
 
 
 # ============================================================================
@@ -3279,7 +3736,7 @@ def host_calendar():
 
     if not properties:
         flash("Add a property listing before managing availability.", "info")
-        return redirect(url_for("accommodation.host.create_listing"))
+        return redirect(url_for("accommodation.host_create_listing"))
 
     month_year = request.args.get("month")
     current_month = _resolve_month(month_year)
@@ -3790,17 +4247,21 @@ def host_cancel_booking(property_id, booking_id):
         user_agent=request.headers.get('User-Agent'),
     )
 
+    next_url = request.form.get("next") or url_for(
+        "accommodation.host_property_manage", property_id=property_id
+    )
+
     if not success:
         flash(error or "Booking could not be cancelled.", "danger")
-        return redirect(
-            url_for("accommodation.host_property_manage", property_id=property_id)
-        )
+        return redirect(next_url)
 
-    refund_msg = f" Refund due: {refund}." if refund else ""
+    outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
+    refund_msg = f" Refund due: {refund}." if refund else " No refund due."
+    fine = outcome.get("fine")
+    if fine and Decimal(fine) > 0:
+        refund_msg += f" Cancellation fine withheld: {fine}."
     flash(f"Booking #{booking.booking_reference} cancelled.{refund_msg}", "warning")
-    return redirect(
-        url_for("accommodation.host_property_manage", property_id=property_id)
-    )
+    return redirect(next_url)
 
 
 def _generate_property_notifications(property_obj, bookings, today):
@@ -3970,11 +4431,25 @@ def host_booking_detail(booking_id):
 
     commission = BookingCommission.query.filter_by(booking_id=booking_id).first()
     property_data = search_service.get_property_by_identifier(str(booking.property_id))
+
+    # Booking Pass QR so the host can scan/verify the guest's pass at check-in.
+    from app.utils.url import absolute_url_for
+    from app.utils.qr import qr_data_uri
+    pass_url = ''
+    qr_uri = ''
+    try:
+        pass_url = absolute_url_for('accommodation.guest_pass', reference=booking.booking_reference)
+        qr_uri = qr_data_uri(pass_url, box_size=8, border=4)
+    except Exception:
+        qr_uri = ''
+
     return render_template(
         "accommodation/host/booking_detail.html",
         booking=booking,
         property=property_data,
         commission=commission,
+        qr_uri=qr_uri,
+        pass_url=pass_url,
     )
 
 
@@ -3993,8 +4468,11 @@ def host_check_in(booking_id):
         else:
             flash(f'Guest checked in, but payout failed: {payout_error}', 'warning')
     else:
-        flash(error or 'Check-in failed.', 'danger')
-    return redirect(url_for('accommodation.host_bookings'))
+        if error and 'already checked in' in error.lower():
+            flash(error, 'warning')
+        else:
+            flash(error or 'Check-in failed.', 'danger')
+    return redirect(url_for('accommodation.host_booking_detail', booking_id=booking_id))
 
 @accommodation_bp.route('/host/booking/<int:booking_id>/check-out', methods=['POST'], endpoint='host_check_out')
 @login_required
@@ -4008,7 +4486,7 @@ def host_check_out(booking_id):
         flash('Guest checked out successfully.', 'success')
     else:
         flash(error or 'Check-out failed.', 'danger')
-    return redirect(url_for('accommodation.host_bookings'))
+    return redirect(url_for('accommodation.host_booking_detail', booking_id=booking_id))
 
 
 @accommodation_bp.route('/host/booking/<int:booking_id>/refund', methods=['POST'], endpoint='host_refund_booking')

@@ -6,11 +6,11 @@
 </head>
 <body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
   <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #008751;">
-    <h2 style="color: #008751; margin-top: 0;">AFCON360 KYC Verification Approved</h2>
-    <p>Dear <strong>{{ user_name }}</strong>,</p>
-    <p>Your KYC verification has been <strong>approved</strong>.</p>
-    <p>You now have full access to all AFCON360 services.</p>
-    <p style="color: #555; font-size: 14px;">Thank you for completing your verification with AFCON360 East Africa Pamoja!</p>
+    <h2 style="color: #008751; margin-top: 0;">Identity Verification Approved</h2>
+    <p>Dear <strong>{{ user_name or 'Valued Fan' }}</strong>,</p>
+    <p>Your identity verification (KYC) has been <strong>approved</strong>. You now have full access to AFCON360 wallets, bookings, and transport.</p>
+    {% if link %}<p><a href="{{ link }}" style="background-color: #008751; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px;">Go to Dashboard</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">Welcome aboard, East Africa Pamoja!</p>
   </div>
 </body>
 </html>

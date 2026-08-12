@@ -5,6 +5,8 @@ from app.identity.models.user import User, Session as UserSession
 from app.profile.models import get_profile_by_user
 from app.extensions import db
 from app.utils.immutable_fields import filter_immutable_changes, enforce_immutability
+from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits
+from app.kyc.services import KycService
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -36,16 +38,20 @@ def public_profile(public_id):
     stats = {'stays_count': 0, 'trips_count': 0, 'reviews_count': 0}
     tournament_mode = True
 
-    return render_template(
-        "profile/public.html",
-        user=user,
-        profile=profile,
-        public_info=public_info,
-        is_own_profile=is_own_profile,
-        user_roles=user_roles,
-        stats=stats,
-        tournament_mode=tournament_mode,
-    )
+    context = {
+        'user': user,
+        'profile': profile,
+        'public_info': public_info,
+        'is_own_profile': is_own_profile,
+        'user_roles': user_roles,
+        'stats': stats,
+        'tournament_mode': tournament_mode,
+    }
+
+    if request.args.get('_pane') == '1':
+        return render_template("profile/public_pane.html", **context)
+
+    return render_template("profile/public.html", **context)
 
 @profile_bp.route("/account")
 @login_required
@@ -57,20 +63,37 @@ def account_overview():
     profile = get_profile_by_user(current_user.public_id)
 
     kyc_info = {}
+    verification_state = {}
     try:
-        kyc_info = calculate_kyc_tier(current_user.id)
+        kyc_info = calculate_kyc_tier(user.id)
+    except Exception:
+        pass
+
+    try:
+        verification_state = KycService.get_user_verification_status(user.id)
     except Exception:
         pass
 
     limits = {}
     try:
-        limits = get_user_limits(current_user.id)
+        limits = get_user_limits(user.id)
     except Exception:
         pass
 
-    verification_status = profile.verification_status if profile else 'pending'
+    verification_status = (
+        verification_state.get('status')
+        or kyc_info.get('verification_status')
+        or (profile.verification_status if profile else 'pending')
+    )
+    if verification_status == 'approved':
+        verification_status = 'verified'
+    latest_record = verification_state.get('latest_record')
+    rejection_reason = (
+        getattr(latest_record, 'rejection_reason', None)
+        or (profile.rejected_reason if profile else None)
+    )
     tier_name = kyc_info.get('tier_name', 'Basic')
-    progress_percentage = kyc_info.get('progress_percentage', 0)
+    progress_percentage = kyc_info.get('fulfillment_percentage', kyc_info.get('progress_percentage', 0))
 
     active_sessions = []
     try:
@@ -131,6 +154,7 @@ def account_overview():
         'kyc_info': kyc_info,
         'limits': limits,
         'verification_status': verification_status,
+        'verification_rejection_reason': rejection_reason,
         'tier_name': tier_name,
         'progress_percentage': progress_percentage,
         'active_sessions': active_sessions,
@@ -144,6 +168,10 @@ def account_overview():
         'pin_locked': pin_locked,
         'role_stats': role_stats,
     }
+
+    if request.args.get('_pane') == '1':
+        # Loaded inside the unified user dashboard pane — render fragment only
+        return render_template("profile/account_pane.html", **context)
 
     return render_template("profile/account.html", **context)
 
@@ -171,7 +199,9 @@ def revoke_session(session_db_id):
 @profile_bp.route("/profile/me")
 @login_required
 def my_public_profile():
-    """Redirect to the current user's public profile page"""
+    """Redirect to the current user's public profile page, or render pane fragment."""
+    if request.args.get('_pane') == '1':
+        return public_profile(current_user.public_id)
     return redirect(url_for('profile.public_profile', public_id=current_user.public_id))
 
 @profile_bp.route("/profile/overview")
@@ -201,7 +231,26 @@ def edit_profile():
             'address': request.form.get('address'),
             'city': request.form.get('city'),
             'country': request.form.get('country'),
+            'email': (request.form.get('email') or '').strip() or None,
         }
+
+        # Email-lock guard & change handling on User model
+        new_email = editable_data.get('email')
+        if new_email and new_email != current_user.email:
+            if getattr(current_user, 'email_verified_at', None) is not None:
+                flash('Verified email cannot be changed.', 'danger')
+                return redirect(url_for('profile.edit_profile'))
+            else:
+                from app.auth.email_validation import validate_email_address
+                val = validate_email_address(new_email)
+                if not val.is_valid:
+                    flash(val.message, 'danger')
+                    return redirect(url_for('profile.edit_profile'))
+                current_user.email = val.normalized
+                current_user.email_verified = False
+                current_user.email_verified_at = None
+        # Remove email from editable_data so filter_immutable_changes doesn't touch UserProfile.email unexpectedly if not mapped there
+        editable_data.pop('email', None)
 
         if not is_verified:
             editable_data['full_name'] = request.form.get('full_name')
@@ -216,6 +265,18 @@ def edit_profile():
 
         if blocked_fields:
             from app.audit.forensic_audit import ForensicAuditService
+            field_labels = {
+                "full_name": "Full name",
+                "date_of_birth": "Date of birth",
+                "gender": "Gender",
+                "nationality": "Nationality",
+                "id_type": "ID type",
+                "id_number": "ID number",
+                "id_document_url": "ID document",
+                "id_document_mime": "ID document type",
+                "id_document_size": "ID document size",
+            }
+            blocked_labels = [field_labels.get(f, f.replace("_", " ").title()) for f in blocked_fields]
             for field in blocked_fields:
                 old_value = getattr(profile, field, None)
                 attempted_value = editable_data.get(field)
@@ -229,7 +290,11 @@ def edit_profile():
                     old_value=str(old_value) if old_value else None,
                     ip_address=request.remote_addr,
                 )
-            flash('Some fields cannot be changed after verification.', 'danger')
+            flash(
+                f"Some fields cannot be changed after verification: {', '.join(blocked_labels)}. "
+                "Contact support if you need to update them.",
+                "danger"
+            )
             return redirect(url_for('profile.edit_profile'))
 
         try:
@@ -248,13 +313,25 @@ def edit_profile():
     completion_breakdown = profile.get_completion_breakdown() if profile else {}
     is_verified = profile and profile.verification_status == 'verified'
 
-    return render_template(
-        'profile/edit.html',
-        profile=profile,
-        completion=completion,
-        completion_breakdown=completion_breakdown,
-        is_verified=is_verified,
-    )
+    kyc_info = {}
+    try:
+        kyc_info = calculate_kyc_tier(current_user.id)
+    except Exception:
+        pass
+
+    context = {
+        'profile': profile,
+        'completion': completion,
+        'completion_breakdown': completion_breakdown,
+        'is_verified': is_verified,
+        'kyc_info': kyc_info,
+        'current_user': current_user,
+    }
+
+    if request.args.get('_pane') == '1':
+        return render_template('profile/edit_pane.html', **context)
+
+    return render_template('profile/edit.html', **context)
 
 @profile_bp.route("/profile")
 def old_profile_redirect():

@@ -1,0 +1,64 @@
+{# profile/account_pane.html — fragment for unified user dashboard #}
+{# Does NOT extend base; rendered inside #shellContent via ?_pane=1 #}
+
+<div class="profile-pane">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div>
+            <h2 style="font-size:clamp(1.1rem,3vw,1.5rem); font-weight:700; margin:0; color:var(--color-text-primary);">Profile</h2>
+            <p style="font-size:13px; color:var(--color-text-secondary); margin:2px 0 0;">Your account and verification</p>
+        </div>
+        <a href="{{ safe_url('profile.account_overview') }}" class="action-link">Open full <i class="fas fa-arrow-right"></i></a>
+    </div>
+
+    <div class="dash-card" style="display:flex; align-items:center; gap:16px;">
+        <div class="card-icon-wrapper" style="background:rgba(var(--brand-primary-rgb),0.1); color:var(--brand-primary); margin-bottom:0;">
+            <i class="fas fa-user-circle"></i>
+        </div>
+        <div style="flex:1;">
+            <p style="font-size:15px; font-weight:700; margin:0; color:var(--color-text-primary);">{{ user.username }}</p>
+            <p style="font-size:13px; margin:2px 0 0; color:var(--color-text-secondary);">{{ user.email if user.email else '' }}</p>
+        </div>
+        {% if kyc_info %}
+        <div style="text-align:right;">
+            <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:4px 10px; border-radius:20px; background:rgba(var(--brand-primary-rgb),0.1); color:var(--brand-primary);">
+                Tier {{ kyc_info.tier }}: {{ kyc_info.tier_name }}
+            </span>
+            {% if kyc_info.next_tier is not none %}
+            <div style="font-size:10px; color:var(--color-text-secondary); margin-top:4px;">
+                Next: {{ kyc_info.next_tier_name }} ({{ kyc_info.next_tier_requirements_labels|length }} items)
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:4px 10px; border-radius:20px; background:rgba(var(--brand-primary-rgb),0.1); color:var(--brand-primary);">
+            {{ tier_name }}
+        </span>
+        {% endif %}
+    </div>
+
+    {% if user_roles %}
+    <div style="margin-top:16px;">
+        <h3 style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-tertiary); margin-bottom:12px;">Your Roles</h3>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for role in user_roles %}
+            <span style="font-size:12px; font-weight:600; padding:6px 12px; border-radius:20px; background:var(--color-background-secondary); color:var(--color-text-primary);">{{ role|replace('_',' ')|title }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if org_memberships %}
+    <div style="margin-top:16px;">
+        <h3 style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-tertiary); margin-bottom:12px;">Organisations</h3>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            {% for org in org_memberships %}
+            <div class="dash-card" style="display:flex; align-items:center; gap:12px; padding:12px 16px;">
+                <i class="fas fa-building" style="color:var(--color-text-secondary);"></i>
+                <span style="flex:1; font-size:13px; font-weight:600; color:var(--color-text-primary);">{{ org.org_name or 'Organisation' }}</span>
+                {% if org.roles %}<span style="font-size:11px; color:var(--color-text-tertiary);">{{ org.roles|join(', ') }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>

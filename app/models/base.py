@@ -90,6 +90,18 @@ class BaseModel(TimestampMixin, db.Model):
             'method_id',  # PaymentMethodConfig.method_id - e.g. 'wallet', 'mobile_money_mtn_ug'
             'idempotency_key',  # AccommodationBooking / AccommodationBookingPayment idempotency key
             'entity_id',  # DataChangeLog.entity_id - internal entity reference stored as string
+            # --- Platform event backbone (app/notifications/events) ---
+            # These are prefixed, non-UUID string identifiers by design:
+            # 'evt_<hex>' / 'cor_<hex>' / 'whd_<...>'. The prefix makes an id
+            # self-describing in logs and partner payloads, which matters far
+            # more than UUID formatting for distributed tracing.
+            'event_id',        # DomainEvent/OutboxEvent/WebhookDelivery - 'evt_<hex>'
+            'correlation_id',  # journey trace id - 'cor_<hex>'
+            'causation_id',    # parent event id - 'evt_<hex>'
+            'delivery_id',     # WebhookDelivery attempt chain - 'whd_<...>'
+            'actor_id',        # polymorphic actor reference stored as string
+            'aggregate_id',    # polymorphic aggregate reference stored as string
+            'provider_message_id',  # NotificationDelivery - provider-side id
         }
 
         # Check if this is an _id field that needs validation

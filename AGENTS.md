@@ -753,6 +753,29 @@ Success criteria:
 
 Ignore all Flask startup INFO/WARNING/DEBUG logs.
 
+---
+
+## 29. Deferred Work Backlog (MANDATORY for all agents)
+
+**File:** `BACKLOG.md` at the repository root.
+
+Any agent (Code / Ask / Debug mode) MUST record work that is **identified but NOT completed in the current session** yet still belongs in the system. This prevents deferred items from being lost between sessions.
+
+**When to add an entry (any of these):**
+- Something was discussed/requested but is out of scope for today.
+- A change was partially implemented and still needs finishing.
+- Work is blocked (needs migration, another team, external sign-off, dependency).
+- A feature needs review (e.g., finance/compliance/security sign-off) before go-live.
+- You explicitly decide "not for today" (e.g., a larger feature like adding a new status enum).
+
+**Rules:**
+- Create the entry in `BACKLOG.md` (use the template at the top of that file) before ending your turn.
+- Reference concrete files/routes/models so the next agent can pick it up.
+- Do NOT remove an entry once it is resolved — instead mark its `Status:` as `Done` and add a `Resolved:` date.
+- This applies to every agent mode; treat `BACKLOG.md` as an authoritative hand-off artifact alongside this guide.
+
+**Example (already present in `BACKLOG.md`):** the cancellation refund/fine policy for post-check-in cancellations — implemented in logic but explicitly deferred for finance/compliance review.
+
 
 
 

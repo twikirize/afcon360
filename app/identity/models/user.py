@@ -6,7 +6,7 @@ import uuid as uuid_lib
 from typing import List
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, ForeignKey, JSON,
-    Index, UniqueConstraint, event, Text, select
+    Index, UniqueConstraint, CheckConstraint, event, Text, select
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
@@ -34,6 +34,15 @@ class User(UserMixin, ProtectedModel):
     __table_args__ = (
         UniqueConstraint("email", name="uq_user_email"),
         UniqueConstraint("phone", name="uq_user_phone"),
+        # Database-level guarantee that no code path can store a malformed or
+        # non-normalised address. The application layer
+        # (app/auth/email_validation.py) does the full validation - syntax,
+        # disposable/role blocking and MX lookup - this is defence in depth.
+        CheckConstraint(
+            r"email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[A-Za-z]{2,}$'"
+            r" AND email = lower(email)",
+            name="ck_users_email_format",
+        ),
         Index("ix_user_email", "email"),
         Index("ix_user_phone", "phone"),
         Index("ix_user_is_deleted", "is_deleted"),
@@ -58,9 +67,12 @@ class User(UserMixin, ProtectedModel):
     is_verified = Column(Boolean, default=False, nullable=False)
     email_verified = Column(Boolean, default=False, nullable=True, server_default='f')
     phone_verified = Column(Boolean, default=False, nullable=True, server_default='f')
+    email_verified_at = Column(DateTime, nullable=True)
+    phone_verified_at = Column(DateTime, nullable=True)
+    activated_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, )
     deleted_at = Column(DateTime, nullable=True, index=True)
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, default=False, nullable=False)
     locked_until = Column(DateTime, nullable=True)
     last_login = Column(DateTime, nullable=True)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
@@ -755,7 +767,17 @@ class User(UserMixin, ProtectedModel):
         if email and not isinstance(email, str):
             raise ValueError("Email must be a string")
 
-        new_email = email.strip().lower() if email else email
+        # Canonicalise through the shared normaliser so Gmail dot/plus aliases
+        # can never create duplicate accounts, and the stored value always
+        # satisfies the ck_users_email_format constraint.
+        if email:
+            try:
+                from app.auth.email_validation import normalize_email
+                new_email = normalize_email(email)
+            except Exception:
+                new_email = email.strip().lower()
+        else:
+            new_email = email
 
         # Audit email change if it's different
         if hasattr(self, 'email') and self.email and new_email != self.email:

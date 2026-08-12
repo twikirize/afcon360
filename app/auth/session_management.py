@@ -190,7 +190,7 @@ def require_valid_session(f):
         
         # Validate session integrity
         if not session_manager.validate_session_integrity():
-            flash('Session security violation. Please login again.', 'error')
+            flash('Session security violation. Please login again.', 'danger')
             session_manager.invalidate_session("integrity_violation")
             return redirect(url_for('auth.login'))
         

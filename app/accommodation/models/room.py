@@ -102,6 +102,7 @@ class InventoryBlockReason(enum.Enum):
     RENOVATION = "RENOVATION"
     SEASONAL_CLOSE = "SEASONAL_CLOSE"
     OWNER_BLOCK = "OWNER_BLOCK"
+    TEMPORARY_HOLD = "temporary_hold"
 
 
 # ==========================================
@@ -115,7 +116,7 @@ class InventoryBlock(BaseModel):
         Index("idx_inv_block_range", "room_type_id", "date_range_start", "date_range_end"),
         Index("idx_inv_block_booking", "booking_id"),
         CheckConstraint(
-            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK')",
+            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK', 'temporary_hold')",
             name="ck_inventory_block_reason_valid"
         ),
     )
@@ -130,14 +131,20 @@ class InventoryBlock(BaseModel):
     date_range_end = Column(Date, nullable=False)
     units_blocked = Column(Integer, nullable=False, default=0)
     reason = Column(String(50), nullable=False, default="MAINTENANCE")
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    creator = relationship("User", foreign_keys=[created_by])
 
     @validates("reason")
     def _validate_reason(self, key, value):
         """Allow setting reason by enum or by its string value (e.g., 'MAINTENANCE')."""
+        if isinstance(value, enum.Enum):
+            return value.value
         if isinstance(value, str):
             try:
-                return InventoryBlockReason[value] if value in InventoryBlockReason.__members__ else InventoryBlockReason(value)
+                return InventoryBlockReason[value].value if value in InventoryBlockReason.__members__ else InventoryBlockReason(value).value
             except Exception:
+                if value == "temporary_hold":
+                    return value
                 raise ValueError(f"Invalid InventoryBlock.reason: {value}")
         return value
 

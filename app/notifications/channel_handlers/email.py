@@ -20,34 +20,42 @@ class EmailHandler(BaseChannelHandler):
                 'response_body': 'No recipient email address',
             }
 
-        subject = notification.subject or notification.title or 'Notification'
+        subject = notification.subject or 'Notification'
         body_text = notification.body or ''
 
-        # Try to render the rich HTML email template (templates/notifications/email/<type>.html).
+        # Render the rich HTML email template
+        # (templates/notifications/email/<type>.html) via the Jinja Environment
+        # directly so it works with or without a Flask request context (e.g.
+        # standalone scripts, Celery tasks). Falls back to the generic
+        # default.html (which renders title/message/link) so every email is sent
+        # as branded HTML instead of plain text.
         html = None
         try:
-            from flask import render_template, current_app
-            if current_app:
-                template_name = f"notifications/email/{notification.type}.html"
-                from flask_mail import Message
-                html = render_template(
-                    template_name,
-                    title=subject,
-                    message=body_text,
-                    notification=notification,
-                    data=notification.context or {},
-                    link=notification.link,
-                    user_id=notification.user_id,
-                )
+            from app.notifications.template_loader import template_loader
+
+            ctx = dict(
+                title=subject,
+                message=body_text,
+                notification=notification,
+                data=notification.context or {},
+                link=notification.link,
+                user_id=notification.user_id,
+            )
+            try:
+                html = template_loader.env.get_template(
+                    f"email/{notification.type}.html"
+                ).render(**ctx)
+            except Exception:
+                # Type-specific template missing -> use the generic default.
+                html = template_loader.env.get_template(
+                    "email/default.html"
+                ).render(**ctx)
         except Exception as e:
-            logger.debug(f"[EmailHandler] No HTML template for {notification.type} ({e}); using text body")
+            logger.debug(f"[EmailHandler] Could not render HTML for {notification.type} ({e}); using text body")
 
         try:
             from flask_mail import Message
             from app.extensions import mail
-
-            if mail.state is None:
-                raise RuntimeError("Mail extension not initialised")
 
             msg = Message(
                 subject=subject,

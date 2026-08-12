@@ -230,6 +230,9 @@
 
             <!-- ACTIONS -->
             <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
+                <a href="{{ safe_url('accommodation.guest_pass', reference=booking.booking_reference) }}" class="btn btn-success">
+                    <i class="fas fa-qrcode me-1"></i> Booking Pass
+                </a>
                 <a href="{{ safe_url('accommodation.guest_my_bookings') }}" class="btn btn-outline-primary">
                     <i class="fas fa-calendar-alt"></i> My Bookings
                 </a>

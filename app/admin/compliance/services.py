@@ -9,7 +9,7 @@ from flask import current_app
 
 from app.extensions import db
 from app.admin.compliance.models import (
-    ComplianceCase, DataSubjectRequest, ComplianceReport,
+    ComplianceCase, ComplianceCaseNote, DataSubjectRequest, ComplianceReport,
     ComplianceCaseStatus, ComplianceCasePriority, ComplianceCaseType,
     DataSubjectRequestType, DataSubjectRequestStatus,
     ComplianceReportType
@@ -81,6 +81,19 @@ class ComplianceCaseService:
             case.escalated_at = datetime.now(timezone.utc)
         
         db.session.add(case)
+        db.session.flush()
+
+        # Activity entry (feeds the Case History timeline)
+        db.session.add(ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case.id,
+            author_id=created_by,
+            action='case_created',
+            kind='system',
+            content=f"Case created ({case_type.value}, {priority.value})."
+                    + (f" Escalated from #{escalated_from}." if escalated_from else ''),
+        ))
+
         db.session.commit()
         
         # Log audit
@@ -95,6 +108,15 @@ class ComplianceCaseService:
                 'priority': priority.value
             }
         )
+
+        # Notify concerned parties (compliance team, creator, subject)
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_compliance_case_event(
+                case, event='created', actor_id=created_by
+            )
+        except Exception as exc:
+            current_app.logger.error(f"compliance case created notification failed: {exc}")
         
         return case
     
@@ -110,6 +132,15 @@ class ComplianceCaseService:
         case.status = ComplianceCaseStatus.IN_REVIEW
         case.updated_at = datetime.now(timezone.utc)
         
+        db.session.add(ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case.id,
+            author_id=assigned_by,
+            action='assigned',
+            kind='system',
+            content=f"Case assigned to user #{assigned_to}.",
+        ))
+
         db.session.commit()
         
         # Log audit
@@ -123,6 +154,15 @@ class ComplianceCaseService:
                 'assigned_to': assigned_to
             }
         )
+
+        # Notify concerned parties
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_compliance_case_event(
+                case, event='assigned', actor_id=assigned_by
+            )
+        except Exception as exc:
+            current_app.logger.error(f"compliance case assigned notification failed: {exc}")
         
         return case
     
@@ -148,6 +188,16 @@ class ComplianceCaseService:
             case.resolved_at = datetime.now(timezone.utc)
             case.resolved_by = updated_by
         
+        db.session.add(ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case.id,
+            author_id=updated_by,
+            action='status_changed',
+            kind='system',
+            content=f"Status changed to {status.value}."
+                    + (f" Resolution: {resolution}" if resolution else ''),
+        ))
+
         db.session.commit()
         
         # Log audit
@@ -162,6 +212,22 @@ class ComplianceCaseService:
                 'resolution': resolution
             }
         )
+
+        # Notify concerned parties (team, assignee, creator, subject)
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_compliance_case_event(
+                case,
+                event='resolved' if status in (
+                    ComplianceCaseStatus.APPROVED,
+                    ComplianceCaseStatus.REJECTED,
+                    ComplianceCaseStatus.CLOSED,
+                ) else 'status',
+                actor_id=updated_by,
+                resolution=resolution,
+            )
+        except Exception as exc:
+            current_app.logger.error(f"compliance case status notification failed: {exc}")
         
         return case
     
@@ -196,6 +262,16 @@ class ComplianceCaseService:
             else:
                 case.sla_due_at = datetime.now(timezone.utc) + timedelta(hours=72)
         
+        db.session.add(ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case.id,
+            author_id=escalated_by,
+            action='escalated',
+            kind='system',
+            content=f"Case escalated." + (f" Reason: {escalation_reason}" if escalation_reason else '')
+                    + (f" New priority: {new_priority.value}." if new_priority else ''),
+        ))
+
         db.session.commit()
         
         # Log audit
@@ -210,9 +286,159 @@ class ComplianceCaseService:
                 'new_priority': new_priority.value if new_priority else None
             }
         )
+
+        # Notify concerned parties (team, assignee, creator, subject, owner/super_admin)
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_compliance_case_event(
+                case, event='escalated', actor_id=escalated_by
+            )
+        except Exception as exc:
+            current_app.logger.error(f"compliance case escalated notification failed: {exc}")
         
         return case
     
+    @staticmethod
+    def add_note(
+        case_id: int,
+        author_id: int,
+        content: str,
+        kind: str = 'note',
+        action: str = 'note_added',
+    ) -> Optional[ComplianceCaseNote]:
+        """Add a note (or system entry) to a compliance case."""
+        case = db.session.get(ComplianceCase, case_id)
+        if not case:
+            return None
+        if not content or not content.strip():
+            return None
+
+        note = ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case_id,
+            author_id=author_id,
+            action=action,
+            kind=kind,
+            content=content.strip(),
+        )
+        db.session.add(note)
+        db.session.flush()
+
+        # System notes are activity entries, not user-authored commentary.
+        if kind == 'note':
+            db.session.add(ComplianceCaseNote(
+                public_id=str(uuid.uuid4()),
+                case_id=case_id,
+                author_id=author_id,
+                action='note_added',
+                kind='system',
+                content="A note was added to this case.",
+            ))
+
+        db.session.commit()
+        return note
+
+    @staticmethod
+    def request_info(
+        case_id: int,
+        requested_by: int,
+        message: str = None,
+    ) -> Optional[ComplianceCase]:
+        """Move the case to PENDING_INFO and notify the subject for more info."""
+        case = db.session.get(ComplianceCase, case_id)
+        if not case:
+            return None
+
+        case.status = ComplianceCaseStatus.PENDING_INFO
+        case.updated_at = datetime.now(timezone.utc)
+        db.session.add(ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case_id,
+            author_id=requested_by,
+            action='info_requested',
+            kind='system',
+            content=message or "Additional information requested from the subject.",
+        ))
+        db.session.commit()
+
+        ForensicAuditService.log_action(
+            action='request_compliance_case_info',
+            user_id=requested_by,
+            resource_type='compliance_case',
+            resource_id=case.id,
+            details={'case_number': case.case_number, 'message': message},
+        )
+
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_compliance_case_event(
+                case, event='status', actor_id=requested_by,
+                resolution=message,
+            )
+        except Exception as exc:
+            current_app.logger.error(f"compliance case info-request notification failed: {exc}")
+        return case
+
+    @staticmethod
+    def close_case(case_id: int, closed_by: int, resolution: str = None) -> Optional[ComplianceCase]:
+        """Close a compliance case (terminal state)."""
+        return ComplianceCaseService.update_case_status(
+            case_id, ComplianceCaseStatus.CLOSED, closed_by, resolution
+        )
+
+    @staticmethod
+    def reopen_case(case_id: int, reopened_by: int) -> Optional[ComplianceCase]:
+        """Reopen a resolved/closed case back to IN_REVIEW."""
+        case = db.session.get(ComplianceCase, case_id)
+        if not case:
+            return None
+        case.status = ComplianceCaseStatus.IN_REVIEW
+        case.resolved_at = None
+        case.resolved_by = None
+        case.updated_at = datetime.now(timezone.utc)
+        db.session.add(ComplianceCaseNote(
+            public_id=str(uuid.uuid4()),
+            case_id=case_id,
+            author_id=reopened_by,
+            action='reopened',
+            kind='system',
+            content="Case reopened.",
+        ))
+        db.session.commit()
+        ForensicAuditService.log_action(
+            action='reopen_compliance_case',
+            user_id=reopened_by,
+            resource_type='compliance_case',
+            resource_id=case.id,
+            details={'case_number': case.case_number},
+        )
+        try:
+            from app.notifications.services import NotificationService
+            NotificationService.notify_compliance_case_event(
+                case, event='status', actor_id=reopened_by
+            )
+        except Exception as exc:
+            current_app.logger.error(f"compliance case reopen notification failed: {exc}")
+        return case
+
+    @staticmethod
+    def get_case_notes(case_id: int) -> List[ComplianceCaseNote]:
+        """Return visible (non-deleted) user notes for a case, newest first."""
+        return (
+            ComplianceCaseNote.query.filter_by(case_id=case_id, kind='note', is_deleted=False)
+            .order_by(ComplianceCaseNote.created_at.desc())
+            .all()
+        )
+
+    @staticmethod
+    def get_case_history(case_id: int) -> List[ComplianceCaseNote]:
+        """Return system activity entries for a case, newest first."""
+        return (
+            ComplianceCaseNote.query.filter_by(case_id=case_id, kind='system', is_deleted=False)
+            .order_by(ComplianceCaseNote.created_at.desc())
+            .all()
+        )
+
     @staticmethod
     def get_cases_by_status(status: ComplianceCaseStatus) -> List[ComplianceCase]:
         """Get cases by status"""

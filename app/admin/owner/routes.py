@@ -23,7 +23,7 @@ from app.admin.owner.utils import log_owner_action, get_system_health
 from app.auth.roles import assign_global_role, revoke_global_role
 from app.profile.models import get_profile_by_user
 from app.auth.config_model import AuthConfiguration
-from app.services import ModuleToggleService
+from app.utils.module_toggle_service import ModuleToggleService
 
 # Import audit decorators
 from app.admin.owner.audit import audit_owner_action
@@ -78,7 +78,7 @@ def wallet_capabilities():
         return render_template('owner/wallet_capabilities.html', stats=stats)
     except Exception as e:
         current_app.logger.error(f"Wallet capabilities error: {e}")
-        flash('Error loading wallet capabilities', 'error')
+        flash('Error loading wallet capabilities', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/admin-audit-log')
@@ -95,7 +95,7 @@ def admin_audit_log():
         return render_template('owner/admin_audit_log.html', logs=logs, summary=summary)
     except Exception as e:
         current_app.logger.error(f"Admin audit log error: {e}")
-        flash('Error loading admin audit log', 'error')
+        flash('Error loading admin audit log', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/manage-aggregators', methods=['GET', 'POST'])
@@ -145,7 +145,7 @@ def manage_aggregators():
         return render_template('owner/manage_aggregators.html', aggregators=aggregators)
     except Exception as e:
         current_app.logger.error(f"Manage aggregators error: {e}")
-        flash('Error managing aggregators', 'error')
+        flash('Error managing aggregators', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/aggregator/<int:aggregator_id>/suspend', methods=['POST'])
@@ -170,7 +170,7 @@ def suspend_aggregator(aggregator_id):
         return redirect(url_for('admin.owner.manage_aggregators'))
     except Exception as e:
         current_app.logger.error(f"Suspend aggregator error: {e}")
-        flash('Error suspending aggregator', 'error')
+        flash('Error suspending aggregator', 'danger')
         return redirect(url_for('admin.owner.manage_aggregators'))
 
 @owner_bp.route('/aggregator/<int:aggregator_id>/activate', methods=['POST'])
@@ -195,7 +195,7 @@ def activate_aggregator(aggregator_id):
         return redirect(url_for('admin.owner.manage_aggregators'))
     except Exception as e:
         current_app.logger.error(f"Activate aggregator error: {e}")
-        flash('Error activating aggregator', 'error')
+        flash('Error activating aggregator', 'danger')
         return redirect(url_for('admin.owner.manage_aggregators'))
 
 @owner_bp.route('/aggregator/<int:aggregator_id>/set-mode', methods=['POST'])
@@ -222,7 +222,7 @@ def set_aggregator_mode(aggregator_id):
         return redirect(url_for('admin.owner.manage_aggregators'))
     except Exception as e:
         current_app.logger.error(f"Set aggregator mode error: {e}")
-        flash('Error switching aggregator mode', 'error')
+        flash('Error switching aggregator mode', 'danger')
         return redirect(url_for('admin.owner.manage_aggregators'))
 
 @owner_bp.route('/configure-fraud-detection', methods=['GET', 'POST'])
@@ -275,7 +275,7 @@ def configure_fraud_detection():
         return render_template('owner/configure_fraud_detection.html', config=config)
     except Exception as e:
         current_app.logger.error(f"Configure fraud detection error: {e}")
-        flash('Error configuring fraud detection', 'error')
+        flash('Error configuring fraud detection', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/configure-nonce-protection', methods=['GET', 'POST'])
@@ -317,7 +317,7 @@ def configure_nonce_protection():
         return render_template('owner/configure_nonce_protection.html', config=config)
     except Exception as e:
         current_app.logger.error(f"Configure nonce protection error: {e}")
-        flash('Error configuring nonce protection', 'error')
+        flash('Error configuring nonce protection', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/configure-travel-rule', methods=['GET', 'POST'])
@@ -364,7 +364,7 @@ def configure_travel_rule():
         return render_template('owner/configure_travel_rule.html', config=config)
     except Exception as e:
         current_app.logger.error(f"Configure travel rule error: {e}")
-        flash('Error configuring travel rule', 'error')
+        flash('Error configuring travel rule', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/configure-rate-limiting', methods=['GET', 'POST'])
@@ -400,7 +400,7 @@ def configure_rate_limiting():
             if success:
                 flash('Rate limiting configuration updated successfully', 'success')
             else:
-                flash('Error updating rate limiting configuration', 'error')
+                flash('Error updating rate limiting configuration', 'danger')
 
             return redirect(url_for('admin.owner.configure_rate_limiting'))
 
@@ -409,7 +409,7 @@ def configure_rate_limiting():
         return render_template('owner/configure_rate_limiting.html', settings=settings)
     except Exception as e:
         current_app.logger.error(f"Configure rate limiting error: {e}")
-        flash('Error configuring rate limiting', 'error')
+        flash('Error configuring rate limiting', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/add-payment-gateway', methods=['GET', 'POST'])
@@ -452,7 +452,7 @@ def add_payment_gateway():
         return render_template('owner/add_payment_gateway.html')
     except Exception as e:
         current_app.logger.error(f"Add payment gateway error: {e}")
-        flash('Error adding payment gateway', 'error')
+        flash('Error adding payment gateway', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/dashboard')
@@ -1040,7 +1040,7 @@ def toggle_org_registration_mode():
     except Exception as e:
         logger.error(f"Error toggling organization registration mode: {e}")
         db.session.rollback()
-        flash('Error updating registration mode', 'error')
+        flash('Error updating registration mode', 'danger')
     
     return redirect(url_for('admin.owner.settings'))
 
@@ -1809,19 +1809,30 @@ def compliance_dashboard():
     try:
         from app.audit.forensic_audit import ForensicAuditService
 
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
         # Get pending reviews
         pending_reviews = []
         try:
             pending_reviews = ForensicAuditService.get_pending_reviews(limit=20)
         except:
-            pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
         # Get suspicious activity
         suspicious_patterns = []
         try:
             suspicious_patterns = ForensicAuditService.get_suspicious_patterns(days=7)
         except:
-            pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
         # Calculate metrics
         metrics = {
@@ -1832,6 +1843,18 @@ def compliance_dashboard():
             'total_audit_events': 0,
         }
 
+        from app.kyc.models import KycRecord
+        from app.identity.models.organisation import Organisation
+        stats = {
+            'kyc_pending': KycRecord.query.filter_by(status='pending').count(),
+            'orgs_pending': Organisation.query.filter_by(verification_status='pending').count(),
+            'payouts_pending': 0,
+            'aml_alerts': metrics['high_risk_alerts'],
+            'open_cases': 0,
+            'escalations': 0,
+            'data_requests': 0,
+        }
+
         # Get recent high-risk events
         recent_alerts = []
         try:
@@ -1840,14 +1863,22 @@ def compliance_dashboard():
                 SecurityEventLog.severity.in_(['high', 'critical'])
             ).order_by(SecurityEventLog.created_at.desc()).limit(10).all()
         except:
-            pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
         return render_template('admin/compliance/dashboard.html',
                                pending_reviews=pending_reviews,
                                suspicious_patterns=suspicious_patterns,
                                metrics=metrics,
+                               stats=stats,
                                recent_alerts=recent_alerts)
     except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         logger.error(f"Compliance dashboard error: {e}")
         flash("Error loading compliance dashboard", "danger")
         return redirect(url_for('admin.owner.dashboard'))
@@ -2178,7 +2209,7 @@ def configure_aml_kyc():
         return render_template('owner/configure_aml_kyc.html', config=config)
     except Exception as e:
         logger.error(f"AML/KYC configuration error: {e}")
-        flash('Error loading AML/KYC configuration', 'error')
+        flash('Error loading AML/KYC configuration', 'danger')
         return redirect(url_for('admin.owner.wallet_capabilities'))
 
 
@@ -2211,7 +2242,7 @@ def regulatory_reports():
         return render_template('owner/regulatory_reports.html', report_data=report_data)
     except Exception as e:
         logger.error(f"Regulatory reports error: {e}")
-        flash('Error loading regulatory reports', 'error')
+        flash('Error loading regulatory reports', 'danger')
         return redirect(url_for('admin.owner.wallet_capabilities'))
 
 
@@ -2248,7 +2279,7 @@ def manage_regulator_access():
                                access_codes=access_codes)
     except Exception as e:
         logger.error(f"Regulator access management error: {e}")
-        flash('Error loading regulator access management', 'error')
+        flash('Error loading regulator access management', 'danger')
         return redirect(url_for('admin.owner.wallet_capabilities'))
 
 

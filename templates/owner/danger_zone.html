@@ -181,6 +181,20 @@
                     Export and import system settings for backup or migration.
                 </p>
 
+                <!-- Database Backups -->
+                <div class="card mb-3 border-danger">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-database-gear text-danger"></i> Database Backups &amp; Restore</h5>
+                        <p class="card-text">
+                            Create manual PostgreSQL backups, schedule automated backups, download
+                            artifacts, and restore the database in a disaster-recovery scenario.
+                        </p>
+                        <a href="{{ url_for('admin.owner.owner_backup.backups') }}" class="btn btn-danger">
+                            <i class="bi bi-shield-check"></i> Manage Database Backups
+                        </a>
+                    </div>
+                </div>
+
                 <div class="row">
                     <div class="col-md-6">
                         <div class="card">

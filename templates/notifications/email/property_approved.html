@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>AFCON360 Property Approved</title></head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #008751;">
+    <h2 style="color: #008751; margin-top: 0;">AFCON360 Property Approved</h2>
+    <p>Dear <strong>{{ user_name or 'Valued User' }}</strong>,</p>
+    <p>{{ message }}</p>
+    {% if link %}<p><a href="{{ link }}" style="background-color: #008751; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px;">View Details</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">AFCON360 East Africa Pamoja!</p>
+  </div>
+</body>
+</html>

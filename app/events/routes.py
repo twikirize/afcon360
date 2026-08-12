@@ -128,6 +128,9 @@ from app.utils.module_guard import require_module_enabled
 def list():
     """List all events"""
     events = EventService.get_all_events(status=EventStatus.PUBLISHED)
+    if request.args.get('_pane') == '1':
+        # Loaded inside the unified user dashboard pane — render fragment only
+        return render_template('events/public/list_pane.html', events=events)
     return render_template('events/public/list.html', events=events)
 
 
@@ -2394,9 +2397,7 @@ def contact_organizer(event_id):
     try:
         from app.events.models import Event, OrganizerMessage
         from app.identity.models.user import User
-        from flask_mail import Message
-        from app.extensions import mail
-        
+
         data = request.get_json()
         message_text = data.get('message')
         
@@ -2417,33 +2418,59 @@ def contact_organizer(event_id):
         db.session.add(new_message)
         db.session.commit()
         
-        # Send email to organizer
+        # Send email to organizer (via unified notification EmailHandler)
+        from app.notifications.models import (
+            Notification as _Notification,
+            NotificationType,
+            NotificationChannel,
+            NotificationModule,
+            NotificationStatus,
+        )
+        from app.notifications.channel_handlers.email import EmailHandler
+
         organizer = db.session.get(User, event.organizer_id) if event.organizer_id else None
         if organizer and organizer.email:
-            msg = Message(
-                subject=f"[AFCON360] New message about {event.name}",
-                recipients=[organizer.email],
-                reply_to=current_user.email
-            )
-            msg.html = render_template('email/organizer_message.html',
+            organizer_html = render_template('email/organizer_message.html',
                 event_name=event.name,
                 user_name=current_user.username or current_user.email,
                 user_email=current_user.email,
                 message=message_text
             )
-            mail.send(msg)
-        
-        # Send confirmation to user
-        confirm_msg = Message(
-            subject=f"[AFCON360] Your message to {event.name} was sent",
-            recipients=[current_user.email]
-        )
-        confirm_msg.html = render_template('email/message_confirmation.html',
+            EmailHandler().deliver(
+                _Notification(
+                    user_id=organizer.id,
+                    email=organizer.email,
+                    type=NotificationType.MESSAGE_NOTIFICATION,
+                    channel=NotificationChannel.EMAIL,
+                    module=NotificationModule.EVENTS,
+                    status=NotificationStatus.PENDING,
+                    subject=f"[AFCON360] New message about {event.name}",
+                    body=organizer_html,
+                    priority='normal',
+                ),
+                {'email': organizer.email, 'user_id': organizer.id},
+            )
+
+        # Send confirmation to user (via unified notification EmailHandler)
+        confirm_html = render_template('email/message_confirmation.html',
             event_name=event.name,
             user_name=current_user.username or current_user.email
         )
-        mail.send(confirm_msg)
-        
+        EmailHandler().deliver(
+            _Notification(
+                user_id=current_user.id,
+                email=current_user.email,
+                type=NotificationType.MESSAGE_NOTIFICATION,
+                channel=NotificationChannel.EMAIL,
+                module=NotificationModule.EVENTS,
+                status=NotificationStatus.PENDING,
+                subject=f"[AFCON360] Your message to {event.name} was sent",
+                body=confirm_html,
+                priority='normal',
+            ),
+            {'email': current_user.email, 'user_id': current_user.id},
+        )
+
         return jsonify({'success': True, 'message': 'Message sent to organizer'})
         
     except Exception as e:

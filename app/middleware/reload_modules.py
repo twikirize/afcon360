@@ -1,5 +1,5 @@
 """Reload module flags before every request for instant effect."""
-from app.services.module_toggle_service import ModuleToggleService
+from app.utils.module_toggle_service import ModuleToggleService
 
 def init_module_reload(app):
     """Initialize module reload hooks."""

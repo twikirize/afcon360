@@ -1,5 +1,5 @@
 # app/tournament/routes.py
-from flask import render_template, current_app, abort
+from flask import render_template, current_app, abort, request
 
 # Do NOT import app.tournament here to avoid circular imports.
 # The blueprint is created in app/tournament/__init__.py and routes
@@ -23,6 +23,9 @@ def register_routes(bp):
         data = {"name": current_app.config.get("TOURNAMENT_NAME", "AFCON 2025"),
                 "status": current_app.config.get("TOURNAMENT_STATUS", "live")}
         items = svc.list_items() if svc and hasattr(svc, "list_items") else []
+        if request.args.get('_pane') == '1':
+            # Loaded inside the unified user dashboard pane — render fragment only
+            return render_template("tournament_home_pane.html", tournament=data, items=items)
         return render_template("tournament_home.html", tournament=data, items=items)
 
     @bp.route("/archive", endpoint="archive")

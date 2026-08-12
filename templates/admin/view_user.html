@@ -201,7 +201,7 @@
         {% if messages %}
             <div class="flash-messages">
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                    <div class="alert alert-{{ flash_alert_class(category) }}">{{ message }}</div>
                 {% endfor %}
             </div>
         {% endif %}
@@ -263,23 +263,32 @@
                 <span class="detail-label">KYC Tier:</span>
                 <span class="detail-value">
                     {% if kyc_info %}
+                        {% set tier_num = kyc_info.tier|default(0) %}
+                        {% set tier_name = kyc_info.tier_name|default('Unregistered') %}
                         <span class="badge" style="background:
-                            {% if kyc_info.tier == 0 %}#e2e3e5
-                            {% elif kyc_info.tier == 1 %}#cce5ff
-                            {% elif kyc_info.tier == 2 %}#d1ecf1
-                            {% elif kyc_info.tier == 3 %}#d4edda
-                            {% elif kyc_info.tier == 4 %}#d1e7dd
+                            {% if tier_num == 0 %}#e2e3e5
+                            {% elif tier_num == 1 %}#cce5ff
+                            {% elif tier_num == 2 %}#d1ecf1
+                            {% elif tier_num == 3 %}#d4edda
+                            {% elif tier_num == 4 %}#d1e7dd
                             {% else %}#6c757d{% endif %};
                             color:
-                            {% if kyc_info.tier == 0 %}#383d41
-                            {% elif kyc_info.tier == 1 %}#004085
-                            {% elif kyc_info.tier == 2 %}#0c5460
-                            {% elif kyc_info.tier == 3 %}#155724
-                            {% elif kyc_info.tier == 4 %}#0f5132
+                            {% if tier_num == 0 %}#383d41
+                            {% elif tier_num == 1 %}#004085
+                            {% elif tier_num == 2 %}#0c5460
+                            {% elif tier_num == 3 %}#155724
+                            {% elif tier_num == 4 %}#0f5132
                             {% else %}white{% endif %};">
-                            Tier {{ kyc_info.tier }}
-                            {% if kyc_info.label %} - {{ kyc_info.label }}{% endif %}
+                            Tier {{ tier_num }}: {{ tier_name }}
                         </span>
+                        {% if kyc_info.tier_description %}
+                        <div style="font-size:11px;color:var(--ink-3);margin-top:4px;">{{ kyc_info.tier_description }}</div>
+                        {% endif %}
+                        {% if kyc_info.next_tier is not none and kyc_info.next_tier_requirements_labels %}
+                        <div style="font-size:11px;color:var(--ink-3);margin-top:4px;">
+                          <strong>Tier {{ kyc_info.next_tier }} needs:</strong> {{ kyc_info.next_tier_requirements_labels|join(', ')|truncate(60) }}
+                        </div>
+                        {% endif %}
                     {% else %}
                         <span class="badge badge-default">Not Calculated</span>
                     {% endif %}

@@ -1,0 +1,104 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Transaction Investigation — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Transaction Investigation{% endblock %}
+
+{% block content %}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-receipt"></i> Transaction Details</div>
+    <span class="badge badge-blue mono">{{ tx.id }}</span>
+  </div>
+  <div class="card-body">
+    <div class="detail-grid">
+      <div class="detail-row"><span class="detail-label">Type</span><span class="detail-value">{{ tx.tx_type }}</span></div>
+      <div class="detail-row"><span class="detail-label">Status</span>
+        <span class="detail-value">
+          {% if tx.status == 'completed' %}<span class="badge badge-green">Completed</span>
+          {% elif tx.status == 'pending' %}<span class="badge badge-orange">Pending</span>
+          {% elif tx.status == 'failed' %}<span class="badge badge-red">Failed</span>
+          {% else %}<span class="badge badge-gray">{{ tx.status }}</span>{% endif %}
+        </span>
+      </div>
+      <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value mono">{{ "{:,.0f}".format(tx.amount) if tx.amount else '0' }} {{ tx.currency }}</span></div>
+      <div class="detail-row"><span class="detail-label">Fee</span><span class="detail-value mono">{{ "{:,.0f}".format(tx.fee_amount) if tx.fee_amount else '0' }} {{ tx.fee_currency or tx.currency }}</span></div>
+      <div class="detail-row"><span class="detail-label">Payment Method</span><span class="detail-value">{{ tx.payment_method or 'N/A' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Provider</span><span class="detail-value">{{ tx.payment_provider or 'N/A' }}</span></div>
+      <div class="detail-row"><span class="detail-label">External Ref</span><span class="detail-value mono">{{ tx.external_reference or 'N/A' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Created</span><span class="detail-value mono">{{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Completed</span><span class="detail-value mono">{{ tx.completed_at.strftime('%Y-%m-%d %H:%M') if tx.completed_at else '-' }}</span></div>
+    </div>
+
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px;">
+      {% if user %}
+      <a href="{{ url_for('admin.compliance.user_audit', user_id=user.public_id) }}" class="btn btn-secondary">
+        <i class="fas fa-user-secret"></i> Actor: {{ user.username }}
+      </a>
+      {% endif %}
+      {% if recipient %}
+      <a href="{{ url_for('admin.compliance.user_audit', user_id=recipient.public_id) }}" class="btn btn-secondary">
+        <i class="fas fa-user"></i> Recipient: {{ recipient.username }}
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-triangle-exclamation"></i> Related Fraud / AML Alerts</div>
+    <span class="badge badge-red">{{ related_alerts|length }} alert(s)</span>
+  </div>
+  <div class="card-body">
+    {% if related_alerts %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Alert ID</th>
+            <th>Action</th>
+            <th>Risk</th>
+            <th>Patterns</th>
+            <th>Status</th>
+            <th>Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for alert in related_alerts %}
+          <tr class="{{ 'row-critical' if alert.risk_score >= 80 else 'row-high' }}">
+            <td class="mono">#{{ alert.id }}</td>
+            <td>{{ alert.action }}</td>
+            <td>
+              {% if alert.risk_score >= 80 %}<span class="badge badge-red">{{ alert.risk_score }}</span>
+              {% elif alert.risk_score >= 50 %}<span class="badge badge-orange">{{ alert.risk_score }}</span>
+              {% else %}<span class="badge badge-blue">{{ alert.risk_score }}</span>{% endif %}
+            </td>
+            <td>{{ (alert.patterns or [])|join(', ') }}</td>
+            <td>
+              {% if alert.status == 'open' %}<span class="badge badge-orange">Open</span>
+              {% elif alert.status == 'escalated' %}<span class="badge badge-purple">Escalated</span>
+              {% elif alert.status == 'reviewing' %}<span class="badge badge-blue">Reviewing</span>
+              {% elif alert.status == 'resolved' %}<span class="badge badge-green">Resolved</span>
+              {% else %}<span class="badge badge-gray">{{ alert.status }}</span>{% endif %}
+            </td>
+            <td class="mono">{{ alert.created_at.strftime('%Y-%m-%d %H:%M') if alert.created_at else '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+      <p>No fraud/AML alerts linked to this transaction.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div style="margin-top: 16px;">
+  <a href="{{ url_for('admin.compliance.aml_queue') }}" class="btn btn-secondary">
+    <i class="fas fa-arrow-left"></i> Back to AML Queue
+  </a>
+</div>
+{% endblock %}

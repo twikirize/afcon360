@@ -68,7 +68,7 @@ except ImportError:
     IDGUARD_AVAILABLE = False
     logging.warning("[ENV] IDGuard not available — ID mixing protection disabled")
 
-from flask import Flask, flash, redirect, render_template, session, current_app, url_for, request, jsonify
+from flask import Flask, flash, redirect, render_template, session, current_app, url_for, request, jsonify, g
 
 try:
     from flask_session import Session
@@ -83,7 +83,7 @@ from flask_wtf.csrf import CSRFError
 from typing import Dict
 from app.config import get_config  # layered config with env validation
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
-from app.services.module_toggle_service import ModuleToggleService
+from app.utils.module_toggle_service import ModuleToggleService
 
 
 # Configure logging globally at the entry point
@@ -224,6 +224,22 @@ def create_app(config_object=None) -> Flask:
 
     # Replace the default loader with our encoding-safe one
     app.jinja_env.loader = EncodingSafeLoader(template_path)
+
+    # -------------------------------------------------------------------------
+    # FLASH CATEGORY NORMALIZATION (validation vs notification boundary)
+    # Single source of truth: any flash category is mapped to a Bootstrap-safe
+    # alert class. 'error' (legacy) -> 'danger'. Unknown -> 'info'.
+    # This enforces the rule in notifications/_notification_implement.md §8 so
+    # inline flash loops and the shared macro render consistently everywhere.
+    # -------------------------------------------------------------------------
+    def flash_alert_class(category):
+        if category in ("error", "danger"):
+            return "danger"
+        if category in ("success", "warning", "info"):
+            return category
+        return "info"
+
+    app.jinja_env.globals["flash_alert_class"] = flash_alert_class
 
     # Load configuration — this triggers _load_env() in config.py which loads
     # .env (base) then .env.{APP_ENV} (local/docker/prod) before we read anything
@@ -979,6 +995,8 @@ def create_app(config_object=None) -> Flask:
     try:
         from app.notifications import notifications_api
         app.register_blueprint(notifications_api)
+        from app.notifications.pages import communication_pages
+        app.register_blueprint(communication_pages)
         app.logger.info("✅ Notifications module registered")
     except Exception as e:
         app.logger.error(f"❌ Failed to register notifications module: {e}")
@@ -989,6 +1007,24 @@ def create_app(config_object=None) -> Flask:
         register_notification_listeners()
     except Exception as e:
         app.logger.error(f"❌ Failed to register notification listeners: {e}")
+
+    # Platform event backbone admin/observability API (/api/events)
+    try:
+        from app.notifications.events.routes import events_api
+        app.register_blueprint(events_api)
+        app.logger.info("✅ Event backbone API registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register event backbone API: {e}")
+
+    # Correlation-ID propagation for the platform event backbone.
+    # Binds X-AFCON360-Correlation-Id per request so every domain event,
+    # notification and delivery attempt in one user journey shares a trace id.
+    try:
+        from app.notifications.events.context import install_request_correlation
+        install_request_correlation(app)
+        app.logger.info("✅ Event correlation middleware registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register correlation middleware: {e}")
 
     # CSP Status Routes
     try:
@@ -1319,6 +1355,41 @@ def create_app(config_object=None) -> Flask:
         """Inject notification + message badge counts and recent items into all templates."""
         from app.notifications.context import inject_notification_context
         return inject_notification_context()
+
+    # ------------------------------------------------------------------
+    # Per-module notification scoping
+    # ------------------------------------------------------------------
+    # AFCON360 runs several independent businesses (accommodation, transport,
+    # events, wallet, tourism, tournament) on ONE notification system. When a
+    # user is inside a module's console, the notification bell should show that
+    # module's activity — not a hotel booking mixed in with a bus booking.
+    #
+    # Done centrally by URL prefix so each module blueprint stays untouched and
+    # new routes are covered automatically. A blueprint can still override by
+    # setting `g.notification_module` itself.
+    _MODULE_URL_PREFIXES = (
+        ('/accommodation', 'accommodation'),
+        ('/transport',     'transport'),
+        ('/api/transport', 'transport'),
+        ('/events',        'events'),
+        ('/wallet',        'wallet'),
+        ('/api/wallet',    'wallet'),
+        ('/tourism',       'tourism'),
+        ('/tournament',    'tournament'),
+    )
+
+    @app.before_request
+    def _scope_notification_module():
+        """Tag the request with its originating module for the notification bell."""
+        try:
+            path = (request.path or '').lower()
+            for prefix, module in _MODULE_URL_PREFIXES:
+                if path.startswith(prefix):
+                    g.notification_module = module
+                    return
+        except Exception:
+            # Never let notification scoping break a request.
+            pass
 
     # Add format_number template filter
     @app.template_filter('format_number')

@@ -490,3 +490,66 @@
   .quick-action { min-width: 90px; }
   .home-main { padding: 0.75rem; gap: 1rem; }
 }
+
+/* ── User menu trigger (avatar + label) ─────────────────────── */
+.nav-user-trigger {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 3px 10px 3px 6px;
+  border-radius: 30px;
+  transition: background 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.nav-user-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.nav-user-avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  background: #3b82f6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav-user-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+}
+
+/* Hide label on smaller screens (≤ 768px) – avatar only */
+@media (max-width: 768px) {
+  .nav-user-name {
+    display: none !important;
+  }
+  .nav-user-trigger {
+    gap: 4px;
+  }
+}
+
+/* Ensure dropdown stays right-aligned */
+.nav-user-menu .drop-menu--right {
+  right: 0 !important;
+  left: auto !important;
+  min-width: 200px;
+  max-width: 260px;
+}

@@ -3,6 +3,9 @@
 {% block title %}User Dashboard - AFCON360{% endblock %}
 
 {% block styles %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/user/shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/user/dashboard.css') }}">
@@ -28,7 +31,7 @@
                 <i class="fas fa-home" aria-hidden="true"></i><span>Home</span>
             </a>
             
-            <a href="#" class="nav-item" data-section="events">
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('events.list') }}">
                 <i class="fas fa-ticket-alt" aria-hidden="true"></i><span>Events</span>
             </a>
 
@@ -45,7 +48,7 @@
             {% endif %}
 
             {% if module_enabled('accommodation') %}
-            <a href="#" class="nav-item" data-pane-url="{{ safe_url('accommodation.guest_search') }}">
+            <a href="#" class="nav-item" data-pane-url="{{ safe_url('accommodation.guest_dashboard') }}">
                 <i class="fas fa-bed" aria-hidden="true"></i><span>Stays</span>
             </a>
             {% endif %}
@@ -58,9 +61,15 @@
 
             <div style="margin-top:auto; display:flex; flex-direction:column; gap:2px; padding-top:12px; border-top:0.5px solid var(--color-border-tertiary);">
                 <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.my_public_profile') }}">
-                    <i class="fas fa-user" aria-hidden="true"></i><span>Profile</span>
+                    <i class="fas fa-id-card" aria-hidden="true"></i><span>Public Profile</span>
                 </a>
                 <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.account_overview') }}">
+                    <i class="fas fa-user" aria-hidden="true"></i><span>Account</span>
+                </a>
+                <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.edit_profile') }}">
+                    <i class="fas fa-edit" aria-hidden="true"></i><span>Edit Profile</span>
+                </a>
+                <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.settings_pane') }}">
                     <i class="fas fa-cog" aria-hidden="true"></i><span>Settings</span>
                 </a>
             </div>

@@ -156,6 +156,15 @@
     <div class="settings-section">
         <h3 class="section-title">Platform Management</h3>
         <div class="settings-grid">
+            <a href="{{ url_for('media_admin.media_settings_page') }}" class="settings-card">
+                <div class="card-icon">📁</div>
+                <div class="card-title">Media Management & Settings</div>
+                <div class="card-description">
+                    Configure storage limits, security checks, and view uploaded media files
+                </div>
+                <span class="card-badge badge-platform">Media</span>
+            </a>
+
             <a href="{{ url_for('admin_settings.platform_settings') }}" class="settings-card">
                 <div class="card-icon">📱</div>
                 <div class="card-title">Platform Settings</div>

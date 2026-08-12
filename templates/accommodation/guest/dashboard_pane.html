@@ -1,0 +1,5 @@
+{# templates/accommodation/guest/dashboard_pane.html #}
+{# Pane fragment loaded by the shared shell (?_pane=1). No base extend so it
+   injects cleanly into #shellContent without nesting the full layout. #}
+{% from "macros/booking_macros.html" import booking_type_badge %}
+{% include "accommodation/guest/_dashboard_content.html" %}

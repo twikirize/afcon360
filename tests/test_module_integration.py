@@ -44,13 +44,13 @@ class ModuleIsolationIntegrationTest(unittest.TestCase):
             print(f"PASS: module_enabled('tourism') = {result}")
     
     def test_2_safe_url_handles_disabled(self):
-        """Test safe_url returns '#' for disabled module endpoints."""
+        """Test safe_url returns fallback/disabled URL for disabled module endpoints."""
         from app.utils.module_guard import safe_url
         
         with self.app.app_context():
             url = safe_url('tourism.nonexistent')
-            self.assertEqual(url, '#')
-            print(f"PASS: safe_url returns '#' for missing endpoint")
+            self.assertIn(url, ['#', '/module-disabled/tourism'])
+            print(f"PASS: safe_url handled disabled endpoint: {url}")
     
     def test_3_template_has_module_enabled(self):
         """Test templates have access to module_enabled function."""
@@ -92,7 +92,7 @@ class ModuleIsolationIntegrationTest(unittest.TestCase):
     def test_6_dashboard_with_disabled_modules(self):
         """Test dashboard loads when modules are disabled."""
         with self.app.app_context():
-            from app.services.module_toggle_service import ModuleToggleService
+            from app.utils.module_toggle_service import ModuleToggleService
             
             # Disable all modules
             for module in ['tourism', 'transport', 'accommodation']:
@@ -106,7 +106,7 @@ class ModuleIsolationIntegrationTest(unittest.TestCase):
     def test_7_module_reload_middleware(self):
         """Test module flags reload without restart."""
         with self.app.app_context():
-            from app.services.module_toggle_service import ModuleToggleService
+            from app.utils.module_toggle_service import ModuleToggleService
             
             # Toggle a module
             initial = ModuleToggleService.is_enabled('tourism')

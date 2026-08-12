@@ -38,7 +38,7 @@ def test_alert_owner_dead_letter():
     # Setup the query chain to return our fake_owner
     with patch('app.tasks.webhook_processor.MAX_ATTEMPTS', 3), \
             patch('app.extensions.redis_client.incr', redis_incr_mock), \
-            patch('app.services.sms_service.send_sms', send_sms_mock), \
+            patch('app.notifications.sms_service.send_sms', send_sms_mock), \
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         # Create fake event
         event = SimpleNamespace(
@@ -88,7 +88,7 @@ def test_alert_owner_dead_letter_sms_only():
 
     with patch('app.tasks.webhook_processor.MAX_ATTEMPTS', 3), \
             patch('app.extensions.redis_client.incr', redis_incr_mock), \
-            patch('app.services.sms_service.send_sms', send_sms_mock), \
+            patch('app.notifications.sms_service.send_sms', send_sms_mock), \
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
@@ -120,7 +120,7 @@ def test_alert_owner_dead_letter_email_only():
 
     with patch('app.tasks.webhook_processor.MAX_ATTEMPTS', 3), \
             patch('app.extensions.redis_client.incr', redis_incr_mock), \
-            patch('app.services.sms_service.send_sms', send_sms_mock), \
+            patch('app.notifications.sms_service.send_sms', send_sms_mock), \
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
@@ -144,7 +144,7 @@ def test_alert_owner_dead_letter_no_owner():
 
     with patch('app.tasks.webhook_processor.MAX_ATTEMPTS', 3), \
             patch('app.extensions.redis_client.incr', redis_incr_mock), \
-            patch('app.services.sms_service.send_sms', send_sms_mock), \
+            patch('app.notifications.sms_service.send_sms', send_sms_mock), \
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
@@ -177,7 +177,7 @@ def test_alert_owner_dead_letter_fallback_query():
 
     with patch('app.tasks.webhook_processor.MAX_ATTEMPTS', 3), \
             patch('app.extensions.redis_client.incr', redis_incr_mock), \
-            patch('app.services.sms_service.send_sms', send_sms_mock), \
+            patch('app.notifications.sms_service.send_sms', send_sms_mock), \
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
 
     # Create the missing send_sms function if needed
-    import app.services.sms_service
+    import app.notifications.sms_service
 
     if not hasattr(app.services.sms_service, 'send_sms'):
         print("⚠️  Warning: send_sms function not found in sms_service.py")

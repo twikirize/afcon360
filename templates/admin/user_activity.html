@@ -8,59 +8,100 @@
     .activity-container {
         max-width: 1200px;
         margin: 0 auto;
-        padding: 20px;
+        padding: clamp(16px, 3vw, 28px);
+    }
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 18px;
+        padding: 7px 14px;
+        border-radius: var(--sad-r);
+        background: var(--sad-surface2);
+        border: 1px solid var(--sad-border2);
+        color: var(--sad-text2);
+        font-size: 12px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.15s;
+    }
+    .back-link:hover {
+        color: var(--sad-text);
+        background: var(--sad-surface3);
+        border-color: var(--sad-accent);
     }
     .user-header {
         display: flex;
         align-items: center;
-        gap: 20px;
-        margin-bottom: 30px;
-        padding: 25px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 12px;
-        color: white;
+        gap: clamp(14px, 3vw, 24px);
+        margin-bottom: 24px;
+        padding: clamp(18px, 3vw, 28px);
+        background: linear-gradient(135deg, var(--sad-accent) 0%, var(--sad-purple) 100%);
+        border-radius: var(--sad-r2);
+        color: #fff;
+        box-shadow: 0 8px 24px rgba(108,143,255,0.18);
     }
     .user-avatar {
-        width: 80px;
-        height: 80px;
+        width: clamp(60px, 12vw, 84px);
+        height: clamp(60px, 12vw, 84px);
         border-radius: 50%;
-        background: rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.18);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 32px;
+        font-size: clamp(26px, 6vw, 36px);
+        flex-shrink: 0;
+    }
+    .user-info {
+        min-width: 0;
     }
     .user-info h1 {
         margin: 0 0 10px 0;
-        font-size: 24px;
+        font-size: clamp(19px, 4vw, 26px);
+        font-weight: 600;
+        line-height: 1.2;
+        word-break: break-word;
     }
     .user-info p {
         margin: 5px 0;
-        opacity: 0.9;
+        opacity: 0.92;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .user-info p i {
+        opacity: 0.85;
+        font-size: 14px;
     }
     .activity-tabs {
         display: flex;
-        border-bottom: 2px solid #e0e0e0;
+        flex-wrap: wrap;
+        gap: 4px;
+        border-bottom: 2px solid var(--sad-border);
         margin-bottom: 20px;
     }
     .tab-button {
-        padding: 12px 24px;
+        padding: 11px 18px;
         background: none;
         border: none;
         border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
         font-weight: 600;
-        color: #666;
+        font-size: 13px;
+        color: var(--sad-text3);
         cursor: pointer;
         transition: all 0.2s;
+        white-space: nowrap;
     }
     .tab-button:hover {
-        color: #333;
-        background: #f5f5f5;
+        color: var(--sad-text);
+        background: var(--sad-surface2);
     }
     .tab-button.active {
-        color: #667eea;
-        border-bottom-color: #667eea;
-        background: #f0f2ff;
+        color: var(--sad-accent);
+        border-bottom-color: var(--sad-accent);
+        background: var(--sad-surface2);
     }
     .tab-content {
         display: none;
@@ -68,62 +109,108 @@
     .tab-content.active {
         display: block;
     }
+    .activity-card {
+        background: var(--sad-surface);
+        border: 1px solid var(--sad-border);
+        border-radius: var(--sad-r2);
+        overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .activity-scroll {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
     .activity-table {
         width: 100%;
         border-collapse: collapse;
-        background: white;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        min-width: 640px;
     }
     .activity-table th, .activity-table td {
-        border: 1px solid #e0e0e0;
-        padding: 12px 15px;
+        padding: 12px 16px;
         text-align: left;
+        border-bottom: 1px solid var(--sad-border);
     }
     .activity-table th {
-        background: #f8f9fa;
+        background: var(--sad-surface2);
+        font-size: 10px;
+        font-family: var(--sad-mono);
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: var(--sad-text3);
         font-weight: 600;
-        color: #333;
+        white-space: nowrap;
     }
-    .activity-table tr:hover {
-        background: #f9f9f9;
+    .activity-table td {
+        font-size: 13px;
+        color: var(--sad-text);
+        vertical-align: top;
+    }
+    .activity-table tr:last-child td {
+        border-bottom: none;
+    }
+    .activity-table tr:hover td {
+        background: var(--sad-surface2);
     }
     .badge {
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 11px;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-size: 10.5px;
         font-weight: 600;
+        font-family: var(--sad-mono);
         display: inline-block;
+        letter-spacing: 0.3px;
     }
-    .badge-success { background: #d4edda; color: #155724; }
-    .badge-warning { background: #fff3cd; color: #856404; }
-    .badge-danger { background: #f8d7da; color: #721c24; }
-    .badge-info { background: #d1ecf1; color: #0c5460; }
-    .badge-secondary { background: #e2e3e5; color: #383d41; }
+    .badge-success { background: rgba(62,207,142,0.14); color: var(--sad-green); }
+    .badge-warning { background: rgba(245,166,35,0.14); color: var(--sad-amber); }
+    .badge-danger  { background: rgba(240,106,106,0.16); color: var(--sad-red); }
+    .badge-info    { background: rgba(48,201,214,0.14); color: var(--sad-cyan); }
+    .badge-secondary { background: var(--sad-surface3); color: var(--sad-text3); }
     .timestamp {
         font-size: 12px;
-        color: #666;
-        font-family: monospace;
+        color: var(--sad-text3);
+        font-family: var(--sad-mono);
+        white-space: nowrap;
     }
     .empty-state {
         text-align: center;
-        padding: 40px;
-        color: #666;
+        padding: 48px 20px;
+        color: var(--sad-text3);
     }
     .empty-state i {
-        font-size: 48px;
-        margin-bottom: 15px;
-        opacity: 0.5;
+        font-size: 46px;
+        margin-bottom: 14px;
+        opacity: 0.45;
+        display: block;
+        color: var(--sad-accent);
     }
-    .back-link {
-        display: inline-block;
-        margin-bottom: 20px;
-        color: #667eea;
-        text-decoration: none;
+    .empty-state h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        color: var(--sad-text);
+        font-weight: 600;
     }
-    .back-link:hover {
-        text-decoration: underline;
+    .empty-state p {
+        margin: 0;
+        font-size: 13px;
+    }
+    @media (max-width: 600px) {
+        .user-header {
+            flex-direction: column;
+            text-align: center;
+        }
+        .user-info p {
+            justify-content: center;
+        }
+        .activity-tabs {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 2px;
+        }
+        .tab-button {
+            flex: 1 0 auto;
+        }
     }
 </style>
 {% endblock %}
@@ -155,32 +242,36 @@
     <!-- Security Events Tab -->
     <div id="security-tab" class="tab-content active">
         {% if security_events %}
-        <table class="activity-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Event Type</th>
-                    <th>Severity</th>
-                    <th>Description</th>
-                    <th>IP Address</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for event in security_events %}
-                <tr>
-                    <td class="timestamp">{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') if event.created_at else "N/A" }}</td>
-                    <td>{{ event.event_type }}</td>
-                    <td>
-                        <span class="badge badge-{{ 'danger' if event.severity == 'CRITICAL' else 'warning' if event.severity == 'HIGH' else 'info' if event.severity == 'MEDIUM' else 'secondary' }}">
-                            {{ event.severity }}
-                        </span>
-                    </td>
-                    <td>{{ event.description }}</td>
-                    <td>{{ event.ip_address or "N/A" }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="activity-card">
+            <div class="activity-scroll">
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Event Type</th>
+                            <th>Severity</th>
+                            <th>Description</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in security_events %}
+                        <tr>
+                            <td class="timestamp">{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') if event.created_at else "N/A" }}</td>
+                            <td>{{ event.event_type }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'danger' if event.severity == 'CRITICAL' else 'warning' if event.severity == 'HIGH' else 'info' if event.severity == 'MEDIUM' else 'secondary' }}">
+                                    {{ event.severity }}
+                                </span>
+                            </td>
+                            <td>{{ event.description }}</td>
+                            <td>{{ event.ip_address or "N/A" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
         {% else %}
         <div class="empty-state">
             <i class="bi bi-shield-check"></i>
@@ -193,28 +284,32 @@
     <!-- Data Access Tab -->
     <div id="data-access-tab" class="tab-content">
         {% if data_access_logs %}
-        <table class="activity-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Access Type</th>
-                    <th>Data Category</th>
-                    <th>Purpose</th>
-                    <th>Legal Basis</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in data_access_logs %}
-                <tr>
-                    <td class="timestamp">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else "N/A" }}</td>
-                    <td>{{ log.access_type }}</td>
-                    <td>{{ log.data_category }}</td>
-                    <td>{{ log.purpose }}</td>
-                    <td>{{ log.legal_basis|replace('_', ' ')|title }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="activity-card">
+            <div class="activity-scroll">
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Access Type</th>
+                            <th>Data Category</th>
+                            <th>Purpose</th>
+                            <th>Legal Basis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in data_access_logs %}
+                        <tr>
+                            <td class="timestamp">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else "N/A" }}</td>
+                            <td>{{ log.access_type }}</td>
+                            <td>{{ log.data_category }}</td>
+                            <td>{{ log.purpose }}</td>
+                            <td>{{ log.legal_basis|replace('_', ' ')|title }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
         {% else %}
         <div class="empty-state">
             <i class="bi bi-database"></i>
@@ -227,32 +322,36 @@
     <!-- Data Changes Tab -->
     <div id="data-changes-tab" class="tab-content">
         {% if data_changes %}
-        <table class="activity-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Entity Type</th>
-                    <th>Entity ID</th>
-                    <th>Operation</th>
-                    <th>Changed By</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for change in data_changes %}
-                <tr>
-                    <td class="timestamp">{{ change.created_at.strftime('%Y-%m-%d %H:%M:%S') if change.created_at else "N/A" }}</td>
-                    <td>{{ change.entity_type }}</td>
-                    <td>{{ change.entity_id }}</td>
-                    <td>
-                        <span class="badge badge-{{ 'success' if change.operation == 'create' else 'warning' if change.operation == 'update' else 'danger' if change.operation == 'delete' else 'info' }}">
-                            {{ change.operation|upper }}
-                        </span>
-                    </td>
-                    <td>{{ change.changed_by }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="activity-card">
+            <div class="activity-scroll">
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Entity Type</th>
+                            <th>Entity ID</th>
+                            <th>Operation</th>
+                            <th>Changed By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for change in data_changes %}
+                        <tr>
+                            <td class="timestamp">{{ change.created_at.strftime('%Y-%m-%d %H:%M:%S') if change.created_at else "N/A" }}</td>
+                            <td>{{ change.entity_type }}</td>
+                            <td>{{ change.entity_id }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'success' if change.operation == 'create' else 'warning' if change.operation == 'update' else 'danger' if change.operation == 'delete' else 'info' }}">
+                                    {{ change.operation|upper }}
+                                </span>
+                            </td>
+                            <td>{{ change.changed_by }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
         {% else %}
         <div class="empty-state">
             <i class="bi bi-pencil-square"></i>
@@ -265,34 +364,38 @@
     <!-- API Calls Tab -->
     <div id="api-calls-tab" class="tab-content">
         {% if api_calls %}
-        <table class="activity-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Service</th>
-                    <th>Endpoint</th>
-                    <th>Method</th>
-                    <th>Status</th>
-                    <th>Response Time</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for call in api_calls %}
-                <tr>
-                    <td class="timestamp">{{ call.created_at.strftime('%Y-%m-%d %H:%M:%S') if call.created_at else "N/A" }}</td>
-                    <td>{{ call.service_name }}</td>
-                    <td>{{ call.endpoint }}</td>
-                    <td>{{ call.method }}</td>
-                    <td>
-                        <span class="badge badge-{{ 'success' if call.status == 'SUCCESS' else 'danger' if call.status == 'FAILURE' else 'warning' }}">
-                            {{ call.status }}
-                        </span>
-                    </td>
-                    <td>{{ call.response_time_ms }} ms</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="activity-card">
+            <div class="activity-scroll">
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Service</th>
+                            <th>Endpoint</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                            <th>Response Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for call in api_calls %}
+                        <tr>
+                            <td class="timestamp">{{ call.created_at.strftime('%Y-%m-%d %H:%M:%S') if call.created_at else "N/A" }}</td>
+                            <td>{{ call.service_name }}</td>
+                            <td>{{ call.endpoint }}</td>
+                            <td>{{ call.method }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'success' if call.status == 'SUCCESS' else 'danger' if call.status == 'FAILURE' else 'warning' }}">
+                                    {{ call.status }}
+                                </span>
+                            </td>
+                            <td>{{ call.response_time_ms }} ms</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
         {% else %}
         <div class="empty-state">
             <i class="bi bi-plug"></i>

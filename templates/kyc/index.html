@@ -16,16 +16,20 @@
         <div class="panel-header">
             <div class="panel-title">Verification Progress</div>
         </div>
-        <div class="panel-body">
+        <div class="panel-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:280px; text-align:center;">
             {% set progress_pct = {1: '33', 2: '66', 3: '100'}.get(kyc_stage, '33') %}
             <div class="kyc-progress-tracker" data-progress="{{ progress_pct }}"
-                 data-stage="{{ kyc_stage }}" data-status="{{ overall_status }}">
+                 data-stage="{{ kyc_stage }}" data-status="{{ overall_status }}" style="width:100%; max-width:720px; margin-bottom:1.5rem;">
 
                 <ul class="progress-steps">
                     {# Stage 1 — Submitted #}
                     <li class="step-item {% if overall_status == 'not_started' %}active{% elif kyc_stage >= 1 %}completed{% endif %}">
                         <span class="step-circle">
-                            <i class="step-icon bi bi-1-circle-fill"></i>
+                            {% if overall_status == 'not_started' %}
+                                <i class="step-icon bi bi-circle" style="font-size:1.4rem;"></i>
+                            {% else %}
+                                <i class="step-icon bi bi-check-lg"></i>
+                            {% endif %}
                         </span>
                         <span class="step-label">Submitted</span>
                         <span class="step-sub">
@@ -35,12 +39,14 @@
                     </li>
 
                     {# Stage 2 — Processing #}
-                    <li class="step-item {% if kyc_stage >= 2 %}active{% endif %} {% if overall_status == 'rejected' %}rejected{% endif %}">
+                    <li class="step-item {% if kyc_stage >= 2 and overall_status != 'rejected' %}active{% endif %} {% if overall_status == 'rejected' %}rejected{% endif %}">
                         <span class="step-circle">
                             {% if overall_status == 'rejected' %}
                                 <i class="step-icon bi bi-x-lg"></i>
+                            {% elif kyc_stage >= 2 %}
+                                <i class="step-icon bi bi-arrow-repeat"></i>
                             {% else %}
-                                <i class="step-icon bi bi-gear-fill"></i>
+                                <i class="step-icon bi bi-circle" style="font-size:1.4rem;"></i>
                             {% endif %}
                         </span>
                         <span class="step-label">Processing</span>
@@ -54,7 +60,11 @@
                     {# Stage 3 — Verified #}
                     <li class="step-item {% if kyc_stage >= 3 %}completed{% endif %}">
                         <span class="step-circle">
-                            <i class="step-icon bi bi-check-lg"></i>
+                            {% if kyc_stage >= 3 %}
+                                <i class="step-icon bi bi-check-lg"></i>
+                            {% else %}
+                                <i class="step-icon bi bi-circle" style="font-size:1.4rem;"></i>
+                            {% endif %}
                         </span>
                         <span class="step-label">Verified</span>
                         <span class="step-sub">
@@ -65,7 +75,7 @@
                 </ul>
             </div>
 
-            <p class="mt-3 mb-0 text-center text-secondary" style="font-size:0.85rem;">
+            <p class="mb-3" style="font-size:0.95rem; color:var(--text-primary); max-width:520px; line-height:1.6;">
                 {% if overall_status == 'not_started' %}
                     You have not submitted any verification documents yet.
                 {% elif overall_status == 'verified' %}
@@ -76,6 +86,20 @@
                     Your documents are being reviewed by our compliance team.
                 {% endif %}
             </p>
+
+            {% if overall_status != 'verified' %}
+            <div class="mt-2">
+                {% if show_organization %}
+                    <a href="{{ url_for('kyc.upload') }}" class="btn btn-primary">
+                        <i class="fas fa-building me-1"></i> Submit Organization Verification
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('kyc.upload') }}" class="btn btn-primary">
+                        <i class="fas fa-shield-alt me-1"></i> Start / Continue Verification
+                    </a>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

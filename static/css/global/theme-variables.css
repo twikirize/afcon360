@@ -34,8 +34,9 @@
 
   /* ===== TEXT COLORS ===== */
   --text-primary: #1a1a1a;
-  --text-secondary: #4a4a4a;
-  --text-muted: #6c757d;
+  --text-secondary: #374151;
+  --text-muted: #495057;
+  --text-tertiary: #6c757d;
   --text-light: #ffffff;
   --text-disabled: #adb5bd;
 
@@ -142,7 +143,7 @@
   
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
-  --color-text-tertiary: var(--text-muted);
+  --color-text-tertiary: var(--text-tertiary);
   --color-text-info: var(--info);
   --color-text-success: var(--success);
   --color-text-danger: var(--danger);
@@ -205,8 +206,8 @@ body.dark-mode {
 /* Force light mode - default theme */
 body.light-mode {
   --text-primary: #1a1a1a;
-  --text-secondary: #4a4a4a;
-  --text-muted: #6c757d;
+  --text-secondary: #374151;
+  --text-muted: #495057;
   --bg-body: #f2f4f2;
   --bg-surface: #ffffff;
   --bg-surface-alt: #f8f9fa;
@@ -219,8 +220,8 @@ body.light-mode {
 body {
   /* Default to light mode colors */
   --text-primary: #1a1a1a;
-  --text-secondary: #4a4a4a;
-  --text-muted: #6c757d;
+  --text-secondary: #374151;
+  --text-muted: #495057;
   --bg-body: #f2f4f2;
   --bg-surface: #ffffff;
   --bg-surface-alt: #f8f9fa;

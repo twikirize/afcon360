@@ -12,11 +12,16 @@
                 </div>
                 <div class="card-body">
                     {% if booking.registration_deadline %}
-                    <div class="alert {{ 'alert-warning' if booking.registration_deadline <= booking.check_in else 'alert-info' }} small py-2 mb-3">
+                    <div class="alert {{ 'alert-warning' if booking.registration_deadline_passed else 'alert-info' }} small py-2 mb-3">
                         <i class="fas fa-clock me-1"></i>
                         Registration deadline: <strong>{{ booking.registration_deadline.strftime('%b %d, %Y') }}</strong>
-                        {% if booking.registration_deadline <= booking.check_in %}
-                        <br><strong>Overdue!</strong> Incomplete registration may block check-in.
+                        {% if booking.registration_deadline_passed %}
+                        <br>
+                        <strong>This deadline has passed.</strong>
+                        You can still complete your registration here, or finish it at the
+                        front desk when you arrive. Your booking is safe.
+                        {% else %}
+                        <br>Registering early helps your host prepare for your arrival.
                         {% endif %}
                     </div>
                     {% endif %}

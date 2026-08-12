@@ -1,0 +1,90 @@
+{# templates/accommodation/guest/complaints.html #}
+{% extends "base.html" %}
+{% block title %}My Complaints - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h1 class="h3 mb-0">My Complaints</h1>
+        <a href="{{ safe_url('accommodation.guest_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Dashboard
+        </a>
+    </div>
+
+    <!-- New complaint form -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold"><i class="fas fa-plus-circle me-2 text-danger"></i>Raise a complaint</div>
+        <div class="card-body">
+            <form method="POST" action="{{ safe_url('accommodation.guest_complaint_new') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small">Related booking</label>
+                        <select name="booking_id" class="form-select">
+                            <option value="">— General / no booking —</option>
+                            {% for b in bookings %}
+                            <option value="{{ b.id }}">
+                                {{ b.accommodation_property.title if b.accommodation_property else 'Property' }}
+                                ({{ b.booking_reference }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Category</label>
+                        <select name="category" class="form-select">
+                            <option value="cleanliness">Cleanliness</option>
+                            <option value="safety">Safety</option>
+                            <option value="billing">Billing</option>
+                            <option value="host">Host behaviour</option>
+                            <option value="facility">Facility</option>
+                            <option value="booking">Booking issue</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Priority</label>
+                        <select name="priority" class="form-select">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Subject</label>
+                        <input type="text" name="subject" class="form-control" maxlength="255" required placeholder="Short summary">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Description</label>
+                        <textarea name="description" class="form-control" rows="3" required placeholder="Describe the issue in detail"></textarea>
+                    </div>
+                    <div class="col-12 text-end">
+                        <button type="submit" class="btn btn-danger"><i class="fas fa-paper-plane me-1"></i> Submit complaint</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Existing complaints -->
+    <h2 class="h5 mb-3">Submitted complaints</h2>
+    {% if complaints %}
+        <div class="list-group shadow-sm">
+        {% for c in complaints %}
+            <a href="{{ safe_url('accommodation.guest_complaint_detail', reference=c.reference) }}" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold">{{ c.subject }}</span>
+                    <span class="badge bg-{{ 'success' if c.status == 'resolved' else 'warning' if c.status in ('open','in_review') else 'secondary' }}">{{ c.status|replace('_',' ')|title }}</span>
+                </div>
+                <div class="small text-muted">{{ c.reference }} · {{ c.category|replace('_',' ')|title }} · {{ c.created_at.strftime('%b %d, %Y') }}</div>
+            </a>
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-light border">You have not raised any complaints.</div>
+    {% endif %}
+
+</div>
+{% endblock %}

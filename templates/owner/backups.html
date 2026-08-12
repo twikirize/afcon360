@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}Database Backups - AFCON360 Owner{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <style>
+    :root {
+      --bk-radius: clamp(10px, 2vw, 16px);
+      --bk-gap: clamp(12px, 2.5vw, 20px);
+      --bk-pad: clamp(14px, 3vw, 22px);
+    }
+    .bk-wrap { max-width: 1100px; margin: 0 auto; padding: var(--bk-pad); }
+    .bk-head {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      justify-content: space-between; margin-bottom: var(--bk-gap);
+    }
+    .bk-head h1 { font-size: clamp(1.3rem, 4vw, 2rem); margin: 0; }
+    .bk-grid {
+      display: grid; gap: var(--bk-gap);
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    }
+    .bk-card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: var(--bk-radius);
+      padding: var(--bk-pad); box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .bk-card h3 { font-size: clamp(1rem, 3vw, 1.2rem); margin-top: 0; }
+    .bk-stat { font-size: clamp(1.4rem, 5vw, 2.2rem); font-weight: 700; }
+    .bk-btn {
+      min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; border-radius: 10px; padding: 0 16px; font-weight: 600;
+      border: 1px solid transparent; cursor: pointer; text-decoration: none;
+      font-size: 0.95rem; width: 100%;
+    }
+    .bk-btn-primary { background: #4f46e5; color: #fff; }
+    .bk-btn-success { background: #16a34a; color: #fff; }
+    .bk-btn-danger  { background: #dc2626; color: #fff; }
+    .bk-btn-ghost   { background: #fff; border-color: #cbd5e1; color: #334155; }
+    .bk-btn-warning { background: #d97706; color: #fff; }
+    .bk-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .bk-alert { border-radius: var(--bk-radius); padding: 12px 16px; margin-bottom: var(--bk-gap); }
+    .bk-alert-warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .bk-alert-ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+    .bk-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .bk-table th, .bk-table td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+    .bk-badge { padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+    .bk-badge-completed { background: #dcfce7; color: #166534; }
+    .bk-badge-failed { background: #fee2e2; color: #991b1b; }
+    .bk-badge-running { background: #e0e7ff; color: #3730a3; }
+    .bk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .bk-actions .bk-btn { width: auto; padding: 6px 12px; min-height: 38px; font-size: 0.85rem; }
+    .bk-empty { text-align: center; color: #64748b; padding: 30px 0; }
+    select, input[type="text"] { width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid #cbd5e1; }
+    .form-check { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+    .form-check input { width: 20px; height: 20px; }
+    @media (max-width: 640px) {
+      .bk-hide-sm { display: none; }
+      .bk-table thead { display: none; }
+      .bk-table, .bk-table tbody, .bk-table tr, .bk-table td { display: block; width: 100%; }
+      .bk-table tr { border: 1px solid #e5e7eb; border-radius: var(--bk-radius); margin-bottom: 12px; padding: 6px; }
+      .bk-table td { border: none; padding: 6px 8px; }
+      .bk-table td::before { content: attr(data-label); font-weight: 700; display: block; color: #475569; font-size: 0.75rem; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="bk-wrap">
+  <div class="bk-head">
+    <h1><i class="bi bi-database-gear"></i> Database Backups &amp; Restore</h1>
+    <a href="{{ url_for('admin.owner.dashboard') }}" class="bk-btn bk-btn-ghost" style="width:auto;">
+      <i class="bi bi-arrow-left"></i> Dashboard
+    </a>
+  </div>
+
+  {% if not tools_available %}
+    <div class="bk-alert bk-alert-warn">
+      <strong><i class="bi bi-exclamation-triangle"></i> Backup tools unavailable.</strong>
+      <div>PostgreSQL client tools (<code>pg_dump</code> / <code>psql</code>) were not found on the server PATH.
+      Backups and restores cannot run until they are installed. Scheduled backups will fail safely.</div>
+    </div>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="bk-alert {{ 'bk-alert-ok' if cat == 'success' else ('bk-alert-warn' if cat == 'warning' else 'bk-alert-warn') }}"
+           style="{{ 'background:#fee2e2;border-color:#fca5a5;color:#991b1b;' if cat == 'danger' else '' }}">
+        {{ msg }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Status summary -->
+  <div class="bk-grid" style="margin-bottom: var(--bk-gap);">
+    <div class="bk-card">
+      <div class="text-muted">Total backups</div>
+      <div class="bk-stat">{{ status.total }}</div>
+    </div>
+    <div class="bk-card">
+      <div class="text-muted">Completed</div>
+      <div class="bk-stat" style="color:#16a34a;">{{ status.completed }}</div>
+    </div>
+    <div class="bk-card">
+      <div class="text-muted">Failed</div>
+      <div class="bk-stat" style="color:#dc2626;">{{ status.failed }}</div>
+    </div>
+    <div class="bk-card">
+      <div class="text-muted">Last completed</div>
+      <div class="bk-stat" style="font-size:1rem;">{{ status.last_completed_at or '—' }}</div>
+    </div>
+  </div>
+
+  <!-- Create backup -->
+  <div class="bk-card" style="margin-bottom: var(--bk-gap);">
+    <h3><i class="bi bi-plus-circle"></i> Create Manual Backup</h3>
+    <p class="text-muted">Trigger an immediate snapshot of the database, files, or configuration.</p>
+    <form action="{{ url_for('admin.owner.owner_backup.create_backup') }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="bk-row" style="align-items:flex-end;">
+        <div style="flex:1; min-width:180px;">
+          <label class="form-label">Backup type</label>
+          <select name="backup_type">
+            {% for t in backup_types %}
+              <option value="{{ t }}">{{ t | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="bk-btn bk-btn-primary" style="width:auto;">
+          <i class="bi bi-cloud-upload"></i> Create Backup
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Scheduler settings -->
+  <div class="bk-card" style="margin-bottom: var(--bk-gap);">
+    <h3><i class="bi bi-clock-history"></i> Scheduled Backups</h3>
+    <p class="text-muted">Configure automated backups. Changes apply immediately (no restart required).</p>
+    <form action="{{ url_for('admin.owner.owner_backup.backup_settings') }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="bk-grid">
+        <div>
+          <label class="form-check">
+            <input type="checkbox" name="backup_enabled" {{ 'checked' if config.BACKUP_ENABLED else '' }}>
+            <span>Enable scheduled backups</span>
+          </label>
+        </div>
+        <div>
+          <label class="form-label">Frequency</label>
+          <select name="backup_frequency">
+            {% for f in frequencies %}
+              <option value="{{ f }}" {{ 'selected' if f == config.BACKUP_FREQUENCY else '' }}>{{ f | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-check">
+            <input type="checkbox" name="backup_include_files" {{ 'checked' if config.BACKUP_INCLUDE_FILES else '' }}>
+            <span>Include files (templates/static/uploads)</span>
+          </label>
+        </div>
+        <div>
+          <label class="form-check">
+            <input type="checkbox" name="backup_include_config" {{ 'checked' if config.BACKUP_INCLUDE_CONFIG else '' }}>
+            <span>Include system config</span>
+          </label>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <button type="submit" class="bk-btn bk-btn-success" style="width:auto;">
+          <i class="bi bi-save"></i> Save Schedule
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Backup list -->
+  <div class="bk-card">
+    <h3><i class="bi bi-list-ul"></i> Backup History</h3>
+    {% if backups %}
+      <div style="overflow-x:auto;">
+      <table class="bk-table">
+        <thead>
+          <tr>
+            <th>Type</th><th>Schedule</th><th>File</th><th>Size</th>
+            <th>Status</th><th>Created</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in backups %}
+            <tr>
+              <td data-label="Type">{{ b.backup_type | capitalize }}</td>
+              <td data-label="Schedule">{{ b.backup_schedule }}</td>
+              <td data-label="File" class="bk-hide-sm">{{ b.file_name or '—' }}</td>
+              <td data-label="Size">
+                {% if b.file_size %}{{ (b.file_size / 1024 / 1024) | round(2) }} MB{% else %}—{% endif %}
+              </td>
+              <td data-label="Status">
+                <span class="bk-badge bk-badge-{{ b.status }}">{{ b.status }}</span>
+              </td>
+              <td data-label="Created">{{ b.created_at.strftime('%Y-%m-%d %H:%M') if b.created_at else '—' }}</td>
+              <td data-label="Actions">
+                <div class="bk-actions">
+                  {% if b.status == 'completed' and b.file_path %}
+                    <a href="{{ url_for('admin.owner.owner_backup.download_backup', public_id=b.public_id) }}"
+                       class="bk-btn bk-btn-ghost"><i class="bi bi-download"></i> Download</a>
+                  {% endif %}
+                  {% if b.backup_type == 'database' and b.status == 'completed' %}
+                    <button type="button" class="bk-btn bk-btn-warning"
+                            onclick="openRestore('{{ b.public_id }}')">
+                      <i class="bi bi-arrow-counterclockwise"></i> Restore
+                    </button>
+                  {% endif %}
+                  <form action="{{ url_for('admin.owner.owner_backup.delete_backup', public_id=b.public_id) }}"
+                        method="POST" onsubmit="return confirm('Delete this backup permanently?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="bk-btn bk-btn-danger"><i class="bi bi-trash"></i> Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <div class="bk-empty">No backups yet. Create your first backup above.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Restore confirmation modal -->
+<div id="restoreModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1050;
+     align-items:center; justify-content:center; padding:16px;">
+  <div style="background:#fff; border-radius:16px; max-width:460px; width:100%; padding:22px;">
+    <h3 class="text-danger"><i class="bi bi-exclamation-triangle"></i> DANGER: Restore Database</h3>
+    <p>This will <strong>overwrite the current database</strong> with the selected backup inside a single
+       transaction. Active sessions and recent changes may be lost. This cannot be undone automatically.</p>
+    <form id="restoreForm" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label">Type <code>RESTORE DATABASE</code> to confirm:</label>
+      <input type="text" name="confirm_text" placeholder="RESTORE DATABASE" autocomplete="off" required>
+      <div class="bk-row" style="margin-top:14px; justify-content:flex-end;">
+        <button type="button" class="bk-btn bk-btn-ghost" style="width:auto;" onclick="closeRestore()">Cancel</button>
+        <button type="submit" class="bk-btn bk-btn-danger" style="width:auto;">
+          <i class="bi bi-arrow-counterclockwise"></i> Restore Now
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openRestore(publicId) {
+    document.getElementById('restoreForm').action =
+      "{{ url_for('admin.owner.owner_backup.restore_backup', public_id='__PID__') }}".replace('__PID__', publicId);
+    document.getElementById('restoreModal').style.display = 'flex';
+  }
+  function closeRestore() {
+    document.getElementById('restoreModal').style.display = 'none';
+  }
+  document.getElementById('restoreModal').addEventListener('click', function(e) {
+    if (e.target === this) closeRestore();
+  });
+</script>
+{% endblock %}

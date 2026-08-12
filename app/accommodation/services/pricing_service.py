@@ -4,6 +4,7 @@ Pricing Service - Calculate booking totals with fees, taxes, and discounts.
 """
 
 from datetime import date
+from app.extensions import db
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Optional
 from app.accommodation.models.property import Property

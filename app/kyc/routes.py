@@ -18,6 +18,7 @@ from app.extensions import db
 from app.kyc.nira_verification import verify_national_id, check_id_against_watchlist, generate_nira_report
 from app.kyc.models import KycRecord
 from app.kyc.services import KycService
+from app.media.service import MediaService
 from app.identity.models.kyb import OrganisationKYBDocument
 import hashlib
 from app.auth.kyc_compliance import (
@@ -25,6 +26,21 @@ from app.auth.kyc_compliance import (
     calculate_kyc_tier
 )
 from app.auth.decorators import require_moderator, require_fresh_user
+from app.auth.helpers import is_acting_as_organization, get_current_org_id
+from app.kyc.reupload import (
+    clear_individual_reupload_request,
+    clear_organisation_reupload_request,
+    get_individual_reupload_request,
+    get_organisation_reupload_requests,
+    load_reupload_token,
+    make_reupload_token,
+)
+
+
+def flash_form_error(message):
+    """Flash an error message (normalized category) for form submissions."""
+    flash(message, 'error')
+from app.utils.flash_helpers import flash_form_error, flash_notice
 
 kyc_bp = Blueprint("kyc", __name__, url_prefix="/kyc")
 
@@ -138,12 +154,19 @@ def index():
 
     state = _compute_verification_state(user_id)
 
+    in_org_context = is_acting_as_organization()
+    show_individual = not in_org_context
+    show_organization = in_org_context
+
     return render_template('kyc/index.html',
                            kyc_info=kyc_info,
                            records=records,
                            tier_requirements=TIER_INFO,
                            kyc_stage=state["stage"],
-                           overall_status=state["status"])
+                           overall_status=state["status"],
+                           in_org_context=in_org_context,
+                           show_individual=show_individual,
+                           show_organization=show_organization)
 
 
 # ── /kyc/api/state ──────────────────────────────────────────────────────────
@@ -207,7 +230,7 @@ def verify_address():
         country = request.form.get('country')
 
         if not all([document_url, address_line1, city, country]):
-            flash('Document URL and address details are required', 'error')
+            flash_form_error('Document URL and address details are required')
             return redirect(url_for('kyc.verify_address'))
 
         try:
@@ -227,7 +250,7 @@ def verify_address():
             flash('Address verification submitted successfully!', 'success')
             return redirect(url_for('kyc.index'))
         except Exception as e:
-            flash(f'Error submitting address verification: {str(e)}', 'error')
+            flash_form_error(f'Error submitting address verification: {str(e)}')
             return redirect(url_for('kyc.verify_address'))
 
     return render_template('kyc/verify_address.html')
@@ -276,7 +299,7 @@ def submit_national_id():
 
     # Basic presence check
     if not id_number or not surname or not given_names:
-        flash("All fields are required.", "error")
+        flash_form_error("All fields are required.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
     # ── 1. Run NIRA verification (format + manual review queue) ──────────────
@@ -288,13 +311,13 @@ def submit_national_id():
     )
 
     if not result.get("is_valid_format"):
-        flash(f"Invalid National ID format: {result.get('format_error', 'Unknown error')}", "error")
+        flash_form_error(f"Invalid National ID format: {result.get('format_error', 'Unknown error')}")
         return redirect(url_for("kyc.verify_national_id_page"))
 
     # ── 2. Watchlist check ────────────────────────────────────────────────────
     watchlist = check_id_against_watchlist(id_number)
     if watchlist.get("recommended_action") == "block_and_investigate":
-        flash("Your ID could not be processed at this time. Please contact support.", "error")
+        flash_form_error("Your ID could not be processed at this time. Please contact support.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
     # ── 3. Persist KycRecord ─────────────────────────────────────────────────
@@ -335,7 +358,7 @@ def submit_national_id():
     except Exception as exc:
         db.session.rollback()
         current_app.logger.error(f"KYC record creation failed for user {current_user.id}: {exc}")
-        flash("An error occurred while saving your verification. Please try again.", "error")
+        flash_form_error("An error occurred while saving your verification. Please try again.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
 # ── Additional KYC Routes ──────────────────────────────────────────────────
@@ -346,7 +369,7 @@ def pending_review():
     """Admin view of pending KYC records (requires admin privileges)."""
     # Check if user has admin or owner role
     if not (current_user.has_global_role('admin') or current_user.has_global_role('owner')):
-        flash('Access denied. Admin privileges required.', 'error')
+        flash_form_error('Access denied. Admin privileges required.')
         return redirect(url_for('kyc.index'))
 
     pending_records = KycService.get_pending_kyc(limit=100)
@@ -361,7 +384,7 @@ def pending_review():
 def admin_dashboard():
     """Admin KYC dashboard with statistics and management tools."""
     if not (current_user.has_global_role('admin') or current_user.has_global_role('owner')):
-        flash('Access denied. Admin privileges required.', 'error')
+        flash_form_error('Access denied. Admin privileges required.')
         return redirect(url_for('kyc.index'))
 
     stats = KycService.get_kyc_stats()
@@ -378,7 +401,7 @@ def admin_dashboard():
 def admin_search():
     """Admin search interface for KYC records."""
     if not (current_user.has_global_role('admin') or current_user.has_global_role('owner')):
-        flash('Access denied. Admin privileges required.', 'error')
+        flash_form_error('Access denied. Admin privileges required.')
         return redirect(url_for('kyc.index'))
 
     records = []
@@ -400,7 +423,7 @@ def admin_search():
             if end_date_str:
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
         except ValueError:
-            flash('Invalid date format. Use YYYY-MM-DD.', 'error')
+            flash_form_error('Invalid date format. Use YYYY-MM-DD.')
 
         records = KycService.search_kyc_records(
             search_term=search_term if search_term else None,
@@ -489,7 +512,7 @@ def hotel_guest_kyc():
     if not (current_user.has_global_role('hotel_owner') or
             current_user.has_global_role('hotel_manager') or
             current_user.has_global_role('admin')):
-        flash('Access denied. Hotel privileges required.', 'error')
+        flash_form_error('Access denied. Hotel privileges required.')
         return redirect(url_for('kyc.index'))
 
     # In a real implementation, this would fetch guests from hotel bookings
@@ -502,7 +525,7 @@ def driver_kyc_status():
     """Driver's own KYC status page."""
     if not (current_user.has_global_role('driver') or
             current_user.has_global_role('transport_operator')):
-        flash('Access denied. Driver privileges required.', 'error')
+        flash_form_error('Access denied. Driver privileges required.')
         return redirect(url_for('kyc.index'))
 
     user_id = current_user.id
@@ -522,55 +545,301 @@ def status():
     user_id = current_user.id
     records = KycRecord.query.filter_by(user_id=user_id).order_by(KycRecord.id.desc()).all()
     kyc_info = calculate_kyc_tier(user_id)
+    verification_status = KycService.get_user_verification_status(user_id)
+    user_orgs = _get_user_organisations()
 
     return render_template('kyc/status.html',
                            records=records,
-                           kyc_info=kyc_info)
+                           kyc_info=kyc_info,
+                           verification_status=verification_status,
+                           reupload_requests=_get_individual_reupload_requests(records),
+                           organisation_reupload_requests=(
+                               _get_organisation_reupload_requests(user_orgs)
+                           ))
+
+
+def _get_user_organisations():
+    """Return active organisations for the current user without detached objects."""
+    from app.identity.models.organisation_member import OrganisationMember
+
+    return [
+        membership.organisation
+        for membership in OrganisationMember.query.filter_by(
+            user_id=current_user.id, is_active=True
+        ).options(
+            db.joinedload(OrganisationMember.organisation)
+        ).all()
+        if membership.organisation and membership.organisation.is_active
+    ]
+
+
+def _request_label(document_key):
+    return {
+        'document': 'Primary identity document',
+        'selfie': 'Verification selfie',
+    }.get(document_key, document_key.replace('_', ' ').title())
+
+
+def _get_individual_reupload_requests(records):
+    """Build user-facing replacement links without exposing KYC record IDs."""
+    requests = []
+    for record in records:
+        request_data = get_individual_reupload_request(record.compliance_notes)
+        if not request_data:
+            continue
+        document_key = request_data.get('document_key')
+        try:
+            token = make_reupload_token(
+                kind='individual',
+                entity_id=record.id,
+                owner_public_id=current_user.public_id,
+                document_key=document_key,
+            )
+        except (TypeError, ValueError):
+            continue
+        requests.append({
+            'token': token,
+            'document_key': document_key,
+            'label': _request_label(document_key),
+            'reason': request_data.get('reason', ''),
+            'record_type': record.record_type or record.id_type or 'Identity verification',
+        })
+    return requests
+
+
+def _get_organisation_reupload_requests(user_orgs):
+    """Build replacement links for every requested KYB document the user can access."""
+    requests = []
+    for org in user_orgs:
+        if not org:
+            continue
+        documents = OrganisationKYBDocument.query.filter_by(
+            organisation_id=org.id,
+            is_deleted=False,
+        ).all()
+        by_document_id = get_organisation_reupload_requests(org.compliance_notes)
+        for document in documents:
+            request_data = by_document_id.get(str(document.id))
+            if not request_data:
+                continue
+            try:
+                token = make_reupload_token(
+                    kind='organisation',
+                    entity_id=document.id,
+                    owner_public_id=current_user.public_id,
+                    document_key='document',
+                    organisation_id=org.id,
+                )
+            except (TypeError, ValueError):
+                continue
+            requests.append({
+                'token': token,
+                'document_key': 'document',
+                'label': request_data.get('document_type') or document.document_type,
+                'reason': request_data.get('reason', ''),
+                'organisation_name': getattr(org, 'legal_name', None) or getattr(org, 'name', 'Organisation'),
+            })
+    return requests
+
+
+def _load_reupload_target(token):
+    """Resolve and authorise a replacement token against live database state."""
+    payload = load_reupload_token(token, current_user.public_id)
+    if payload['kind'] == 'individual':
+        record = db.session.get(KycRecord, payload['entity_id'])
+        if not record or record.user_id != current_user.id:
+            raise ValueError('The requested KYC record is not available')
+        request_data = get_individual_reupload_request(record.compliance_notes)
+        if not request_data or request_data.get('document_key') != payload.get('document_key'):
+            raise ValueError('This KYC replacement request is no longer active')
+        return payload, record, None, request_data
+
+    organisation_id = payload.get('organisation_id')
+    user_orgs = _get_user_organisations()
+    if not any(org.id == organisation_id for org in user_orgs):
+        raise ValueError('You are not authorised to replace this organisation document')
+    document = db.session.get(OrganisationKYBDocument, payload['entity_id'])
+    if not document or document.organisation_id != organisation_id:
+        raise ValueError('The requested organisation document is not available')
+    org = next(org for org in user_orgs if org.id == organisation_id)
+    request_data = get_organisation_reupload_requests(org.compliance_notes).get(
+        str(document.id)
+    )
+    if not request_data:
+        raise ValueError('This organisation replacement request is no longer active')
+    return payload, document, org, request_data
+
+
+def _save_uploaded_file(file_storage, doc_key):
+    """
+    Save an uploaded FileStorage (device photo/PDF) via the media service and
+    return a stable reference string for the KYC record.
+
+    The raw file is persisted synchronously by MediaService.upload_photo, so the
+    returned media_id is usable immediately — no client-side polling required.
+    Falls back to the original filename in the rare case the service is unavailable.
+    """
+    if not file_storage:
+        return None
+    filename = getattr(file_storage, 'filename', '') or ''
+    if not filename:
+        return None
+    try:
+        result = MediaService.upload_photo(
+            file=file_storage,
+            module='kyc',
+            entity_id=current_user.public_id,
+            uploader_user_id=current_user.id,
+        )
+        # Prefer a ready URL (async processing may not have finished yet, so
+        # fall back to resolving a servable URL from the Media record so the
+        # stored document_url is always viewable in the compliance review UI).
+        urls = result.get('urls') or {}
+        url = urls.get('original') or (list(urls.values())[0] if urls else None)
+        if url:
+            return url
+        media_id = result.get('media_id')
+        if media_id:
+            from app.media.models import Media
+            from app.media.storage import get_storage_backend
+            media = db.session.query(Media).filter(
+                Media.public_id == media_id, Media.is_deleted == False
+            ).first()
+            if media and media.storage_key:
+                try:
+                    return get_storage_backend().get_url(media.storage_key)
+                except Exception:
+                    pass
+        return filename
+    except ValueError as e:
+        # Validation / scan failure — surface to caller via exception.
+        raise
+    except Exception as e:
+        current_app.logger.warning(f"KYC file upload failed for {doc_key}: {e}")
+        return filename
+
 
 @kyc_bp.route('/verify/upload', methods=['GET', 'POST'], endpoint='upload')
 @login_required
 @require_fresh_user
 def verify_upload():
     """Upload KYC documents for individuals or organization KYB."""
-    # Collect active organisations the user belongs to (explicit query avoids
-    # DetachedInstanceError when current_user is not bound to a session).
-    from app.identity.models.organisation_member import OrganisationMember
-    user_orgs = [
-        m.organisation
-        for m in OrganisationMember.query.filter_by(
-            user_id=current_user.id, is_active=True
-        ).options(
-            db.joinedload(OrganisationMember.organisation)
-        ).all()
-        if m.organisation and m.organisation.is_active
-    ]
+    user_orgs = _get_user_organisations()
+    records = KycRecord.query.filter_by(user_id=current_user.id).order_by(
+        KycRecord.id.desc()
+    ).all()
+    individual_reupload_requests = _get_individual_reupload_requests(records)
+    organisation_reupload_requests = _get_organisation_reupload_requests(user_orgs)
 
     if request.method == 'POST':
+        replacement_token = request.form.get('reupload_token', '').strip()
+        if replacement_token:
+            try:
+                payload, target, organisation, request_data = _load_reupload_target(
+                    replacement_token
+                )
+                replacement_file = request.files.get('replacement_file')
+                replacement_ref = None
+                if replacement_file and replacement_file.filename:
+                    replacement_ref = _save_uploaded_file(
+                        replacement_file, payload.get('document_key', 'document')
+                    )
+                if not replacement_ref:
+                    replacement_ref = request.form.get('replacement_url', '').strip() or None
+                if not replacement_ref:
+                    raise ValueError('Please upload the requested replacement document.')
+
+                if payload['kind'] == 'individual':
+                    document_key = payload['document_key']
+                    if document_key == 'document':
+                        target.document_url = replacement_ref
+                    else:
+                        target.selfie_url = replacement_ref
+                    target.status = 'pending'
+                    target.compliance_status = 'pending'
+                    target.compliance_notes = clear_individual_reupload_request(
+                        target.compliance_notes
+                    )
+                    target.checked_by = None
+                    target.compliance_reviewed_at = None
+                    target.compliance_reviewed_by = None
+                    target.rejection_reason = None
+                else:
+                    target.storage_key = replacement_ref
+                    target.checksum = hashlib.md5(replacement_ref.encode()).hexdigest()
+                    target.verification_status = 'pending'
+                    organisation.compliance_notes = clear_organisation_reupload_request(
+                        organisation.compliance_notes,
+                        document_id=target.id,
+                    )
+                    organisation.compliance_status = 'pending'
+                    organisation.compliance_reviewed_at = None
+                    organisation.compliance_reviewed_by = None
+
+                db.session.commit()
+                flash(
+                    'The requested replacement was submitted and is back in compliance review.',
+                    'success',
+                )
+                return redirect(url_for('kyc.status'))
+            except ValueError as exc:
+                db.session.rollback()
+                flash_form_error(str(exc))
+                return redirect(url_for('kyc.upload', reupload=replacement_token))
+            except Exception as exc:
+                db.session.rollback()
+                current_app.logger.exception('KYC replacement submission failed')
+                flash_form_error(f'Could not submit the replacement document: {exc}')
+                return redirect(url_for('kyc.upload', reupload=replacement_token))
+
         kyc_type = request.form.get('kyc_type', 'individual')
+        pending_requests = (
+            individual_reupload_requests
+            if kyc_type == 'individual'
+            else organisation_reupload_requests
+        )
+        if pending_requests:
+            flash_form_error(
+                'A compliance reviewer requested a specific replacement. '
+                'Please use the replacement link shown below instead of starting a new submission.'
+            )
+            return redirect(url_for('kyc.upload', reupload=pending_requests[0]['token']))
 
         if kyc_type == 'organization':
             # ── Organization KYB ────────────────────────────────────────────
             org_id = request.form.get('org_id')
             org_doc_type = request.form.get('org_doc_type')
             org_doc_number = request.form.get('org_doc_number', '')
-            org_document_url = request.form.get('org_document_url')
 
-            if not all([org_id, org_doc_type, org_document_url]):
-                flash('Organization, document type, and document URL are required', 'error')
-                return redirect(url_for('kyc.verify_upload'))
+            # Prefer an uploaded file; fall back to a pasted URL.
+            org_document_ref = None
+            org_doc_file = request.files.get('org_doc_file')
+            if org_doc_file and org_doc_file.filename:
+                try:
+                    org_document_ref = _save_uploaded_file(org_doc_file, 'org_document')
+                except ValueError as exc:
+                    db.session.rollback()
+                    flash_form_error(str(exc))
+                    return redirect(url_for('kyc.upload'))
+            if not org_document_ref:
+                org_document_ref = request.form.get('org_document_url', '').strip() or None
+
+            if not all([org_id, org_doc_type, org_document_ref]):
+                flash_form_error('Organization, document type, and a document (uploaded file or URL) are required')
+                return redirect(url_for('kyc.upload'))
 
             # Verify user belongs to the org
             org_id_int = int(org_id)
             if not any(o.id == org_id_int for o in user_orgs):
-                flash('You are not authorized to submit documents for this organization.', 'error')
-                return redirect(url_for('kyc.verify_upload'))
+                flash_form_error('You are not authorized to submit documents for this organization.')
+                return redirect(url_for('kyc.upload'))
 
             try:
-                checksum = hashlib.md5(org_document_url.encode()).hexdigest()
+                checksum = hashlib.md5(org_document_ref.encode()).hexdigest()
                 kyb_doc = OrganisationKYBDocument(
                     organisation_id=org_id_int,
                     document_type=org_doc_type,
-                    storage_key=org_document_url,
+                    storage_key=org_document_ref,
                     checksum=checksum,
                     verification_status="pending"
                 )
@@ -580,19 +849,38 @@ def verify_upload():
                 return redirect(url_for('kyc.status'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error submitting organization document: {str(e)}', 'error')
-                return redirect(url_for('kyc.verify_upload'))
+                flash_form_error(f'Error submitting organization document: {str(e)}')
+                return redirect(url_for('kyc.upload'))
 
         else:
             # ── Individual KYC ──────────────────────────────────────────────
             id_type = request.form.get('id_type')
             id_number = request.form.get('id_number')
-            document_url = request.form.get('document_url')
-            selfie_url = request.form.get('selfie_url')
+
+            # Prefer an uploaded file; fall back to a pasted URL. A file is
+            # uploaded server-side in this same request (no client polling).
+            document_url = None
+            doc_file = request.files.get('kyc_doc_file')
+            selfie_url = None
+            selfie_file = request.files.get('selfie_file')
+            try:
+                if doc_file and doc_file.filename:
+                    document_url = _save_uploaded_file(doc_file, 'document')
+                if selfie_file and selfie_file.filename:
+                    selfie_url = _save_uploaded_file(selfie_file, 'selfie')
+            except ValueError as exc:
+                db.session.rollback()
+                flash_form_error(str(exc))
+                return redirect(url_for('kyc.upload'))
+
+            if not document_url:
+                document_url = request.form.get('document_url', '').strip() or None
+            if not selfie_url:
+                selfie_url = request.form.get('selfie_url', '').strip() or None
 
             if not all([id_type, id_number, document_url]):
-                flash('ID type, ID number, and document are required', 'error')
-                return redirect(url_for('kyc.verify_upload'))
+                flash_form_error('ID type, ID number, and a document (uploaded file or URL) are required')
+                return redirect(url_for('kyc.upload'))
 
             try:
                 record = KycService.submit_kyc(
@@ -612,10 +900,73 @@ def verify_upload():
                 flash('Documents uploaded successfully! They will be reviewed shortly.', 'success')
                 return redirect(url_for('kyc.status'))
             except Exception as e:
-                flash(f'Error uploading documents: {str(e)}', 'error')
-                return redirect(url_for('kyc.verify_upload'))
+                flash_form_error(f'Error uploading documents: {str(e)}')
+                return redirect(url_for('kyc.upload'))
 
-    return render_template('kyc/verify_upload.html', user_orgs=user_orgs)
+    requested_reupload = None
+    replacement_token = request.args.get('reupload', '').strip()
+    if replacement_token:
+        try:
+            payload, target, organisation, request_data = _load_reupload_target(
+                replacement_token
+            )
+            requested_reupload = {
+                'token': replacement_token,
+                'kind': payload['kind'],
+                'document_key': payload.get('document_key', 'document'),
+                'label': (
+                    _request_label(payload.get('document_key', 'document'))
+                    if payload['kind'] == 'individual'
+                    else request_data.get('document_type') or target.document_type
+                ),
+                'reason': request_data.get('reason', ''),
+                'record': target if payload['kind'] == 'individual' else None,
+                'organisation_name': (
+                    getattr(organisation, 'legal_name', None)
+                    or getattr(organisation, 'name', 'Organisation')
+                    if organisation else None
+                ),
+            }
+        except ValueError as exc:
+            flash_form_error(str(exc))
+
+    if not requested_reupload:
+        all_requests = individual_reupload_requests + organisation_reupload_requests
+        if len(all_requests) == 1:
+            replacement_token = all_requests[0]['token']
+            try:
+                payload, target, organisation, request_data = _load_reupload_target(
+                    replacement_token
+                )
+                requested_reupload = {
+                    'token': replacement_token,
+                    'kind': payload['kind'],
+                    'document_key': payload.get('document_key', 'document'),
+                    'label': all_requests[0]['label'],
+                    'reason': request_data.get('reason', ''),
+                    'record': target if payload['kind'] == 'individual' else None,
+                    'organisation_name': all_requests[0].get('organisation_name'),
+                }
+            except ValueError:
+                pass
+
+    in_org_context = is_acting_as_organization()
+    active_org_id = get_current_org_id() if in_org_context else None
+    # Show only the form relevant to the active context.
+    # Org context  -> Organization KYB only (no individual form).
+    # Individual   -> Individual KYC only (no organization form).
+    show_individual = not in_org_context
+    show_organization = in_org_context
+
+    return render_template('kyc/verify_upload.html',
+                           user_orgs=user_orgs,
+                           in_org_context=in_org_context,
+                           active_org_id=active_org_id,
+                           show_individual=show_individual,
+                           show_organization=show_organization,
+                           reupload_requests=individual_reupload_requests,
+                           organisation_reupload_requests=organisation_reupload_requests,
+                           requested_reupload=requested_reupload)
 
 
 # ============================================================================

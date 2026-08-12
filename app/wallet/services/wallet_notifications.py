@@ -45,7 +45,7 @@ def _send(user_id: int, message: str, channel: str = "sms"):
             return
 
         if channel == "sms" and user.phone and user.phone_verified:
-            from app.services.sms_service import send_sms
+            from app.notifications.sms_service import send_sms
             send_sms(user.phone, message)
 
         elif channel == "email" and user.email and user.email_verified:
@@ -60,7 +60,7 @@ def _send(user_id: int, message: str, channel: str = "sms"):
         elif channel == "both":
             if user.phone and user.phone_verified:
                 try:
-                    from app.services.sms_service import send_sms
+                    from app.notifications.sms_service import send_sms
                     send_sms(user.phone, message)
                 except Exception as e:
                     logger.warning(f"SMS failed for user {user_id}: {e}")

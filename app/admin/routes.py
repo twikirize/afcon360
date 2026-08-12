@@ -186,7 +186,7 @@ def super_dashboard():
         readiness_issues_count = 0
         try:
             from app.accommodation.models.booking import AccommodationBooking
-            from app.accommodation.models.property import PropertyBookingPolicy
+            from app.accommodation.models.booking_policy import PropertyBookingPolicy  # noqa: F401
             unclaimed_count = AccommodationBooking.query.filter(
                 AccommodationBooking.booking_owner_id.is_(None),
                 AccommodationBooking.is_deleted == False,
@@ -269,7 +269,7 @@ def admin_pay_commission(commission_ref: str):
         with _db.session.begin():
             commission = repo.get_by_ref(commission_ref)
             if not commission:
-                flash('Commission not found', 'error')
+                flash('Commission not found', 'danger')
                 return redirect(url_for('admin.admin_list_commissions'))
             repo.mark_paid(commission_ref, paid_by=current_user.id)
         flash('Commission marked as paid', 'success')
@@ -1950,9 +1950,9 @@ def user_activity(user_id):
         changed_by=user.id
     ).order_by(DataChangeLog.created_at.desc()).limit(50).all()
 
-    # Get API calls made by this user
+    # Get API calls initiated by or related to this user
     api_calls = APIAuditLog.query.filter_by(
-        user_id=user.id
+        initiated_by=user.id
     ).order_by(APIAuditLog.created_at.desc()).limit(50).all()
 
     return render_template(
@@ -2029,6 +2029,13 @@ def approve_kyc_document(user_id, doc_id):
 
         db.session.commit()
 
+        # Emit kyc_approved signal
+        try:
+            from app.notifications.signals import kyc_approved
+            kyc_approved.send(document, user_id=user.id, record=document)
+        except Exception as sig_err:
+            logger.warning(f"kyc_approved signal failed: {sig_err}")
+
         # Log the approval
         AuditService.data_change(
             entity_type="kyc_document",
@@ -2082,6 +2089,13 @@ def reject_kyc_document(user_id, doc_id):
         document.review_notes = reason
 
         db.session.commit()
+
+        # Emit kyc_rejected signal
+        try:
+            from app.notifications.signals import kyc_rejected
+            kyc_rejected.send(document, user_id=user.id, reason=reason, record=document)
+        except Exception as sig_err:
+            logger.warning(f"kyc_rejected signal failed: {sig_err}")
 
         # Log the rejection
         AuditService.data_change(
@@ -2138,13 +2152,21 @@ def _log_role_change(user, action, role_name, changed_by, ip_address, reason=Non
 @admin_bp.errorhandler(403)
 def forbidden(e):
     flash("You don't have permission to access this page.", "danger")
-    return redirect(url_for("admin.super_dashboard"))
+    # Redirect denied users to their own safe landing page. Redirecting back to
+    # admin.super_dashboard created an infinite 302 loop for non-admin users.
+    from app.auth.helpers import has_global_role
+    if current_user.is_authenticated and has_global_role(current_user, "admin", "super_admin", "owner"):
+        return redirect(url_for("admin.super_dashboard"))
+    return redirect(url_for("index"))
 
 
 @admin_bp.errorhandler(404)
 def not_found(e):
     flash("Page not found.", "danger")
-    return redirect(url_for("admin.super_dashboard"))
+    from app.auth.helpers import has_global_role
+    if current_user.is_authenticated and has_global_role(current_user, "admin", "super_admin", "owner"):
+        return redirect(url_for("admin.super_dashboard"))
+    return redirect(url_for("index"))
 
 
 # -----------------------------

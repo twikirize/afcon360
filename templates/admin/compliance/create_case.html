@@ -1,0 +1,102 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}New Case — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}New Compliance Case{% endblock %}
+
+{% block content %}
+<div class="col-layout-2-1">
+  <!-- Main Form -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-folder-plus"></i> Case Details</div>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.compliance.create_case') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="form-group">
+            <label class="form-label">Case Title</label>
+            <input type="text" name="title" class="form-control" placeholder="e.g., Suspicious login pattern on payout" required>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label class="form-label">Case Type</label>
+              <select name="case_type" class="form-control" required>
+                {% for t in case_types %}
+                <option value="{{ t.value }}">{{ t.value.replace('_', ' ').title() }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Priority</label>
+              <select name="priority" class="form-control" required>
+                {% for p in priorities %}
+                <option value="{{ p.value }}" {% if p.value == 'medium' %}selected{% endif %}>{{ p.value.title() }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label class="form-label">User ID (optional)</label>
+              <input type="number" name="user_id" class="form-control" placeholder="Internal user ID">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Organisation ID (optional)</label>
+              <input type="number" name="organisation_id" class="form-control" placeholder="Internal org ID">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="5" placeholder="Provide context and any supporting detail..."></textarea>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-plus"></i> Create Case
+            </button>
+            <a href="{{ url_for('admin.compliance.cases') }}" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar Info -->
+  <div>
+    <div class="card animate-up">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-circle-info"></i> Case Types</div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+          <div>
+            <strong style="color: var(--ink);">KYC Review</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Individual KYC verification issues or disputes.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">KYB Review</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Organisation/business verification escalations.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">AML Alert</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Anti-money-laundering flagged activity.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">Payout Review</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">Withdrawal or payout investigation.</p>
+          </div>
+          <div>
+            <strong style="color: var(--ink);">Flag Escalation</strong>
+            <p style="margin: 4px 0 0; color: var(--muted);">User/transaction flag raised for review.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

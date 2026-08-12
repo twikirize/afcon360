@@ -13,7 +13,7 @@ class PushHandler(BaseChannelHandler):
     def deliver(self, notification, recipient: dict) -> dict:
         logger.info(
             f"[PushHandler] FCM Push to user_id={recipient.get('user_id')}: "
-            f"{notification.title}"
+            f"{notification.subject}"
         )
         return {
             'success': True,

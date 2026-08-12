@@ -353,6 +353,54 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       </div>
     </div>
 
+    {# KYC Tier #}
+    {% if kyc_info %}
+    <div class="edit-card">
+      <div class="edit-card-head">
+        <span class="edit-card-title"><i class="fas fa-shield-alt"></i> KYC Tier</span>
+      </div>
+      <div class="edit-card-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-soft);">Current tier</div>
+            <div style="font-size:1.1rem;font-weight:800;color:var(--text);">Tier {{ kyc_info.tier }}: {{ kyc_info.tier_name }}</div>
+          </div>
+          <span style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--surface-3);color:var(--text-soft);">
+            {{ kyc_info.fulfillment_percentage }}%
+          </span>
+        </div>
+        <p style="font-size:.85rem;color:var(--text-soft);margin:0 0 .75rem;line-height:1.5;">{{ kyc_info.tier_description }}</p>
+
+        {% if kyc_info.next_tier is not none and kyc_info.next_tier_requirements_labels %}
+        <div style="background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-md);padding:.75rem;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-soft);margin-bottom:.5rem;">
+            Next: Tier {{ kyc_info.next_tier }} — {{ kyc_info.next_tier_name }}
+          </div>
+          <ul style="margin:0;padding-left:1.1rem;display:grid;gap:.3rem;">
+            {% for req in kyc_info.next_tier_requirements_labels %}
+            <li style="font-size:.85rem;color:var(--text);">{{ req }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if kyc_info.activities_restricted %}
+        <div style="margin-top:.75rem;font-size:.8rem;color:var(--text-soft);">
+          <i class="fas fa-lock" style="margin-right:4px;"></i>
+           {{ kyc_info.activities_restricted|length }} restricted activities
+        </div>
+        {% endif %}
+
+        <div style="margin-top:.75rem;">
+          <a href="{{ url_for('kyc.index') }}"
+             style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--green-dark);text-decoration:none;">
+            View full KYC details <i class="fas fa-arrow-right" style="font-size:10px;"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {# Tips #}
     <div class="tip-box">
       <div class="tip-box-title"><i class="fas fa-lightbulb"></i> Why it matters</div>

@@ -19,3 +19,7 @@ owner_bp.register_blueprint(owner_settings)
 # Register escrow routes
 from app.admin.owner.escrow_routes import escrow_bp
 owner_bp.register_blueprint(escrow_bp)
+
+# Register backup & restore routes
+from app.admin.owner.backup_routes import owner_backup_bp
+owner_bp.register_blueprint(owner_backup_bp)

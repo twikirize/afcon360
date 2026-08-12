@@ -1,0 +1,62 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}Terminated Entities — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Terminated Entities (MATCH / VMSS){% endblock %}
+
+{% block content %}
+{{ aml_nav('terminated') }}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header"><div class="card-title"><i class="fas fa-ban"></i> Add to Terminated Registry</div></div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.compliance.aml_terminated_add') }}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end;">
+      {{ csrf_token() }}
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Name</label><input name="name" class="form-control" required></div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Type</label>
+        <select name="entity_type" class="form-control"><option value="organisation">Organisation</option><option value="individual">Individual</option></select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Registration #</label><input name="registration_number" class="form-control"></div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">National ID</label><input name="national_id" class="form-control"></div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Source</label>
+        <select name="source" class="form-control"><option value="manual">Manual</option><option value="match">MATCH</option><option value="vmss">VMSS</option><option value="regulator">Regulator</option><option value="internal">Internal</option></select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Reason Code</label><input name="reason_code" class="form-control"></div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Reason</label><input name="reason_text" class="form-control"></div>
+      <button type="submit" class="btn btn-danger"><i class="fas fa-plus"></i> Add</button>
+    </form>
+  </div>
+</div>
+
+<div class="card animate-up">
+  <div class="card-header"><div class="card-title">Registry</div><span class="badge badge-red">{{ entities.total }} total</span></div>
+  <div class="card-body">
+    {% if entities.items %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Type</th><th>Reg #</th><th>National ID</th><th>Source</th><th>Reason</th><th>Active</th></tr></thead>
+        <tbody>
+          {% for e in entities.items %}
+          <tr class="{{ 'row-critical' if e.is_active }}">
+            <td>{{ e.name }}</td>
+            <td>{{ e.entity_type }}</td>
+            <td class="mono">{{ e.registration_number or '-' }}</td>
+            <td class="mono">{{ e.national_id or '-' }}</td>
+            <td><span class="badge badge-blue">{{ e.source }}</span></td>
+            <td>{{ e.reason_code or '-' }}</td>
+            <td>{% if e.is_active %}<span class="badge badge-red">Active</span>{% else %}<span class="badge badge-gray">Lifted</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if entities.pages > 1 %}
+    <div class="pagination">
+      {% for p in entities.iter_pages() %}{% if p %}<a href="{{ url_for('admin.compliance.aml_terminated', page=p) }}" class="pg-btn {{ 'active' if p==entities.page }}">{{ p }}</a>{% else %}<span class="pg-btn disabled">…</span>{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state"><div class="empty-icon"><i class="fas fa-check-circle"></i></div><p>Registry is empty.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

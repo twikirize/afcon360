@@ -58,6 +58,16 @@ class AuthConfiguration(BaseModel):
     email_verification_required = Column(Boolean, default=False, nullable=False)
     phone_verification_required = Column(Boolean, default=False, nullable=False)
     google_oauth_required = Column(Boolean, default=False, nullable=False)
+    otp_channels = Column(
+        JSON,
+        default=lambda: {"email": {"enabled": True, "priority": 1}, "sms": {"enabled": False, "priority": 2}, "whatsapp": {"enabled": False, "priority": 3}},
+        nullable=False
+    )
+    email_verification_required_for = Column(
+        JSON,
+        default=lambda: ["booking", "payment"],
+        nullable=False
+    )
     
     # Feature Flags - KYC Requirements
     kyc_required_for_tier_2 = Column(Boolean, default=True, nullable=False)
@@ -113,6 +123,14 @@ class AuthConfiguration(BaseModel):
     @classmethod
     def get_config(cls):
         """Get the current auth configuration (singleton pattern)"""
+        # Expire any cached instance so callers (e.g. the registration policy)
+        # always see the latest owner-managed values, not a stale copy from an
+        # earlier read in the same session.
+        try:
+            from app.extensions import db
+            db.session.expire_all()
+        except Exception:
+            pass
         config = cls.query.first()
         if not config:
             # Create default configuration
@@ -125,6 +143,8 @@ class AuthConfiguration(BaseModel):
                 email_verification_required=False,
                 phone_verification_required=False,
                 google_oauth_required=False,
+                otp_channels={"email": {"enabled": True, "priority": 1}, "sms": {"enabled": False, "priority": 2}, "whatsapp": {"enabled": False, "priority": 3}},
+                email_verification_required_for=["booking", "payment"],
                 allow_email_password_signup=True,
                 allow_google_oauth_signup=True,
             )
@@ -154,6 +174,8 @@ class AuthConfiguration(BaseModel):
             'email_verification_required': self.email_verification_required,
             'phone_verification_required': self.phone_verification_required,
             'google_oauth_required': self.google_oauth_required,
+            'otp_channels': self.otp_channels,
+            'email_verification_required_for': self.email_verification_required_for,
             'kyc_required_for_tier_2': self.kyc_required_for_tier_2,
             'kyc_required_for_tier_3': self.kyc_required_for_tier_3,
             'allow_email_password_signup': self.allow_email_password_signup,

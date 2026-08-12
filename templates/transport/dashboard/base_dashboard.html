@@ -411,12 +411,7 @@
       </div>
 
       <div class="topbar-actions">
-        <button class="topbar-btn" title="Notifications" id="notificationsBtn">
-          <i class="fa-regular fa-bell"></i>
-          {% if unread_notifications is defined and unread_notifications > 0 %}
-          <span class="notification-badge dot"></span>
-          {% endif %}
-        </button>
+        {% include 'components/notification_bell.html' %}
         <button class="topbar-btn" title="Live tracking">
           <i class="fa-solid fa-location-dot"></i>
         </button>

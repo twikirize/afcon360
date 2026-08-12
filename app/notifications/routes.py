@@ -25,6 +25,7 @@ from app.notifications.models import (
     NotificationType,
     NotificationChannel,
     NotificationStatus,
+    NotificationModule,
     Message,
     CommunicationSettings,
     NotificationAggregator,
@@ -49,10 +50,17 @@ def list_notifications():
     """List notifications for the current user.
 
     Query params:
-        unread_only (bool), type (str), limit (int), offset (int)
+        unread_only (bool), type (str), module (str, repeatable), limit (int), offset (int)
+
+    `module` scopes the inbox to a single business (accommodation, transport,
+    events, wallet, tourism, ...). These are separate modules with different
+    customers, so a module dashboard should always pass it.
     """
     unread_only = request.args.get('unread_only', 'false').lower() == 'true'
     ntype = request.args.get('type')
+    modules = request.args.getlist('module') or (
+        [request.args.get('module')] if request.args.get('module') else []
+    )
     limit = min(int(request.args.get('limit', 20)), 100)
     offset = int(request.args.get('offset', 0))
 
@@ -64,6 +72,15 @@ def list_notifications():
             query = query.filter_by(type=NotificationType(ntype))
         except ValueError:
             return jsonify({'error': 'Invalid notification type'}), 400
+    if modules:
+        valid = {m.value for m in NotificationModule}
+        invalid = [m for m in modules if m not in valid]
+        if invalid:
+            return jsonify({
+                'error': 'Invalid module(s): ' + ', '.join(invalid),
+                'valid_modules': sorted(valid),
+            }), 400
+        query = query.filter(Notification.module.in_(modules))
 
     total = query.count()
     items = (
@@ -77,6 +94,8 @@ def list_notifications():
         'total': total,
         'count': len(items),
         'unread_count': NotificationService.get_unread_count(current_user.id),
+        'unread_by_module': NotificationService.get_unread_counts_by_module(current_user.id),
+        'modules': modules or None,
         'items': [_serialize_notification(n) for n in items],
     })
 
@@ -84,8 +103,22 @@ def list_notifications():
 @notifications_api.route('/unread-count', methods=['GET'])
 @login_required
 def unread_count():
-    """Get unread notification count for badge."""
-    return jsonify({'unread_count': NotificationService.get_unread_count(current_user.id)})
+    """Unread badge count.
+
+    Pass `?module=transport` to scope the badge to one business, or
+    `?by_module=true` to get the full per-module breakdown for tabbed UIs.
+    """
+    module = request.args.get('module')
+    if module and module not in {m.value for m in NotificationModule}:
+        return jsonify({'error': 'Invalid module'}), 400
+
+    payload = {
+        'unread_count': NotificationService.get_unread_count(current_user.id, module=module),
+        'module': module,
+    }
+    if request.args.get('by_module', 'false').lower() == 'true' or not module:
+        payload['unread_by_module'] = NotificationService.get_unread_counts_by_module(current_user.id)
+    return jsonify(payload)
 
 
 @notifications_api.route('/<int:notification_id>/read', methods=['POST'])
@@ -132,6 +165,7 @@ def get_preferences():
         'preferences': prefs,
         'channels': [c.value for c in NotificationChannel],
         'types': [t.value for t in NotificationType],
+        'modules': [m.value for m in NotificationModule],
     })
 
 
@@ -407,6 +441,10 @@ def _serialize_notification(n: Notification) -> Dict[str, Any]:
     return {
         'id': n.id,
         'type': n.type,
+        'module': n.module,
+        'module_label': n.module_label,
+        'module_icon': n.module_icon,
+        'module_color': n.module_color,
         'channel': n.channel,
         'subject': n.subject,
         'body': n.body,

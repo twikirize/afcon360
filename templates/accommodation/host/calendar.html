@@ -130,6 +130,7 @@
         </header>
         <section id="dayDetailBody"></section>
         <footer>
+            <button type="button" class="primary" id="blockDayButton"><i class="fas fa-ban"></i> Block this date</button>
             <button type="button" class="danger" id="unblockButton"><i class="fas fa-unlock"></i> Unblock</button>
             <button type="button" class="ghost" data-close>Close</button>
         </footer>
@@ -527,6 +528,7 @@
     const dayDetailTitle = document.getElementById('dayDetailTitle');
     const dayDetailBody = document.getElementById('dayDetailBody');
     const unblockButton = document.getElementById('unblockButton');
+    const blockDayButton = document.getElementById('blockDayButton');
 
     function formatDate(date) {
         return date.toISOString().split('T')[0];
@@ -539,7 +541,7 @@
     function fetchCalendar() {
         const propertyId = propertySelect.value;
         const month = monthParam(currentMonth);
-        fetch(`{{ safe_url('accommodation.host.calendar_data') }}?property_id=${propertyId}&month=${month}`, {
+        fetch(`{{ safe_url('accommodation.host_calendar_data') }}?property_id=${propertyId}&month=${month}`, {
             credentials: 'same-origin'
         })
         .then(resp => {
@@ -637,7 +639,12 @@
         }
         dayDetailBody.innerHTML = html;
         unblockButton.dataset.date = day.date;
-        unblockButton.disabled = !(day.status === 'blocked' || day.blocked_reason);
+        blockDayButton.dataset.date = day.date;
+        const isBlocked = day.status === 'blocked' || !!day.blocked_reason;
+        unblockButton.disabled = !isBlocked;
+        unblockButton.hidden = !isBlocked;
+        blockDayButton.disabled = isBlocked || day.status === 'booked';
+        blockDayButton.hidden = isBlocked || day.status === 'booked';
         dayDetailDialog.showModal();
     }
 
@@ -678,14 +685,14 @@
     });
 
     blockDialog?.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => blockDialog.close()));
-    dayDetailDialog?.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => dayDetailDialog.close())););
+    dayDetailDialog?.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => dayDetailDialog.close()));
 
     blockForm?.addEventListener('submit', evt => {
         evt.preventDefault();
         const formData = new FormData(blockForm);
         const payload = Object.fromEntries(formData.entries());
         const propertyId = propertySelect.value;
-        postJSON(`{{ safe_url('accommodation.host.calendar_block') }}`, {
+        postJSON(`{{ safe_url('accommodation.host_calendar_block') }}`, {
             ...payload,
             property_id: Number(propertyId),
         })
@@ -696,10 +703,20 @@
         .catch(err => alert(err.message));
     });
 
+    blockDayButton?.addEventListener('click', () => {
+        const day = blockDayButton.dataset.date;
+        if (!day) return;
+        dayDetailDialog.close();
+        blockForm.reset();
+        blockForm.querySelector('input[name="start_date"]').value = day;
+        blockForm.querySelector('input[name="end_date"]').value = day;
+        blockDialog.showModal();
+    });
+
     unblockButton?.addEventListener('click', () => {
         if (!unblockButton.dataset.date) return;
         const propertyId = propertySelect.value;
-        postJSON(`{{ safe_url('accommodation.host.calendar_unblock') }}`, {
+        postJSON(`{{ safe_url('accommodation.host_calendar_unblock') }}`, {
             property_id: Number(propertyId),
             start_date: unblockButton.dataset.date,
             end_date: unblockButton.dataset.date,

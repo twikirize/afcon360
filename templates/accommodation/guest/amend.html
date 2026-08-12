@@ -1,0 +1,83 @@
+{# templates/accommodation/guest/amend.html #}
+{% extends "base.html" %}
+{% block title %}Amend Booking - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:680px;">
+
+    <a href="{{ safe_url('accommodation.guest_dashboard') }}" class="btn btn-outline-secondary btn-sm mb-3">
+        <i class="fas fa-arrow-left me-1"></i> Dashboard
+    </a>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold"><i class="fas fa-edit me-2 text-secondary"></i>Request a change</div>
+        <div class="card-body">
+            <p class="small text-muted">
+                Current booking <strong>{{ booking.booking_reference }}</strong> at
+                <strong>{{ booking.accommodation_property.title if booking.accommodation_property else 'Property' }}</strong>:
+                {{ booking.check_in.strftime('%b %d, %Y') }} → {{ booking.check_out.strftime('%b %d, %Y') }},
+                {{ booking.num_guests }} guest{{ 's' if booking.num_guests != 1 else '' }}.
+            </p>
+
+            <form method="POST" action="{{ safe_url('accommodation.guest_amend_booking', booking_id=booking.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="mb-3">
+                    <label class="form-label small">What would you like to change?</label>
+                    <select name="amendment_type" id="amendmentType" class="form-select" onchange="toggleAmendFields()">
+                        <option value="dates">Dates</option>
+                        <option value="guests">Number of guests</option>
+                        <option value="special_requests">Special requests</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+
+                <div id="datesFields" class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small">New check-in</label>
+                        <input type="date" name="requested_check_in" class="form-control" value="{{ booking.check_in.isoformat() }}">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">New check-out</label>
+                        <input type="date" name="requested_check_out" class="form-control" value="{{ booking.check_out.isoformat() }}">
+                    </div>
+                </div>
+
+                <div id="guestsField" class="mb-3 d-none">
+                    <label class="form-label small">New number of guests</label>
+                    <input type="number" name="requested_guests" min="1" class="form-control" value="{{ booking.num_guests }}">
+                </div>
+
+                <div id="specialField" class="mb-3 d-none">
+                    <label class="form-label small">Special requests</label>
+                    <textarea name="requested_special_requests" class="form-control" rows="3" placeholder="Accessibility needs, late arrival, etc.">{{ booking.special_requests or '' }}</textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small">Reason (optional)</label>
+                    <textarea name="reason" class="form-control" rows="2" placeholder="Briefly explain the change"></textarea>
+                </div>
+
+                <div class="alert alert-info small">
+                    The host will review your request. Date or guest changes may affect pricing and availability.
+                </div>
+
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i> Submit request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function toggleAmendFields() {
+    var type = document.getElementById('amendmentType').value;
+    document.getElementById('datesFields').classList.toggle('d-none', type !== 'dates');
+    document.getElementById('guestsField').classList.toggle('d-none', type !== 'guests');
+    document.getElementById('specialField').classList.toggle('d-none', type !== 'special_requests');
+}
+document.addEventListener('DOMContentLoaded', toggleAmendFields);
+</script>
+{% endblock %}

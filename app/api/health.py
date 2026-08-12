@@ -1,7 +1,7 @@
 """Health check endpoint for module status monitoring."""
 from flask import Blueprint, jsonify
 from flask_login import login_required, current_user
-from app.services.module_toggle_service import ModuleToggleService
+from app.utils.module_toggle_service import ModuleToggleService
 
 health_bp = Blueprint('health', __name__, url_prefix='/api/health')
 

@@ -12,7 +12,7 @@ Where [READY_FOR_CHECKIN] is a computed state, not stored in DB.
 """
 
 from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
-from datetime import date
+from datetime import date, datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ class BookingStateMachine:
         ],
         AccommodationBookingStatus.CHECKED_IN: [
             AccommodationBookingStatus.CHECKED_OUT,
+            AccommodationBookingStatus.CANCELLED,
         ],
         AccommodationBookingStatus.CHECKED_OUT: [
             AccommodationBookingStatus.CLOSED,
@@ -127,6 +128,49 @@ class BookingStateMachine:
         return True
 
     @classmethod
+    def _registration_satisfied(cls, booking) -> bool:
+        """
+        Registration gate for check-in.
+
+        The registration deadline is a *soft* limit. It exists to nudge guests
+        into registering early so hosts can prepare - it is not a reason to turn
+        a paying guest away at the door.
+
+        Rules:
+          - Fully registered            -> allow.
+          - Deadline passed, incomplete -> allow (host sees an "incomplete"
+                                           warning and can capture details on
+                                           arrival).
+          - Deadline not yet passed,
+            incomplete                  -> block, the guest still has time to
+                                           register online.
+          - No deadline set             -> allow.
+        """
+        if cls._all_guests_registered(booking):
+            return True
+
+        deadline = getattr(booking, "registration_deadline", None)
+        if not deadline:
+            # No deadline configured - registration is not enforced here.
+            return True
+
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+
+        if deadline < datetime.now(timezone.utc):
+            # Deadline lapsed: warn, but never block the guest.
+            logger.warning(
+                "Booking %s checking in with incomplete registration "
+                "(deadline %s passed).",
+                getattr(booking, "id", "?"),
+                deadline.isoformat(),
+            )
+            return True
+
+        # Still within the window - keep the pressure on to register online.
+        return False
+
+    @classmethod
     def _can_check_in(cls, booking) -> bool:
         """
         Computed READY_FOR_CHECKIN status.
@@ -143,11 +187,11 @@ class BookingStateMachine:
             AccommodationPaymentStatus.PAID.value,
             AccommodationPaymentStatus.PARTIALLY_PAID.value,
         ]:
-            return cls._all_guests_registered(booking)
+            return cls._registration_satisfied(booking)
 
         # Pay-on-arrival / cash bookings: allow UNPAID if guest/cash is eligible.
         if booking.payment_status == AccommodationPaymentStatus.UNPAID.value:
-            return cls._cash_eligible_at_checkin(booking) and cls._all_guests_registered(booking)
+            return cls._cash_eligible_at_checkin(booking) and cls._registration_satisfied(booking)
 
         return False
 
@@ -156,6 +200,7 @@ class BookingStateMachine:
         """Return True when an UNPAID booking is allowed to check in with cash."""
         from app.accommodation.services.booking_service import check_cash_eligibility
         from app.identity.models.user import User
+        from app.extensions import db
         guest_user_id = getattr(booking, "guest_user_id", None)
         if not guest_user_id:
             return False

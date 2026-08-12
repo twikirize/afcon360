@@ -2,7 +2,7 @@
 from datetime import datetime, date, timezone
 from typing import List, Dict, Optional, Tuple
 from flask import current_app, request
-from app.extensions import db
+from app.extensions import cache, db
 from app.kyc.models import KycRecord
 # Try to import ComplianceLogger, but make it optional
 try:
@@ -89,6 +89,14 @@ class KycService:
             )
             db.session.add(record)
             db.session.commit()
+            KycService.invalidate_user_kyc_cache(user_id)
+
+            # Emit notification signal for submitted KYC
+            try:
+                from app.notifications.signals import kyc_submitted
+                kyc_submitted.send(record, user_id=user_id, record=record)
+            except Exception as sig_err:
+                current_app.logger.warning(f"kyc_submitted signal failed: {sig_err}")
 
             # Log using the correct method
             try:
@@ -152,17 +160,19 @@ class KycService:
         record.verified_at = datetime.now(timezone.utc)
         record.rejection_reason = None
 
-        # Update user profile verification status
-        # KycRecord.user_id is internal ID (BigInteger), but UserProfile.user_id is a String(64) FK to users.public_id
-        # So we need to look up the User first to get their public_id
+        # Update the profile from the same record used by the account and dashboard.
+        # KycRecord.user_id is internal ID; UserProfile.user_id stores public_id.
         _user = User.query.filter_by(id=record.user_id).first()
         profile = get_profile_by_user(_user) if _user else None
         if profile:
             profile.verification_status = "verified"
-            profile.verified_at = datetime.now(timezone.utc)
+            profile.rejected_reason = None
+            profile.verified_by = str(reviewer_id)
+            profile.last_reviewed_at = datetime.now(timezone.utc)
             db.session.add(profile)
 
         db.session.commit()
+        KycService.invalidate_user_kyc_cache(record.user_id)
 
         # Log compliance
         try:
@@ -210,7 +220,17 @@ class KycService:
         record.verified_at = datetime.now(timezone.utc)
         record.rejection_reason = rejection_reason
 
+        _user = User.query.filter_by(id=record.user_id).first()
+        profile = get_profile_by_user(_user) if _user else None
+        if profile:
+            profile.verification_status = "rejected"
+            profile.rejected_reason = rejection_reason
+            profile.verified_by = str(reviewer_id)
+            profile.last_reviewed_at = datetime.now(timezone.utc)
+            db.session.add(profile)
+
         db.session.commit()
+        KycService.invalidate_user_kyc_cache(record.user_id)
 
         # Log compliance
         try:
@@ -240,6 +260,82 @@ class KycService:
         return record
 
     @staticmethod
+    def revert_kyc(record_id: int, reviewer_id: int, reason: str,
+                   ip_address: Optional[str] = None, user_agent: Optional[str] = None):
+        """
+        Re-cancel/revert an approved KYC record due to error or discovery of invalid documents.
+        Resets status to 'rejected' and revokes user profile verification status.
+        """
+        audit_id = ForensicAuditService.log_attempt(
+            entity_type="kyc",
+            entity_id=str(record_id),
+            action="revert_approval",
+            user_id=reviewer_id,
+            details={"reason": reason},
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        record = db.session.get(KycRecord, record_id)
+        if not record:
+            ForensicAuditService.log_completion(
+                audit_id=audit_id,
+                status="failed",
+                result_details={"error": f"KYC record {record_id} not found"}
+            )
+            raise ValueError(f"KYC record {record_id} not found")
+
+        old_status = record.status
+        record.status = "rejected"
+        record.checked_by = str(reviewer_id)
+        record.verified_at = datetime.now(timezone.utc)
+        record.rejection_reason = f"[Reverted from {old_status}] {reason}"
+
+        # Revert user profile verification status if verified
+        _user = User.query.filter_by(id=record.user_id).first()
+        profile = get_profile_by_user(_user) if _user else None
+        if profile:
+            profile.verification_status = "rejected"
+            profile.rejected_reason = reason
+            profile.verified_by = str(reviewer_id)
+            profile.last_reviewed_at = datetime.now(timezone.utc)
+            db.session.add(profile)
+
+        db.session.commit()
+        KycService.invalidate_user_kyc_cache(record.user_id)
+
+        # Log compliance
+        try:
+            ComplianceLogger.log_decision(
+                entity_id=record.id,
+                entity_type="kyc_record",
+                operation="revert",
+                decision="rejected",
+                requirement_key="kyc_verification",
+                compliance_level=0,
+                context={"user_id": record.user_id, "reviewer_id": reviewer_id, "reason": reason}
+            )
+        except Exception as e:
+            current_app.logger.warning(f"Could not log KYC reversion: {e}")
+
+        # Emit notification signal (re-cancel / requirements not fulfilled)
+        try:
+            from app.notifications.signals import kyc_rejected
+            kyc_rejected.send(record, user_id=record.user_id, reason=reason, record=record)
+        except Exception as _ne:
+            current_app.logger.warning(f"kyc_rejected signal failed: {_ne}")
+
+        ForensicAuditService.log_completion(
+            audit_id=audit_id,
+            status="completed",
+            reviewed_by=reviewer_id,
+            review_notes=f"KYC approval reverted. Reason: {reason}",
+            result_details={"record_id": record.id, "status": "rejected", "reason": reason}
+        )
+
+        return record
+
+    @staticmethod
     def get_user_kyc(user_id: int) -> List[KycRecord]:
         """
         Return all KYC records for a user.
@@ -260,6 +356,21 @@ class KycService:
             current_app.logger.warning(f"Could not log KYC lookup: {e}")
 
         return records
+
+    @staticmethod
+    def _record_sort_key(record):
+        """Return a timezone-safe ordering key for KYC submissions."""
+        created_at = getattr(record, "created_at", None)
+        if created_at is None:
+            created_at = datetime.min.replace(tzinfo=timezone.utc)
+        elif created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return created_at, getattr(record, "id", 0) or 0
+
+    @staticmethod
+    def invalidate_user_kyc_cache(user_id: int):
+        """Drop the dashboard KYC context after a status-changing action."""
+        cache.delete(f"kyc_ctx_{user_id}")
 
     @staticmethod
     def get_pending_kyc(limit: int = 50) -> List[KycRecord]:
@@ -334,17 +445,24 @@ class KycService:
             "rejected": 0
         }
 
-        latest_record = None
         for record in records:
             status_counts[record.status] = status_counts.get(record.status, 0) + 1
-            if not latest_record or record.created_at > latest_record.created_at:
-                latest_record = record
+
+        latest_record = (
+            max(records, key=KycService._record_sort_key)
+            if records else None
+        )
+        latest_status = getattr(latest_record, "status", None) if latest_record else None
+        latest_status = latest_status.lower() if isinstance(latest_status, str) else latest_status
 
         return {
             "counts": status_counts,
             "latest_record": latest_record,
-            "is_verified": status_counts["approved"] > 0,
-            "has_pending": status_counts["pending"] > 0
+            "status": latest_status,
+            "is_verified": latest_status in {"approved", "verified"},
+            "has_pending": latest_status in {
+                "pending", "manual_review", "processing", "in_review"
+            }
         }
 
     @staticmethod
@@ -423,7 +541,7 @@ class KycService:
         # Create compliance case
         compliance_case = ComplianceCaseService.create_case(
             case_type=ComplianceCaseType.KYC_REVIEW,
-            title=f'KYC Review - {record.public_id}',
+            title=f'KYC Review - ID#{record.id}',
             description=f'KYC record referred for compliance review: {reason}',
             created_by=referred_by,
             user_id=record.user_id,
@@ -482,7 +600,9 @@ class KycService:
         profile = get_profile_by_user(_user) if _user else None
         if profile:
             profile.verification_status = "verified"
-            profile.verified_at = datetime.now(timezone.utc)
+            profile.rejected_reason = None
+            profile.verified_by = str(reviewer_id)
+            profile.last_reviewed_at = datetime.now(timezone.utc)
             db.session.add(profile)
 
         # Update compliance case if exists
@@ -496,17 +616,39 @@ class KycService:
             )
 
         db.session.commit()
+        KycService.invalidate_user_kyc_cache(record.user_id)
+
+        # Emit notification signals for email and in-app notifications
+        try:
+            from app.notifications.signals import kyc_approved
+            kyrid = record.user_id
+            kyc_approved.send(
+                None,
+                user_id=kyrid,
+                record_id=record.id,
+                notes=notes
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send kyc_approved signal: {e}")
 
         # Log audit
-        ForensicAuditService.log_action(
+        ForensicAuditService.log_attempt(
+            entity_type='kyc_record',
+            entity_id=record.id,
             action='compliance_approve_kyc',
             user_id=reviewer_id,
-            resource_type='kyc_record',
-            resource_id=record.id,
             details={
                 'compliance_case_id': record.compliance_case_id,
                 'notes': notes
             }
+        )
+        ForensicAuditService.log_completion(
+            audit_id=str(record.id),
+            status='completed',
+            reviewed_by=reviewer_id,
+            review_notes=notes,
+            result_details={'status': 'approved'}
         )
 
         return record
@@ -541,18 +683,49 @@ class KycService:
                 resolution=rejection_reason
             )
 
+        _user = User.query.filter_by(id=record.user_id).first()
+        profile = get_profile_by_user(_user) if _user else None
+        if profile:
+            profile.verification_status = "rejected"
+            profile.rejected_reason = rejection_reason
+            profile.verified_by = str(reviewer_id)
+            profile.last_reviewed_at = datetime.now(timezone.utc)
+            db.session.add(profile)
+
         db.session.commit()
+        KycService.invalidate_user_kyc_cache(record.user_id)
+
+        # Emit notification signals for email and in-app notifications
+        try:
+            from app.notifications.signals import kyc_rejected
+            kyrid = record.user_id
+            kyc_rejected.send(
+                None,
+                user_id=kyrid,
+                record_id=record.id,
+                reason=rejection_reason
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send kyc_rejected signal: {e}")
 
         # Log audit
-        ForensicAuditService.log_action(
+        ForensicAuditService.log_attempt(
+            entity_type='kyc_record',
+            entity_id=record.id,
             action='compliance_reject_kyc',
             user_id=reviewer_id,
-            resource_type='kyc_record',
-            resource_id=record.id,
             details={
                 'compliance_case_id': record.compliance_case_id,
                 'rejection_reason': rejection_reason
             }
+        )
+        ForensicAuditService.log_completion(
+            audit_id=str(record.id),
+            status='completed',
+            reviewed_by=reviewer_id,
+            review_notes=rejection_reason,
+            result_details={'status': 'rejected'}
         )
 
         return record

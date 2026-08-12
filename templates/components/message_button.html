@@ -1,0 +1,36 @@
+{# ============================================================================
+   AFCON360 — Universal Message Button (header icon)
+   ----------------------------------------------------------------------------
+   Companion to components/notification_bell.html. Renders the 💬 icon + unread
+   badge that opens /messages. Kept as a SEPARATE icon from the bell because a
+   notification (system → user) and a message (person/org → user) are two
+   different mental models — a user may have 7 notifications and 2 messages.
+
+   Data: notif_badges.unread_messages (injected globally by
+   app/notifications/context.py::inject_notification_context).
+
+   One shared component — dropped into every authenticated header. No
+   per-dashboard duplication.
+   ============================================================================ #}
+
+{% if current_user.is_authenticated %}
+{% set _msgs = (notif_badges | default({})).get('unread_messages', 0) %}
+<a class="afc-msgbtn"
+   href="{{ url_for('communication_pages.messages') }}"
+   aria-label="Messages{% if _msgs %} ({{ _msgs }} unread){% endif %}">
+  <i class="bi bi-chat-dots"></i>
+  <span class="afc-msgbtn__badge{% if _msgs == 0 %} is-hidden{% endif %}"
+        data-count="{{ _msgs }}">{{ _msgs if _msgs < 100 else '99+' }}</span>
+</a>
+{% endif %}
+
+<style{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}>
+.afc-msgbtn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  padding:6px 8px;font-size:1.15rem;line-height:1;color:inherit;border-radius:8px;
+  text-decoration:none;vertical-align:middle}
+.afc-msgbtn:hover{background:rgba(255,255,255,.10)}
+.afc-msgbtn__badge{position:absolute;top:-2px;right:-2px;min-width:17px;height:17px;padding:0 4px;
+  background:#4a7fb5;color:#fff;border-radius:9px;font-size:10px;font-weight:700;line-height:17px;
+  text-align:center;pointer-events:none}
+.afc-msgbtn__badge.is-hidden{display:none}
+</style>

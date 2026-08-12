@@ -83,30 +83,54 @@
     {% endif %}
   </div>
   
-  <!-- Actions -->
-  {% if case.status.value != 'resolved' and case.status.value != 'closed' %}
-  <div class="card-footer">
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-      {% if not case.assigned_to or case.assigned_to != current_user.id %}
-      <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="action" value="assign_to_me">
-        <button type="submit" class="btn btn-primary">Assign to Me</button>
-      </form>
-      {% endif %}
-      
-      <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="action" value="escalate">
-        <button type="submit" class="btn btn-warning">Escalate</button>
-      </form>
-      
-      <button type="button" class="btn btn-success" onclick="document.getElementById('resolveModal').style.display='block'">Resolve</button>
-      
-      <a href="#notes" class="btn btn-secondary">Add Note</a>
-    </div>
-  </div>
-  {% endif %}
+   <!-- Actions -->
+   {% if case.status.value != 'resolved' and case.status.value != 'closed' %}
+   <div class="card-footer">
+     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+       {% if not case.assigned_to or case.assigned_to != current_user.id %}
+       <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
+         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="action" value="assign_to_me">
+         <button type="submit" class="btn btn-primary">Assign to Me</button>
+       </form>
+       {% endif %}
+       
+       <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
+         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="action" value="escalate">
+         <button type="submit" class="btn btn-warning">Escalate</button>
+       </form>
+
+       <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
+         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="action" value="request_info">
+         <input type="text" name="notes" class="form-control" style="width: auto; display: inline-block;" placeholder="Info needed…" required>
+         <button type="submit" class="btn btn-info">Request Info</button>
+       </form>
+
+       <button type="button" class="btn btn-success" onclick="document.getElementById('resolveModal').style.display='block'">Resolve</button>
+
+       <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
+         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="action" value="close">
+         <button type="submit" class="btn btn-secondary" onclick="return confirm('Close this case?')">Close</button>
+       </form>
+       
+       <a href="#notes" class="btn btn-secondary">Add Note</a>
+     </div>
+   </div>
+   {% else %}
+   <div class="card-footer">
+     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+       <form method="POST" action="{{ url_for('admin.compliance.case_action', case_id=case.id) }}" style="display: inline;">
+         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="action" value="reopen">
+         <button type="submit" class="btn btn-primary">Reopen Case</button>
+       </form>
+       <a href="#notes" class="btn btn-secondary">Add Note</a>
+     </div>
+   </div>
+   {% endif %}
 </div>
 
 <div class="col-layout-8-4">
@@ -193,7 +217,7 @@
       <div class="card-body">
         <div style="display: flex; flex-direction: column; gap: 8px;">
           {% if case.kyc_id %}
-          <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=case.kyc_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
+          <a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=case.kyc_id) }}" class="btn btn-sm btn-secondary" style="justify-content: flex-start;">
             <i class="fas fa-id-card"></i> KYC #{{ case.kyc_id }}
           </a>
           {% endif %}
@@ -224,9 +248,9 @@
             <div style="color: var(--muted);">{{ entry.created_at.strftime('%H:%M') if entry.created_at else '-' }}</div>
             <div>
               <span style="font-weight: 600;">{{ entry.action }}</span>
-              {% if entry.user %}
-              <span style="color: var(--muted);">by {{ entry.user.username }}</span>
-              {% endif %}
+               {% if entry.author %}
+               <span style="color: var(--muted);">by {{ entry.author.username }}</span>
+               {% endif %}
             </div>
           </div>
           {% endfor %}

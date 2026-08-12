@@ -1,0 +1,7 @@
+{% if current_user and current_user.is_authenticated and getattr(current_user, 'email_verified_at', None) is None %}
+<div class="alert alert-warning alert-dismissible fade show m-3" role="alert">
+    <strong>Account Verification Required:</strong> Your email address has not been verified yet. 
+    <a href="{{ url_for('auth.verify_options') }}" class="alert-link">Verify your account now</a> to unlock all features.
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}

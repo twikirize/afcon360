@@ -1,0 +1,123 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}SAR Filing — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}SAR Filing{% endblock %}
+
+{% block content %}
+<!-- File SAR -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-file-shield"></i> File Suspicious Activity Report</div>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.compliance.sar_filing') }}">
+      {{ csrf_token() }}
+      <div class="form-group">
+        <label class="form-label">SAR Title</label>
+        <input type="text" name="title" class="form-control" placeholder="e.g. SAR — Structuring pattern detected" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Related AML Case (optional)</label>
+        <select name="case_id" class="form-control">
+          <option value="">— None —</option>
+          {% for case in aml_cases %}
+            <option value="{{ case.id }}">{{ case.case_number }} — {{ case.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description / Findings</label>
+        <textarea name="description" class="form-control" rows="4" placeholder="Describe the suspicious activity, parties involved, amounts, and timeframe..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-danger">
+        <i class="fas fa-paper-plane"></i> Submit SAR
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Open AML Alerts -->
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-radar"></i> Open AML Alerts</div>
+    <span class="badge badge-red">{{ aml_cases|length }} alerts</span>
+  </div>
+  <div class="card-body">
+    {% if aml_cases %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Title</th>
+            <th>Priority</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for case in aml_cases %}
+          <tr>
+            <td class="mono"><a href="{{ url_for('admin.compliance.view_case', case_id=case.id) }}">{{ case.case_number }}</a></td>
+            <td>{{ case.title }}</td>
+            <td>
+              {% if case.priority.value == 'critical' %}
+                <span class="badge badge-red">Critical</span>
+              {% elif case.priority.value == 'high' %}
+                <span class="badge badge-orange">High</span>
+              {% else %}
+                <span class="badge badge-blue">{{ case.priority.value.title() }}</span>
+              {% endif %}
+            </td>
+            <td class="mono">{{ case.created_at.strftime('%Y-%m-%d') if case.created_at else '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-check-circle"></i></div>
+      <p>No open AML alerts pending SAR consideration.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Filed SARs -->
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-folder-open"></i> Filed SARs</div>
+  </div>
+  <div class="card-body">
+    {% if sars %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Report #</th>
+            <th>Title</th>
+            <th>Status</th>
+            <th>Filed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sar in sars %}
+          <tr>
+            <td class="mono">{{ sar.report_number }}</td>
+            <td>{{ sar.title }}</td>
+            <td><span class="badge badge-blue">{{ sar.status.title() }}</span></td>
+            <td class="mono">{{ sar.created_at.strftime('%Y-%m-%d') if sar.created_at else '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-inbox"></i></div>
+      <p>No SARs filed yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

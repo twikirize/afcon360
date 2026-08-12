@@ -254,6 +254,51 @@ class ForensicAuditService:
         return audit_id
 
     @staticmethod
+    def log_action(
+            action: str,
+            user_id: Optional[int] = None,
+            resource_type: Optional[str] = None,
+            resource_id: Optional[Any] = None,
+            details: Optional[Dict] = None,
+            ip_address: Optional[str] = None,
+            user_agent: Optional[str] = None,
+            session_id: Optional[str] = None,
+            risk_score: Optional[int] = None
+    ) -> str:
+        """
+        Convenience method used across the codebase for simple completion-style
+        audit logging. Delegates to log_attempt + log_completion so callers that
+        only need a single "something happened" record keep working.
+
+        Maps the older `resource_type`/`resource_id`/`details` kwargs onto the
+        attempt/completion model.
+        """
+        entity_type = resource_type or action
+        entity_id = str(resource_id) if resource_id is not None else action
+
+        audit_id = ForensicAuditService.log_attempt(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            user_id=user_id,
+            details=details,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            session_id=session_id,
+            risk_score=risk_score,
+        )
+
+        ForensicAuditService.log_completion(
+            audit_id=audit_id,
+            status='completed',
+            reviewed_by=user_id,
+            review_notes=None,
+            result_details=details,
+        )
+
+        return audit_id
+
+    @staticmethod
     def get_audit_timeline(
             entity_type: str,
             entity_id: str,

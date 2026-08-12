@@ -103,7 +103,10 @@
     }
 
     function selectPaymentMethod(methodId) {
-        var wasAlreadySelected = document.querySelector('[name="payment_method"][value="' + methodId + '"]')?.checked;
+        var radio = document.querySelector('[name="payment_method"][value="' + methodId + '"]');
+        if (!radio) return;
+
+        var wasAlreadySelected = radio.checked;
 
         document.querySelectorAll('[name="payment_method"]').forEach(function(el) {
             el.checked = false;
@@ -113,11 +116,8 @@
         });
 
         if (!wasAlreadySelected) {
-            var radio = document.querySelector('[name="payment_method"][value="' + methodId + '"]');
-            if (radio) {
-                radio.checked = true;
-                radio.closest('.payment-method-card')?.classList.add('selected');
-            }
+            radio.checked = true;
+            radio.closest('.payment-method-card')?.classList.add('selected');
 
             var labels = {
                 'wallet': 'Paid from your AFCON360 wallet',

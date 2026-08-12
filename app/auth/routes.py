@@ -10,7 +10,7 @@ import secrets
 import time
 from typing import Optional
 from urllib.parse import urlparse, urljoin
-from flask import (Blueprint, current_app, flash, redirect, render_template, request, session, url_for,)
+from flask import (Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for,)
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.auth.decorators import require_role, require_fresh_user  # noqa: F401
@@ -270,6 +270,8 @@ def register():
     # Lazy imports
     from app.auth.validators import validate_registration
     from app.auth.services import register_user
+    from app.auth.registration_policy import email_verification_required
+    from app.auth.pending_registration import start_pending_registration
 
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
@@ -278,57 +280,78 @@ def register():
         security_question = (request.form.get("security_question") or "").strip() or None
         security_answer = (request.form.get("security_answer") or "").strip() or None
 
-        # Check if email verification is required
-        require_email_verification = current_app.config.get('REQUIRE_EMAIL_VERIFICATION', False)
-        if require_email_verification and not email:
-            flash("Email is required for registration.", "danger")
+        def _rerender(**extra):
             return render_template("register.html",
                                    username=username,
                                    email=email,
                                    security_question=security_question,
-                                   security_answer=security_answer)
+                                   security_answer=security_answer,
+                                   **extra)
+
+        # Owner-controlled toggle (Auth Settings page) decides whether an
+        # email + OTP is mandatory for every new account.
+        require_email_verification = email_verification_required()
+
+        phone = (request.form.get("phone") or "").strip() or None
+
+        if require_email_verification and not email:
+            flash("Email is required for registration.", "danger")
+            return _rerender()
 
         # If email is not provided, security question and answer become required
         if not email:
             if not security_question:
                 flash("Security question is required when email is not provided.", "danger")
-                return render_template("register.html",
-                                       username=username,
-                                       email=email,
-                                       security_question=security_question,
-                                       security_answer=security_answer)
+                return _rerender()
             if not security_answer:
                 flash("Security answer is required when email is not provided.", "danger")
-                return render_template("register.html",
-                                       username=username,
-                                       email=email,
-                                       security_question=security_question,
-                                       security_answer=security_answer)
+                return _rerender()
             if len(security_answer) < 2:
                 flash("Security answer must be at least 2 characters long.", "danger")
-                return render_template("register.html",
-                                       username=username,
-                                       email=email,
-                                       security_question=security_question,
-                                       security_answer=security_answer)
+                return _rerender()
 
         if len(username) > 64 or len(password) > 128 or (email and len(email) > 255):
             flash("Input exceeds maximum length.", "danger")
-            return render_template("register.html",
-                                   username=username,
-                                   email=email,
-                                   security_question=security_question,
-                                   security_answer=security_answer)
+            return _rerender()
 
         ok, msg = validate_registration(username, password, email)
         if not ok:
             flash(msg, "danger")
-            return render_template("register.html",
-                                   username=username,
-                                   email=email,
-                                   security_question=security_question,
-                                   security_answer=security_answer)
+            return _rerender()
 
+        # ------------------------------------------------------------------
+        # Verified path: prove the inbox BEFORE creating any database row.
+        # ------------------------------------------------------------------
+        if email and require_email_verification:
+            result = start_pending_registration(
+                username=username,
+                password=password,
+                email=email,
+                ip=request.remote_addr,
+                user_agent=request.headers.get("User-Agent", ""),
+                extra={"phone": phone} if phone else None,
+            )
+
+            if not result.success:
+                if result.suggestion:
+                    flash(f"{result.message}", "warning")
+                else:
+                    flash(result.message, "danger")
+                return _rerender(email_suggestion=result.suggestion)
+
+            # Hold only the opaque token server-side; no credentials in session.
+            session["pending_registration_token"] = result.token
+            session["pending_registration_email"] = result.email
+
+            if result.debug_otp:
+                flash(f"[DEV] Your verification code is {result.debug_otp}", "info")
+
+            flash(result.message, "success")
+            return redirect(url_for("auth.verify_signup"))
+
+        # ------------------------------------------------------------------
+        # Unverified path (owner toggle off, or no-email + security question).
+        # ------------------------------------------------------------------
         try:
             # Pass security_question and security_answer to register_user
             result = register_user(
@@ -342,20 +365,12 @@ def register():
             db.session.rollback()
             current_app.logger.warning("registration_rejected", extra={"reason": str(exc), "username": username})
             flash(str(exc) or "Invalid registration details.", "warning")
-            return render_template("register.html",
-                                   username=username,
-                                   email=email,
-                                   security_question=security_question,
-                                   security_answer=security_answer)
+            return _rerender()
         except Exception:
             db.session.rollback()
             current_app.logger.exception("registration_backend_error")
             flash("Registration is temporarily unavailable.", "danger")
-            return render_template("register.html",
-                                   username=username,
-                                   email=email,
-                                   security_question=security_question,
-                                   security_answer=security_answer)
+            return _rerender()
 
         # Check if email was provided
         if not email:
@@ -366,6 +381,8 @@ def register():
                 recovery_code = result.recovery_code
             elif isinstance(result, dict) and 'recovery_code' in result:
                 recovery_code = result['recovery_code']
+            elif getattr(result, "_recovery_code", None):
+                recovery_code = result._recovery_code
             else:
                 # If register_user doesn't provide a recovery code, generate a placeholder
                 # In a real implementation, this should be handled by the service
@@ -373,30 +390,145 @@ def register():
 
             flash(f"Registration successful! Since no email was provided, please save your recovery code: {recovery_code}", "warning")
         else:
-            # Check if email verification is required
-            require_email_verification = current_app.config.get('REQUIRE_EMAIL_VERIFICATION', False)
-            if require_email_verification:
-                # Send verification email
-                from app.auth.email import send_verification_email
-                from app.identity.models.user import User
-
-                # Find the newly registered user by username
-                user = User.query.filter_by(username=username).first()
-                if user:
-                    email_sent = send_verification_email(user)
-                    if email_sent:
-                        flash("Registration successful! Please check your email for verification code.", "success")
-                    else:
-                        flash("Registration successful, but we couldn't send the verification email. Please contact support.", "warning")
-                else:
-                    flash("Registration successful, but we couldn't find your user account to send verification email.", "warning")
-            else:
-                flash("Registration successful! You can now log in.", "success")
+            flash("Registration successful! You can now log in.", "success")
 
         return redirect(url_for("auth.login"))
 
     from config import APP_NAME
     return render_template("register.html", app_name=APP_NAME)
+
+
+# ---------------------------------------------------------------------------
+# Signup email verification (OTP) - account is created only on success
+# ---------------------------------------------------------------------------
+
+@auth_bp.route("/verify-signup", methods=["GET", "POST"], endpoint="verify_signup")
+@limiter.limit("20 per hour", methods=["POST"])
+def verify_signup():
+    """
+    Confirm the 6-digit code emailed during registration.
+
+    The user record is created here - and only here - once the OTP proves the
+    address is real and reachable.
+    """
+    from app.auth.pending_registration import (
+        get_pending_registration,
+        verify_pending_registration,
+    )
+
+    token = session.get("pending_registration_token")
+    if not token:
+        flash("Please start by creating your account.", "info")
+        return redirect(url_for("auth.register"))
+
+    pending = get_pending_registration(token)
+
+    if request.method == "GET":
+        if not pending:
+            flash("Your verification session expired. Please sign up again.", "warning")
+            session.pop("pending_registration_token", None)
+            session.pop("pending_registration_email", None)
+            return redirect(url_for("auth.register"))
+
+        return render_template(
+            "auth/verify_signup.html",
+            email=pending.get("email"),
+            expires_in=max(0, int(pending.get("expires_at", 0) - time.time())),
+        )
+
+    # POST - check the submitted code
+    code = (request.form.get("code") or "").strip()
+
+    result = verify_pending_registration(
+        token,
+        code,
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", ""),
+    )
+
+    if not result.success:
+        if result.code in ("expired", "too_many_attempts"):
+            session.pop("pending_registration_token", None)
+            flash(result.message, "danger")
+            return redirect(url_for("auth.register"))
+
+        flash(result.message, "danger")
+        return render_template(
+            "auth/verify_signup.html",
+            email=session.get("pending_registration_email"),
+            remaining_attempts=result.remaining_attempts,
+        )
+
+    # Success - the account now exists and is verified.
+    session.pop("pending_registration_token", None)
+    session.pop("pending_registration_email", None)
+
+    current_app.logger.info(
+        "Signup verified and account created for %s", result.user.public_id
+    )
+
+    if result.already_existed:
+        flash("Your email is already verified. Please log in.", "info")
+    else:
+        flash("Email verified! Your account has been created. You can now log in.", "success")
+
+    return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/verify-signup/resend", methods=["POST"], endpoint="resend_signup_otp")
+@limiter.limit("5 per hour")
+def resend_signup_otp():
+    """Send a fresh signup OTP (supports the client-side silent resync)."""
+    from app.auth.pending_registration import restart_pending_registration
+
+    token = session.get("pending_registration_token")
+    wants_json = request.accept_mimetypes.best == "application/json" or request.is_json
+
+    result = restart_pending_registration(token=token, ip=request.remote_addr)
+
+    if wants_json:
+        status = 200 if result.success else (429 if result.retry_after else 400)
+        return jsonify({
+            "success": result.success,
+            "message": result.message,
+            "code": result.code,
+            "retry_after": result.retry_after,
+            "debug_otp": result.debug_otp,
+        }), status
+
+    if not result.success:
+        flash(result.message, "danger")
+        if result.code == "expired":
+            return redirect(url_for("auth.register"))
+        return redirect(url_for("auth.verify_signup"))
+
+    if result.debug_otp:
+        flash(f"[DEV] Your verification code is {result.debug_otp}", "info")
+    flash(result.message, "success")
+    return redirect(url_for("auth.verify_signup"))
+
+
+@auth_bp.route("/verify-signup/keep-alive", methods=["POST"], endpoint="signup_keep_alive")
+@limiter.limit("60 per hour")
+def signup_keep_alive():
+    """
+    Extend the pending-registration TTL while the user is actively verifying.
+
+    Called by the verification page on focus/typing so an engaged user is never
+    timed out mid-entry, up to a hard lifetime ceiling.
+    """
+    from app.auth.pending_registration import touch_pending_registration
+
+    token = session.get("pending_registration_token")
+    if not token:
+        return jsonify({"success": False, "code": "no_session"}), 400
+
+    extended, seconds_left = touch_pending_registration(token)
+    return jsonify({
+        "success": extended,
+        "expires_in": seconds_left,
+    })
+
 
 
 # ---------------------------------------------------------------------------
@@ -458,44 +590,46 @@ def verify_email_code():
 @require_fresh_user
 def verify_phone():
     """
-    Verify phone number using OTP code sent via SMS.
+    Verify phone number using OTP code sent via email (temporary - until Twilio is set up).
     """
+    from app.auth.otp_service import OTPService
+    from app.profile.models import get_profile_by_user
+    from app.extensions import db
+
+    profile = get_profile_by_user(current_user.public_id)
+    phone_number = getattr(profile, 'phone_number', '') if profile else ''
+    user_email = getattr(current_user, 'email', '') or ''
+
     if request.method == "GET":
-        flash("Please use the phone verification form to verify your number.", "info")
-        return redirect(request.referrer or url_for("profile.edit_profile"))
+        if not user_email:
+            flash("No email address found on your account. Cannot verify phone via email.", "danger")
+            return redirect(url_for("profile.edit_profile"))
+        return render_template(
+            "auth/verify_phone.html",
+            phone_number=phone_number,
+            email=user_email,
+        )
 
     code = request.form.get("code", "").strip()
-    phone_number = request.form.get("phone_number", "").strip()
 
     if not code or len(code) != 6 or not code.isdigit():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
 
-    if not phone_number:
-        # Try to get phone number from user's profile
-        from app.profile.models import get_profile_by_user
-        profile = get_profile_by_user(current_user.public_id)
-        if profile and profile.phone_number:
-            phone_number = profile.phone_number
-        else:
-            flash("Phone number not found. Please update your profile.", "danger")
-            return redirect(request.referrer or url_for("index"))
+    success, message = OTPService.verify_otp(
+        identifier=user_email,
+        otp=code,
+        purpose="phone_verification",
+    )
 
-    # Verify the OTP code
-    sms_service = SMSService()
-    if sms_service.verify_otp(phone_number, code):
+    if success:
         flash("Phone number verified successfully!", "success")
-        # Update session or profile as needed
         session['phone_verified'] = True
-        # Update user's profile verification status if needed
-        from app.profile.models import get_profile_by_user
-        from app.extensions import db
-        profile = get_profile_by_user(current_user.public_id)
         if profile:
             profile.phone_verified = True
             db.session.commit()
     else:
-        flash("Invalid or expired verification code.", "danger")
+        flash(f"Invalid or expired verification code: {message}", "danger")
 
     return redirect(request.referrer or url_for("index"))
 
@@ -548,32 +682,61 @@ def delete_account():
 @limiter.limit("5 per hour")
 def send_phone_verification():
     """
-    Send OTP code to user's phone number for verification.
+    Send OTP code to user's email for phone verification (temporary - until Twilio is set up).
+    If a new phone number is provided and differs from the profile, update the profile first.
     """
-    from app.services.sms_service import SMSService
+    from app.auth.otp_service import OTPService
+    from app.profile.models import get_profile_by_user
+    from app.extensions import db
 
     phone_number = request.form.get("phone_number", "").strip()
 
     if not phone_number:
-        # Try to get phone number from user's profile
-        from app.profile.models import get_profile_by_user
         profile = get_profile_by_user(current_user.public_id)
         if profile and profile.phone_number:
             phone_number = profile.phone_number
         else:
             flash("Please provide a phone number.", "danger")
-            return redirect(request.referrer or url_for("index"))
+            return redirect(request.referrer or url_for("auth.verify_phone"))
 
-    # Send OTP
-    sms_service = SMSService()
-    result = sms_service.send_otp(phone_number)
+    user_email = getattr(current_user, 'email', '') or ''
+    if not user_email:
+        flash("No email address found on your account. Cannot send verification code.", "danger")
+        return redirect(request.referrer or url_for("auth.verify_phone"))
+
+    profile = get_profile_by_user(current_user.public_id)
+    if profile and phone_number != getattr(profile, 'phone_number', None):
+        profile.phone_number = phone_number
+        db.session.commit()
+
+    otp = OTPService.generate_otp(length=6)
+    stored = OTPService.store_otp(
+        identifier=user_email,
+        otp=otp,
+        purpose="phone_verification",
+        ttl=300,
+    )
+
+    if not stored:
+        flash("Failed to generate verification code. Please try again.", "danger")
+        return redirect(request.referrer or url_for("auth.verify_phone"))
+
+    result = OTPService.send_email_otp_checked(
+        email=user_email,
+        otp=otp,
+        purpose="phone_verification",
+        user_id=current_user.id,
+    )
 
     if result.get('success'):
-        flash("Verification code sent to your phone number.", "success")
+        flash(f"Verification code sent to your email ({user_email}).", "success")
+        if result.get('debug_otp'):
+            flash(f"[DEV] Your verification code is {result['debug_otp']}", "info")
     else:
-        flash(f"Failed to send verification code: {result.get('error', 'Unknown error')}", "danger")
+        OTPService.invalidate_otp(user_email, "phone_verification")
+        flash(f"Failed to send verification code: {result.get('message', 'Unknown error')}", "danger")
 
-    return redirect(request.referrer or url_for("index"))
+    return redirect(request.referrer or url_for("auth.verify_phone"))
 
 
 # ---------------------------------------------------------------------------
@@ -616,10 +779,10 @@ def login():
             user       = payload["user"]
             session_id = payload["session_id"]
 
-            # Check if email verification is required
-            if require_verification and not getattr(user, "is_verified", False):
-                flash("Please confirm your email address.", "warning")
-                return render_template("login.html", username=identifier)
+            # Check if account is active
+            if not getattr(user, "is_active", True):
+                flash("Please activate your account before logging in.", "warning")
+                return render_template("auth/login.html", username=identifier)
 
             # SECURITY: Owner login with optional MFA (configurable)
             if user.is_app_owner():
@@ -630,19 +793,19 @@ def login():
                     # Owners MUST have MFA enabled when requirement is active
                     if not getattr(user, 'mfa_enabled', False):
                         current_app.logger.warning(f"Owner {user.public_id} attempted login without MFA enabled (MFA required)")
-                        flash("Owner accounts require Multi-Factor Authentication. Please set up MFA.", "error")
+                        flash("Owner accounts require Multi-Factor Authentication. Please set up MFA.", "danger")
                         return redirect(url_for("auth.setup_mfa"))
                     
                     # Verify MFA token for owners
                     mfa_code = request.form.get('mfa_code')
                     if not mfa_code:
-                        flash("MFA code is required for owner login", "error")
+                        flash("MFA code is required for owner login", "danger")
                         return render_template("login.html", username=identifier, require_mfa=True)
                     
                     # Validate MFA token
                     if not _verify_mfa_token(user, mfa_code):
                         current_app.logger.warning(f"Failed MFA attempt for owner {user.public_id}")
-                        flash("Invalid MFA code. Please try again.", "error")
+                        flash("Invalid MFA code. Please try again.", "danger")
                         return render_template("login.html", username=identifier, require_mfa=True)
                     
                     # MFA passed - track in session
@@ -653,7 +816,7 @@ def login():
                         # User has MFA - verify it for extra security even when not required
                         mfa_code = request.form.get('mfa_code')
                         if mfa_code and not _verify_mfa_token(user, mfa_code):
-                            flash("Invalid MFA code. Please try again.", "error")
+                            flash("Invalid MFA code. Please try again.", "danger")
                             return render_template("login.html", username=identifier, require_mfa=True)
                         # If no MFA code provided but user has MFA, we'll still allow login
                         # (this maintains backward compatibility while encouraging MFA use)
@@ -1273,9 +1436,128 @@ def mfa(user_id: str):
 
 
 
-# ---------------------------------------------------------------------------
-# Check toutes
-# ---------------------------------------------------------------------------
+def get_active_channels(user) -> List[Dict[str, Any]]:
+    """
+    Returns list of {"id", "label", "contact"} for channels enabled in AuthConfiguration.otp_channels
+    AND for which user has contact info (email/sms/whatsapp need user.email/user.phone).
+    """
+    from app.auth.config_model import AuthConfiguration
+    cfg = AuthConfiguration.get_config()
+    otp_channels = cfg.otp_channels or {}
+    
+    channels = []
+    
+    # Email
+    email_cfg = otp_channels.get("email", {})
+    if email_cfg.get("enabled", True) and getattr(user, "email", None):
+        email_val = user.email
+        masked = email_val if len(email_val) <= 6 else (email_val[:3] + "..." + email_val[email_val.find("@")-1:])
+        channels.append({
+            "id": "email",
+            "label": "Email Verification",
+            "contact": masked,
+            "verified": getattr(user, "email_verified", False),
+            "verified_at": getattr(user, "email_verified_at", None),
+        })
+
+    # SMS
+    sms_cfg = otp_channels.get("sms", {})
+    if sms_cfg.get("enabled", False) and getattr(user, "phone", None):
+        phone_val = user.phone
+        masked_phone = phone_val if len(phone_val) <= 4 else ("***" + phone_val[-4:])
+        channels.append({
+            "id": "sms",
+            "label": "SMS Verification",
+            "contact": masked_phone,
+            "verified": getattr(user, "phone_verified", False),
+            "verified_at": getattr(user, "phone_verified_at", None),
+        })
+
+    # WhatsApp
+    wa_cfg = otp_channels.get("whatsapp", {})
+    if wa_cfg.get("enabled", False) and getattr(user, "phone", None):
+        phone_val = user.phone
+        masked_phone = phone_val if len(phone_val) <= 4 else ("***" + phone_val[-4:])
+        channels.append({
+            "id": "whatsapp",
+            "label": "WhatsApp Verification",
+            "contact": masked_phone,
+            "verified": getattr(user, "phone_verified", False),
+            "verified_at": getattr(user, "phone_verified_at", None),
+        })
+
+    return channels
+
+
+@auth_bp.route("/verify-options", methods=["GET", "POST"], endpoint="verify_options")
+@login_required
+def verify_options():
+    """GET renders auth/verify_options.html with channels; POST takes channel, validates enabled + contact present + no auto-fallback, calls right OTP sender, redirects to /verify-otp?channel=..."""
+    channels = get_active_channels(current_user)
+
+    if request.method == "POST":
+        channel = request.form.get("channel")
+        if not channel:
+            flash("Please select a verification channel.", "danger")
+            return render_template("auth/verify_options.html", channels=channels)
+
+        # Validate channel is enabled and contact present
+        from app.auth.config_model import AuthConfiguration
+        cfg = AuthConfiguration.get_config()
+        otp_channels = cfg.otp_channels or {}
+        ch_settings = otp_channels.get(channel, {})
+
+        if not ch_settings.get("enabled", False) and channel != "email":
+            flash(f"Verification channel '{channel}' is not enabled.", "danger")
+            return render_template("auth/verify_options.html", channels=channels)
+
+        if channel == "email" and not current_user.email:
+            flash("No email address configured for this account.", "danger")
+            return render_template("auth/verify_options.html", channels=channels)
+
+        if channel in ("sms", "whatsapp") and not current_user.phone:
+            flash(f"No phone number configured for {channel} verification. Please update your profile.", "danger")
+            return render_template("auth/verify_options.html", channels=channels)
+
+        from app.auth.pending_registration import start_channel_verification
+        success, message, debug_otp = start_channel_verification(current_user.id, channel)
+        if not success:
+            flash(message, "danger")
+            return render_template("auth/verify_options.html", channels=channels)
+
+        if debug_otp:
+            flash(f"[DEV] Verification code: {debug_otp}", "info")
+
+        flash(message, "success")
+        return redirect(url_for("auth.verify_otp", channel=channel))
+
+    return render_template("auth/verify_options.html", channels=channels)
+
+
+@auth_bp.route("/verify-otp", methods=["GET", "POST"], endpoint="verify_otp")
+@login_required
+def verify_otp():
+    """GET shows OTP entry form; POST verifies via verify_channel_otp, on success flashes and redirects to dashboard; if failed attempts exceeded, allow re-choose."""
+    channel = request.args.get("channel") or request.form.get("channel") or "email"
+    channels = get_active_channels(current_user)
+
+    if request.method == "POST":
+        code = request.form.get("code")
+        from app.auth.pending_registration import verify_channel_otp
+        success, message = verify_channel_otp(current_user.id, channel, code)
+        if success:
+            flash("Account successfully verified!", "success")
+            # Redirect to appropriate dashboard
+            if current_user.is_app_owner():
+                return redirect(url_for("admin.owner.dashboard"))
+            elif current_user.has_global_role("admin", "super_admin"):
+                return redirect(url_for("admin.dashboard"))
+            else:
+                return redirect(url_for("dashboard.index") if "dashboard.index" in current_app.view_functions else "/")
+        else:
+            flash(message, "danger")
+
+    return render_template("auth/verify_otp.html", channel=channel, channels=channels)
 @auth_bp.route("/test-csrf")
 @login_required
 def test_csrf():

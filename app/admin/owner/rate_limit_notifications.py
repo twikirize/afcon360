@@ -9,10 +9,16 @@ from datetime import datetime, timezone, timedelta
 from flask import request, current_app
 from flask_login import current_user
 
-from app.extensions import db, mail
+from app.extensions import db
 from app.admin.owner.models import RateLimitBreach, RateLimitSettings
 from app.audit.comprehensive_audit import AuditService, AuditSeverity
-from app.models.notification import Notification, NotificationType
+from app.models.notification import (
+    Notification,
+    NotificationType,
+    NotificationChannel,
+    NotificationStatus,
+)
+from app.notifications.models import NotificationModule
 
 logger = logging.getLogger(__name__)
 
@@ -118,33 +124,54 @@ class RateLimitNotificationService:
 
     @staticmethod
     def _send_email(breach: RateLimitBreach, recent_count: int):
-        """Send email alert to owner"""
+        """Send email alert to owner via the unified notification EmailHandler."""
         try:
-            from flask_mail import Message
+            from app.notifications.models import Notification as NotificationModel
+            from app.notifications.channel_handlers.email import EmailHandler
 
             owner = breach.owner
             if not owner or not owner.email:
                 return
 
-            msg = Message(
-                subject=f"[AFCON360] Rate Limit Breach Alert — {breach.identity_type}:{breach.identity_value}",
-                sender=current_app.config.get('MAIL_DEFAULT_SENDER', 'noreply@example.com'),
-                recipients=[owner.email],
-                body=(
-                    f"Rate limit breach threshold exceeded.\n\n"
-                    f"Identity: {breach.identity_type}: {breach.identity_value}\n"
-                    f"Endpoint: {breach.endpoint or 'N/A'}\n"
-                    f"Method: {breach.method or 'N/A'}\n"
-                    f"Limit exceeded: {breach.limit_exceeded or 'N/A'}\n"
-                    f"Breaches in last minute: {recent_count}\n"
-                    f"IP Address: {breach.ip_address or 'N/A'}\n"
-                    f"Blocked: {breach.blocked}\n"
-                    f"Time: {datetime.now(timezone.utc).isoformat()}\n\n"
-                    f"Review the rate limiting configuration at /admin/owner/configure-rate-limiting"
-                ),
+            subject = (
+                f"[AFCON360] Rate Limit Breach Alert — "
+                f"{breach.identity_type}:{breach.identity_value}"
             )
-            mail.send(msg)
-            logger.info(f"Rate limit breach email sent to {owner.email}")
+            body = (
+                f"Rate limit breach threshold exceeded.\n\n"
+                f"Identity: {breach.identity_type}: {breach.identity_value}\n"
+                f"Endpoint: {breach.endpoint or 'N/A'}\n"
+                f"Method: {breach.method or 'N/A'}\n"
+                f"Limit exceeded: {breach.limit_exceeded or 'N/A'}\n"
+                f"Breaches in last minute: {recent_count}\n"
+                f"IP Address: {breach.ip_address or 'N/A'}\n"
+                f"Blocked: {breach.blocked}\n"
+                f"Time: {datetime.now(timezone.utc).isoformat()}\n\n"
+                f"Review the rate limiting configuration at /admin/owner/configure-rate-limiting"
+            )
+
+            notification = NotificationModel(
+                user_id=getattr(owner, 'id', None),
+                email=owner.email,
+                type=NotificationType.SYSTEM_ALERT,
+                module=NotificationModule.SYSTEM,
+                channel=NotificationChannel.EMAIL,
+                status=NotificationStatus.PENDING,
+                subject=subject,
+                body=body,
+                priority='high',
+            )
+            result = EmailHandler().deliver(
+                notification,
+                {'email': owner.email, 'user_id': getattr(owner, 'id', None)},
+            )
+            if result.get('success'):
+                logger.info(f"Rate limit breach email sent to {owner.email}")
+            else:
+                logger.error(
+                    f"Rate limit breach email failed for {owner.email}: "
+                    f"{result.get('response_body')}"
+                )
         except Exception as e:
             logger.error(f"Failed to send rate limit breach email: {e}")
 
@@ -158,17 +185,19 @@ class RateLimitNotificationService:
 
             notification = Notification(
                 user_id=owner.id,
-                type=NotificationType.SECURITY_ALERT,
-                title="Rate Limit Breach Threshold Exceeded",
-                message=(
+                type=NotificationType.ADMIN_NOTIFICATION,
+                module=NotificationModule.SYSTEM,
+                channel=NotificationChannel.IN_APP,
+                status=NotificationStatus.PENDING,
+                subject="Rate Limit Breach Threshold Exceeded",
+                body=(
                     f"{breach.identity_type}:{breach.identity_value} has exceeded "
                     f"the rate limit threshold with {recent_count} breaches/min. "
                     f"Endpoint: {breach.endpoint or 'N/A'}"
                 ),
                 link="/admin/owner/configure-rate-limiting",
                 priority="high",
-                channels=["in_app"],
-                data={
+                context={
                     'identity_type': breach.identity_type,
                     'identity_value': breach.identity_value,
                     'endpoint': breach.endpoint,

@@ -51,6 +51,15 @@ from app.accommodation.models.review import Review, AccommodationReviewStatus
 from app.accommodation.models.room import RoomType, Room, RoomBooking
 from app.accommodation.models.wishlist import Wishlist
 from app.accommodation.models.guest_profile import GuestProfile
+from app.accommodation.models.feedback import (
+    AccommodationComplaint,
+    ComplaintCategory,
+    ComplaintStatus,
+    ComplaintPriority,
+    AccommodationBookingAmendment,
+    AmendmentType,
+    AmendmentStatus,
+)
 
 __all__ = [
     # Property
@@ -94,6 +103,14 @@ __all__ = [
     'HostProfile',
     'HostOrganisationProfile',
     'PropertyDocument',
+    # Feedback
+    'AccommodationComplaint',
+    'ComplaintCategory',
+    'ComplaintStatus',
+    'ComplaintPriority',
+    'AccommodationBookingAmendment',
+    'AmendmentType',
+    'AmendmentStatus',
 ]
 
 

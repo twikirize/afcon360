@@ -88,8 +88,8 @@
             <span class="current-tier">Tier {{ kyc_info.tier }}: {{ kyc_info.tier_name }}</span>
         </div>
         <div class="next-tier">
-            {% if kyc_info.tier < 5 %}
-            <span>Next: Tier {{ kyc_info.tier + 1 }}</span>
+            {% if kyc_info.next_tier is not none %}
+            <span>Next: Tier {{ kyc_info.next_tier }} — {{ kyc_info.next_tier_name }}</span>
             <a href="{{ url_for('kyc.upgrade') }}" class="upgrade-link">Upgrade →</a>
             {% else %}
             <span>Maximum Tier Reached</span>

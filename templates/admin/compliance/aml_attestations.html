@@ -1,0 +1,56 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}AML Attestations — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}MLRO Attestations{% endblock %}
+
+{% block content %}
+{{ aml_nav('attestations') }}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header"><div class="card-title"><i class="fas fa-file-signature"></i> New Attestation</div></div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.compliance.aml_attestations') }}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end;">
+      {{ csrf_token() }}
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Type</label>
+        <select name="attestation_type" class="form-control">
+          <option value="mlro_quarterly">MLRO Quarterly</option>
+          <option value="program_effectiveness">Program Effectiveness</option>
+          <option value="tms_review">TMS Review</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column: span 2; margin-bottom: 0;">
+        <label class="form-label">Statement</label>
+        <textarea name="statement" class="form-control" rows="2" placeholder="I attest that the AML/CFT program is operating effectively for the period…"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-signature"></i> Attest</button>
+    </form>
+  </div>
+</div>
+
+<div class="card animate-up">
+  <div class="card-header"><div class="card-title">Attestation Register</div><span class="badge badge-blue">{{ attestations|length }}</span></div>
+  <div class="card-body">
+    {% if attestations %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Type</th><th>Period</th><th>Attested By</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for a in attestations %}
+          <tr>
+            <td><span class="badge badge-blue">{{ a.attestation_type }}</span></td>
+            <td class="mono">{{ a.period_start.strftime('%Y-%m-%d') if a.period_start else '-' }} → {{ a.period_end.strftime('%Y-%m-%d') if a.period_end else '-' }}</td>
+            <td>{{ a.attested_by }}</td>
+            <td class="mono">{{ a.attested_at.strftime('%Y-%m-%d') if a.attested_at else '-' }}</td>
+            <td><span class="badge badge-green">{{ a.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="empty-icon"><i class="fas fa-inbox"></i></div><p>No attestations recorded.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

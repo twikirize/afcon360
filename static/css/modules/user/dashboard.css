@@ -1,3 +1,26 @@
+/* ── Compliance theme alignment (styling only) ──────
+   Matches the admin/compliance dashboard look: blue accent
+   (#0e4ccd) + Bricolage Grotesque / Lato / JetBrains Mono.
+   No markup/content/layout changes. */
+:root {
+    --brand-primary:        #0e4ccd;
+    --brand-primary-light:  #dbeafe;
+    --brand-primary-dark:   #1d4ed8;
+    --brand-primary-rgb:    14, 76, 205;
+    --brand-accent:         #0e4ccd;
+    --brand-accent-dark:    #1d4ed8;
+    --brand-accent-rgb:     14, 76, 205;
+}
+
+body,
+.greeting-text,
+.sub-greeting,
+.card-title,
+.stat-value,
+.section-title {
+    font-family: 'Bricolage Grotesque', 'Lato', system-ui, -apple-system, sans-serif;
+}
+
 /* ── Production Dashboard Components ────────────── */
 
 .dash-card {

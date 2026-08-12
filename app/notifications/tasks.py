@@ -64,7 +64,7 @@ def send_notification_task(self, notification_id: int) -> dict:
             result = NotificationService.send(
                 user_id=notification.user_id,
                 notification_type=notification.type,
-                title=notification.subject or notification.title,
+                title=notification.subject,
                 message=notification.body,
                 data=notification.context or {},
                 channels=[notification.channel] if notification.channel else ['in_app'],

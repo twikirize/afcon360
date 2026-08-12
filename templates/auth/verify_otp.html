@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="card shadow-sm" style="width: 100%; max-width: 500px; border-radius: 12px; border: none; border-top: 4px solid #ffcc00;">
+        <div class="card-body p-4 p-md-5">
+            <h2 class="card-title text-center mb-3">Enter Verification Code</h2>
+            <p class="text-muted text-center mb-4">Please enter the 6-digit code sent via <strong>{{ channel | upper }}</strong>.</p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, msg in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'danger' else ('success' if category == 'success' else 'info') }}" role="alert">
+                            {{ msg }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="channel" value="{{ channel }}">
+
+                <div class="mb-4">
+                    <label for="code" class="form-label">6-Digit Code</label>
+                    <input type="text" class="form-control text-center fs-3 tracking-widest" id="code" name="code" maxlength="6" pattern="[0-9]{6}" required autofocus>
+                </div>
+
+                <div class="d-grid mb-3">
+                    <button type="submit" class="btn btn-success btn-lg" style="background-color: #006400; border-color: #006400;">Verify Code</button>
+                </div>
+
+                <div class="text-center">
+                    <a href="{{ url_for('auth.verify_options') }}" class="text-decoration-none text-secondary">Choose a different channel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

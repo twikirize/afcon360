@@ -1,7 +1,7 @@
 """REST API for module toggling with instant effect."""
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from app.services.module_toggle_service import ModuleToggleService
+from app.utils.module_toggle_service import ModuleToggleService
 from app.utils.module_guard import module_enabled
 
 module_api_bp = Blueprint('module_api', __name__, url_prefix='/admin/api/modules')

@@ -7,7 +7,7 @@ All notification models inherit from BaseModel with BIGINT internal IDs.
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, JSON, Text, Integer, Index, CheckConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from app.extensions import db
 from app.models.base import BaseModel
 import enum
@@ -25,6 +25,8 @@ class NotificationType(str, enum.Enum):
     PROPERTY_ARCHIVED = "property_archived"
     PROPERTY_RESTORED = "property_restored"
     BOOKING_CONFIRMED = "booking_confirmed"
+    BOOKING_PENDING = "booking_pending"
+    BOOKING_THIRD_PARTY = "third_party_booking"
     BOOKING_CANCELLED = "booking_cancelled"
     REVIEW_RECEIVED = "review_received"
 
@@ -59,6 +61,13 @@ class NotificationType(str, enum.Enum):
     TRANSACTION_NOTIFICATION = "transaction_notification"
     MESSAGE_NOTIFICATION = "message_notification"
 
+    # Compliance case lifecycle
+    COMPLIANCE_CASE_CREATED = "compliance_case_created"
+    COMPLIANCE_CASE_ASSIGNED = "compliance_case_assigned"
+    COMPLIANCE_CASE_UPDATED = "compliance_case_updated"
+    COMPLIANCE_CASE_ESCALATED = "compliance_case_escalated"
+    COMPLIANCE_CASE_RESOLVED = "compliance_case_resolved"
+
 
 class NotificationChannel(str, enum.Enum):
     """Delivery channels for notifications."""
@@ -67,6 +76,81 @@ class NotificationChannel(str, enum.Enum):
     SMS = "sms"
     PUSH = "push"
     WEBHOOK = "webhook"
+
+
+class NotificationModule(str, enum.Enum):
+    """
+    Originating module for a notification.
+
+    AFCON360 is a multi-module ecosystem: accommodation, transport, events,
+    wallet and tourism are independent businesses with different customers and
+    different activities, even though they share one notification system.
+
+    The `type` alone is NOT enough to tell them apart — `booking_confirmed` is
+    emitted by accommodation, transport AND tourism. This field is what lets a
+    dashboard show only its own module's activity, and lets the UI badge each
+    item with the business it came from.
+    """
+    ACCOMMODATION = "accommodation"
+    TRANSPORT = "transport"
+    EVENTS = "events"
+    WALLET = "wallet"
+    TOURISM = "tourism"
+    TOURNAMENT = "tournament"
+    IDENTITY = "identity"
+    KYC = "kyc"
+    ACCOUNT = "account"        # auth / signup / profile / sessions
+    MESSAGING = "messaging"    # internal user-to-user messages
+    COMPLIANCE = "compliance"  # compliance case lifecycle (KYC/KYB/AML/DSR reviews)
+    SYSTEM = "system"          # platform-wide announcements, admin alerts
+
+
+# Human-facing labels + accent colours per module, used by the notification
+# bell so a user can tell a hotel booking from a bus booking at a glance.
+MODULE_LABELS = {
+    NotificationModule.ACCOMMODATION.value: "Accommodation",
+    NotificationModule.TRANSPORT.value:     "Transport",
+    NotificationModule.EVENTS.value:        "Events",
+    NotificationModule.WALLET.value:        "Wallet",
+    NotificationModule.TOURISM.value:       "Tourism",
+    NotificationModule.TOURNAMENT.value:    "Tournament",
+    NotificationModule.IDENTITY.value:      "Identity",
+    NotificationModule.KYC.value:           "KYC",
+    NotificationModule.COMPLIANCE.value:    "Compliance",
+    NotificationModule.ACCOUNT.value:       "Account",
+    NotificationModule.MESSAGING.value:     "Messages",
+    NotificationModule.SYSTEM.value:        "System",
+}
+
+MODULE_ICONS = {
+    NotificationModule.ACCOMMODATION.value: "bi-house-door",
+    NotificationModule.TRANSPORT.value:     "bi-bus-front",
+    NotificationModule.EVENTS.value:        "bi-calendar-event",
+    NotificationModule.WALLET.value:        "bi-wallet2",
+    NotificationModule.TOURISM.value:       "bi-globe-americas",
+    NotificationModule.TOURNAMENT.value:    "bi-trophy",
+    NotificationModule.IDENTITY.value:      "bi-person-vcard",
+    NotificationModule.KYC.value:           "bi-shield-check",
+    NotificationModule.COMPLIANCE.value:    "bi-clipboard-check",
+    NotificationModule.ACCOUNT.value:       "bi-person-circle",
+    NotificationModule.MESSAGING.value:     "bi-chat-dots",
+    NotificationModule.SYSTEM.value:        "bi-megaphone",
+}
+
+MODULE_COLORS = {
+    NotificationModule.ACCOMMODATION.value: "#4a9d7f",
+    NotificationModule.TRANSPORT.value:     "#4a7fb5",
+    NotificationModule.EVENTS.value:        "#c9772e",
+    NotificationModule.WALLET.value:        "#d4af37",
+    NotificationModule.TOURISM.value:       "#8a63b8",
+    NotificationModule.TOURNAMENT.value:    "#b5504a",
+    NotificationModule.IDENTITY.value:      "#5a8fa8",
+    NotificationModule.KYC.value:           "#5a8fa8",
+    NotificationModule.COMPLIANCE.value:    "#b5504a",
+    NotificationModule.ACCOUNT.value:       "#7a8290",
+    NotificationModule.MESSAGING.value:     "#6b8fb5",
+    NotificationModule.SYSTEM.value:        "#7a8290",
+}
 
 
 class NotificationStatus(str, enum.Enum):
@@ -90,6 +174,8 @@ class Notification(BaseModel):
         Index('idx_notifications_user_type', 'user_id', 'type'),
         Index('idx_notifications_created_at', 'created_at'),
         Index('idx_notifications_status', 'status'),
+        # Per-module dashboard queries: "unread transport notifications for me"
+        Index('idx_notifications_user_module', 'user_id', 'module', 'is_read'),
         CheckConstraint(
             "status IN ('pending','sent','delivered','failed','read','cancelled')",
             name='ck_notifications_status',
@@ -97,6 +183,13 @@ class Notification(BaseModel):
         CheckConstraint(
             "channel IN ('in_app','email','sms','push','webhook')",
             name='ck_notifications_channel',
+        ),
+        CheckConstraint(
+            "module IN ("
+            "'accommodation','transport','events','wallet','tourism','tournament',"
+            "'identity','kyc','account','messaging','compliance','system'"
+            ")",
+            name='ck_notifications_module',
         ),
         CheckConstraint(
             "type IN ("
@@ -107,7 +200,9 @@ class Notification(BaseModel):
             "'booking_update','driver_assigned','event_registered','event_reminder',"
             "'deposit_confirmed','withdrawal_completed','transaction_completed','payment_received',"
             "'system_alert','platform_announcement','internal_message','internal_reply',"
-            "'admin_notification','signup_notification','transaction_notification','message_notification'"
+            "'admin_notification','signup_notification','transaction_notification','message_notification',"
+            "'compliance_case_created','compliance_case_assigned','compliance_case_updated',"
+            "'compliance_case_escalated','compliance_case_resolved'"
             ")",
             name='ck_notifications_type',
         ),
@@ -117,6 +212,10 @@ class Notification(BaseModel):
     email = Column(String(120), nullable=True)
     phone = Column(String(32), nullable=True)
     type = Column(String(50), nullable=False, index=True, server_default='system_alert')
+    # Originating business module. `type` is ambiguous across modules
+    # (booking_confirmed is emitted by accommodation, transport and tourism),
+    # so this is the field dashboards filter on.
+    module = Column(String(32), nullable=False, index=True, server_default='system')
     channel = Column(String(16), nullable=False, server_default='in_app')
     template_id = Column(BigInteger, db.ForeignKey('notification_templates.id'), nullable=True)
     context = Column(JSON, nullable=True)
@@ -166,8 +265,55 @@ class Notification(BaseModel):
     def increment_attempts(self):
         self.attempts = (self.attempts or 0) + 1
 
+    # -- Module presentation helpers (used by the notification bell) --------
+
+    @property
+    def module_label(self) -> str:
+        """Human-facing module name, e.g. 'Transport'."""
+        return MODULE_LABELS.get(self.module, 'System')
+
+    @property
+    def module_icon(self) -> str:
+        """Bootstrap icon class for the originating module."""
+        return MODULE_ICONS.get(self.module, 'bi-bell')
+
+    @property
+    def module_color(self) -> str:
+        """Accent colour so each module is visually distinct in the inbox."""
+        return MODULE_COLORS.get(self.module, '#7a8290')
+
     def __repr__(self):
-        return f'<Notification {self.id}: {self.type} for user {self.user_id}>'
+        return f'<Notification {self.id}: {self.module}/{self.type} for user {self.user_id}>'
+
+    # -- Application-level enforcement ---------------------------------------
+    # The CHECK constraints on `notifications` are only a DB backstop. We
+    # enforce the allowed vocabularies here in Flask so a bad value (e.g. a typo
+    # like 'emial') raises immediately on assignment, regardless of which code
+    # path constructs the record — and so it is caught even before a fresh
+    # `db.create_all()` / migration has applied the constraints.
+    @validates('type')
+    def _validate_type(self, key, value):
+        if value is None:
+            raise ValueError("Notification.type must not be None")
+        return NotificationType(value).value
+
+    @validates('channel')
+    def _validate_channel(self, key, value):
+        if value is None:
+            raise ValueError("Notification.channel must not be None")
+        return NotificationChannel(value).value
+
+    @validates('module')
+    def _validate_module(self, key, value):
+        if value is None:
+            raise ValueError("Notification.module must not be None")
+        return NotificationModule(value).value
+
+    @validates('status')
+    def _validate_status(self, key, value):
+        if value is None:
+            raise ValueError("Notification.status must not be None")
+        return NotificationStatus(value).value
 
 
 class NotificationTemplate(BaseModel):
@@ -225,6 +371,129 @@ class NotificationLog(BaseModel):
 
     def __repr__(self):
         return f'<NotificationLog {self.id}: notification={self.notification_id} channel={self.channel} status={self.status}>'
+
+
+class DeliveryStatus(str, enum.Enum):
+    """
+    Per-channel delivery lifecycle.
+
+    Distinct from `NotificationStatus`: a Notification is one logical message,
+    but each channel has its own independent fate. "Queued" and "accepted by the
+    provider" are NOT "delivered", and a bounced email must not be conflated
+    with a failed push.
+    """
+    QUEUED = "queued"          # created, not yet handed to a provider
+    SENDING = "sending"        # handler is executing
+    ACCEPTED = "accepted"      # provider took it (SMTP 250 / FCM ack)
+    DELIVERED = "delivered"    # confirmed reaching the recipient
+    BOUNCED = "bounced"        # hard rejection from the destination
+    FAILED = "failed"          # transport error
+    SUPPRESSED = "suppressed"  # blocked by preference/policy — never attempted
+    READ = "read"              # recipient opened it (in-app / tracked email)
+
+
+class NotificationDelivery(BaseModel):
+    """
+    Per-channel delivery record for a single Notification.
+
+    Solves the "one notification, one global status" problem: a notification
+    fanned out to email + push + in_app now tracks three independent outcomes::
+
+        Notification
+            |-- InAppDelivery  -> READ
+            |-- EmailDelivery  -> DELIVERED
+            +-- PushDelivery   -> FAILED
+
+    `NotificationLog` remains the append-only per-attempt audit trail; this is
+    the current authoritative state per channel.
+    """
+
+    __tablename__ = 'notification_deliveries'
+    __table_args__ = (
+        Index('idx_notif_deliveries_notification', 'notification_id'),
+        Index('idx_notif_deliveries_status', 'status'),
+        Index('idx_notif_deliveries_channel_status', 'channel', 'status'),
+        Index('idx_notif_deliveries_retry', 'status', 'next_retry_at'),
+        CheckConstraint(
+            "channel IN ('in_app','email','sms','push','webhook')",
+            name='ck_notif_deliveries_channel',
+        ),
+        CheckConstraint(
+            "status IN ('queued','sending','accepted','delivered','bounced',"
+            "'failed','suppressed','read')",
+            name='ck_notif_deliveries_status',
+        ),
+    )
+
+    notification_id = Column(
+        BigInteger, db.ForeignKey('notifications.id'), nullable=False, index=True
+    )
+    channel = Column(String(16), nullable=False, index=True)
+    status = Column(String(16), nullable=False, default=DeliveryStatus.QUEUED.value, index=True)
+
+    # Which gateway actually carried it (sendgrid, twilio, fcm, smtp...).
+    provider = Column(String(64), nullable=True)
+    # Provider-side id, used to reconcile async delivery webhooks back to us.
+    provider_message_id = Column(String(255), nullable=True, index=True)
+
+    recipient = Column(String(255), nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)
+    next_retry_at = Column(DateTime, nullable=True)
+
+    response_code = Column(Integer, nullable=True)
+    error = Column(Text, nullable=True)
+
+    queued_at = Column(DateTime, nullable=True, default=lambda: datetime.now(timezone.utc))
+    sent_at = Column(DateTime, nullable=True)
+    delivered_at = Column(DateTime, nullable=True)
+    read_at = Column(DateTime, nullable=True)
+
+    # Correlation id of the originating domain event, so a delivery can be
+    # traced back through the whole journey during an incident.
+    correlation_id = Column(String(64), nullable=True, index=True)
+
+    notification = relationship('Notification', foreign_keys=[notification_id], lazy='noload')
+
+    def mark_accepted(self, provider_message_id: str = None, provider: str = None):
+        self.status = DeliveryStatus.ACCEPTED.value
+        self.sent_at = datetime.now(timezone.utc)
+        if provider_message_id:
+            self.provider_message_id = provider_message_id
+        if provider:
+            self.provider = provider
+
+    def mark_delivered(self):
+        self.status = DeliveryStatus.DELIVERED.value
+        self.delivered_at = datetime.now(timezone.utc)
+
+    def mark_failed(self, error: str, response_code: int = None):
+        self.status = DeliveryStatus.FAILED.value
+        self.error = (error or '')[:2000]
+        self.response_code = response_code
+
+    def mark_suppressed(self, reason: str):
+        self.status = DeliveryStatus.SUPPRESSED.value
+        self.error = (reason or '')[:2000]
+
+    def __repr__(self):
+        return (
+            f'<NotificationDelivery {self.id}: notification={self.notification_id} '
+            f'{self.channel}/{self.status}>'
+        )
+
+    # -- Application-level enforcement (see Notification._validate_* notes) --
+    @validates('channel')
+    def _validate_channel(self, key, value):
+        if value is None:
+            raise ValueError("NotificationDelivery.channel must not be None")
+        return NotificationChannel(value).value
+
+    @validates('status')
+    def _validate_status(self, key, value):
+        if value is None:
+            raise ValueError("NotificationDelivery.status must not be None")
+        return DeliveryStatus(value).value
 
 
 class CommunicationSettings(BaseModel):

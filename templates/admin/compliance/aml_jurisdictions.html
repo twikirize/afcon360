@@ -1,0 +1,46 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}AML Jurisdictions — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}AML Jurisdictions{% endblock %}
+
+{% block content %}
+{{ aml_nav('jurisdictions') }}
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-globe"></i> Jurisdiction Profiles</div>
+    <span class="badge badge-blue">{{ jurisdictions|length }} active</span>
+  </div>
+  <div class="card-body">
+    <p class="muted" style="font-size: 13px; margin-bottom: 16px;">
+      Each supervised market is configured with its own cash-reporting threshold, STR/SAR filing SLA,
+      supported report types and identifier scheme. Unknown or smaller jurisdictions fall back to the
+      <strong>International (FATF Baseline)</strong> profile so the platform stays compliant everywhere.
+    </p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Code</th><th>Country</th><th>Currency</th><th>Cash Threshold</th>
+            <th>STR SLA (wd)</th><th>Report Types</th><th>Identifiers</th><th>Retention (yrs)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in jurisdictions %}
+          <tr class="{{ 'row-high' if j.is_default }}">
+            <td class="mono">{{ j.country_code }}{% if j.is_default %} <span class="badge badge-green">DEFAULT</span>{% endif %}</td>
+            <td>{{ j.country_name }}</td>
+            <td>{{ j.currency_code }}</td>
+            <td class="mono">{{ "{:,.0f}".format(j.cash_threshold_amount) }}</td>
+            <td>{{ j.str_sla_working_days }}</td>
+            <td>{{ (j.supported_report_types or [])|join(', ') }}</td>
+            <td>{{ (j.identifier_types or [])|join(', ') }}</td>
+            <td>{{ j.retention_years }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

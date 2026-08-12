@@ -5,13 +5,13 @@
   <title>AFCON360 KYC Rejected</title>
 </head>
 <body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
-  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #d93025;">
-    <h2 style="color: #d93025; margin-top: 0;">AFCON360 KYC Verification Update</h2>
-    <p>Dear <strong>{{ user_name }}</strong>,</p>
-    <p>Your KYC verification has been <strong>rejected</strong>.</p>
-    <p><strong>Reason:</strong> {{ rejection_reason }}</p>
-    <p>Please resubmit your documents with the required information.</p>
-    <p style="color: #555; font-size: 14px;">Contact support if you need assistance. AFCON360 East Africa Pamoja!</p>
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #c62828;">
+    <h2 style="color: #c62828; margin-top: 0;">Identity Verification Update</h2>
+    <p>Dear <strong>{{ user_name or 'Valued Fan' }}</strong>,</p>
+    <p>Unfortunately your identity verification (KYC) was <strong>not approved</strong>. Reason: {{ reason or 'Please review your submitted documents.' }}</p>
+    <p>You may resubmit your documents from your AFCON360 profile.</p>
+    {% if link %}<p><a href="{{ link }}" style="background-color: #008751; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px;">Resubmit Documents</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">AFCON360 East Africa Pamoja!</p>
   </div>
 </body>
 </html>

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -917,6 +917,9 @@ class HostService:
         prev_month_start = prev_month_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         def _month_rev(start: datetime, end: datetime) -> float:
+            # Make both boundaries naive for consistent comparisons
+            start = start.replace(tzinfo=None)
+            end = end.replace(tzinfo=None)
             return sum(
                 float(b.total_amount or 0)
                 for b in revenue_bookings
@@ -945,7 +948,7 @@ class HostService:
         Project revenue for the next 30 / 60 / 90 days based on the average
         daily revenue observed over the trailing 90-day window.
         """
-        ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
+        ninety_days_ago = (datetime.now(timezone.utc) - timedelta(days=90)).replace(tzinfo=None)
         trailing = [
             float(b.total_amount or 0)
             for b in revenue_bookings
@@ -1420,6 +1423,18 @@ class HostService:
         else:
             inventory_blocks = []
 
+        # Property-level manual blocks (owner blocked / maintenance / seasonal / holds)
+        from app.accommodation.models.availability import BlockedDate
+
+        blocked_rows = (
+            BlockedDate.query.filter(
+                BlockedDate.property_id == property_id,
+                BlockedDate.blocked_date >= start_date,
+                BlockedDate.blocked_date <= end_date,
+            ).all()
+        )
+        blocked_map = {row.blocked_date: row for row in blocked_rows}
+
         days: List[Dict[str, object]] = []
         cursor = start_date
         while cursor <= end_date:
@@ -1461,6 +1476,16 @@ class HostService:
                 day_bookings = [b for b in bookings if b.check_in <= cursor < b.check_out]
                 if day_bookings:
                     day_info["status"] = "booked"
+
+            # 2. Property-level manual blocks override "available"
+            manual_block = blocked_map.get(cursor)
+            if manual_block is not None:
+                reason_value = enum_value(manual_block.reason) or "owner_blocked"
+                if reason_value == "booked":
+                    day_info["status"] = "booked"
+                else:
+                    day_info["status"] = "blocked"
+                    day_info["blocked_reason"] = reason_value
 
             # 3. Populate detailed bookings for that day
             for booking in bookings:
@@ -1506,7 +1531,15 @@ class HostService:
                 }
                 for booking in bookings
             ],
-            "blocked_dates": [],
+            "blocked_dates": [
+                {
+                    "date": row.blocked_date.isoformat(),
+                    "reason": enum_value(row.reason),
+                    "note": row.note,
+                    "booking_id": row.booking_id,
+                }
+                for row in sorted(blocked_rows, key=lambda r: r.blocked_date)
+            ],
         }
 
     @staticmethod

@@ -1,0 +1,71 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}TMS Back-testing — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Transaction Monitoring Back-test{% endblock %}
+
+{% block content %}
+{{ aml_nav('backtest') }}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header"><div class="card-title"><i class="fas fa-vial"></i> Run Back-test</div></div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.compliance.aml_backtest') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+      {{ csrf_token() }}
+      <div class="form-group" style="flex: 1; min-width: 220px; margin-bottom: 0;">
+        <label class="form-label">Scenario</label>
+        <select name="scenario_id" class="form-control" required>
+          <option value="">Select scenario…</option>
+          {% for s in scenarios %}<option value="{{ s.id }}">{{ s.name }} ({{ s.category }})</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="width: 140px; margin-bottom: 0;">
+        <label class="form-label">Window (days)</label>
+        <input name="days" type="number" value="30" class="form-control">
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-play"></i> Run</button>
+    </form>
+  </div>
+</div>
+
+{% if run %}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header"><div class="card-title"><i class="fas fa-chart-bar"></i> Last Run Result</div></div>
+  <div class="card-body">
+    <div class="detail-grid">
+      <div class="detail-row"><span class="detail-label">Transactions Scored</span><span class="detail-value">{{ run.transactions_scored }}</span></div>
+      <div class="detail-row"><span class="detail-label">Alerts Generated</span><span class="detail-value">{{ run.alerts_generated }}</span></div>
+      <div class="detail-row"><span class="detail-label">True Positives</span><span class="detail-value">{{ run.true_positives if run.true_positives is not none else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">False Positives</span><span class="detail-value">{{ run.false_positives if run.false_positives is not none else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Precision</span><span class="detail-value">{{ run.precision_score if run.precision_score is not none else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Recall</span><span class="detail-value">{{ run.recall_score if run.recall_score is not none else '-' }}</span></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card animate-up">
+  <div class="card-header"><div class="card-title">Back-test History</div><span class="badge badge-blue">{{ runs|length }}</span></div>
+  <div class="card-body">
+    {% if runs %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Run</th><th>Scenario</th><th>Window</th><th>Scored</th><th>Alerts</th></tr></thead>
+        <tbody>
+          {% for r in runs %}
+          <tr>
+            <td class="mono">{{ r.public_id[:8] }}</td>
+            <td>{{ r.scenario_id }}</td>
+            <td class="mono">{{ r.window_start.strftime('%Y-%m-%d') if r.window_start else '-' }} → {{ r.window_end.strftime('%Y-%m-%d') if r.window_end else '-' }}</td>
+            <td>{{ r.transactions_scored }}</td>
+            <td>{{ r.alerts_generated }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="empty-icon"><i class="fas fa-inbox"></i></div><p>No back-tests run yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

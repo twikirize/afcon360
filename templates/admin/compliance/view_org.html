@@ -1,0 +1,80 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Review Organisation — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Organisation KYB Review{% endblock %}
+
+{% block content %}
+<div class="card animate-up" style="margin-bottom: 24px;">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+    <div class="card-title"><i class="fas fa-building"></i> {{ org.legal_name }}</div>
+    <span class="badge badge-{{ 'green' if org.verification_status == 'verified' else ('red' if org.verification_status == 'rejected' else 'orange') }}">{{ org.verification_status }}</span>
+  </div>
+  <div class="card-body">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+      <div><strong>Organisation type</strong><div>{{ org.org_type or 'Not provided' }}</div></div>
+      <div><strong>Registration number</strong><div>{{ org.registration_no or 'Not provided' }}</div></div>
+      <div><strong>Country</strong><div>{{ org.country or 'Not provided' }}</div></div>
+      <div><strong>Compliance status</strong><div>{{ org.compliance_status or 'pending' }}</div></div>
+    </div>
+
+    <h4 style="font-size: 16px; margin-bottom: 12px;"><i class="fas fa-folder-open"></i> Submitted KYB Documents</h4>
+    {% if kyb_documents %}
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 24px;">
+        {% for document in kyb_documents %}
+          {% set request_data = reupload_requests.get(document.id|string) %}
+          <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 14px;">
+            <strong>{{ document.document_type }}</strong>
+            <div style="font-size: 12px; color: var(--text-muted); word-break: break-word; margin: 6px 0;">{{ document.storage_key }}</div>
+            <span class="badge badge-{{ 'green' if document.verification_status == 'verified' else ('red' if document.verification_status == 'rejected' else 'orange') }}">{{ document.verification_status }}</span>
+            {% if request_data %}
+              <div style="margin-top: 10px; padding: 8px; background: rgba(245, 158, 11, 0.1); border-radius: 6px; font-size: 12px;">
+                Replacement requested: {{ request_data.reason }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p style="color: var(--text-muted);">No KYB documents have been submitted.</p>
+    {% endif %}
+
+    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+    <h4 style="font-size: 16px; margin-bottom: 16px;"><i class="fas fa-gavel"></i> Compliance Actions</h4>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+      <form method="POST" action="{{ url_for('admin.compliance.org_action', org_id=org.id) }}" class="card" style="padding: 14px; border: 1px solid rgba(16, 185, 129, .3);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="approve">
+        <label class="form-label">Approval notes</label>
+        <textarea name="notes" class="form-control" rows="3" placeholder="Optional notes"></textarea>
+        <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 10px;">Approve Organisation</button>
+      </form>
+
+      <form method="POST" action="{{ url_for('admin.compliance.org_action', org_id=org.id) }}" class="card" style="padding: 14px; border: 1px solid rgba(59, 130, 246, .3);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="request_reupload">
+        <h5 style="color: #2563eb; margin-bottom: 10px;"><i class="fas fa-file-upload"></i> Request a Specific Replacement</h5>
+        <label class="form-label" for="document_id">Document to replace</label>
+        <select name="document_id" id="document_id" class="form-control" required>
+          <option value="" selected disabled>Select document…</option>
+          {% for document in kyb_documents if document.verification_status in ('pending', 'rejected') %}
+            <option value="{{ document.id }}">{{ document.document_type }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="document_type" id="document_type">
+        <label class="form-label" for="reupload_reason" style="margin-top: 10px;">Reason <span style="color: #ef4444;">*</span></label>
+        <textarea name="reupload_reason" id="reupload_reason" class="form-control" rows="3" placeholder="For example: the certificate is cropped or unreadable." required></textarea>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Ask for This Document Again</button>
+      </form>
+
+      <form method="POST" action="{{ url_for('admin.compliance.org_action', org_id=org.id) }}" class="card" style="padding: 14px; border: 1px solid rgba(239, 68, 68, .3);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="reject">
+        <label class="form-label">Rejection reason</label>
+        <textarea name="rejection_reason" class="form-control" rows="3" required></textarea>
+        <button type="submit" class="btn btn-danger" style="width: 100%; margin-top: 10px;">Reject Organisation</button>
+      </form>
+    </div>
+    <div style="margin-top: 20px;"><a href="{{ url_for('admin.compliance.organisations') }}" class="btn btn-secondary">Back to Organisation Queue</a></div>
+  </div>
+</div>
+{% endblock %}

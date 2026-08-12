@@ -13,7 +13,7 @@ class InAppHandler(BaseChannelHandler):
     def deliver(self, notification, recipient: dict) -> dict:
         logger.info(
             f"[InAppHandler] In-app message stored for user_id={recipient.get('user_id')}: "
-            f"{notification.title}"
+            f"{notification.subject}"
         )
         return {
             'success': True,

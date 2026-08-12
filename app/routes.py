@@ -1,13 +1,16 @@
 
 # app/routes.py
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, redirect, url_for
+from flask_login import current_user
 from config import APP_NAME
 
 main_routes = Blueprint('main_routes', __name__)
 
 @main_routes.route("/")
 def home():
+    if current_user.is_authenticated:
+        return redirect(url_for('user.dashboard'))
     return render_template("base.html", app_name=APP_NAME)
 
 # Function to register blueprints with the app

@@ -2,43 +2,89 @@
 
 {% extends "base.html" %}
 
-{% block title %}Booking #{{ booking.id }} - AFCON360{% endblock %}
+{% block title %}Booking {{ booking.booking_reference }} - AFCON360{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    /* Mobile-first polish for the host booking detail page */
+    .bd-title { font-size: clamp(1.25rem, 5vw, 1.6rem); }
+    .bd-card .card-header {
+        padding: 0.75rem 1rem;
+    }
+    .bd-kv { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .bd-kv .small { line-height: 1.2; }
+    /* Keep the primary actions easy to reach on phones */
+    @media (max-width: 991.98px) {
+        .bd-actions {
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            background: #fff;
+            padding: 0.75rem;
+            border-top: 1px solid #e6e6e6;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        }
+        .bd-actions .btn { min-height: 44px; }
+    }
+    .bd-status-strip .badge { font-size: 0.8rem; }
+    .bd-ref { word-break: break-all; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
-        <div>
-            <h2 class="mb-1">Booking {{ booking.booking_reference }}</h2>
-            <p class="text-muted mb-0">
+<div class="container py-3 py-sm-4">
+    <!-- HEADER -->
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
+        <div class="min-width-0">
+            <h1 class="bd-title fw-bold mb-1">
+                Booking <span class="text-primary bd-ref">{{ booking.booking_reference }}</span>
+            </h1>
+            <p class="text-muted mb-0 small">
                 {% if property %}{{ property.name }} — {{ property.city }}, {{ property.country }}{% endif %}
             </p>
         </div>
-        <a href="{{ url_for('accommodation.host_bookings') }}" class="btn btn-outline-secondary">
-            &larr; Back to Bookings
+        <a href="{{ url_for('accommodation.host_bookings') }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">
+            <i class="fas fa-arrow-left me-1"></i> Back to Bookings
         </a>
     </div>
 
-    <div class="row">
-        <div class="col-lg-8">
-            <div class="card shadow-sm mb-4">
+    <!-- STATUS STRIP -->
+    <div class="card shadow-sm border-0 mb-3 bd-card bd-status-strip">
+        <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' if booking.status in ['pending_approval','held'] else 'info' if booking.status == 'checked_in' else 'secondary' }} fs-6">
+                <i class="fas fa-circle me-1" style="font-size:0.5rem;vertical-align:middle;"></i>
+                {{ booking.status|replace('_', ' ')|title }}
+            </span>
+            <span class="badge {% if booking.payment_status == 'paid' %}bg-success{% elif booking.payment_status == 'refunded' %}bg-warning{% else %}bg-secondary{% endif %} fs-6">
+                {{ booking.payment_status|replace('_', ' ')|title }} Payment
+            </span>
+            {{ booking_type_badge(booking) }}
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-lg-8">
+            <!-- STAY DETAILS -->
+            <div class="card shadow-sm mb-3 bd-card">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Stay Details</h5>
+                    <h5 class="mb-0"><i class="fas fa-calendar-alt me-2 text-success"></i>Stay Details</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-6 mb-3">
+                    <div class="row g-0">
+                        <div class="col-6 col-md-3 bd-kv">
                             <small class="text-muted d-block">Check-in</small>
-                            <strong>{{ booking.check_in.strftime('%a, %b %d, %Y') }}</strong>
+                            <strong>{{ booking.check_in.strftime('%a, %b %d, %Y') if booking.check_in else 'TBD' }}</strong>
                         </div>
-                        <div class="col-6 mb-3">
+                        <div class="col-6 col-md-3 bd-kv">
                             <small class="text-muted d-block">Check-out</small>
-                            <strong>{{ booking.check_out.strftime('%a, %b %d, %Y') }}</strong>
+                            <strong>{{ booking.check_out.strftime('%a, %b %d, %Y') if booking.check_out else 'TBD' }}</strong>
                         </div>
-                        <div class="col-6">
+                        <div class="col-6 col-md-3 bd-kv">
                             <small class="text-muted d-block">Nights</small>
                             <strong>{{ booking.num_nights }}</strong>
                         </div>
-                        <div class="col-6">
+                        <div class="col-6 col-md-3 bd-kv">
                             <small class="text-muted d-block">Guests</small>
                             <strong>{{ booking.num_guests }}</strong>
                         </div>
@@ -46,68 +92,89 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-4">
+            <!-- GUEST INFORMATION -->
+            <div class="card shadow-sm mb-3 bd-card">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-user me-2"></i>Guest Information</h5>
+                    <h5 class="mb-0"><i class="fas fa-user me-2 text-success"></i>Guest Information</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
                             <small class="text-muted d-block">Primary Guest</small>
                             <strong>{{ booking.primary_guest_name or booking.guest_name or 'N/A' }}</strong>
                             <br><small class="text-muted">{{ booking.primary_guest_email or booking.guest_email or '' }}</small>
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-12 col-md-6">
                             <small class="text-muted d-block">Booked By</small>
                             <strong>{{ booking.booked_by_user.username or 'N/A' }}</strong>
                             <br><small class="text-muted">{{ booking.booked_by_user.email or '' }}</small>
                         </div>
                     </div>
                     {% if booking.special_requests %}
-                    <div class="mt-2">
+                    <div class="mt-3">
                         <small class="text-muted d-block">Special Requests</small>
                         <p class="mb-0">{{ booking.special_requests }}</p>
                     </div>
                     {% endif %}
-                    <div class="mt-2">
-                        {{ booking_type_badge(booking) }}
-                    </div>
                 </div>
             </div>
 
-            <div class="card shadow-sm mb-4">
+            <!-- PAYMENT -->
+            <div class="card shadow-sm mb-3 bd-card">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-receipt me-2"></i>Payment</h5>
+                    <h5 class="mb-0"><i class="fas fa-receipt me-2 text-success"></i>Payment</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-6 mb-2">
+                    <div class="row g-3">
+                        <div class="col-6 col-md-3">
                             <small class="text-muted d-block">Total</small>
                             <strong>{{ booking.currency }} {{ "%.2f"|format(booking.total_amount) }}</strong>
                         </div>
-                        <div class="col-6 mb-2">
+                        <div class="col-6 col-md-3">
                             <small class="text-muted d-block">Status</small>
                             <span class="badge {% if booking.payment_status == 'paid' %}bg-success{% elif booking.payment_status == 'refunded' %}bg-warning{% else %}bg-secondary{% endif %}">
                                 {{ booking.payment_status|replace('_', ' ')|title }}
                             </span>
                         </div>
-                        <div class="col-6 mb-2">
+                        <div class="col-6 col-md-3">
                             <small class="text-muted d-block">Method</small>
                             <strong>{{ booking.payment_method|default('Wallet', true)|replace('_', ' ')|title }}</strong>
                         </div>
-                        <div class="col-6 mb-2">
+                        <div class="col-6 col-md-3">
                             <small class="text-muted d-block">Transaction</small>
                             <code class="small">{{ booking.wallet_txn_id or 'N/A' }}</code>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-            <!-- Guest Manifest -->
-            <div class="card shadow-sm mb-4">
+            <!-- BOOKING PASS (guest check-in) -->
+            {% if qr_uri %}
+            <div class="card shadow-sm mb-3 border-success bd-card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-qrcode me-2"></i>Booking Pass</h5>
+                </div>
+                <div class="card-body text-center">
+                    <p class="small text-muted mb-2">Guest's check-in pass — scan with a phone or share the link.</p>
+                    <img src="{{ qr_uri }}" alt="Booking pass QR code"
+                         class="img-fluid mb-2" style="max-width: 200px; width: 100%; height: auto;">
+                    <div class="bg-light rounded d-inline-block px-3 py-2 mb-2">
+                        <span class="text-muted small d-block">Reference</span>
+                        <strong class="text-primary bd-ref">{{ booking.booking_reference }}</strong>
+                    </div>
+                    <div>
+                        <a href="{{ pass_url }}" target="_blank" class="btn btn-outline-success btn-sm">
+                            <i class="fas fa-external-link-alt me-1"></i> Open Pass
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- GUEST MANIFEST -->
+            <div class="card shadow-sm mb-3 bd-card">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-users me-2"></i>Guest Manifest</h5>
+                    <h5 class="mb-0"><i class="fas fa-users me-2 text-success"></i>Guest Manifest</h5>
                 </div>
                 <div class="card-body">
                     {% set reg_count = booking.guest_registrations | length %}
@@ -143,6 +210,17 @@
                         <p class="text-muted small mb-0">No guest registrations yet.</p>
                     {% endif %}
 
+                    {% if booking.registration_needs_attention %}
+                    <div class="alert alert-warning small py-2 mt-3 mb-0">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        <strong>Registration incomplete.</strong>
+                        The deadline
+                        ({{ booking.registration_deadline.strftime('%b %d, %Y') }})
+                        has passed. You can still check this guest in - collect
+                        their details on arrival.
+                    </div>
+                    {% endif %}
+
                     <!-- Check-in Readiness Gate -->
                     <div class="mt-3 p-3 rounded {% if booking.is_ready_for_checkin %}bg-success bg-opacity-10 border border-success{% else %}bg-danger bg-opacity-10 border border-danger{% endif %}">
                         <strong>
@@ -157,34 +235,44 @@
                             {% if booking.payment_status not in ['paid', 'partially_paid'] %}
                             <li>Payment must be settled or partially settled</li>
                             {% endif %}
-                            {% if booking.check_in > booking.check_in %}
+                            {% if not booking.check_in_date_reached %}
                             <li>Check-in date must be today or past</li>
                             {% endif %}
-                            {% if reg_completed < reg_count %}
-                            <li>All guests must be registered ({{ reg_completed }}/{{ reg_count if reg_count > 0 else booking.num_guests }})</li>
+                            {% if not booking.all_required_guests_registered %}
+                            <li>
+                                All guests must be registered
+                                ({{ reg_completed }}/{{ reg_count if reg_count > 0 else booking.num_guests }})
+                                {% if not booking.registration_deadline_passed %}
+                                &mdash; or use the override below to check in anyway
+                                {% endif %}
+                            </li>
                             {% endif %}
                         </ul>
                         {% endif %}
                     </div>
 
                     <!-- Override Registration Button -->
-                    {% if reg_completed < reg_count and reg_count > 0 %}
-                    <form method="POST" action="{{ url_for('accommodation.host_override_registration', booking_id=booking.id) }}" class="mt-3">
+                    {% if not booking.all_required_guests_registered %}
+                    <form method="POST" action="{{ url_for('accommodation.host_override_registration_all', booking_id=booking.id) }}" class="mt-3">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="reason" value="Host override: allowing check-in with incomplete manifest">
                         <button type="submit" class="btn btn-warning w-100">
                             <i class="fas fa-exclamation-triangle me-1"></i> Override &amp; Allow Check-in
                         </button>
+                        <small class="text-muted d-block mt-1">
+                            Use this when the guest is at the door. You can capture
+                            their details afterwards.
+                        </small>
                     </form>
                     {% endif %}
                 </div>
             </div>
 
-            <!-- Booking Owner Info -->
+            <!-- BOOKING OWNER INFO -->
             {% if booking.booking_type == 'third_party' %}
-            <div class="card shadow-sm mb-4">
+            <div class="card shadow-sm mb-3 bd-card">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-user-shield me-2"></i>Booking Owner</h5>
+                    <h5 class="mb-0"><i class="fas fa-user-shield me-2 text-success"></i>Booking Owner</h5>
                 </div>
                 <div class="card-body">
                     {% if booking.booking_owner_id %}
@@ -198,11 +286,11 @@
                 </div>
             </div>
             {% endif %}
-
         </div>
 
-        <div class="col-lg-4">
-            <div class="card shadow-sm mb-4">
+        <!-- ACTIONS -->
+        <div class="col-12 col-lg-4">
+            <div class="card shadow-sm bd-card bd-actions">
                 <div class="card-header bg-white">
                     <h5 class="mb-0">Actions</h5>
                 </div>
@@ -245,6 +333,27 @@
                     </form>
                     {% endif %}
 
+                    {% if booking.status in ['confirmed', 'checked_in'] %}
+                    <button class="btn btn-outline-danger w-100" type="button" data-bs-toggle="collapse" data-bs-target="#cancelForm">
+                        <i class="fas fa-ban me-1"></i> Cancel Booking
+                    </button>
+                    <div class="collapse mt-2" id="cancelForm">
+                        <form method="POST"
+                              action="{{ url_for('accommodation.host_cancel_booking', property_id=booking.property_id, booking_id=booking.id) }}"
+                              class="card card-body">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="next" value="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}">
+                            <div class="mb-2">
+                                <label class="form-label">Cancellation Reason</label>
+                                <textarea name="reason" class="form-control" rows="2"
+                                          placeholder="e.g. Guest breached house rules / requested early departure"
+                                          required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-danger btn-sm w-100">Confirm Cancellation</button>
+                        </form>
+                    </div>
+                    {% endif %}
+
                     {% if booking.payment_status == 'paid' and booking.status not in ['cancelled', 'checked_out'] %}
                     <button class="btn btn-outline-danger w-100" type="button" data-bs-toggle="collapse" data-bs-target="#refundForm">
                         <i class="fas fa-undo me-1"></i> Issue Refund
@@ -272,7 +381,7 @@
             </div>
 
             {% if commission %}
-            <div class="card shadow-sm">
+            <div class="card shadow-sm mt-3 bd-card">
                 <div class="card-header bg-white">
                     <h5 class="mb-0">Payout</h5>
                 </div>

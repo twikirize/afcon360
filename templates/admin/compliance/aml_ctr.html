@@ -1,0 +1,60 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}CTR / Structuring — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}CTR / Structuring{% endblock %}
+
+{% block content %}
+{{ aml_nav('ctr') }}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-coins"></i> Large-Cash & Structuring Detection</div>
+    <div style="display: flex; gap: 8px;">
+      <span class="badge badge-orange">Default threshold: {{ "{:,.0f}".format(default_threshold) }} {{ currency }}</span>
+      <form method="POST" action="{{ url_for('admin.compliance.aml_ctr_detect') }}">
+        {{ csrf_token() }}
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-radar"></i> Run Detection</button>
+      </form>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="muted" style="font-size: 13px;">Aggregates completed transactions per user per day. A CTR alert fires at/above the jurisdiction cash threshold; a structuring alert fires when activity lands within the configured band just below the threshold across multiple transactions (smurfing / threshold avoidance).</p>
+  </div>
+</div>
+
+<div class="card animate-up">
+  <div class="card-header"><div class="card-title">Alerts</div><span class="badge badge-red">{{ alerts.total }} total</span></div>
+  <div class="card-body">
+    {% if alerts.items %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Type</th><th>User</th><th>Date</th><th>Aggregated</th><th>Txns</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for a in alerts.items %}
+          <tr class="{{ 'row-critical' if a.alert_type=='ctr' else 'row-high' }}">
+            <td>{% if a.alert_type=='ctr' %}<span class="badge badge-red">CTR</span>{% else %}<span class="badge badge-orange">Structuring</span>{% endif %}</td>
+            <td>{% if a.user %}<a href="{{ url_for('admin.compliance.user_audit', user_id=a.user.public_id) }}">{{ a.user.username }}</a>{% else %}#{{ a.user_id }}{% endif %}</td>
+            <td class="mono">{{ a.period_date.isoformat() if a.period_date else '-' }}</td>
+            <td class="mono">{{ "{:,.0f}".format(a.aggregated_amount) }}</td>
+            <td>{{ a.transaction_count }}</td>
+            <td>
+              {% if a.status=='open' %}<span class="badge badge-orange">Open</span>
+              {% elif a.status=='reported' %}<span class="badge badge-blue">Reported</span>
+              {% else %}<span class="badge badge-gray">Dismissed</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if alerts.pages > 1 %}
+    <div class="pagination">
+      {% for p in alerts.iter_pages() %}{% if p %}<a href="{{ url_for('admin.compliance.aml_ctr', page=p) }}" class="pg-btn {{ 'active' if p==alerts.page }}">{{ p }}</a>{% else %}<span class="pg-btn disabled">…</span>{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state"><div class="empty-icon"><i class="fas fa-check-circle"></i></div><p>No CTR or structuring alerts.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+  <div class="card shadow-sm" style="width: 100%; max-width: 480px; border-radius: 12px; border: none; border-top: 4px solid #ffcc00;">
+    <div class="card-body p-4 p-md-5">
+
+      <h2 class="card-title text-center mb-2">Verify your email</h2>
+      <p class="text-center text-secondary mb-4">
+        We sent a 6-digit code to<br>
+        <strong id="verify-email">{{ email or 'your email address' }}</strong>
+      </p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'danger' else ('success' if category == 'success' else 'info') }}" role="alert">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div id="toast-area"></div>
+
+      <form method="POST" action="{{ url_for('auth.verify_signup') }}" id="verify-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mb-3">
+          <label for="code" class="form-label">Verification code</label>
+          <input type="text"
+                 class="form-control form-control-lg text-center"
+                 id="code"
+                 name="code"
+                 inputmode="numeric"
+                 autocomplete="one-time-code"
+                 pattern="[0-9]{6}"
+                 maxlength="6"
+                 placeholder="000000"
+                 style="letter-spacing: 0.5em; font-size: 1.5rem;"
+                 required
+                 autofocus>
+          {% if remaining_attempts is not none %}
+            <div class="form-text text-danger">{{ remaining_attempts }} attempt(s) remaining.</div>
+          {% endif %}
+        </div>
+
+        <div class="d-grid mb-3">
+          <button type="submit" class="btn btn-lg" style="background-color: #006400; color: #fff;">
+            Verify &amp; create account
+          </button>
+        </div>
+      </form>
+
+      <div class="text-center">
+        <p class="mb-1 text-secondary" id="expiry-note">
+          {% if expires_in %}Code expires in <span id="countdown">{{ expires_in }}</span>s{% endif %}
+        </p>
+        <form method="POST" action="{{ url_for('auth.resend_signup_otp') }}" id="resend-form" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-link text-decoration-none" id="resend-btn">
+            Didn't get it? Resend code
+          </button>
+        </form>
+      </div>
+
+      <hr class="my-4">
+      <p class="text-center mb-0 small text-secondary">
+        Wrong address? <a href="{{ url_for('auth.register') }}">Start over</a>
+      </p>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var codeInput  = document.getElementById('code');
+  var countdown  = document.getElementById('countdown');
+  var toastArea  = document.getElementById('toast-area');
+  var resendForm = document.getElementById('resend-form');
+  var csrf       = document.querySelector('input[name="csrf_token"]').value;
+
+  function toast(message, kind) {
+    toastArea.innerHTML =
+      '<div class="alert alert-' + (kind || 'info') + '" role="alert">' + message + '</div>';
+  }
+
+  // -- Auto-submit once six digits are entered -----------------------------
+  if (codeInput) {
+    codeInput.addEventListener('input', function () {
+      codeInput.value = codeInput.value.replace(/\D/g, '');
+      if (codeInput.value.length === 6) {
+        document.getElementById('verify-form').submit();
+      }
+    });
+  }
+
+  // -- Countdown ------------------------------------------------------------
+  var secondsLeft = countdown ? parseInt(countdown.textContent, 10) : 0;
+  function tick() {
+    if (!countdown) { return; }
+    secondsLeft -= 1;
+    if (secondsLeft <= 0) {
+      countdown.parentElement.textContent = 'Your code has expired.';
+      silentResync();
+      return;
+    }
+    countdown.textContent = secondsLeft;
+  }
+  if (countdown) { setInterval(tick, 1000); }
+
+  // -- Silent resync: auto-request a new code instead of a dead end --------
+  var resyncing = false;
+  function silentResync() {
+    if (resyncing) { return; }
+    resyncing = true;
+
+    fetch("{{ url_for('auth.resend_signup_otp') }}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf, 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      resyncing = false;
+      if (data.success) {
+        toast('Your code expired. A new one has been sent to your email.', 'info');
+        secondsLeft = 600;
+        if (countdown) {
+          countdown.parentElement.innerHTML =
+            'Code expires in <span id="countdown">600</span>s';
+          countdown = document.getElementById('countdown');
+        }
+      } else if (data.code === 'expired') {
+        window.location.href = "{{ url_for('auth.register') }}";
+      } else {
+        toast(data.message || 'Could not send a new code.', 'warning');
+      }
+    })
+    .catch(function () {
+      resyncing = false;
+      toast('Could not reach the server. Please use the resend button.', 'warning');
+    });
+  }
+
+  // -- Keep-alive: extend the window while the user is actively verifying --
+  var lastPing = 0;
+  function keepAlive() {
+    var now = Date.now();
+    if (now - lastPing < 30000) { return; }   // at most one ping per 30s
+    lastPing = now;
+
+    fetch("{{ url_for('auth.signup_keep_alive') }}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf, 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.success && data.expires_in > secondsLeft) {
+        secondsLeft = data.expires_in;
+      }
+    })
+    .catch(function () { /* non-critical */ });
+  }
+
+  if (codeInput) {
+    codeInput.addEventListener('focus', keepAlive);
+    codeInput.addEventListener('keydown', keepAlive);
+  }
+
+  // Resend via fetch so the page (and any typed digits) survive.
+  if (resendForm) {
+    resendForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      silentResync();
+    });
+  }
+})();
+</script>
+{% endblock %}

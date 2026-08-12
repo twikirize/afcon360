@@ -2,7 +2,7 @@ from flask import render_template, redirect, url_for, current_app, flash
 from flask_login import login_required, current_user
 
 from app.admin import admin_bp
-from app.services import ModuleToggleService
+from app.utils.module_toggle_service import ModuleToggleService
 
 
 def _user_is_owner() -> bool:

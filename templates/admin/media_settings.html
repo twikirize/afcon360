@@ -1,365 +1,205 @@
-{# templates/admin/media_settings.html #}
-{% extends "base.html" %}
-{% block title %}Media Settings | Admin{% endblock %}
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Media Settings — AFCON360 Compliance & Admin{% endblock %}
+{% block topbar_title %}Media Settings & Controls{% endblock %}
 
 {% block content %}
-<div class="admin-panel">
-    <div class="panel-header">
-        <h2><i class="bi bi-image"></i> Media Settings</h2>
-        <p class="text-muted">Configure platform-wide media handling rules, security, and optimization.</p>
+<div class="container-fluid py-4">
+    <!-- Header Card -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 bg-dark text-white rounded-3 p-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <h2 class="fw-bold mb-1"><i class="fas fa-images text-warning me-2"></i> Media Settings & Storage Control</h2>
+                        <p class="text-muted mb-0">Configure platform-wide media handling rules, security scanners, quotas, and optimization.</p>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('media_admin.media_dashboard') }}" class="btn btn-outline-light btn-sm">
+                            <i class="fas fa-th-list me-1"></i> Media Dashboard
+                        </a>
+                        <a href="{{ url_for('media_admin.quota_management') }}" class="btn btn-outline-warning btn-sm">
+                            <i class="fas fa-database me-1"></i> Quotas
+                        </a>
+                        <span class="badge bg-success fs-6 px-3 py-2 align-self-center"><i class="fas fa-check-circle me-1"></i> System Active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <form id="mediaSettingsForm" method="POST" action="{{ url_for('media_admin.update_media_settings') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <!-- Security Features Section -->
-        <div class="settings-section">
-            <h3><i class="bi bi-shield-check"></i> Security Features</h3>
-            <p class="section-desc">Control what security checks run on uploaded files.</p>
+        <div class="row g-4">
+            <!-- Left Column: Security & Limits -->
+            <div class="col-lg-7">
+                <!-- Security Features Section -->
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-shield-alt text-primary me-2"></i> Security Features</h5>
+                        <small class="text-muted">Control what security checks run on uploaded files.</small>
+                    </div>
+                    <div class="card-body px-4">
+                        <div class="list-group list-group-flush">
+                            <div class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-0">
+                                <div>
+                                    <h6 class="mb-1 fw-semibold">Virus Scanning</h6>
+                                    <p class="text-muted small mb-0">Scan uploads for malware using ClamAV & signature checks.</p>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" name="virus_scan_enabled" {% if settings.virus_scan_enabled %}checked{% endif %}>
+                                </div>
+                            </div>
 
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <input type="checkbox" name="virus_scan_enabled" {% if settings.virus_scan_enabled %}checked{% endif %}>
-                        <span class="checkmark"></span>
-                        <div>
-                            <strong>Virus Scanning</strong>
-                            <small>Scan uploads for malware using ClamAV + signature checks</small>
+                            <div class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-0">
+                                <div>
+                                    <h6 class="mb-1 fw-semibold">Content Moderation</h6>
+                                    <p class="text-muted small mb-0">Check dimensions, brightness, and color variance.</p>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" name="content_moderation_enabled" {% if settings.content_moderation_enabled %}checked{% endif %}>
+                                </div>
+                            </div>
+
+                            <div class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-0">
+                                <div>
+                                    <h6 class="mb-1 fw-semibold">Perceptual Hash (Near-Dup Detection)</h6>
+                                    <p class="text-muted small mb-0">Detect similar images even after resize/crop.</p>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" name="perceptual_hash_enabled" {% if settings.perceptual_hash_enabled %}checked{% endif %}>
+                                </div>
+                            </div>
+
+                            <div class="list-group-item px-0 py-3 border-0">
+                                <label for="perceptual_hash_threshold" class="form-label fw-semibold">Perceptual Hash Threshold</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="perceptual_hash_threshold" name="perceptual_hash_threshold" value="{{ settings.perceptual_hash_threshold }}" min="0" max="64">
+                                    <span class="input-group-text bg-light">0-64 (strict)</span>
+                                </div>
+                                <div class="form-text">Lower values require stricter image matching.</div>
+                            </div>
                         </div>
-                    </label>
+                    </div>
                 </div>
 
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <input type="checkbox" name="content_moderation_enabled" {% if settings.content_moderation_enabled %}checked{% endif %}>
-                        <span class="checkmark"></span>
-                        <div>
-                            <strong>Content Moderation</strong>
-                            <small>Check dimensions, brightness, and color variance</small>
+                <!-- Upload Limits Section -->
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-upload text-success me-2"></i> Upload Limits & Rate Control</h5>
+                        <small class="text-muted">Set maximum file sizes and rate limits.</small>
+                    </div>
+                    <div class="card-body px-4">
+                        <div class="row g-3">
+                            <div class="col-md-6 mb-3">
+                                <label for="max_photo_size_mb" class="form-label fw-semibold">Max Photo Size (MB)</label>
+                                <input type="number" class="form-control" id="max_photo_size_mb" name="max_photo_size_mb" value="{{ settings.max_photo_size_mb }}" min="1" max="100">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="max_document_size_mb" class="form-label fw-semibold">Max Document Size (MB)</label>
+                                <input type="number" class="form-control" id="max_document_size_mb" name="max_document_size_mb" value="{{ settings.max_document_size_mb }}" min="1" max="100">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="upload_rate_limit" class="form-label fw-semibold">Upload Rate Limit</label>
+                                <input type="text" class="form-control" id="upload_rate_limit" name="upload_rate_limit" value="{{ settings.upload_rate_limit }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="chunked_upload_rate_limit" class="form-label fw-semibold">Chunked Upload Rate Limit</label>
+                                <input type="text" class="form-control" id="chunked_upload_rate_limit" name="chunked_upload_rate_limit" value="{{ settings.chunked_upload_rate_limit }}">
+                            </div>
                         </div>
-                    </label>
+                    </div>
                 </div>
+            </div>
 
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <input type="checkbox" name="perceptual_hash_enabled" {% if settings.perceptual_hash_enabled %}checked{% endif %}>
-                        <span class="checkmark"></span>
-                        <div>
-                            <strong>Perceptual Hash (Near-Dup Detection)</strong>
-                            <small>Detect similar images even after resize/crop</small>
+            <!-- Right Column: Optimization, Quotas & CDN -->
+            <div class="col-lg-5">
+                <!-- Image Optimization Section -->
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-sliders-h text-warning me-2"></i> Image Optimization</h5>
+                        <small class="text-muted">Control compression quality (0-100).</small>
+                    </div>
+                    <div class="card-body px-4">
+                        <div class="mb-3">
+                            <label for="webp_quality" class="form-label fw-semibold">WebP Quality</label>
+                            <input type="number" class="form-control" id="webp_quality" name="webp_quality" value="{{ settings.webp_quality }}" min="1" max="100">
                         </div>
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>Perceptual Hash Threshold</strong>
-                        <small>0-64 (lower = stricter matching)</small>
-                        <input type="number" name="perceptual_hash_threshold" value="{{ settings.perceptual_hash_threshold }}" min="0" max="64" class="form-control">
-                    </label>
-                </div>
-            </div>
-        </div>
-
-        <!-- Upload Limits Section -->
-        <div class="settings-section">
-            <h3><i class="bi bi-upload"></i> Upload Limits</h3>
-            <p class="section-desc">Set maximum file sizes and rate limits.</p>
-
-            <div class="settings-grid">
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>Max Photo Size (MB)</strong>
-                        <small>Maximum size for image uploads</small>
-                        <input type="number" name="max_photo_size_mb" value="{{ settings.max_photo_size_mb }}" min="1" max="100" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>Max Document Size (MB)</strong>
-                        <small>Maximum size for document uploads (PDF, etc.)</small>
-                        <input type="number" name="max_document_size_mb" value="{{ settings.max_document_size_mb }}" min="1" max="100" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item">
-                    <label>
-                        <strong>Upload Rate Limit</strong>
-                        <small>Flask-Limiter format (e.g., "50 per minute")</small>
-                        <input type="text" name="upload_rate_limit" value="{{ settings.upload_rate_limit }}" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item">
-                    <label>
-                        <strong>Chunked Upload Rate Limit</strong>
-                        <small>Rate limit for chunk uploads</small>
-                        <input type="text" name="chunked_upload_rate_limit" value="{{ settings.chunked_upload_rate_limit }}" class="form-control">
-                    </label>
-                </div>
-            </div>
-        </div>
-
-        <!-- Image Optimization Section -->
-        <div class="settings-section">
-            <h3><i class="bi bi-sliders"></i> Image Optimization</h3>
-            <p class="section-desc">Control compression quality for generated WebP/AVIF/JPEG files.</p>
-
-            <div class="settings-grid">
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>WebP Quality</strong>
-                        <small>0-100 (higher = better quality, larger file)</small>
-                        <input type="number" name="webp_quality" value="{{ settings.webp_quality }}" min="1" max="100" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>AVIF Quality</strong>
-                        <small>0-100 (higher = better quality, larger file)</small>
-                        <input type="number" name="avif_quality" value="{{ settings.avif_quality }}" min="1" max="100" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>JPEG Quality</strong>
-                        <small>0-100 (higher = better quality, larger file)</small>
-                        <input type="number" name="jpeg_quality" value="{{ settings.jpeg_quality }}" min="1" max="100" class="form-control">
-                    </label>
-                </div>
-            </div>
-        </div>
-
-        <!-- Storage Quotas Section -->
-        <div class="settings-section">
-            <h3><i class="bi bi-database"></i> Storage Quotas</h3>
-            <p class="section-desc">Set per-entity storage limits to prevent abuse.</p>
-
-            <div class="settings-grid">
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>User Quota (MB)</strong>
-                        <small>Storage limit per regular user</small>
-                        <input type="number" name="user_quota_mb" value="{{ settings.user_quota_mb }}" min="10" max="50000" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>Host Quota (MB)</strong>
-                        <small>Storage limit per host/listing owner</small>
-                        <input type="number" name="host_quota_mb" value="{{ settings.host_quota_mb }}" min="10" max="500000" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>Organization Quota (MB)</strong>
-                        <small>Storage limit per organization</small>
-                        <input type="number" name="org_quota_mb" value="{{ settings.org_quota_mb }}" min="10" max="1000000" class="form-control">
-                    </label>
-                </div>
-
-                <div class="setting-item">
-                    <label class="setting-label">
-                        <input type="checkbox" name="quota_enforcement_enabled" {% if settings.quota_enforcement_enabled %}checked{% endif %}>
-                        <span class="checkmark"></span>
-                        <div>
-                            <strong>Enforce Quotas</strong>
-                            <small>Block uploads when quota is exceeded</small>
+                        <div class="mb-3">
+                            <label for="avif_quality" class="form-label fw-semibold">AVIF Quality</label>
+                            <input type="number" class="form-control" id="avif_quality" name="avif_quality" value="{{ settings.avif_quality }}" min="1" max="100">
                         </div>
-                    </label>
+                        <div class="mb-3">
+                            <label for="jpeg_quality" class="form-label fw-semibold">JPEG Quality</label>
+                            <input type="number" class="form-control" id="jpeg_quality" name="jpeg_quality" value="{{ settings.jpeg_quality }}" min="1" max="100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Storage Quotas Section -->
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-database text-danger me-2"></i> Storage Quotas & Limits</h5>
+                        <small class="text-muted">Prevent resource abuse per entity.</small>
+                    </div>
+                    <div class="card-body px-4">
+                        <div class="mb-3">
+                            <label for="user_quota_mb" class="form-label fw-semibold">User Quota (MB)</label>
+                            <input type="number" class="form-control" id="user_quota_mb" name="user_quota_mb" value="{{ settings.user_quota_mb }}" min="10" max="50000">
+                        </div>
+                        <div class="mb-3">
+                            <label for="host_quota_mb" class="form-label fw-semibold">Host Quota (MB)</label>
+                            <input type="number" class="form-control" id="host_quota_mb" name="host_quota_mb" value="{{ settings.host_quota_mb }}" min="10" max="500000">
+                        </div>
+                        <div class="mb-3">
+                            <label for="org_quota_mb" class="form-label fw-semibold">Organization Quota (MB)</label>
+                            <input type="number" class="form-control" id="org_quota_mb" name="org_quota_mb" value="{{ settings.org_quota_mb }}" min="10" max="1000000">
+                        </div>
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="quota_enforcement_enabled" name="quota_enforcement_enabled" {% if settings.quota_enforcement_enabled %}checked{% endif %}>
+                            <label class="form-check-label fw-semibold ms-2" for="quota_enforcement_enabled">Enforce Quotas on Upload</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CDN & Delivery Section -->
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-cloud text-info me-2"></i> CDN & Delivery</h5>
+                        <small class="text-muted">Content delivery network settings.</small>
+                    </div>
+                    <div class="card-body px-4">
+                        <div class="mb-3">
+                            <label for="cdn_base_url" class="form-label fw-semibold">CDN Base URL</label>
+                            <input type="url" class="form-control" id="cdn_base_url" name="cdn_base_url" value="{{ settings.cdn_base_url or '' }}" placeholder="https://cdn.example.com">
+                        </div>
+                        <div class="mb-3">
+                            <label for="signed_url_expiry_seconds" class="form-label fw-semibold">Signed URL Expiry (seconds)</label>
+                            <input type="number" class="form-control" id="signed_url_expiry_seconds" name="signed_url_expiry_seconds" value="{{ settings.signed_url_expiry_seconds }}" min="60" max="86400">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- CDN & Delivery Section -->
-        <div class="settings-section">
-            <h3><i class="bi bi-cloud"></i> CDN & Delivery</h3>
-            <p class="section-desc">Configure content delivery settings.</p>
-
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <label>
-                        <strong>CDN Base URL</strong>
-                        <small>e.g., https://cdn.afcon360.com (leave empty for direct storage)</small>
-                        <input type="url" name="cdn_base_url" value="{{ settings.cdn_base_url or '' }}" class="form-control" placeholder="https://cdn.example.com">
-                    </label>
-                </div>
-
-                <div class="setting-item numeric">
-                    <label>
-                        <strong>Signed URL Expiry (seconds)</strong>
-                        <small>How long private media URLs remain valid</small>
-                        <input type="number" name="signed_url_expiry_seconds" value="{{ settings.signed_url_expiry_seconds }}" min="60" max="86400" class="form-control">
-                    </label>
+        <!-- Action Buttons Bar -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card shadow-sm border-0 rounded-3 p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <button type="button" class="btn btn-outline-warning" onclick="resetSettings()">
+                            <i class="fas fa-undo me-2"></i> Reset to Defaults
+                        </button>
+                        <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">
+                            <i class="fas fa-save me-2"></i> Save Changes
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="settings-actions">
-            <button type="submit" class="btn btn-primary">
-                <i class="bi bi-check-circle"></i> Save Settings
-            </button>
-            <button type="button" class="btn btn-outline-warning" onclick="resetSettings()">
-                <i class="bi bi-arrow-counterclockwise"></i> Reset to Defaults
-            </button>
         </div>
     </form>
 </div>
-
-<style>
-.admin-panel {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 2rem;
-}
-
-.panel-header {
-    margin-bottom: 2rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-
-.settings-section {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.settings-section h3 {
-    color: #d4af37;
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
-}
-
-.section-desc {
-    color: rgba(255,255,255,0.5);
-    font-size: 0.85rem;
-    margin-bottom: 1.5rem;
-}
-
-.settings-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.25rem;
-}
-
-.setting-item {
-    background: rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 6px;
-    padding: 1rem;
-}
-
-.setting-item.numeric {
-    /* Numeric items same style */
-}
-
-.setting-item label {
-    display: block;
-    margin-bottom: 0;
-}
-
-.setting-label {
-    display: flex !important;
-    align-items: flex-start;
-    gap: 0.75rem;
-    cursor: pointer;
-}
-
-.setting-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    margin-top: 2px;
-    accent-color: #d4af37;
-}
-
-.setting-label strong {
-    display: block;
-    color: #fff;
-    font-size: 0.9rem;
-    margin-bottom: 0.25rem;
-}
-
-.setting-label small {
-    display: block;
-    color: rgba(255,255,255,0.5);
-    font-size: 0.8rem;
-    line-height: 1.4;
-}
-
-.setting-item label:not(.setting-label) strong {
-    display: block;
-    color: #fff;
-    font-size: 0.9rem;
-    margin-bottom: 0.25rem;
-}
-
-.setting-item label:not(.setting-label) small {
-    display: block;
-    color: rgba(255,255,255,0.5);
-    font-size: 0.8rem;
-    margin-bottom: 0.5rem;
-}
-
-.form-control {
-    width: 100%;
-    background: rgba(0,0,0,0.3);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: #fff;
-    padding: 0.5rem 0.75rem;
-    border-radius: 4px;
-    font-size: 0.9rem;
-}
-
-.form-control:focus {
-    outline: none;
-    border-color: #d4af37;
-    box-shadow: 0 0 0 2px rgba(212,175,55,0.2);
-}
-
-.settings-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: flex-end;
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(255,255,255,0.1);
-}
-
-.btn {
-    padding: 0.6rem 1.5rem;
-    border-radius: 4px;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.btn-primary {
-    background: #d4af37;
-    color: #000;
-}
-
-.btn-outline-warning {
-    background: transparent;
-    border: 1px solid #d4af37;
-    color: #d4af37;
-}
-
-.btn-outline-warning:hover {
-    background: rgba(212,175,55,0.1);
-}
-</style>
 
 <script>
 document.getElementById('mediaSettingsForm').addEventListener('submit', async function(e) {
@@ -369,17 +209,15 @@ document.getElementById('mediaSettingsForm').addEventListener('submit', async fu
     const data = {};
     formData.forEach((value, key) => {
         if (key === 'csrf_token') return;
-        // Handle checkboxes
-        if (formData.has(key)) {
-            data[key] = formData.get(key);
-        }
+        data[key] = value;
     });
 
     // Convert checkboxes to booleans
     const checkboxes = ['virus_scan_enabled', 'content_moderation_enabled',
                         'perceptual_hash_enabled', 'quota_enforcement_enabled'];
     checkboxes.forEach(key => {
-        data[key] = this.querySelector(`[name="${key}"]`).checked;
+        const el = this.querySelector(`[name="${key}"]`);
+        if (el) data[key] = el.checked;
     });
 
     try {
@@ -394,9 +232,9 @@ document.getElementById('mediaSettingsForm').addEventListener('submit', async fu
 
         const result = await response.json();
         if (result.success) {
-            showAlert('Settings saved successfully!', 'success');
+            showAlert('Media settings saved successfully!', 'success');
         } else {
-            showAlert('Error: ' + result.error, 'error');
+            showAlert('Error: ' + (result.error || 'Failed to save'), 'error');
         }
     } catch (error) {
         showAlert('Failed to save settings: ' + error.message, 'error');
@@ -428,14 +266,13 @@ async function resetSettings() {
 
 function showAlert(message, type) {
     const alert = document.createElement('div');
-    alert.className = `alert alert-${type}`;
+    alert.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
     alert.style.cssText = `
         position: fixed; top: 20px; right: 20px; padding: 1rem 1.5rem;
-        border-radius: 4px; z-index: 9999; max-width: 400px;
-        background: ${type === 'success' ? 'rgba(40,167,69,0.9)' : 'rgba(220,53,69,0.9)'};
-        color: white; border: 1px solid ${type === 'success' ? '#28a745' : '#dc3545'};
+        border-radius: 8px; z-index: 9999; max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     `;
-    alert.textContent = message;
+    alert.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'} me-2"></i>${message}`;
     document.body.appendChild(alert);
     setTimeout(() => alert.remove(), 4000);
 }

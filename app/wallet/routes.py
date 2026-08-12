@@ -29,7 +29,7 @@ from app.wallet.decorators import (
 )
 from app.wallet.services.wallet_status_service import WalletFeature, WalletStatusService
 from app.auth.decorators import require_fresh_user
-from app.services.analytics import AnalyticsService
+from app.utils.analytics import AnalyticsService
 from uuid import UUID
 
 from uuid import uuid4
@@ -306,6 +306,11 @@ def wallet_dashboard():
     import logging
     logger = logging.getLogger(__name__)
 
+    is_pane = request.args.get('_pane') == '1'
+    if is_pane:
+        # Loaded inside the unified user dashboard pane — render fragment only
+        return _wallet_dashboard_pane()
+
     AnalyticsService.track_page_view('wallet')
 
     # Clear admin/module flash messages from previous page loads
@@ -423,6 +428,54 @@ def wallet_dashboard():
         )
 
 
+def _wallet_dashboard_pane():
+    """Render the wallet dashboard as a fragment for the unified user dashboard pane."""
+    try:
+        wallet_status = WalletStatusService.get_wallet_status(current_user)
+        account = get_account(current_user.id)
+        balance = Decimal('0')
+        recent_transactions = []
+        transaction_count = 0
+        no_wallet = not account
+        wallet_activated = wallet_status.is_activated if wallet_status else False
+
+        if account:
+            service = WalletService()
+            balance_data = service.get_balance(account.user_id)
+            balance = balance_data.get('balance', Decimal('0'))
+            recent_transactions = TransactionModel.query.filter(
+                or_(
+                    TransactionModel.user_id == current_user.id,
+                    TransactionModel.recipient_user_id == current_user.id
+                )
+            ).order_by(TransactionModel.created_at.desc()).limit(5).all()
+            transaction_count = calculate_transaction_usage(current_user.id)
+
+        return render_template(
+            'wallet/wallet_dashboard_pane.html',
+            account=account,
+            balance=balance,
+            recent_transactions=recent_transactions,
+            commission=Decimal('0'),
+            transaction_count=transaction_count,
+            no_wallet=no_wallet,
+            wallet_activated=wallet_activated,
+            show_create_prompt=no_wallet,
+            wallet_creation_status={}
+        )
+    except Exception:
+        return render_template(
+            'wallet/wallet_dashboard_pane.html',
+            balance=Decimal('0'),
+            recent_transactions=[],
+            commission=Decimal('0'),
+            no_wallet=True,
+            wallet_activated=False,
+            show_create_prompt=True,
+            wallet_creation_status={}
+        )
+
+
 @wallet_bp.route('/overview')
 @login_required
 def overview():
@@ -490,12 +543,12 @@ def wallet_create():
     # Validate CSRF
     csrf_token = request.form.get('csrf_token')
     if not csrf_token:
-        flash('Security token missing. Please try again.', 'error')
+        flash('Security token missing. Please try again.', 'danger')
         return redirect(url_for('wallet.wallet_create_page'))
     try:
         validate_csrf(csrf_token)
     except Exception:
-        flash('Security validation failed. Please refresh and try again.', 'error')
+        flash('Security validation failed. Please refresh and try again.', 'danger')
         return redirect(url_for('wallet.wallet_create_page'))
     
     # Check KYC level before wallet creation
@@ -507,7 +560,7 @@ def wallet_create():
     # Check terms acceptance
     accept_terms = request.form.get('accept_terms') == '1'
     if not accept_terms:
-        flash('Please accept the Wallet Terms of Service to proceed.', 'error')
+        flash('Please accept the Wallet Terms of Service to proceed.', 'danger')
         return redirect(url_for('wallet.wallet_create_page'))
     
     try:
@@ -627,12 +680,14 @@ def wallet_create():
         return redirect(url_for('wallet.wallet_create_page'))
 
 
-@wallet_bp.route('/deposit', endpoint='deposit')
+@wallet_bp.route('/deposit')
 @login_required
 @require_deposit_access
 def deposit_page():
     """GET: Show deposit form"""
     account = get_account(current_user.id)
+    if request.args.get('_pane') == '1':
+        return render_template('wallet/deposit_pane.html', account=account, balance=Decimal('0'))
     if not account:
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
@@ -650,17 +705,17 @@ def deposit_form():
         currency = request.form.get('currency', 'UGX')
         
         if not amount:
-            flash('Amount is required', 'error')
+            flash('Amount is required', 'danger')
             return redirect(url_for('wallet.deposit_page'))
         
         try:
             amount = Decimal(amount)
         except:
-            flash('Invalid amount', 'error')
+            flash('Invalid amount', 'danger')
             return redirect(url_for('wallet.deposit_page'))
         
         if amount <= 0:
-            flash('Amount must be greater than zero', 'error')
+            flash('Amount must be greater than zero', 'danger')
             return redirect(url_for('wallet.deposit_page'))
         
         # Get existing account (do NOT auto-create)
@@ -683,7 +738,7 @@ def deposit_form():
         return redirect(url_for('wallet.wallet_dashboard'))
         
     except LimitExceededError as e:
-        flash(f'Deposit limit exceeded: {str(e)}', 'error')
+        flash(f'Deposit limit exceeded: {str(e)}', 'danger')
         return redirect(url_for('wallet.deposit_page'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
@@ -701,12 +756,20 @@ def deposit_form():
 # SEND / TRANSFER ROUTES
 # =============================================================================
 
-@wallet_bp.route('/send', endpoint='send')
+@wallet_bp.route('/send')
 @login_required
 @require_send_access
 def send_page():
     """GET: Show send funds form"""
     account = get_account(current_user.id)
+    if request.args.get('_pane') == '1':
+        balance = Decimal('0')
+        if account:
+            try:
+                balance = WalletService().get_balance(account.user_id).get('balance', Decimal('0'))
+            except Exception:
+                balance = Decimal('0')
+        return render_template('wallet/send_pane.html', account=account, balance=balance)
     if not account:
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
@@ -727,18 +790,18 @@ def send_funds():
         agent_fee = request.form.get('agent_fee', '0')
         
         if not receiver_id or not amount:
-            flash('Receiver ID and amount are required', 'error')
+            flash('Receiver ID and amount are required', 'danger')
             return redirect(url_for('wallet.send_page'))
         
         try:
             amount = Decimal(amount)
             agent_fee = Decimal(agent_fee) if agent_fee else Decimal('0')
         except:
-            flash('Invalid amount', 'error')
+            flash('Invalid amount', 'danger')
             return redirect(url_for('wallet.send_page'))
         
         if amount <= 0:
-            flash('Amount must be greater than zero', 'error')
+            flash('Amount must be greater than zero', 'danger')
             return redirect(url_for('wallet.send_page'))
         
         # KYC limit check before processing
@@ -761,13 +824,13 @@ def send_funds():
         ).first()
         
         if not receiver:
-            flash('Receiver not found', 'error')
+            flash('Receiver not found', 'danger')
             return redirect(url_for('wallet.send_page'))
         
         # Check if receiver has an account (do NOT auto-create)
         receiver_account = get_account(receiver.id, currency)
         if not receiver_account:
-            flash('Receiver does not have a wallet account. Please ask them to create one first.', 'error')
+            flash('Receiver does not have a wallet account. Please ask them to create one first.', 'danger')
             current_app.logger.warning(
                 f"Transfer attempt to user {receiver_id} without wallet account "
                 f"by sender {current_user.id}"
@@ -794,10 +857,10 @@ def send_funds():
         return redirect(url_for('wallet.wallet_dashboard'))
         
     except InsufficientBalanceError:
-        flash('Insufficient balance', 'error')
+        flash('Insufficient balance', 'danger')
         return redirect(url_for('wallet.send_page'))
     except LimitExceededError as e:
-        flash(f'Limit exceeded: {str(e)}', 'error')
+        flash(f'Limit exceeded: {str(e)}', 'danger')
         return redirect(url_for('wallet.send_page'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
@@ -841,17 +904,17 @@ def withdraw_funds():
         agent_id = request.form.get('agent_id', '')
         
         if not amount:
-            flash('Amount is required', 'error')
+            flash('Amount is required', 'danger')
             return redirect(url_for('wallet.withdraw_page'))
         
         try:
             amount = Decimal(amount)
         except:
-            flash('Invalid amount', 'error')
+            flash('Invalid amount', 'danger')
             return redirect(url_for('wallet.withdraw_page'))
         
         if amount <= 0:
-            flash('Amount must be greater than zero', 'error')
+            flash('Amount must be greater than zero', 'danger')
             return redirect(url_for('wallet.withdraw_page'))
         
         # KYC limit check before processing
@@ -881,10 +944,10 @@ def withdraw_funds():
         return redirect(url_for('wallet.wallet_dashboard'))
         
     except InsufficientBalanceError:
-        flash('Insufficient balance', 'error')
+        flash('Insufficient balance', 'danger')
         return redirect(url_for('wallet.withdraw_page'))
     except LimitExceededError as e:
-        flash(f'Withdrawal limit exceeded: {str(e)}', 'error')
+        flash(f'Withdrawal limit exceeded: {str(e)}', 'danger')
         return redirect(url_for('wallet.withdraw_page'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
@@ -1034,14 +1097,14 @@ def payout_request_form():
         account_info = request.form.get('account') or {}
 
         if not amount:
-            flash('Amount is required', 'error')
+            flash('Amount is required', 'danger')
             return redirect(url_for('wallet.agent_payout_request_page'))
 
         from decimal import Decimal
         try:
             amount = Decimal(amount)
         except:
-            flash('Invalid amount', 'error')
+            flash('Invalid amount', 'danger')
             return redirect(url_for('wallet.agent_payout_request_page'))
 
         from app.wallet.services.payout_service import PayoutService
@@ -1135,7 +1198,7 @@ def wallet_settings_update():
             if currency_service.validate_currency(new_currency):
                 flash('Currency change requires creating a new wallet account', 'info')
             else:
-                flash('Invalid currency', 'error')
+                flash('Invalid currency', 'danger')
         
         flash('Settings updated successfully!', 'success')
         return redirect(url_for('wallet.wallet_settings'))
@@ -1187,11 +1250,11 @@ def set_pin():
         confirm = request.form.get('confirm_pin')
 
         if not pin or not confirm:
-            flash('PIN and confirmation are required', 'error')
+            flash('PIN and confirmation are required', 'danger')
             return redirect(url_for('wallet.pin_page'))
 
         if pin != confirm:
-            flash('PINs do not match', 'error')
+            flash('PINs do not match', 'danger')
             return redirect(url_for('wallet.pin_page'))
 
         # Persist via current_user and DB session
@@ -1202,7 +1265,7 @@ def set_pin():
         flash('Transaction PIN set successfully', 'success')
         return redirect(url_for('wallet.wallet_settings'))
     except ValueError as e:
-        flash(str(e), 'error')
+        flash(str(e), 'danger')
         return redirect(url_for('wallet.pin_page'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit

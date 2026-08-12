@@ -5,101 +5,165 @@
 
 {% block module_styles %}
 <style>
-.acc-admin { padding: 2rem 1.5rem; }
+.acc-admin { padding: 2rem 1.5rem; max-width: 1400px; margin: 0 auto; }
+
+/* ── header ── */
 .acc-admin-header {
   background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
-  color: #fff; border-radius: 14px; padding: 1.75rem 2rem; margin-bottom: 2rem;
+  color: #fff; border-radius: 16px; padding: 1.6rem 2rem; margin-bottom: 1.5rem;
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+  box-shadow: 0 10px 30px rgba(6,95,70,.18);
 }
-.acc-admin-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0; }
-.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .95rem; }
+.acc-admin-header h1 { font-size: 1.55rem; font-weight: 700; margin: 0; }
+.acc-admin-header p  { margin: .25rem 0 0; opacity: .9; font-size: .92rem; }
+.acc-admin-nav { display: flex; gap: .5rem; flex-wrap: wrap; }
 .acc-admin-nav a {
-  background: rgba(255,255,255,.18); color: #fff; padding: .45rem 1rem; border-radius: 7px;
-  text-decoration: none; font-weight: 600; font-size: .82rem; margin-left: .4rem; transition: background .2s;
+  background: rgba(255,255,255,.16); color: #fff; padding: .45rem .9rem; border-radius: 9px;
+  text-decoration: none; font-weight: 600; font-size: .82rem; transition: background .2s, transform .15s;
 }
-.acc-admin-nav a:hover { background: rgba(255,255,255,.32); }
+.acc-admin-nav a:hover { background: rgba(255,255,255,.32); transform: translateY(-1px); }
 
-/* ── status filter strip ── */
-.status-strip {
-  display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem;
+/* ── summary stat cards ── */
+.summary-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .9rem; margin-bottom: 1.25rem; }
+.summary-card {
+  background: #fff; border: 1px solid var(--border-light,#e5e7eb); border-radius: 14px;
+  padding: .9rem 1.1rem; display: flex; align-items: center; gap: .8rem;
+  box-shadow: 0 2px 10px rgba(16,40,60,.05); text-decoration: none; transition: transform .15s, box-shadow .15s;
 }
-.status-pill {
-  padding: .4rem .95rem; border-radius: 20px; font-size: .8rem; font-weight: 600;
-  text-decoration: none; border: 2px solid transparent; transition: all .2s;
-  background: var(--bg-surface-alt,#f3f4f6); color: var(--text-secondary,#6b7280);
-}
-.status-pill:hover { color: var(--text-primary,#111); }
-.status-pill.active { border-color: var(--brand-primary,#047857); background: #d1fae5; color: #065f46; }
+.summary-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(16,40,60,.10); }
+.summary-card .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 1.05rem; flex-shrink: 0; }
+.summary-card .num { font-size: 1.35rem; font-weight: 800; line-height: 1; color: var(--text-primary,#111); }
+.summary-card .lbl { font-size: .74rem; color: var(--text-secondary,#6b7280); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
 
 /* ── toolbar ── */
-.toolbar {
-  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+.toolbar { display: flex; align-items: flex-end; gap: .75rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.toolbar .tool-group { display: flex; flex-direction: column; gap: .25rem; }
+.toolbar .tool-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary,#94a3b8); }
+.tool-btn {
+  display: inline-flex; align-items: center; gap: .4rem; padding: .55rem .9rem;
+  border: 1px solid var(--border-light,#d1d5db); border-radius: 10px; background: #fff;
+  font-size: .85rem; font-weight: 600; color: #334155; cursor: pointer; transition: all .15s;
 }
-.toolbar form { display: flex; gap: .5rem; flex: 1; min-width: 200px; max-width: 420px; }
+.tool-btn:hover { border-color: #047857; color: #047857; }
+.tool-btn .count-badge {
+  background: #047857; color: #fff; border-radius: 10px; font-size: .68rem; padding: 0 .4rem; margin-left: .15rem;
+}
+.toolbar form { display: flex; gap: .5rem; flex: 1; min-width: 240px; align-items: flex-end; }
 .toolbar input[type=text] {
-  flex: 1; padding: .5rem .9rem; border: 1px solid var(--border-light,#d1d5db);
-  border-radius: 8px; font-size: .88rem;
+  flex: 1; padding: .55rem .95rem; border: 1px solid var(--border-light,#d1d5db);
+  border-radius: 10px; font-size: .88rem; background: #fff;
 }
-.toolbar input[type=text]:focus { outline: none; border-color: var(--brand-primary,#047857); }
-.toolbar button {
-  padding: .5rem 1.1rem; border-radius: 8px; font-size: .85rem; font-weight: 600;
-  border: none; cursor: pointer; background: var(--brand-primary,#047857); color: #fff;
-  transition: background .2s;
+.toolbar input[type=text]:focus { outline: none; border-color: var(--brand-primary,#047857); box-shadow: 0 0 0 3px rgba(4,120,87,.14); }
+.toolbar .search-btn {
+  padding: .55rem 1.15rem; border-radius: 10px; font-size: .85rem; font-weight: 600;
+  border: none; cursor: pointer; background: var(--brand-primary,#047857); color: #fff; transition: background .2s;
 }
-.toolbar button:hover { background: #065f46; }
+.toolbar .search-btn:hover { background: #065f46; }
+.clear-link { font-size: .82rem; color: var(--text-secondary,#6b7280); text-decoration: none; padding-bottom: .55rem; }
+.clear-link:hover { color: #b91c1c; }
+
+.dropdown-menu { box-shadow: 0 12px 30px rgba(16,40,60,.16); border-radius: 12px; border: 1px solid #e2e8f0; }
+.filter-menu { min-width: 240px; padding: .75rem .85rem; max-height: 320px; overflow-y: auto; }
+.filter-menu .form-check { margin-bottom: .35rem; }
+.filter-menu .form-check-label { font-size: .85rem; text-transform: capitalize; }
+.filter-menu .ct { color: #94a3b8; font-size: .78rem; }
+.filter-menu .apply-btn { margin-top: .5rem; }
+
+.result-count { font-size: .83rem; color: var(--text-secondary,#6b7280); margin: .6rem 0 1rem; }
 
 /* ── table ── */
 .data-card {
-  background: var(--bg-surface,#fff); border: 1px solid var(--border-light,#e5e7eb);
-  border-radius: 13px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+  background: #fff; border: 1px solid var(--border-light,#e5e7eb);
+  border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(16,40,60,.06);
 }
-.data-card table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.table-scroll { overflow-x: auto; }
+.data-card table { width: 100%; border-collapse: collapse; font-size: .875rem; min-width: 1040px; }
 .data-card thead th {
-  background: var(--bg-surface-alt,#f9fafb); padding: .8rem 1rem;
-  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--text-secondary,#6b7280); border-bottom: 1px solid var(--border-light,#e5e7eb);
-  white-space: nowrap;
+  background: #f8fafc; padding: .85rem 1rem; position: sticky; top: 0; z-index: 2;
+  font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-secondary,#64748b); border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap; text-align: left;
 }
 .data-card tbody td {
-  padding: .8rem 1rem; border-bottom: 1px solid var(--border-light,#e5e7eb);
-  vertical-align: middle; color: var(--text-primary,#111);
+  padding: .8rem 1rem; border-bottom: 1px solid #eef2f6;
+  vertical-align: middle; color: var(--text-primary,#0f172a);
 }
-.data-card tbody tr:last-child td { border-bottom: none; }
-.data-card tbody tr:hover td { background: var(--bg-surface-alt,#f9fafb); }
+.data-card tbody tr.data-row:hover td { background: #f8fafc; }
+.data-card th.col-center, .data-card td.col-center { text-align: center; }
+.data-card th.col-num, .data-card td.col-num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-card .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .76rem; color: #334155; font-weight: 600; }
+.data-card .cell-sub { color: var(--text-secondary,#94a3b8); font-size: .76rem; }
+.data-card .type-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: 3px 10px; border-radius: 20px; font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; white-space: nowrap; background: #e0f2fe; color: #075985;
+}
+.data-card .type-pill i { font-size: .72rem; }
+.data-card .date-cell { white-space: nowrap; color: #475569; }
+.row-toggle {
+  border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; border-radius: 8px;
+  width: 30px; height: 30px; display: inline-grid; place-items: center; cursor: pointer; transition: all .15s;
+}
+.row-toggle:hover { background: #e0f2fe; color: #047857; border-color: #047857; }
+.row-toggle i { transition: transform .2s; }
+.row-toggle.rotated i { transform: rotate(90deg); }
 
 /* ── status badges ── */
-.sbadge { display: inline-block; padding: 2px 9px; border-radius: 20px;
-          font-size: .7rem; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
-.sb-confirmed     { background: #d1fae5; color: #065f46; }
+.sbadge, .pay-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: 3px 10px; border-radius: 20px; font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .02em; white-space: nowrap;
+}
+.sb-confirmed     { background: #d1fae5; color: #047857; }
 .sb-pending       { background: #fef3c7; color: #92400e; }
 .sb-checked_in    { background: #dbeafe; color: #1d4ed8; }
-.sb-checked_out   { background: #f3f4f6; color: #374151; }
+.sb-checked_out   { background: #f1f5f9; color: #475569; }
 .sb-cancelled     { background: #fee2e2; color: #b91c1c; }
 .sb-refunded      { background: #ede9fe; color: #6d28d9; }
 .sb-no_show       { background: #e5e7eb; color: #6b7280; }
-
-.pay-badge { display: inline-block; padding: 2px 9px; border-radius: 20px;
-             font-size: .7rem; font-weight: 600; white-space: nowrap; }
-.pay-paid     { background: #d1fae5; color: #065f46; }
+.pay-paid     { background: #d1fae5; color: #047857; }
 .pay-pending  { background: #fef3c7; color: #92400e; }
 .pay-failed   { background: #fee2e2; color: #b91c1c; }
 .pay-refunded { background: #ede9fe; color: #6d28d9; }
 
 .action-cell { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
 .btn-sm-act {
-  padding: 3px 9px; border-radius: 6px; font-size: .75rem; font-weight: 600;
-  text-decoration: none; border: none; cursor: pointer; transition: background .2s;
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: 5px 11px; border-radius: 8px; font-size: .76rem; font-weight: 600;
+  text-decoration: none; cursor: pointer; transition: all .15s; white-space: nowrap;
 }
-.btn-view-sm { background: var(--bg-surface-alt,#f3f4f6); color: var(--text-primary,#111);
-               border: 1px solid var(--border-light,#e5e7eb); }
-.btn-view-sm:hover { background: #e5e7eb; color: var(--text-primary,#111); }
+.btn-view-sm { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.btn-view-sm:hover { background: #d1fae5; color: #065f46; }
 
-.empty-box { text-align: center; padding: 4rem 2rem; color: var(--text-secondary,#9ca3af); }
-.empty-box i { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
-.result-count { font-size: .83rem; color: var(--text-secondary,#6b7280); margin-bottom: 1rem; }
+/* ── expandable detail row ── */
+.detail-row { display: none; background: #fbfdff; }
+.detail-row.open { display: table-row; }
+.detail-inner { padding: 1.1rem 1.25rem; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .8rem 1.5rem; }
+.detail-grid .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: #94a3b8; font-weight: 700; }
+.detail-grid .v { font-size: .9rem; color: #0f172a; margin-top: .1rem; }
+.detail-special { margin-top: .9rem; padding-top: .9rem; border-top: 1px dashed #e2e8f0; }
 
-/* ── responsive table scroll ── */
-.table-scroll { overflow-x: auto; }
+/* ── column visibility (toggled via JS) ── */
+.data-card table.hide-col-owner   th[data-col="owner"],   .data-card table.hide-col-owner   td[data-col="owner"],
+.data-card table.hide-col-claimed th[data-col="claimed"], .data-card table.hide-col-claimed td[data-col="claimed"],
+.data-card table.hide-col-property th[data-col="property"], .data-card table.hide-col-property td[data-col="property"],
+.data-card table.hide-col-type    th[data-col="type"],    .data-card table.hide-col-type    td[data-col="type"],
+.data-card table.hide-col-checkin th[data-col="checkin"], .data-card table.hide-col-checkin td[data-col="checkin"],
+.data-card table.hide-col-checkout th[data-col="checkout"],.data-card table.hide-col-checkout td[data-col="checkout"],
+.data-card table.hide-col-nights  th[data-col="nights"],  .data-card table.hide-col-nights  td[data-col="nights"],
+.data-card table.hide-col-guests  th[data-col="guests"],  .data-card table.hide-col-guests  td[data-col="guests"],
+.data-card table.hide-col-total   th[data-col="total"],   .data-card table.hide-col-total   td[data-col="total"],
+.data-card table.hide-col-status  th[data-col="status"],  .data-card table.hide-col-status  td[data-col="status"],
+.data-card table.hide-col-payment th[data-col="payment"], .data-card table.hide-col-payment td[data-col="payment"],
+.data-card table.hide-col-bookedat th[data-col="bookedat"],.data-card table.hide-col-bookedat td[data-col="bookedat"] { display: none; }
+
+.empty-box { text-align: center; padding: 3.5rem 2rem; color: var(--text-secondary,#94a3b8); }
+.empty-box i { font-size: 3rem; display: block; margin-bottom: 1rem; color: #cbd5e1; }
+.empty-box h5 { color: #475569; }
+
+.pagination .page-link { color: #047857; border-radius: 8px; margin: 0 .15rem; border-color: #e5e7eb; }
+.pagination .page-item.active .page-link { background: #047857; border-color: #047857; color: #fff; }
 </style>
 {% endblock %}
 
@@ -119,139 +183,220 @@
     </nav>
   </div>
 
-  {# ── Flash messages ── #}
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in messages %}
-    <div class="alert alert-{{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'danger') }} alert-dismissible fade show">
-      {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-    {% endfor %}
-  {% endwith %}
-
-  {# ── Status filter pills ── #}
-  <div class="status-strip">
-    <a href="{{ url_for('accommodation.admin_bookings', q=search_q) }}"
-       class="status-pill {{ 'active' if status_filter == 'all' }}">
-      All
-      <strong class="ms-1">{{ status_counts.get('all', 0) }}</strong>
+  {# ── Summary stats ── #}
+  <div class="summary-strip">
+    <a class="summary-card" href="{{ url_for('accommodation.admin_bookings', q=search_q) }}">
+      <div class="ic" style="background:#e0f2fe;color:#075985;"><i class="fas fa-book"></i></div>
+      <div><div class="num">{{ status_counts.get('all', bookings.total) }}</div><div class="lbl">Total</div></div>
     </a>
-    {% for s_key, s_count in status_counts.items() if s_key != 'all' %}
-    <a href="{{ url_for('accommodation.admin_bookings', status=s_key, q=search_q) }}"
-       class="status-pill {{ 'active' if status_filter == s_key }}">
-      {{ s_key | replace('_',' ') | title }}
-      <strong class="ms-1">{{ s_count }}</strong>
+    <a class="summary-card" href="{{ url_for('accommodation.admin_bookings', status='confirmed', q=search_q) }}">
+      <div class="ic" style="background:#d1fae5;color:#047857;"><i class="fas fa-check"></i></div>
+      <div><div class="num">{{ status_counts.get('confirmed', 0) }}</div><div class="lbl">Confirmed</div></div>
     </a>
-    {% endfor %}
+    <a class="summary-card" href="{{ url_for('accommodation.admin_bookings', status='checked_in', q=search_q) }}">
+      <div class="ic" style="background:#dbeafe;color:#1d4ed8;"><i class="fas fa-door-open"></i></div>
+      <div><div class="num">{{ status_counts.get('checked_in', 0) }}</div><div class="lbl">Checked In</div></div>
+    </a>
+    <a class="summary-card" href="{{ url_for('accommodation.admin_bookings', status='pending_approval', q=search_q) }}">
+      <div class="ic" style="background:#fef3c7;color:#92400e;"><i class="fas fa-hourglass-half"></i></div>
+      <div><div class="num">{{ status_counts.get('pending_approval', 0) }}</div><div class="lbl">Pending</div></div>
+    </a>
+    <a class="summary-card" href="{{ url_for('accommodation.admin_bookings', status='cancelled', q=search_q) }}">
+      <div class="ic" style="background:#fee2e2;color:#b91c1c;"><i class="fas fa-ban"></i></div>
+      <div><div class="num">{{ status_counts.get('cancelled', 0) }}</div><div class="lbl">Cancelled</div></div>
+    </a>
   </div>
 
-  {# ── Search toolbar ── #}
+  {# ── Toolbar: grouped status filter + column visibility + search ── #}
   <div class="toolbar">
+    <div class="tool-group">
+      <span class="tool-label">Filter</span>
+      <div class="dropdown">
+        <button class="tool-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="bi bi-funnel"></i> Status
+          {% if status_filters %}<span class="count-badge">{{ status_filters | length }}</span>{% endif %}
+        </button>
+        <div class="dropdown-menu filter-menu">
+          <form method="GET" action="{{ url_for('accommodation.admin_bookings') }}">
+            {% if search_q %}<input type="hidden" name="q" value="{{ search_q }}">{% endif %}
+            {% set all_statuses = ['confirmed','checked_in','checked_out','pending_approval','pending','cancelled','refunded','no_show'] %}
+            {% for s_key in all_statuses %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="status" value="{{ s_key }}" id="sf-{{ s_key }}"
+                     {{ 'checked' if s_key in status_filters }}>
+              <label class="form-check-label" for="sf-{{ s_key }}">
+                {{ s_key | replace('_',' ') | title }} <span class="ct">({{ status_counts.get(s_key, 0) }})</span>
+              </label>
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-success btn-sm w-100 apply-btn">Apply Filter</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-group">
+      <span class="tool-label">Columns</span>
+      <div class="dropdown">
+        <button class="tool-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="bi bi-table"></i> Columns
+        </button>
+        <div class="dropdown-menu filter-menu">
+          {% set cols = [
+            ('owner','Owner'),('claimed','Claimed'),('property','Property'),('type','Type'),
+            ('checkin','Check-In'),('checkout','Check-Out'),('nights','Nights'),('guests','Guests'),
+            ('total','Total'),('status','Status'),('payment','Payment'),('bookedat','Booked At')
+          ] %}
+          {% set visible_default = ['property','type','checkin','checkout','total','status','payment'] %}
+          {% for key, label in cols %}
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="{{ key }}" id="col-{{ key }}"
+                   {{ 'checked' if key in visible_default }}>
+            <label class="form-check-label" for="col-{{ key }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
     <form method="GET" action="{{ url_for('accommodation.admin_bookings') }}">
-      {% if status_filter and status_filter != 'all' %}
-      <input type="hidden" name="status" value="{{ status_filter }}">
+      {% for s in status_filters %}<input type="hidden" name="status" value="{{ s }}">{% endfor %}
+      <input type="text" name="q" value="{{ search_q }}" placeholder="Reference, guest name or email…">
+      <button type="submit" class="search-btn"><i class="bi bi-search me-1"></i>Search</button>
+      {% if search_q or status_filters %}
+      <a href="{{ url_for('accommodation.admin_bookings') }}" class="clear-link"><i class="bi bi-x-lg me-1"></i>Clear</a>
       {% endif %}
-      <input type="text" name="q" value="{{ search_q }}"
-             placeholder="Reference, guest name or email…">
-      <button type="submit"><i class="bi bi-search me-1"></i>Search</button>
     </form>
-    {% if search_q %}
-    <a href="{{ url_for('accommodation.admin_bookings', status=status_filter) }}"
-       style="font-size:.82rem;color:var(--text-secondary,#6b7280);text-decoration:none;">
-      <i class="bi bi-x-lg me-1"></i>Clear search
-    </a>
-    {% endif %}
   </div>
 
-<p class="result-count">
+  <p class="result-count">
     {{ bookings.total }} {{ 'booking' if bookings.total == 1 else 'bookings' }} found
     {% if search_q %} · "<strong>{{ search_q }}</strong>"{% endif %}
-    {% if status_filter and status_filter != 'all' %} · status: <strong>{{ status_filter | replace('_',' ') | title }}</strong>{% endif %}
-</p>
+    {% if status_filters %} · {{ status_filters | length }} status filter{{ 's' if status_filters | length > 1 }} active{% endif %}
+  </p>
 
-{# ── Quick Widgets ── #}
-<div class="row g-3 mb-4">
-    <div class="col-md-6">
-        <a href="{{ url_for('accommodation.admin_bookings', status='confirmed', q='') }}" class="card text-decoration-none shadow-sm">
-            <div class="card-body d-flex align-items-center">
-                <div class="bg-warning bg-opacity-10 rounded-circle p-3 me-3">
-                    <i class="fas fa-user-clock text-warning fa-lg"></i>
-                </div>
-                <div>
-                    <h6 class="mb-0">Unclaimed Bookings</h6>
-                    <small class="text-muted">Third-party bookings awaiting owner claim</small>
-                </div>
-            </div>
-        </a>
-    </div>
-    <div class="col-md-6">
-        <a href="{{ url_for('accommodation.admin_bookings', status='confirmed', q='') }}" class="card text-decoration-none shadow-sm">
-            <div class="card-body d-flex align-items-center">
-                <div class="bg-danger bg-opacity-10 rounded-circle p-3 me-3">
-                    <i class="fas fa-exclamation-triangle text-danger fa-lg"></i>
-                </div>
-                <div>
-                    <h6 class="mb-0">Readiness Issues</h6>
-                    <small class="text-muted">Confirmed bookings with blocked check-in</small>
-                </div>
-            </div>
-        </a>
-    </div>
-</div>
-
-{# ── Table ── #}
+  {# ── Table ── #}
   {% if bookings.items %}
   <div class="data-card">
     <div class="table-scroll">
-    <table>
+    <table id="bookingsTable">
       <thead>
         <tr>
-<th>Reference</th>
-           <th>Guest</th>
-           <th>Owner</th>
-           <th>Claimed</th>
-           <th>Property</th>
-           <th>Type</th>
-           <th>Check-In</th>
-           <th>Check-Out</th>
-           <th>Nights</th>
-           <th>Guests</th>
-           <th>Total</th>
-           <th>Booking Status</th>
-           <th>Payment</th>
-           <th>Booked At</th>
-           <th>Actions</th>
-         </tr>
-       </thead>
-       <tbody>
-         {% for bk in bookings.items %}
-         <tr>
-           <td>
-             <span style="font-family:monospace;font-size:.78rem;">{{ bk.booking_reference }}</span>
-           </td>
-           <td>
-             <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
-             <small class="text-muted">{{ bk.guest_email | truncate(28) }}</small>
-           </td>
-           <td>
-             <small>{{ bk.booking_owner.username | truncate(18) if bk.booking_owner else (bk.booked_by_user.username | truncate(18) if bk.booked_by_user else 'N/A') }}</small>
-           </td>
-           <td>
-             {% if bk.booking_type == 'third_party' %}
-             <span class="badge {% if bk.booking_owner_id %}bg-success{% else %}bg-warning{% endif %}">
-               {{ 'Yes' if bk.booking_owner_id else 'No' }}
-             </span>
-             {% else %}
-             <span class="badge bg-secondary">N/A</span>
-             {% endif %}
-           </td>
-           <td>
-             {% if bk.accommodation_property %}
-             <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
-             <small class="text-muted">{{ bk.accommodation_property.city }}</small>
-             {% else %}
-             <span class="text-muted">N/A</span>
-             {% endif %}
-           </td>
+          <th></th>
+          <th data-col="reference">Reference</th>
+          <th data-col="guest">Guest</th>
+          <th data-col="owner" class="col-center">Owner</th>
+          <th data-col="claimed" class="col-center">Claimed</th>
+          <th data-col="property">Property</th>
+          <th data-col="type" class="col-center">Type</th>
+          <th data-col="checkin" class="col-center">Check-In</th>
+          <th data-col="checkout" class="col-center">Check-Out</th>
+          <th data-col="nights" class="col-center">Nights</th>
+          <th data-col="guests" class="col-center">Guests</th>
+          <th data-col="total" class="col-num">Total</th>
+          <th data-col="status" class="col-center">Booking Status</th>
+          <th data-col="payment" class="col-center">Payment</th>
+          <th data-col="bookedat" class="col-center">Booked At</th>
+          <th data-col="actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bk in bookings.items %}
+        {% set status_cls = {
+          'confirmed':'sb-confirmed',
+          'pending':'sb-pending',
+          'pending_approval':'sb-pending',
+          'checked_in':'sb-checked_in',
+          'checked_out':'sb-checked_out',
+          'cancelled':'sb-cancelled',
+          'refunded':'sb-refunded',
+          'no_show':'sb-no_show'
+        }.get(bk.status, 'sb-pending') %}
+        {% set pay_cls = {
+          'paid':'pay-paid',
+          'pending':'pay-pending',
+          'failed':'pay-failed',
+          'refunded':'pay-refunded'
+        }.get(bk.payment_status, 'pay-pending') %}
+        <tr class="data-row">
+          <td data-col="expand">
+            <button class="row-toggle" data-target="{{ bk.id }}" aria-label="Toggle details">
+              <i class="bi bi-chevron-right"></i>
+            </button>
+          </td>
+          <td data-col="reference"><span class="mono">{{ bk.booking_reference }}</span></td>
+          <td data-col="guest">
+            <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
+            <span class="cell-sub">{{ bk.guest_email | truncate(28) }}</span>
+          </td>
+          <td data-col="owner" class="col-center">
+            <small>{{ bk.booking_owner.username | truncate(18) if bk.booking_owner else (bk.booked_by_user.username | truncate(18) if bk.booked_by_user else 'N/A') }}</small>
+          </td>
+          <td data-col="claimed" class="col-center">
+            {% if bk.booking_type == 'third_party' %}
+            <span class="badge {% if bk.booking_owner_id %}bg-success{% else %}bg-warning{% endif %}">
+              {{ 'Yes' if bk.booking_owner_id else 'No' }}
+            </span>
+            {% else %}
+            <span class="badge bg-secondary">N/A</span>
+            {% endif %}
+          </td>
+          <td data-col="property">
+            {% if bk.accommodation_property %}
+            <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
+            <span class="cell-sub">{{ bk.accommodation_property.city }}</span>
+            {% else %}
+            <span class="cell-sub">N/A</span>
+            {% endif %}
+          </td>
+          <td data-col="type" class="col-center">
+            <span class="type-pill">
+              {% if bk.booking_type == 'self' %}<i class="fas fa-user"></i>
+              {% elif bk.booking_type == 'third_party' %}<i class="fas fa-user-friends"></i>
+              {% elif bk.booking_type == 'group' %}<i class="fas fa-hotel"></i>
+              {% elif bk.booking_type == 'event_assigned' %}<i class="fas fa-calendar-alt"></i>
+              {% endif %}
+              {{ bk.booking_type | replace('_',' ') | title }}
+            </span>
+          </td>
+          <td data-col="checkin" class="col-center date-cell">{{ bk.check_in.strftime('%b %d') }}</td>
+          <td data-col="checkout" class="col-center date-cell">{{ bk.check_out.strftime('%b %d, %Y') }}</td>
+          <td data-col="nights" class="col-center">{{ bk.num_nights }}</td>
+          <td data-col="guests" class="col-center">{{ bk.num_guests }}</td>
+          <td data-col="total" class="col-num">${{ "%.2f"|format(bk.total_amount) }}</td>
+          <td data-col="status" class="col-center"><span class="sbadge {{ status_cls }}">{{ bk.status | replace('_',' ') | title }}</span></td>
+          <td data-col="payment" class="col-center"><span class="pay-badge {{ pay_cls }}">{{ bk.payment_status | replace('_',' ') | title }}</span></td>
+          <td data-col="bookedat" class="col-center date-cell">{{ bk.created_at.strftime('%b %d, %Y') if bk.created_at else 'N/A' }}</td>
+          <td data-col="actions">
+            <div class="action-cell">
+              <a href="{{ url_for('accommodation.admin_booking_detail', booking_id=bk.id) }}" class="btn-sm-act btn-view-sm">
+                <i class="bi bi-eye me-1"></i>View
+              </a>
+            </div>
+          </td>
+        </tr>
+        <tr class="detail-row" id="detail-{{ bk.id }}">
+          <td colspan="16">
+            <div class="detail-inner">
+              <div class="detail-grid">
+                <div><div class="k">Owner</div><div class="v">{{ bk.booking_owner.username or (bk.booked_by_user.username if bk.booked_by_user else 'N/A') }}</div></div>
+                <div><div class="k">Booked By</div><div class="v">{{ bk.booked_by_user.username or 'N/A' }}</div></div>
+                <div><div class="k">Property</div><div class="v">{{ bk.accommodation_property.title if bk.accommodation_property else 'N/A' }}{% if bk.accommodation_property %} <span class="cell-sub">· {{ bk.accommodation_property.city }}</span>{% endif %}</div></div>
+                <div><div class="k">Claimed</div><div class="v">{% if bk.booking_type == 'third_party' %}{{ 'Yes' if bk.booking_owner_id else 'No' }}{% else %}N/A{% endif %}</div></div>
+                <div><div class="k">Nights</div><div class="v">{{ bk.num_nights }}</div></div>
+                <div><div class="k">Guests</div><div class="v">{{ bk.num_guests }}</div></div>
+                <div><div class="k">Payment Method</div><div class="v">{{ bk.payment_method | default('Wallet', true) | replace('_',' ') | title }}</div></div>
+                <div><div class="k">Transaction</div><div class="v"><code class="small">{{ bk.wallet_txn_id or 'N/A' }}</code></div></div>
+                <div><div class="k">Booked At</div><div class="v">{{ bk.created_at.strftime('%b %d, %Y %H:%M') if bk.created_at else 'N/A' }}</div></div>
+                <div><div class="k">Room</div><div class="v">{% if bk.assigned_room_id %}#{{ bk.room_number or bk.assigned_room_id }}{% else %}Not assigned{% endif %}</div></div>
+              </div>
+              {% if bk.special_requests %}
+              <div class="detail-special"><div class="k">Special Requests</div><div class="v">{{ bk.special_requests }}</div></div>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
       </tbody>
     </table>
     </div>
@@ -263,7 +408,7 @@
     <ul class="pagination">
       {% if bookings.has_prev %}
       <li class="page-item">
-        <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=bookings.prev_num, status=status_filter, q=search_q) }}">
+        <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=bookings.prev_num, q=search_q) }}{% for s in status_filters %}&status={{ s }}{% endfor %}">
           <i class="bi bi-chevron-left"></i>
         </a>
       </li>
@@ -271,7 +416,7 @@
       {% for p in bookings.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
         {% if p %}
         <li class="page-item {{ 'active' if p == bookings.page }}">
-          <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=p, status=status_filter, q=search_q) }}">{{ p }}</a>
+          <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=p, q=search_q) }}{% for s in status_filters %}&status={{ s }}{% endfor %}">{{ p }}</a>
         </li>
         {% else %}
         <li class="page-item disabled"><span class="page-link">…</span></li>
@@ -279,7 +424,7 @@
       {% endfor %}
       {% if bookings.has_next %}
       <li class="page-item">
-        <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=bookings.next_num, status=status_filter, q=search_q) }}">
+        <a class="page-link" href="{{ url_for('accommodation.admin_bookings', page=bookings.next_num, q=search_q) }}{% for s in status_filters %}&status={{ s }}{% endfor %}">
           <i class="bi bi-chevron-right"></i>
         </a>
       </li>
@@ -297,4 +442,33 @@
   {% endif %}
 
 </div>
+
+{% block module_scripts %}
+<script>
+(function () {
+  var table = document.getElementById('bookingsTable');
+
+  // Apply default-hidden columns on load
+  document.querySelectorAll('.col-toggle').forEach(function (cb) {
+    if (!cb.checked) table.classList.add('hide-col-' + cb.value);
+  });
+
+  // Toggle column visibility
+  document.querySelectorAll('.col-toggle').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      table.classList.toggle('hide-col-' + cb.value, !cb.checked);
+    });
+  });
+
+  // Expand / collapse detail rows
+  document.querySelectorAll('.row-toggle').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = document.getElementById('detail-' + btn.dataset.target);
+      if (row) row.classList.toggle('open');
+      btn.classList.toggle('rotated');
+    });
+  });
+})();
+</script>
+{% endblock %}
 {% endblock %}

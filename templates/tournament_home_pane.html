@@ -1,0 +1,41 @@
+{# tournament_home_pane.html — fragment for unified user dashboard #}
+{# Does NOT extend base; rendered inside #shellContent via ?_pane=1 #}
+
+<div class="tournament-pane">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div>
+            <h2 style="font-size:clamp(1.1rem,3vw,1.5rem); font-weight:700; margin:0; color:var(--color-text-primary);">{{ tournament.name if tournament else 'Tournament' }}</h2>
+            <p style="font-size:13px; color:var(--color-text-secondary); margin:2px 0 0;">Matches, standings and live updates</p>
+        </div>
+        <a href="{{ safe_url('tournament.home') }}" class="action-link">Open <i class="fas fa-arrow-right"></i></a>
+    </div>
+
+    {% if tournament and tournament.status == 'live' %}
+    <div class="dash-card" style="display:flex; align-items:center; gap:12px; border-left:4px solid var(--brand-accent); background:rgba(var(--brand-accent-rgb),0.04);">
+        <div class="card-icon-wrapper" style="background:rgba(var(--brand-accent-rgb),0.1); color:var(--brand-accent-dark); margin-bottom:0;">
+            <i class="fas fa-trophy"></i>
+        </div>
+        <div style="flex:1;">
+            <p style="font-size:14px; font-weight:700; margin:0; color:var(--color-text-primary);">Tournament is live</p>
+            <p style="font-size:13px; margin:2px 0 0; color:var(--color-text-secondary);">{{ tournament.hero if tournament.hero else 'Follow every match right here.' }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if items %}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-top:16px;">
+        {% for item in items[:6] %}
+        <div class="dash-card" style="padding:16px;">
+            <h3 style="font-size:14px; font-weight:700; margin:0 0 6px; color:var(--color-text-primary);">{{ item.name if item.name is defined else item.title if item.title is defined else 'Match' }}</h3>
+            {% if item.venue %}<p style="font-size:12px; margin:0; color:var(--color-text-secondary);"><i class="fas fa-map-marker-alt me-1"></i>{{ item.venue }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="fas fa-trophy empty-icon"></i>
+        <h5 class="empty-title">No matches yet</h5>
+        <p>Tournament content will appear here when available.</p>
+    </div>
+    {% endif %}
+</div>

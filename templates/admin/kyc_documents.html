@@ -210,8 +210,8 @@
                 <strong>KYC Tier:</strong>
                 <span class="kyc-tier tier-{{ kyc_info.tier if kyc_info else 0 }}">
                     Tier {{ kyc_info.tier if kyc_info else 0 }}
-                    {% if kyc_info and kyc_info.label %}
-                    - {{ kyc_info.label }}
+                    {% if kyc_info and kyc_info.tier_name %}
+                    - {{ kyc_info.tier_name }}
                     {% endif %}
                 </span>
             </p>
@@ -345,14 +345,14 @@
     function showApproveModal(docId, docName) {
         currentDocId = docId;
         document.getElementById('approveDocName').textContent = docName;
-        document.getElementById('approveForm').action = "{{ url_for('admin.approve_kyc_document', user_id=user.public_id, doc_id='') }}" + docId;
+        document.getElementById('approveForm').action = "{{ url_for('admin.approve_kyc_document', user_id=user.public_id, doc_id=0) }}".replace('/0/approve', '/' + docId + '/approve');
         document.getElementById('approveModal').style.display = 'flex';
     }
 
     function showRejectModal(docId, docName) {
         currentDocId = docId;
         document.getElementById('rejectDocName').textContent = docName;
-        document.getElementById('rejectForm').action = "{{ url_for('admin.reject_kyc_document', user_id=user.public_id, doc_id='') }}" + docId;
+        document.getElementById('rejectForm').action = "{{ url_for('admin.reject_kyc_document', user_id=user.public_id, doc_id=0) }}".replace('/0/reject', '/' + docId + '/reject');
         document.getElementById('rejectModal').style.display = 'flex';
     }
 

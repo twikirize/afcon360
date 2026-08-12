@@ -111,42 +111,62 @@ def process_event_registration(self, registration_id: int, event_slug: str, task
                     registration.notes = ""
                 registration.notes += f"\nQR generated at: {datetime.now(timezone.utc).isoformat()}"
 
-                # 2. Send Confirmation Email
+                # 2. Send Confirmation Email (via unified notification EmailHandler)
                 logger.info(f"Sending confirmation email for registration {registration.registration_ref} to {registration.email}")
                 try:
-                    from app.extensions import mail
-                    from flask_mail import Message
-                    
-                    organizer = event.organizer
-                    
-                    # Send attendee confirmation
-                    attendee_msg = Message(
-                        subject=f'Registration Confirmed - {event.name}',
-                        recipients=[registration.email],
-                        html=f'<h2>Registration Confirmed</h2>'
-                             f'<p>Dear {registration.full_name},</p>'
-                             f'<p>Your registration for <strong>{event.name}</strong> is confirmed.</p>'
-                             f'<p>Registration Ref: <strong>{registration.registration_ref}</strong></p>'
-                             f'<p>Ticket: {registration.ticket_type}</p>'
-                             f'<p>Date: {event.start_date}</p>'
-                             f'<p>Venue: {event.venue}, {event.city}</p>'
+                    from app.notifications.models import (
+                        Notification as _Notification,
+                        NotificationType,
+                        NotificationChannel,
+                        NotificationModule,
+                        NotificationStatus,
                     )
-                    mail.send(attendee_msg)
-                    
+                    from app.notifications.channel_handlers.email import EmailHandler
+
+                    organizer = event.organizer
+
+                    # Send attendee confirmation
+                    EmailHandler().deliver(
+                        _Notification(
+                            email=registration.email,
+                            type=NotificationType.EVENT_REGISTERED,
+                            channel=NotificationChannel.EMAIL,
+                            module=NotificationModule.EVENTS,
+                            status=NotificationStatus.PENDING,
+                            subject=f'Registration Confirmed - {event.name}',
+                            body=f'<h2>Registration Confirmed</h2>'
+                                 f'<p>Dear {registration.full_name},</p>'
+                                 f'<p>Your registration for <strong>{event.name}</strong> is confirmed.</p>'
+                                 f'<p>Registration Ref: <strong>{registration.registration_ref}</strong></p>'
+                                 f'<p>Ticket: {registration.ticket_type}</p>'
+                                 f'<p>Date: {event.start_date}</p>'
+                                 f'<p>Venue: {event.venue}, {event.city}</p>',
+                            priority='high',
+                        ),
+                        {'email': registration.email, 'user_id': None},
+                    )
+
                     # Send organizer notification
                     if organizer and organizer.email:
-                        organizer_msg = Message(
-                            subject=f'New Registration - {event.name}',
-                            recipients=[organizer.email],
-                            html=f'<h2>New Registration</h2>'
-                                 f'<p>A new attendee has registered for <strong>{event.name}</strong>.</p>'
-                                 f'<p>Name: {registration.full_name}</p>'
-                                 f'<p>Email: {registration.email}</p>'
-                                 f'<p>Ticket: {registration.ticket_type}</p>'
-                                 f'<p>Ref: {registration.registration_ref}</p>'
+                        EmailHandler().deliver(
+                            _Notification(
+                                email=organizer.email,
+                                type=NotificationType.EVENT_REGISTERED,
+                                channel=NotificationChannel.EMAIL,
+                                module=NotificationModule.EVENTS,
+                                status=NotificationStatus.PENDING,
+                                subject=f'New Registration - {event.name}',
+                                body=f'<h2>New Registration</h2>'
+                                     f'<p>A new attendee has registered for <strong>{event.name}</strong>.</p>'
+                                     f'<p>Name: {registration.full_name}</p>'
+                                     f'<p>Email: {registration.email}</p>'
+                                     f'<p>Ticket: {registration.ticket_type}</p>'
+                                     f'<p>Ref: {registration.registration_ref}</p>',
+                                priority='normal',
+                            ),
+                            {'email': organizer.email, 'user_id': None},
                         )
-                        mail.send(organizer_msg)
-                        
+
                 except Exception as mail_error:
                     logger.warning(f'Email sending failed: {mail_error}')
 

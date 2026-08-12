@@ -216,7 +216,7 @@ def _is_fully_registered(booking_id: int) -> bool:
 def _send_notification(booking, notification_type: str, title: str, message: str):
     """Best-effort notification sender; swallows failures to keep task idempotent."""
     try:
-        from app.services.notification_service import NotificationService
+        from app.notifications.services import NotificationService
         # Determine recipient: Owner if claimed, otherwise booker
         recipient_id = booking.booking_owner_id or booking.booked_by_user_id
         NotificationService.send(

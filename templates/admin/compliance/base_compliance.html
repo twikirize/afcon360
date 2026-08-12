@@ -497,6 +497,36 @@
       }
     }
 
+    /* ── DETAIL ROWS (transaction / user audit) ── */
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px 24px;
+    }
+    .detail-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .detail-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .detail-value {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink);
+      word-break: break-word;
+    }
+    @media (max-width: 560px) {
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+
     /* ── ALERTS ── */
     .alert {
       display: flex;
@@ -714,6 +744,7 @@
         <span class="page-title-bar">{% block topbar_title %}Compliance{% endblock %}</span>
       </div>
       <div class="topbar-right">
+        {% include 'components/notification_bell.html' %}
         <a href="/" class="topbar-icon-btn" data-tip="Home">
           <i class="fas fa-home"></i>
         </a>

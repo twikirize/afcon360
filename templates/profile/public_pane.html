@@ -1,0 +1,94 @@
+{# templates/profile/public_pane.html — fragment for dashboard pane #}
+{# Does NOT extend base; rendered inside #shellContent or #rightPanel via ?_pane=1 #}
+
+<div class="profile-public-pane">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div>
+            <h2 style="font-size:clamp(1.1rem,3vw,1.5rem); font-weight:700; margin:0; color:var(--color-text-primary);">Profile</h2>
+            <p style="font-size:13px; color:var(--color-text-secondary); margin:2px 0 0;">Your public profile and information</p>
+        </div>
+        <a href="{{ url_for('profile.public_profile', public_id=user.public_id) }}" class="action-link">View full <i class="fas fa-arrow-right"></i></a>
+    </div>
+
+    <div class="dash-card" style="display:flex; align-items:center; gap:16px;">
+        <div class="card-icon-wrapper" style="background:rgba(var(--brand-primary-rgb),0.1); color:var(--brand-primary); margin-bottom:0;">
+            <i class="fas fa-user-circle"></i>
+        </div>
+        <div style="flex:1;">
+            <p style="font-size:15px; font-weight:700; margin:0; color:var(--color-text-primary);">{{ public_info.display_name or public_info.full_name or user.username }}</p>
+            <p style="font-size:13px; margin:2px 0 0; color:var(--color-text-secondary);">{{ user.email if user.email else '' }}</p>
+        </div>
+        {% if profile and profile.verification_status %}
+        <div style="text-align:right;">
+            {% if profile.verification_status == 'verified' %}
+            <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:4px 10px; border-radius:20px; background:rgba(5,150,105,.12); color:#0f8b61; border:1px solid rgba(5,150,105,.2);">
+                <i class="fas fa-check-circle"></i> Verified
+            </span>
+            {% elif profile.verification_status == 'pending' %}
+            <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:4px 10px; border-radius:20px; background:rgba(217,119,6,.12); color:#b76b06; border:1px solid rgba(217,119,6,.2);">
+                <i class="fas fa-clock"></i> Pending
+            </span>
+            {% elif profile.verification_status == 'rejected' %}
+            <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:4px 10px; border-radius:20px; background:rgba(220,38,38,.12); color:#9c2b2b; border:1px solid rgba(220,38,38,.2);">
+                <i class="fas fa-times-circle"></i> Rejected
+            </span>
+            {% elif profile.verification_status == 'suspended' %}
+            <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:4px 10px; border-radius:20px; background:rgba(124,58,237,.12); color:#6a49b0; border:1px solid rgba(124,58,237,.2);">
+                <i class="fas fa-ban"></i> Suspended
+            </span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if user_roles %}
+    <div style="margin-top:16px;">
+        <h3 style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-tertiary); margin-bottom:12px;">Your Roles</h3>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for role in user_roles %}
+            <span style="font-size:12px; font-weight:600; padding:6px 12px; border-radius:20px; background:var(--color-background-secondary); color:var(--color-text-primary);">{{ role|replace('_',' ')|title }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if public_info.bio %}
+    <div class="dash-card" style="margin-top:16px;">
+        <div style="padding:16px;">
+            <h3 style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-tertiary); margin-bottom:8px;">About</h3>
+            <p style="font-size:14px; color:var(--color-text-primary); line-height:1.6; margin:0;">{{ public_info.bio }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if public_info.city or public_info.country %}
+    <div class="dash-card" style="margin-top:16px;">
+        <div style="padding:16px; display:flex; align-items:center; gap:12px;">
+            <i class="fas fa-map-marker-alt" style="color:var(--color-text-secondary); font-size:16px;"></i>
+            <span style="font-size:14px; color:var(--color-text-primary);">{{ public_info.city }}{% if public_info.city and public_info.country %}, {% endif %}{{ public_info.country }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if stats and (stats.stays_count or stats.trips_count or stats.reviews_count) %}
+    <div class="dash-card" style="margin-top:16px;">
+        <div style="padding:16px;">
+            <h3 style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-tertiary); margin-bottom:12px;">Stats</h3>
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; text-align:center;">
+                <div>
+                    <div style="font-size:20px; font-weight:800; color:var(--brand-primary);">{{ stats.stays_count|default(0) }}</div>
+                    <div style="font-size:11px; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.05em;">Stays</div>
+                </div>
+                <div>
+                    <div style="font-size:20px; font-weight:800; color:var(--brand-primary);">{{ stats.trips_count|default(0) }}</div>
+                    <div style="font-size:11px; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.05em;">Trips</div>
+                </div>
+                <div>
+                    <div style="font-size:20px; font-weight:800; color:var(--brand-primary);">{{ stats.reviews_count|default(0) }}</div>
+                    <div style="font-size:11px; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.05em;">Reviews</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>

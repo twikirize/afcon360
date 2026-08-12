@@ -65,7 +65,7 @@
         <tbody>
           {% for item in items %}
           <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
-            <td><a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
+            <td><a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=item.id) }}">#{{ item.id }}</a></td>
             <td>
               <div class="user-cell">
                 <div class="av">{{ item.user.username[0] if item.user else '?' }}</div>
@@ -110,7 +110,7 @@
             </td>
             <td>
               <div class="action-group">
-                <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                <a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% if item.status == 'pending' %}
                 <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=item.id) }}" style="display: inline;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

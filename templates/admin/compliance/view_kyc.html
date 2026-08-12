@@ -1,0 +1,209 @@
+{% extends "admin/compliance/base_compliance.html" %}
+
+{% block title %}Review KYC #{{ kyc_record.id }} — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}KYC Review: #{{ kyc_record.id }}{% endblock %}
+
+{% block content %}
+<div class="card animate-up" style="margin-bottom: 24px;">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="card-title"><i class="fas fa-id-card"></i> KYC Submission Details</div>
+    <div>
+      {% if kyc_record.status == 'pending' %}
+        <span class="badge badge-orange">Pending Review</span>
+      {% elif kyc_record.status == 'in_review' %}
+        <span class="badge badge-blue">In Review</span>
+      {% elif kyc_record.status == 'approved' %}
+        <span class="badge badge-green">Approved</span>
+      {% elif kyc_record.status == 'rejected' %}
+        <span class="badge badge-red">Rejected</span>
+      {% else %}
+        <span class="badge badge-gray">{{ kyc_record.status }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 24px;">
+      <div>
+        <h5 style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px;">APPLICANT USER</h5>
+        <div style="font-size: 16px; font-weight: 600;">{{ kyc_record.user.username if kyc_record.user else 'Unknown' }}</div>
+        <div style="color: var(--text-muted); font-size: 13px;">{{ kyc_record.user.email if kyc_record.user else '' }}</div>
+        <div style="color: var(--text-muted); font-size: 13px;">Phone: {{ kyc_record.user.phone if kyc_record.user else 'N/A' }}</div>
+        <div style="margin-top: 8px;">
+          <a href="{{ url_for('admin.view_user', user_id=kyc_record.user.public_id) }}" class="btn btn-sm btn-secondary" target="_blank">
+            <i class="fas fa-user"></i> View User Profile
+          </a>
+        </div>
+      </div>
+
+      <div>
+        <h5 style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px;">DOCUMENT INFORMATION</h5>
+        <div style="margin-bottom: 4px;"><strong>Type:</strong> {{ kyc_record.verification_type or 'National ID / Passport' }}</div>
+        <div style="margin-bottom: 4px;"><strong>Document Number:</strong> <span class="mono">{{ kyc_record.id_number or kyc_record.document_number or 'N/A' }}</span></div>
+        <div style="margin-bottom: 4px;"><strong>Submitted At:</strong> {{ kyc_record.created_at.strftime('%Y-%m-%d %H:%M:%S') if kyc_record.created_at else '-' }}</div>
+        <div><strong>Priority:</strong> <span class="badge badge-{{ 'red' if kyc_record.priority == 'critical' else ('orange' if kyc_record.priority == 'high' else 'blue') }}">{{ kyc_record.priority or 'Normal' }}</span></div>
+      </div>
+
+      <div>
+        <h5 style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px;">REVIEW STATUS</h5>
+        <div style="margin-bottom: 4px;"><strong>Reviewed By:</strong> {{ kyc_record.checked_by or 'Not yet reviewed' }}</div>
+        <div style="margin-bottom: 4px;"><strong>Decision At:</strong> {{ kyc_record.verified_at.strftime('%Y-%m-%d %H:%M:%S') if kyc_record.verified_at else '-' }}</div>
+        {% if kyc_record.rejection_reason %}
+        <div style="margin-top: 6px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; color: #ef4444; font-size: 13px;">
+          <strong>Rejection Reason:</strong> {{ kyc_record.rejection_reason }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Document & Selfie Previews -->
+    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+    <h4 style="font-size: 16px; margin-bottom: 16px;"><i class="fas fa-file-alt"></i> Attached Verification Files</h4>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 24px;">
+      <div class="card" style="border: 1px solid var(--border-color); padding: 16px; border-radius: 8px;">
+        <h5 style="font-size: 14px; margin-bottom: 10px;">Primary Identity Document</h5>
+        {% if doc_url %}
+          <div style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="{{ doc_url }}" target="_blank" class="btn btn-sm btn-primary">
+              <i class="fas fa-external-link-alt"></i> Open Document in New Tab
+            </a>
+            <a href="{{ doc_url }}" download class="btn btn-sm btn-secondary">
+              <i class="fas fa-download"></i> Download Document
+            </a>
+          </div>
+          {% if doc_url.endswith('.pdf') or '.pdf' in doc_url.lower() %}
+            <div style="padding: 16px; background: rgba(var(--brand-primary-rgb), 0.05); border: 1px dashed var(--border-color); border-radius: 6px; text-align: center; margin-top: 8px;">
+              <i class="fas fa-file-pdf fa-2x" style="color: #ef4444; margin-bottom: 8px;"></i>
+              <p style="font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--color-text-primary);">PDF Document Attached</p>
+              <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 12px;">Browser PDF rendering can sometimes be blocked by security headers. Click above to view or download the full document.</p>
+              <iframe src="{{ doc_url }}" style="width: 100%; height: 260px; border: 1px solid var(--border-color); border-radius: 4px; background: #fff;"></iframe>
+            </div>
+          {% else %}
+            <img src="{{ doc_url }}" alt="Document Preview" style="max-width: 100%; max-height: 300px; border-radius: 6px; object-fit: contain; background: #000;">
+          {% endif %}
+        {% else %}
+          <div style="color: var(--text-muted); font-style: italic; padding: 20px; text-align: center;">No document URL provided.</div>
+        {% endif %}
+      </div>
+
+      <div class="card" style="border: 1px solid var(--border-color); padding: 16px; border-radius: 8px;">
+        <h5 style="font-size: 14px; margin-bottom: 10px;">Selfie / Biometric Verification</h5>
+        {% if selfie_url %}
+          <div style="margin-bottom: 12px;">
+            <a href="{{ selfie_url }}" target="_blank" class="btn btn-sm btn-primary">
+              <i class="fas fa-external-link-alt"></i> Open Selfie in New Tab
+            </a>
+          </div>
+          <img src="{{ selfie_url }}" alt="Selfie Preview" style="max-width: 100%; max-height: 300px; border-radius: 6px; object-fit: contain; background: #000;">
+        {% else %}
+          <div style="color: var(--text-muted); font-style: italic; padding: 20px; text-align: center;">No selfie URL provided.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if compliance_case %}
+    <div class="card" style="background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+      <h5 style="font-size: 14px; color: var(--primary); margin-bottom: 6px;"><i class="fas fa-shield-alt"></i> Linked Compliance Case #{{ compliance_case.id }}</h5>
+      <div><strong>Title:</strong> {{ compliance_case.title }}</div>
+      <div><strong>Status:</strong> {{ compliance_case.status }} | <strong>Priority:</strong> {{ compliance_case.priority }}</div>
+      <div style="margin-top: 8px;">
+        <a href="{{ url_for('admin.compliance.view_case', case_id=compliance_case.id) }}" class="btn btn-sm btn-secondary">View Case Details</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Action Forms -->
+    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+    <h4 style="font-size: 16px; margin-bottom: 16px;"><i class="fas fa-gavel"></i> Compliance Review Actions</h4>
+
+    {% if kyc_record.status in ('pending', 'in_review') %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+
+      <!-- Approve Form -->
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="approve">
+        <h5 style="color: #10b981; margin-bottom: 10px;"><i class="fas fa-check-circle"></i> Approve KYC</h5>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label">Review Notes / Comments</label>
+          <textarea name="notes" class="form-control" rows="3" placeholder="Optional approval notes..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-success" style="width: 100%; background: #10b981; color: white;">Approve & Upgrade Tier</button>
+      </form>
+
+      <!-- Reject Form -->
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="reject">
+        <h5 style="color: #ef4444; margin-bottom: 10px;"><i class="fas fa-times-circle"></i> Reject KYC</h5>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label">Rejection Reason <span style="color: #ef4444;">*</span></label>
+          <textarea name="rejection_reason" class="form-control" rows="3" placeholder="Specify clear reason for rejection..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-danger" style="width: 100%;">Reject Submission</button>
+      </form>
+
+      <!-- Targeted Replacement Form -->
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="request_reupload">
+        <h5 style="color: #2563eb; margin-bottom: 10px;"><i class="fas fa-file-upload"></i> Request a Clearer Replacement</h5>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">Use this when one file is unreadable or cannot be opened. The user will replace only the selected file; the submission will not be rejected.</p>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="document_key">File to replace <span style="color: #ef4444;">*</span></label>
+          <select id="document_key" name="document_key" class="form-control" required>
+            <option value="document">Primary identity document</option>
+            <option value="selfie">Verification selfie</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="reupload_reason">What needs correction? <span style="color: #ef4444;">*</span></label>
+          <textarea id="reupload_reason" name="reupload_reason" class="form-control" rows="3" placeholder="For example: PDF is blank, cropped, or too blurry to verify." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">Ask for This File Again</button>
+      </form>
+
+    </div>
+    {% elif kyc_record.status == 'approved' %}
+    <div style="padding: 16px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; margin-bottom: 20px;">
+      <h5 style="color: #10b981; margin-bottom: 8px;"><i class="fas fa-check-circle"></i> KYC Approved & Locked</h5>
+      <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 12px;">This KYC submission is approved. Approved records are locked for user edits. If an error or invalid document was discovered after approval, you can re-cancel (revert) this KYC verification, which notifies the user to fulfill requirements again.</p>
+      
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; background: white;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="revert">
+        <h5 style="color: #ef4444; margin-bottom: 10px;"><i class="fas fa-undo"></i> Re-Cancel / Revert Approval</h5>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label">Reason for Re-Cancellation / Revert <span style="color: #ef4444;">*</span></label>
+          <textarea name="revert_reason" class="form-control" rows="3" placeholder="Explain why this approved KYC is being reverted (e.g. fraudulent document found, mismatch, error)..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-danger" style="width: 100%;" onclick="return confirm('Are you sure you want to revert this approved KYC? This will revoke user verification and notify them to re-upload.');">Re-Cancel & Request Fulfillment</button>
+      </form>
+    </div>
+    {% else %}
+    <div style="color: var(--text-muted); font-style: italic; padding: 12px 0;">This KYC submission has been <strong>{{ kyc_record.status }}</strong>. The applicant can re-upload/resubmit documents from their dashboard.</div>
+    {% endif %}
+
+    <!-- Escalate Form -->
+    <div style="margin-top: 20px;">
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="escalate">
+        <h5 style="color: #f59e0b; margin-bottom: 10px;"><i class="fas fa-exclamation-triangle"></i> Escalate / Case Review</h5>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label">Escalation Reason</label>
+          <textarea name="escalation_reason" class="form-control" rows="3" placeholder="Reason for compliance escalation..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-warning" style="width: 100%; background: #f59e0b; color: white;">Create Compliance Case</button>
+      </form>
+    </div>
+
+    <div style="margin-top: 24px;">
+      <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to KYC Queue
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

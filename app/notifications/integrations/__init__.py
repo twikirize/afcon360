@@ -100,16 +100,11 @@ def _dispatch_email(aggregator, notification, test: bool) -> Dict[str, Any]:
         return {'ok': False, 'detail': 'No notification to send'}
 
     try:
-        from flask_mail import Message
         from app import create_app
+        from app.notifications.channel_handlers.email import EmailHandler
+
         app = create_app()
         with app.app_context():
-            from app.extensions import mail
-            msg = Message(
-                subject=notification.subject or 'AFCON360 Notification',
-                recipients=[notification.email],
-                html=notification.body,
-            )
             # Override mail server if aggregator specifies a custom SMTP
             if provider == 'smtp' and creds.get('smtp_host'):
                 app.config.update({
@@ -119,8 +114,17 @@ def _dispatch_email(aggregator, notification, test: bool) -> Dict[str, Any]:
                     'MAIL_PASSWORD': creds.get('smtp_pass'),
                     'MAIL_USE_TLS': creds.get('use_tls', True),
                 })
-            mail.send(msg)
-        return {'ok': True, 'external_id': notification.external_id, 'response_code': 200}
+            result = EmailHandler().deliver(
+                notification,
+                {'email': notification.email, 'user_id': notification.user_id},
+            )
+        if result.get('success'):
+            return {
+                'ok': True,
+                'external_id': result.get('external_id') or notification.external_id,
+                'response_code': result.get('response_code', 200),
+            }
+        return {'ok': False, 'detail': result.get('response_body')}
     except Exception as e:
         logger.error(f"Email dispatch failed: {e}")
         return {'ok': False, 'detail': str(e)}

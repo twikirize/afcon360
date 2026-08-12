@@ -1,0 +1,14 @@
+{% macro aml_nav(active='') %}
+<div class="aml-nav" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
+  <a href="{{ url_for('admin.compliance.aml_queue') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='queue' }}">AML Queue</a>
+  <a href="{{ url_for('admin.compliance.aml_jurisdictions') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='jurisdictions' }}">Jurisdictions</a>
+  <a href="{{ url_for('admin.compliance.aml_reports') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='reports' }}">Reports</a>
+  <a href="{{ url_for('admin.compliance.aml_ctr') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='ctr' }}">CTR / Structuring</a>
+  <a href="{{ url_for('admin.compliance.aml_terminated') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='terminated' }}">Terminated</a>
+  <a href="{{ url_for('admin.compliance.aml_scenarios') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='scenarios' }}">Scenarios</a>
+  <a href="{{ url_for('admin.compliance.aml_backtest') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='backtest' }}">Back-test</a>
+  <a href="{{ url_for('admin.compliance.aml_training') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='training' }}">Training</a>
+  <a href="{{ url_for('admin.compliance.aml_attestations') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='attestations' }}">Attestations</a>
+  <a href="{{ url_for('admin.compliance.aml_retention') }}" class="btn btn-sm btn-secondary {{ 'btn-active' if active=='retention' }}">Retention</a>
+</div>
+{% endmacro %}

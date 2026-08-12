@@ -285,7 +285,7 @@ def retry_failed_media():
 @media_bp.route('/files/<path:filename>', methods=['GET'])
 def serve_local_file(filename: str):
     """
-    Serve local dev media files.
+    Serve local dev media files with correct MIME type detection and PDF inline support.
     In production (OCI), files are served directly from object storage.
     Only active when STORAGE_TYPE=local.
     """
@@ -293,7 +293,21 @@ def serve_local_file(filename: str):
     if current_app.config.get('STORAGE_TYPE') != 'local':
         abort(404)
     base = current_app.config.get('MEDIA_LOCAL_PATH', '/tmp/afcon360_media')
-    return send_from_directory(base, filename)
+    
+    # Determine explicit mimetype for PDFs and common file types to prevent browser rendering issues
+    mimetype = None
+    if filename.lower().endswith('.pdf'):
+        mimetype = 'application/pdf'
+    elif filename.lower().endswith(('.jpg', '.jpeg')):
+        mimetype = 'image/jpeg'
+    elif filename.lower().endswith('.png'):
+        mimetype = 'image/png'
+
+    response = send_from_directory(base, filename, mimetype=mimetype)
+    # Ensure inline viewing headers for documents and images
+    if filename.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png')):
+        response.headers['Content-Disposition'] = 'inline'
+    return response
 
 
 # ============================================================================

@@ -42,9 +42,9 @@
 
 /* ===== KYC Progress Tracker (CSS Steps) ===== */
 .kyc-progress-tracker {
-    --tracker-circle-size: 36px;
+    --tracker-circle-size: 40px;
     --tracker-circle-border: 3px;
-    --tracker-font-size: 0.8rem;
+    --tracker-font-size: 0.85rem;
     --tracker-line-color: var(--border-medium);
     --tracker-line-active-color: var(--brand-primary);
     --tracker-font: var(--font-family-body);
@@ -94,6 +94,9 @@
     position: relative;
     z-index: 3;
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     text-align: center;
     padding: 0 var(--space-2);
 }
@@ -107,18 +110,20 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto var(--space-2);
+    margin: 0 auto var(--space-3);
     transition: all var(--transition-base) ease;
     position: relative;
     box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
 }
 
 .kyc-progress-tracker .step-circle .step-icon {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     color: var(--text-muted);
     opacity: 0;
     transform: scale(0.4);
     transition: all var(--transition-base) ease;
+    line-height: 1;
 }
 
 .kyc-progress-tracker .step-item.completed .step-circle {
@@ -153,22 +158,24 @@
 
 .kyc-progress-tracker .step-label {
     font-size: var(--tracker-font-size);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-semibold);
     color: var(--text-secondary);
-    line-height: 1.3;
+    line-height: 1.4;
     max-width: 100%;
     word-break: break-word;
     margin-top: var(--space-1);
+    display: block;
 }
 
 .kyc-progress-tracker .step-sub {
     display: block;
-    font-size: 0.68rem;
-    font-weight: var(--font-weight-normal);
+    font-size: 0.72rem;
+    font-weight: var(--font-weight-semibold);
     color: var(--text-muted);
     margin-top: 2px;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
 }
 
 .kyc-progress-tracker .step-item.completed .step-label {
@@ -180,7 +187,7 @@
 
 .kyc-progress-tracker .step-item.active .step-label {
     color: var(--brand-primary);
-    font-weight: var(--font-weight-semibold);
+    font-weight: var(--font-weight-bold);
 }
 .kyc-progress-tracker .step-item.active .step-sub {
     color: var(--brand-primary);
@@ -208,20 +215,20 @@
 /* Mobile adjustments */
 @media (max-width: 768px) {
     .kyc-progress-tracker {
-        --tracker-circle-size: 32px;
-        --tracker-font-size: 0.7rem;
+        --tracker-circle-size: 34px;
+        --tracker-font-size: 0.75rem;
     }
     .kyc-progress-tracker .step-item { padding: 0 var(--space-1); }
-    .kyc-progress-tracker .step-sub { font-size: 0.6rem; }
+    .kyc-progress-tracker .step-sub { font-size: 0.65rem; }
 }
 
 @media (max-width: 480px) {
     .kyc-progress-tracker {
-        --tracker-circle-size: 28px;
-        --tracker-font-size: 0.65rem;
+        --tracker-circle-size: 30px;
+        --tracker-font-size: 0.7rem;
     }
-    .kyc-progress-tracker .step-label { font-size: 0.62rem; }
-    .kyc-progress-tracker .step-sub { font-size: 0.55rem; }
+    .kyc-progress-tracker .step-label { font-size: 0.68rem; }
+    .kyc-progress-tracker .step-sub { font-size: 0.6rem; }
 }
 
 /* Audit Timeline */

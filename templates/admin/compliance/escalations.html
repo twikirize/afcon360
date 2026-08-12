@@ -59,7 +59,7 @@
               {% if item.type == 'flag' %}
                 <a href="{{ url_for('admin.moderator.view_flag', flag_id=item.id) }}">#{{ item.id }}</a>
               {% elif item.type == 'kyc' %}
-                <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a>
+                 <a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=item.id) }}">#{{ item.id }}</a>
               {% elif item.type == 'case' %}
                 <a href="{{ url_for('admin.compliance.view_case', case_id=item.id) }}">#{{ item.id }}</a>
               {% else %}
@@ -115,7 +115,7 @@
                 {% if item.type == 'flag' %}
                   <a href="{{ url_for('admin.moderator.view_flag', flag_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% elif item.type == 'kyc' %}
-                  <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% elif item.type == 'payout' %}
                   <a href="{{ url_for('admin.compliance.view_payout', payout_id=item.id) }}" class="btn btn-sm btn-primary">Review</a>
                 {% elif item.type == 'case' %}

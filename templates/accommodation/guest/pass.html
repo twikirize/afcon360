@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Booking Pass - AFCON360{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    /* ---- Single-page printable pass -------------------------------------- */
+    @page {
+        size: A4 portrait;
+        margin: 10mm;
+    }
+
+    @media print {
+        html, body { background: #ffffff !important; }
+        .bp-no-print { display: none !important; }
+        .bp-wrap {
+            padding: 0 !important;
+            margin: 0 !important;
+            min-height: 0 !important;
+        }
+        .bp-pass {
+            box-shadow: none !important;
+            border: 2px solid #008751 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .bp-pass .card-body { padding: 1rem !important; }
+    }
+
+    /* Keep the on-screen pass comfortable on phones but tidy on desktop. */
+    .bp-pass {
+        max-width: 420px;
+        margin: 0 auto;
+        border: 0;
+    }
+    .bp-wrap { min-height: 60vh; }
+    .bp-ref {
+        font-size: clamp(1rem, 4vw, 1.25rem);
+        letter-spacing: 0.5px;
+        word-break: break-all;
+    }
+    .bp-qr {
+        width: clamp(150px, 45vw, 190px);
+        height: auto;
+        image-rendering: pixelated;
+    }
+    .bp-grid > div {
+        padding-top: 0.35rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px dashed #e6e6e6;
+    }
+    .bp-grid > div:nth-last-child(-n+2) { border-bottom: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bp-wrap d-flex align-items-center justify-content-center py-4">
+    <div class="card shadow-sm border-0 overflow-hidden bp-pass">
+        <!-- HEADER -->
+        <div class="card-header bg-success text-white text-center py-2">
+            <h1 class="h6 mb-0 fw-bold">
+                <i class="fas fa-bed me-2"></i>AFCON360 Booking Pass
+            </h1>
+        </div>
+
+        <div class="card-body text-center">
+            <p class="text-muted small mb-2">Present this pass at check-in</p>
+
+            <div class="bg-light rounded d-inline-block px-3 py-2 mb-3">
+                <span class="text-muted small d-block">Booking Reference</span>
+                <strong class="text-primary bp-ref">{{ booking.booking_reference }}</strong>
+            </div>
+
+            {% if qr_uri %}
+            <div class="mb-2">
+                <img src="{{ qr_uri }}" alt="Booking pass QR code" class="bp-qr img-fluid">
+            </div>
+            <p class="small text-muted mb-3">Scan at reception to verify your booking</p>
+            {% endif %}
+
+            <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' if booking.status in ['pending_approval','held'] else 'secondary' }} fs-6">
+                {{ booking.status|replace('_', ' ')|title }}
+            </span>
+
+            <hr class="my-3">
+
+            <!-- DETAILS -->
+            <div class="row g-0 bp-grid text-start small">
+                <div class="col-6 pe-2">
+                    <span class="text-muted d-block">Property</span>
+                    <strong>{{ property.name if property else 'N/A' }}</strong>
+                </div>
+                <div class="col-6 ps-2">
+                    <span class="text-muted d-block">Location</span>
+                    <strong>{{ (property.city ~ ', ' ~ property.country) if property else 'N/A' }}</strong>
+                </div>
+                <div class="col-6 pe-2">
+                    <span class="text-muted d-block">Check-in</span>
+                    <strong>{{ booking.check_in.strftime('%a, %b %d, %Y') if booking.check_in else 'TBD' }}</strong>
+                </div>
+                <div class="col-6 ps-2">
+                    <span class="text-muted d-block">Check-out</span>
+                    <strong>{{ booking.check_out.strftime('%a, %b %d, %Y') if booking.check_out else 'TBD' }}</strong>
+                </div>
+                <div class="col-6 pe-2">
+                    <span class="text-muted d-block">Guests</span>
+                    <strong>{{ booking.num_guests }}</strong>
+                </div>
+                <div class="col-6 ps-2">
+                    <span class="text-muted d-block">Total</span>
+                    <strong>{{ booking.currency }} {{ "%.2f"|format(booking.total_amount) if booking.total_amount is not none else '0.00' }}</strong>
+                </div>
+                <div class="col-12">
+                    <span class="text-muted d-block">Guest</span>
+                    <strong>{{ booking.primary_guest_name or booking.guest_name or 'N/A' }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap justify-content-center gap-2 bp-no-print my-3">
+    <button type="button" class="btn btn-outline-success" onclick="window.print()">
+        <i class="fas fa-print me-1"></i> Print / Save
+    </button>
+    <a href="{{ safe_url('accommodation.guest_confirmation', reference=booking.booking_reference) }}" class="btn btn-outline-primary">
+        <i class="fas fa-receipt me-1"></i> Full Confirmation
+    </a>
+    <a href="{{ safe_url('accommodation.guest_my_bookings') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-calendar-alt me-1"></i> My Bookings
+    </a>
+</div>
+{% endblock %}

@@ -91,6 +91,13 @@ def register_all_models():
     except ImportError:
         pass
 
+    # AML domain (screening / monitoring models — must be registered so their
+    # tables resolve in db.metadata for both runtime and Alembic autogenerate)
+    try:
+        from app.compliance.aml_service import AMLScreeningResult, AMLTransactionMonitor
+    except ImportError:
+        pass
+
     # Notification domain
     try:
         from app.notifications.models import (
@@ -98,6 +105,7 @@ def register_all_models():
             NotificationTemplate,
             UserNotificationPreference,
             NotificationLog,
+            NotificationDelivery,
             CommunicationSettings,
             NotificationAggregator,
             Message,
@@ -106,6 +114,23 @@ def register_all_models():
         import logging
         logging.getLogger("app").error(
             f"[model_registry] Failed to import notification models: {e}"
+        )
+
+    # Platform event backbone (transactional outbox, event ledger, webhooks).
+    # Lives under app/notifications/events because app/events is the AFCON
+    # events *business* domain (matches/tickets) and must not be shadowed.
+    try:
+        from app.notifications.events.models import (
+            DomainEvent,
+            OutboxEvent,
+            ProcessedEvent,
+            EventSubscription,
+            WebhookDelivery,
+        )
+    except ImportError as e:
+        import logging
+        logging.getLogger("app").error(
+            f"[model_registry] Failed to import event backbone models: {e}"
         )
 
     # KYC domain

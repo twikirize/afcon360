@@ -766,3 +766,21 @@ require_super_admin = require_role("super_admin", "owner")
 require_admin_or_owner = require_role("admin", "super_admin", "owner")
 require_moderator = require_moderator_role
 
+
+def requires_email_verified(f):
+    """
+    If current_user.email_verified_at is None: flash warning + redirect to auth.verify_options.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = _get_current_user() if "_get_current_user" in globals() else current_user
+        if not user or not user.is_authenticated:
+            flash("Please log in to continue.", "warning")
+            return redirect(url_for("auth.login", next=request.url))
+        
+        if getattr(user, "email_verified_at", None) is None:
+            flash("Please verify your email address to access this feature.", "warning")
+            return redirect(url_for("auth.verify_options"))
+        return f(*args, **kwargs)
+    return decorated_function
+

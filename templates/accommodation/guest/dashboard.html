@@ -1,0 +1,9 @@
+{# templates/accommodation/guest/dashboard.html #}
+{% extends "base.html" %}
+{% from "macros/booking_macros.html" import booking_type_badge %}
+
+{% block title %}Guest Dashboard - AFCON360{% endblock %}
+
+{% block content %}
+{% include "accommodation/guest/_dashboard_content.html" %}
+{% endblock %}

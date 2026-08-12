@@ -1,0 +1,267 @@
+{# templates/accommodation/guest/_dashboard_content.html #}
+{# Shared inner content for the guest dashboard (used by both the full page
+   and the shell pane fragment). Does NOT extend base.html. #}
+
+{% macro status_badge(b) %}
+    {% set colors = {
+        'pending': 'warning', 'pending_approval': 'warning', 'pending_payment': 'warning',
+        'confirmed': 'success', 'checked_in': 'info', 'checked_out': 'secondary',
+        'cancelled': 'danger', 'refunded': 'dark', 'no_show': 'danger', 'expired': 'secondary'
+    } %}
+    <span class="badge bg-{{ colors.get(b.booking.status, 'secondary') }}">{{ b.booking.status|replace('_',' ')|title }}</span>
+{% endmacro %}
+
+<div class="container py-4" style="max-width:960px;">
+
+    <!-- Header -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-0">Your Stays</h1>
+            <p class="text-muted small mb-0">Manage trips, payments, check-in and more</p>
+        </div>
+        <a href="{{ safe_url('accommodation.guest_search') }}" class="btn btn-primary">
+            <i class="fas fa-search me-1"></i> Find a stay
+        </a>
+    </div>
+
+    <!-- Summary chips -->
+    <div class="row g-2 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3 text-center">
+                    <div class="h4 mb-0">{{ stats.upcoming_count + stats.current_count }}</div>
+                    <div class="small text-muted">Active trips</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3 text-center">
+                    <div class="h4 mb-0">{{ "%.0f"|format(stats.total_due) }}</div>
+                    <div class="small text-muted">Balance due</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3 text-center">
+                    <div class="h4 mb-0">{{ stats.reviewable_count }}</div>
+                    <div class="small text-muted">To review</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3 text-center">
+                    <a href="{{ safe_url('accommodation.guest_complaints') }}" class="text-decoration-none text-reset">
+                        <div class="h4 mb-0">{{ stats.open_complaints_count }}</div>
+                        <div class="small text-muted">Complaints</div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Current stay hero -->
+    {% if current_stay %}
+    <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+        <div class="row g-0">
+            <div class="col-4 col-md-3">
+                {% if current_stay.property.image %}
+                    <img src="{{ current_stay.property.image }}" class="img-fluid rounded-start h-100" style="object-fit:cover; min-height:160px;" alt="{{ current_stay.property.title }}">
+                {% else %}
+                    <div class="bg-light h-100 d-flex align-items-center justify-content-center" style="min-height:160px;">
+                        <i class="fas fa-hotel fa-2x text-muted"></i>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="col-8 col-md-9">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="badge bg-info mb-1">Checked in</span>
+                            <h5 class="mb-1">{{ current_stay.property.title }}</h5>
+                            <p class="small text-muted mb-1">
+                                <i class="fas fa-map-marker-alt"></i> {{ current_stay.property.address or current_stay.property.city or 'Address at check-in' }}
+                            </p>
+                        </div>
+                        {{ status_badge(current_stay) }}
+                    </div>
+                    <p class="small mb-2">
+                        <i class="fas fa-calendar-alt"></i>
+                        {{ current_stay.booking.check_in.strftime('%b %d') }} → {{ current_stay.booking.check_out.strftime('%b %d, %Y') }}
+                    </p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ safe_url('accommodation.guest_pass', reference=current_stay.booking.booking_reference) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-qrcode me-1"></i> My pass
+                        </a>
+                        {% if current_stay.property.host_phone %}
+                        <a href="tel:{{ current_stay.property.host_phone }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-phone me-1"></i> Host
+                        </a>
+                        {% endif %}
+                        {% if current_stay.can_check_out %}
+                        <form method="POST" action="{{ safe_url('accommodation.guest_self_checkout', booking_id=current_stay.booking.id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Check out now?')">
+                                <i class="fas fa-sign-out-alt me-1"></i> Check out
+                            </button>
+                        </form>
+                        {% endif %}
+                        {% if current_stay.can_pay %}
+                        <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=current_stay.booking.id) }}" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Pay balance of {{ current_stay.booking.currency }} {{ '%.2f'|format(current_stay.amount_due) }}?')">
+                                <i class="fas fa-wallet me-1"></i> Pay {{ '%.2f'|format(current_stay.amount_due) }}
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Upcoming trips -->
+    <h2 class="h5 mb-3"><i class="fas fa-suitcase-rolling me-2 text-primary"></i>Upcoming trips</h2>
+    {% if upcoming %}
+        <div class="row g-3 mb-4">
+        {% for b in upcoming %}
+            <div class="col-12 col-md-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">{{ b.property.title }}</h6>
+                            {{ status_badge(b) }}
+                        </div>
+                        <p class="small text-muted mb-1">
+                            <i class="fas fa-map-marker-alt"></i> {{ b.property.address or b.property.city or 'Location at check-in' }}
+                        </p>
+                        <p class="small mb-1">
+                            <i class="fas fa-calendar-alt"></i>
+                            {{ b.booking.check_in.strftime('%b %d') }} → {{ b.booking.check_out.strftime('%b %d, %Y') }}
+                            · {{ b.booking.num_nights }} night{{ 's' if b.booking.num_nights != 1 else '' }}
+                        </p>
+                        <p class="small mb-2">
+                            {{ booking_type_badge(b.booking) }}
+                            {% if b.registration_needed %}<span class="badge bg-warning ms-1">Registration needed</span>{% endif %}
+                        </p>
+
+                        {% if b.can_pay %}
+                        <div class="alert alert-warning py-2 small mb-2">
+                            Balance due: {{ b.booking.currency }} {{ "%.2f"|format(b.amount_due) }}
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ safe_url('accommodation.guest_confirmation', reference=b.booking.booking_reference) }}" class="btn btn-sm btn-outline-primary">Details</a>
+                            {% if b.can_check_in %}
+                            <form method="POST" action="{{ safe_url('accommodation.guest_self_checkin', booking_id=b.booking.id) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Check in now?')">Check in</button>
+                            </form>
+                            {% endif %}
+                            {% if b.can_pay %}
+                            <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=b.booking.id) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Pay balance of {{ b.booking.currency }} {{ '%.2f'|format(b.amount_due) }}?')">Pay balance</button>
+                            </form>
+                            {% endif %}
+                            {% if b.registration_needed %}
+                            <a href="{{ safe_url('accommodation.guest_register', booking_id=b.booking.id) }}" class="btn btn-sm btn-info">Register guests</a>
+                            {% endif %}
+                            {% if b.can_amend %}
+                            <a href="{{ safe_url('accommodation.guest_amend_booking', booking_id=b.booking.id) }}" class="btn btn-sm btn-outline-secondary">Amend</a>
+                            {% endif %}
+                            {% if b.can_cancel %}
+                            <form method="POST" action="{{ safe_url('accommodation.guest_cancel_booking', reference=b.booking.booking_reference) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Cancel this booking?')">Cancel</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-light border mb-4">No upcoming trips. <a href="{{ safe_url('accommodation.guest_search') }}">Find a place to stay →</a></div>
+    {% endif %}
+
+    <!-- Ready to review -->
+    {% if ready_to_review %}
+    <h2 class="h5 mb-3"><i class="fas fa-star me-2 text-warning"></i>Rate your stays</h2>
+    <div class="row g-3 mb-4">
+        {% for b in ready_to_review %}
+        <div class="col-12 col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex align-items-center justify-content-between gap-2">
+                    <div>
+                        <h6 class="mb-0">{{ b.property.title }}</h6>
+                        <p class="small text-muted mb-0">{{ b.booking.check_out.strftime('%b %d, %Y') }}</p>
+                    </div>
+                    <a href="{{ safe_url('accommodation.guest_submit_review', booking_id=b.booking.id) }}" class="btn btn-sm btn-warning">
+                        <i class="fas fa-star me-1"></i> Rate
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Complaints -->
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        <h2 class="h5 mb-0"><i class="fas fa-exclamation-circle me-2 text-danger"></i>Your complaints</h2>
+        <a href="{{ safe_url('accommodation.guest_complaints') }}" class="btn btn-sm btn-outline-danger">Raise / view</a>
+    </div>
+    {% if complaints %}
+        <div class="list-group mb-4 shadow-sm">
+        {% for c in complaints[:3] %}
+            <a href="{{ safe_url('accommodation.guest_complaint_detail', reference=c.reference) }}" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between">
+                    <span class="fw-semibold">{{ c.subject }}</span>
+                    <span class="badge bg-{{ 'success' if c.status == 'resolved' else 'warning' if c.status in ('open','in_review') else 'secondary' }}">{{ c.status|replace('_',' ')|title }}</span>
+                </div>
+                <small class="text-muted">{{ c.reference }} · {{ c.created_at.strftime('%b %d, %Y') }}</small>
+            </a>
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-light border mb-4">No complaints raised.</div>
+    {% endif %}
+
+    <!-- Past stays -->
+    <h2 class="h5 mb-3"><i class="fas fa-history me-2 text-secondary"></i>Stay history</h2>
+    {% if past %}
+        <div class="row g-3">
+        {% for b in past %}
+            <div class="col-12 col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <h6 class="mb-0">{{ b.property.title }}</h6>
+                            {{ status_badge(b) }}
+                        </div>
+                        <p class="small text-muted mb-2">
+                            {{ b.booking.check_in.strftime('%b %d, %Y') }} → {{ b.booking.check_out.strftime('%b %d, %Y') }}
+                        </p>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ safe_url('accommodation.guest_confirmation', reference=b.booking.booking_reference) }}" class="btn btn-sm btn-outline-primary">Details</a>
+                            {% if b.can_review %}
+                            <a href="{{ safe_url('accommodation.guest_submit_review', booking_id=b.booking.id) }}" class="btn btn-sm btn-warning">Rate</a>
+                            {% endif %}
+                            <a href="{{ safe_url('accommodation.guest_complaints') }}" class="btn btn-sm btn-outline-danger">Report issue</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-light border">No past stays yet.</div>
+    {% endif %}
+
+</div>

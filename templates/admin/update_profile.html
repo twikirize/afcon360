@@ -10,14 +10,26 @@
                 <div class="card-header">
                     <h3>Edit Profile: {{ user.username }}</h3>
                     <p class="text-muted mb-0">KYC and personal information</p>
-                    {% if profile.verification_status == 'verified' %}
-                    <div class="alert alert-danger mt-2">
-                        <i class="bi bi-lock-fill"></i>
-                        <strong>VERIFIED ACCOUNT - LIMITED EDITING</strong><br>
-                        Name, Date of Birth, and National ID cannot be changed after verification.
-                        Address changes require re-verification.
-                    </div>
-                    {% endif %}
+                     {% if profile.verification_status == 'verified' %}
+                     <div class="alert alert-danger mt-2">
+                         <i class="bi bi-lock-fill"></i>
+                         <strong>VERIFIED ACCOUNT - LIMITED EDITING</strong><br>
+                         Name, Date of Birth, and National ID cannot be changed after verification.
+                         Address changes require re-verification.
+                     </div>
+                     {% endif %}
+                     {% if kyc_info %}
+                     <div class="alert alert-info mt-2">
+                         <i class="bi bi-shield-check"></i>
+                         <strong>KYC Tier: {{ kyc_info.tier_name }}</strong> — {{ kyc_info.tier_description }}<br>
+                         {% if kyc_info.next_tier is not none and kyc_info.next_tier_requirements_labels %}
+                         <strong>Next tier ({{ kyc_info.next_tier_name }}) needs:</strong> {{ kyc_info.next_tier_requirements_labels|join(', ') }}<br>
+                         {% endif %}
+                         {% if kyc_info.activities_restricted %}
+                          <strong>Restricted activities:</strong> {{ kyc_info.activities_restricted|length }} items locked.
+                         {% endif %}
+                     </div>
+                     {% endif %}
                 </div>
                 <div class="card-body">
                     <form method="post" enctype="multipart/form-data">

@@ -6,12 +6,13 @@ Handles wallet payments, events, and organizational accounts with AML/CFT compli
 from functools import wraps
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timezone, date
+from types import SimpleNamespace
 from flask import session, current_app, request, abort
 from flask_login import current_user
 
 from app.extensions import db
 from app.identity.individuals.individual_verification import IndividualVerification
-from app.profile.models import UserProfile, get_profile_by_user
+from app.profile.models import UserProfile, get_profile_by_user, IMMUTABLE_AFTER_VERIFICATION
 from app.identity.models.organisation import Organisation
 from app.identity.models.organisation_member import OrganisationMember
 from app.audit.comprehensive_audit import AuditService, SecurityEventLog
@@ -112,6 +113,34 @@ TIER_REQUIREMENTS = {
     }
 }
 
+REQUIREMENT_LABELS = {
+    "phone_verified": "Phone verification",
+    "national_id": "National ID",
+    "selfie": "Selfie / Biometric",
+    "proof_of_address": "Proof of address",
+    "tin": "TIN certificate",
+    "income_source": "Income source",
+    "bank_reference": "Bank reference",
+    "organisation_registration": "Organisation registration",
+    "tin_certificate": "TIN certificate",
+    "trading_license": "Trading license",
+    "directors_list": "Directors list",
+    "beneficial_owners": "Beneficial owners",
+}
+
+ACTIVITY_TIER_REQUIREMENTS = {
+    "wallet_send": 1,
+    "wallet_receive": 1,
+    "event_registration": 1,
+    "event_payment": 2,
+    "accommodation_booking": 2,
+    "transport_booking": 2,
+    "high_value_transaction": 3,
+    "ticket_purchase": 2,
+    "organiser_payouts": 3,
+    "kyb_operations": 5,
+}
+
 # ============================================================================
 # Limit Configuration (BoU Compliant)
 # ============================================================================
@@ -173,6 +202,146 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
         user_id=user.id  # Use internal BIGINT id
     ).order_by(IndividualVerification.requested_at.desc()).first()
 
+    # Manual KYC submissions are the source reviewed by compliance. Prefer a
+    # newer manual decision over an older provider/profile verification row so
+    # rejection or revocation is visible everywhere immediately.
+    from app.kyc.models import KycRecord
+
+    manual_record = KycRecord.query.filter_by(user_id=user.id).order_by(
+        KycRecord.created_at.desc(), KycRecord.id.desc()
+    ).first()
+
+    def _verification_time(value):
+        if value is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+    if manual_record and (
+        verification is None
+        or _verification_time(manual_record.created_at)
+        >= _verification_time(verification.requested_at)
+    ):
+        manual_status = (manual_record.status or "pending").lower()
+        verification = SimpleNamespace(
+            id=manual_record.id,
+            status=manual_status,
+            requested_at=manual_record.created_at,
+            scope={
+                "national_id": bool(manual_record.document_url),
+                "biometric": bool(manual_record.selfie_url),
+            },
+        )
+
+def _label_requirements(reqs: List[str]) -> List[str]:
+    return [REQUIREMENT_LABELS.get(r, r.replace("_", " ").title()) for r in reqs]
+
+
+def _get_next_tier_info(current_tier: int) -> Dict[str, Any]:
+    next_tier = current_tier + 1
+    if next_tier > TIER_5_CORPORATE:
+        return {
+            "next_tier": None,
+            "next_tier_name": None,
+            "next_tier_requirements": [],
+            "next_tier_requirements_labels": [],
+        }
+    reqs = TIER_REQUIREMENTS[next_tier]["required_documents"]
+    return {
+        "next_tier": next_tier,
+        "next_tier_name": TIER_REQUIREMENTS[next_tier]["name"],
+        "next_tier_requirements": reqs,
+        "next_tier_requirements_labels": _label_requirements(reqs),
+    }
+
+
+def _build_tier_response(
+    achieved_tier: int,
+    missing_requirements: List[str],
+    verification,
+    profile,
+    fulfillment_percentage: int,
+) -> Dict[str, Any]:
+    next_tier_info = _get_next_tier_info(achieved_tier)
+    status = getattr(verification, "status", None) if verification else None
+    status = (status or "pending").lower()
+    is_verified = status in {"verified", "approved"}
+
+    return {
+        "tier": achieved_tier,
+        "tier_name": TIER_REQUIREMENTS[achieved_tier]["name"],
+        "tier_description": TIER_REQUIREMENTS[achieved_tier]["description"],
+        "verification_status": status,
+        "is_verified": is_verified,
+        "fulfillment_percentage": fulfillment_percentage,
+        "missing_requirements": missing_requirements,
+        "missing_requirements_labels": _label_requirements(missing_requirements),
+        **next_tier_info,
+        "limits": get_limits_for_tier(achieved_tier),
+        "verification_id": verification.id if verification else None,
+        "immutable_fields": sorted(IMMUTABLE_AFTER_VERIFICATION),
+        "activities_restricted": {
+            activity: tier for activity, tier in ACTIVITY_TIER_REQUIREMENTS.items()
+            if achieved_tier < tier
+        },
+    }
+
+
+def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
+    """
+    Calculate user's KYC tier based on user identifier.
+    Accepts either internal user ID (BIGINT) or public_id (UUID string).
+    """
+    from app.identity.models.user import User
+
+    # Determine if identifier is integer (BIGINT id) or string (public_id)
+    if isinstance(user_identifier, int):
+        # It's an internal ID
+        user = db.session.get(User, user_identifier)
+    else:
+        # Assume it's a public_id (UUID string)
+        user = User.query.filter_by(public_id=user_identifier).first()
+
+    if not user:
+        raise ValueError(f"User with identifier {user_identifier} not found")
+
+    # Get user profile using public_id (UUID string)
+    profile = get_profile_by_user(user.public_id)
+
+    # Get latest verification - this expects INTEGER user_id (BIGINT)
+    verification = IndividualVerification.query.filter_by(
+        user_id=user.id  # Use internal BIGINT id
+    ).order_by(IndividualVerification.requested_at.desc()).first()
+
+    # Manual KYC submissions are the source reviewed by compliance. Prefer a
+    # newer manual decision over an older provider/profile verification row so
+    # rejection or revocation is visible everywhere immediately.
+    from app.kyc.models import KycRecord
+
+    manual_record = KycRecord.query.filter_by(user_id=user.id).order_by(
+        KycRecord.created_at.desc(), KycRecord.id.desc()
+    ).first()
+
+    def _verification_time(value):
+        if value is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+    if manual_record and (
+        verification is None
+        or _verification_time(manual_record.created_at)
+        >= _verification_time(verification.requested_at)
+    ):
+        manual_status = (manual_record.status or "pending").lower()
+        verification = SimpleNamespace(
+            id=manual_record.id,
+            status=manual_status,
+            requested_at=manual_record.created_at,
+            scope={
+                "national_id": bool(manual_record.document_url),
+                "biometric": bool(manual_record.selfie_url),
+            },
+        )
+
     # Check requirements for each tier starting from highest
     achieved_tier = TIER_0_UNREGISTERED
     missing_requirements = []
@@ -182,15 +351,18 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
         achieved_tier = TIER_1_BASIC
     else:
         missing_requirements.append("phone_verified")
-        return {
-            "tier": TIER_0_UNREGISTERED,
-            "tier_name": TIER_REQUIREMENTS[TIER_0_UNREGISTERED]["name"],
-            "missing_requirements": missing_requirements,
-            "limits": get_limits_for_tier(TIER_0_UNREGISTERED)
-        }
+        if verification and verification.status not in {"verified", "approved"}:
+            missing_requirements.append("kyc_verification")
+        return _build_tier_response(
+            TIER_0_UNREGISTERED,
+            missing_requirements,
+            verification,
+            profile,
+            15 if profile and profile.phone_number else 0,
+        )
 
     # Check Tier 2: National ID and selfie
-    if verification and verification.status == "verified":
+    if verification and verification.status in {"verified", "approved"}:
         scope = verification.scope or {}
         if scope.get("national_id") and scope.get("biometric"):
             achieved_tier = TIER_2_STANDARD
@@ -223,14 +395,19 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
     # Check Tier 5: Corporate KYB (organization-based)
     # This requires separate organization verification
 
-    return {
-        "tier": achieved_tier,
-        "tier_name": TIER_REQUIREMENTS[achieved_tier]["name"],
-        "missing_requirements": missing_requirements,
-        "limits": get_limits_for_tier(achieved_tier),
-        "verification_id": verification.id if verification else None,
-        "verification_status": verification.status if verification else None
-    }
+    # Calculate fulfillment percentage
+    # Tiers: 0=0%, 1=25%, 2=50%, 3=75%, 4=100%
+    fulfillment_percentage = min(100, achieved_tier * 25)
+    if achieved_tier == 0 and profile and profile.phone_number:
+        fulfillment_percentage = 15 # phone entered but not verified yet
+
+    return _build_tier_response(
+        achieved_tier,
+        missing_requirements,
+        verification,
+        profile,
+        fulfillment_percentage,
+    )
 
 def get_limits_for_tier(tier: int) -> Dict[str, Optional[int]]:
     """Get limits for a specific tier."""

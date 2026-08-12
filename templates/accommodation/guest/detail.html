@@ -548,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         checkInInput.classList.remove('is-invalid');
 
-        // Update check-out min date when check-in changes
+        // Update check-out min date when check-in changes and clear invalid check-out
         if (checkOutInput && value) {
             var checkInDate = new Date(value);
             var minCheckOut = new Date(checkInDate);
@@ -556,9 +556,9 @@ document.addEventListener("DOMContentLoaded", function() {
             var minCheckOutStr = minCheckOut.toISOString().split('T')[0];
             checkOutInput.min = minCheckOutStr;
 
-            // If current check-out is before new min, clear it
-            if (checkOutInput.value && checkOutInput.value < minCheckOutStr) {
-                checkOutInput.value = '';
+            // If current check-out is before or equal to new min, clear it or auto-set
+            if (!checkOutInput.value || checkOutInput.value <= value) {
+                checkOutInput.value = minCheckOutStr;
             }
         }
 
@@ -717,24 +717,34 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // Trigger live availability on date change
+    // Trigger live availability on date change and input
     if (checkInInput) {
         checkInInput.addEventListener('change', function() {
             validateCheckIn();
-            checkLiveAvailability();
+            if (checkInInput.value && checkOutInput && checkOutInput.value) {
+                checkLiveAvailability();
+            }
         });
-        checkInInput.addEventListener('blur', function() {
-            if (checkInInput.value) checkLiveAvailability();
+        checkInInput.addEventListener('input', function() {
+            validateCheckIn();
+            if (checkInInput.value && checkOutInput && checkOutInput.value && checkOutInput.value > checkInInput.value) {
+                checkLiveAvailability();
+            }
         });
     }
 
     if (checkOutInput) {
         checkOutInput.addEventListener('change', function() {
             validateCheckOut();
-            checkLiveAvailability();
+            if (checkInInput && checkInInput.value && checkOutInput.value) {
+                checkLiveAvailability();
+            }
         });
-        checkOutInput.addEventListener('blur', function() {
-            if (checkOutInput.value) checkLiveAvailability();
+        checkOutInput.addEventListener('input', function() {
+            validateCheckOut();
+            if (checkInInput && checkInInput.value && checkOutInput.value && checkOutInput.value > checkInInput.value) {
+                checkLiveAvailability();
+            }
         });
     }
 

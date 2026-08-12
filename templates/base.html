@@ -53,6 +53,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/host-bookings.css') }}">
 
   {% block module_styles %}{% endblock %} {# For specific module pages #}
   {% block styles %}{% endblock %} {# For page-specific styles #}
@@ -367,6 +368,11 @@
               </a>
             </li>
 
+            <li class="menu-item nav-notif-item">
+              {% include 'components/notification_bell.html' %}
+              {% include 'components/message_button.html' %}
+            </li>
+
             <li class="menu-item has-dropdown nav-user-menu">
               <button class="nav-user-trigger">
                 <span class="nav-user-avatar">{{ current_user.username[0]|upper if current_user.username else '?' }}</span>
@@ -406,6 +412,11 @@
                  class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Org Dashboard
               </a>
+            </li>
+
+            <li class="menu-item nav-notif-item">
+              {% include 'components/notification_bell.html' %}
+              {% include 'components/message_button.html' %}
             </li>
 
             <li class="menu-item has-dropdown nav-user-menu nav-user-menu--org">
@@ -459,34 +470,39 @@
                        {% elif current_user.has_global_role('host') %}{{ safe_url('accommodation.host.dashboard') }}
                        {% elif current_user.has_global_role('wallet_admin') %}{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
                        {% elif current_user.has_global_role('accommodation_admin') %}{% if module_enabled('accommodation') %}{{ safe_url('accommodation.admin.dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
-                      {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
-                       {% else %}{{ safe_url('events.attendee_dashboard') }}{% endif %}"
+                       {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
+                        {% else %}{{ url_for('user.dashboard') }}{% endif %}"
                   class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
             </li>
 
-            {# KYC badge — show for all authenticated users with completed profiles #}
-            {% if nav_profile_completed %}
-            <li class="nav-item auth">
-              <div class="kyc-badge-nav" style="display:inline-block;margin-left:10px;"
-                   data-bs-toggle="tooltip"
-                   title="KYC Tier {{ kyc_tier }}: {{ kyc_tier_name }}">
-                <span class="badge bg-{{ tier_colors.get(kyc_tier, 'secondary') }}"
-                      style="font-size:0.8em;padding:3px 8px;">
-                  T{{ kyc_tier }}
-                </span>
-              </div>
+            <li class="menu-item nav-notif-item">
+              {% include 'components/notification_bell.html' %}
+              {% include 'components/message_button.html' %}
             </li>
-            {% endif %}
 
             <li class="menu-item has-dropdown nav-user-menu">
-              <button class="nav-user-trigger">
-                <span class="nav-user-avatar">{{ current_user.username[0]|upper if current_user.username else '?' }}</span>
-                <span class="nav-user-name">{{ current_user.username|truncate(12, true, '…') }}</span>
+              <button class="nav-user-trigger"
+                      title="{{ current_user.username or 'Account' }}"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="bottom">
+                <span class="nav-user-avatar">
+                  {{ ((current_user.username or 'U')[:2])|upper }}
+                </span>
+                <span class="nav-user-name">
+                  {{ (current_user.username.split()[0] if current_user.username else 'Account') }}
+                </span>
                 <i class="bi bi-chevron-down" style="font-size:10px;"></i>
               </button>
               <ul class="drop-menu drop-menu--right" role="menu">
+                <li>
+                  <span class="drop-header drop-header--sub">
+                    <span class="d-block fw-bold">{{ current_user.username }}</span>
+                    <span class="d-block" style="font-weight:400;font-size:0.7rem;color:#6c757d;">{{ current_user.email }}</span>
+                  </span>
+                </li>
+                <li><hr class="drop-divider"></li>
                 {# ── Global Role Switching ── #}
                 {% set user_roles = current_user.roles|list %}
                 {% if user_roles|length > 1 or active_global_role %}
@@ -637,6 +653,13 @@
 
         <div class="drawer-divider"></div>
 
+        <a class="drawer-link" href="/api/notifications">
+          <i class="bi bi-bell me-2"></i>Notifications
+          {% if notif_badges and notif_badges.get('total_unread', 0) %}
+            <span class="badge bg-danger ms-1">{{ notif_badges.get('total_unread') }}</span>
+          {% endif %}
+        </a>
+
         {% if nav_profile_completed %}
           <a class="drawer-link" href="{{ url_for('profile.account_overview') }}">
             <i class="bi bi-person-badge me-2"></i>My Account
@@ -678,6 +701,20 @@
   </aside>
 
   <main id="main" role="main">
+    {% block messages %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="container flash-container mt-3">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ flash_alert_class(category) }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% endblock %}
     {% block content %}{% endblock %}
   </main>
 

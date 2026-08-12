@@ -34,6 +34,14 @@ def trust_settings():
                          user_analyses=user_analyses)
 
 
+@trust_settings_bp.route('/owner/trust-settings', endpoint='owner_trust_settings')
+@login_required
+@require_role('owner', 'super_admin')
+def owner_trust_settings():
+    """Owner & Super Admin dedicated trust settings page"""
+    return trust_settings()
+
+
 @trust_settings_bp.route('/trust-settings/update', methods=['POST'])
 @login_required
 @require_role('owner', 'super_admin', 'admin')

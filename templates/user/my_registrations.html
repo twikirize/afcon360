@@ -1,4 +1,4 @@
-{% extends "user/base_user_dashboard.html" if not request.args.get('_pane') else "user/_pane_base.html" %}
+{% extends "shell/dashboard_shell.html" if not request.args.get('_pane') else "user/_pane_base.html" %}
 
 {% block content_section %}
 <div id="dashboard" class="content-section active">

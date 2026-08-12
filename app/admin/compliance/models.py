@@ -128,6 +128,50 @@ class ComplianceCase(db.Model):
         return f'<ComplianceCase {self.case_number}: {self.title}>'
 
 
+class ComplianceCaseNote(db.Model):
+    """
+    Notes and system activity entries attached to a compliance case.
+
+    Follows the module convention (db.Model + explicit BigInteger id + UUID
+    public_id + soft delete) and is fully described in model metadata, so a
+    fresh `db.create_all()` (no migrations) reproduces the table identically.
+
+    kind='note'   -> free-text note added by an officer (shown in the Notes list)
+    kind='system' -> automatic activity entry (assignment, escalation, status
+                     change, resolution) shown in the Case History timeline.
+    """
+    __tablename__ = 'compliance_case_notes'
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    public_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
+
+    case_id = db.Column(db.BigInteger, db.ForeignKey('compliance_cases.id'), nullable=False, index=True)
+    author_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False, index=True)
+
+    # Short machine-readable label for system entries (e.g. 'assigned',
+    # 'escalated'). Free-text notes default to 'note_added'.
+    action = db.Column(db.String(64), nullable=False, default='note_added')
+    kind = db.Column(db.String(16), nullable=False, default='note')  # 'note' | 'system'  (enum rule: String + CHECK)
+    content = db.Column(db.Text, nullable=False)
+
+    # Timestamps + soft delete (BigInteger/UUID/soft-delete conventions)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    case = db.relationship('ComplianceCase', foreign_keys=[case_id], backref='case_notes')
+    author = db.relationship('User', foreign_keys=[author_id], backref='compliance_case_notes_author')
+
+    __table_args__ = (
+        db.CheckConstraint("kind IN ('note', 'system')", name='ck_compliance_case_note_kind'),
+        {'extend_existing': True},
+    )
+
+    def __repr__(self):
+        return f'<ComplianceCaseNote {self.id}: case={self.case_id} {self.kind}>'
+
+
 class DataSubjectRequest(db.Model):
     """Data subject request for GDPR compliance (access, deletion, etc.)"""
     __tablename__ = 'data_subject_requests'

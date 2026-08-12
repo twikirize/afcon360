@@ -22,11 +22,17 @@ def home():
     A lightweight analytics counter is tracked instead.
     """
     try:
-        from app.services.analytics import AnalyticsService
+        from app.utils.analytics import AnalyticsService
         AnalyticsService.track_page_view("tourism")
     except Exception:
         pass
-    return render_template("tourism_home.html")
+    listings = []
+    try:
+        from app.tourism.models import TourismListing
+        listings = TourismListing.query.filter_by(status='published', is_deleted=False).order_by(TourismListing.created_at.desc()).limit(8).all()
+    except Exception:
+        listings = []
+    return render_template("tourism_home.html", listings=listings)
 
 @tourism_bp.route("/detail/<string:slug>", endpoint="detail")
 @login_required

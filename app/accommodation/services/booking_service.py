@@ -517,6 +517,28 @@ class BookingService:
     # CHECK-IN
     # -------------------------
     @staticmethod
+    def _check_in_block_reason(booking) -> str:
+        """Explain why a booking cannot be checked in, for front-desk staff."""
+        if booking.status != AccommodationBookingStatus.CONFIRMED.value:
+            return f"Booking must be confirmed to check in (currently {booking.status})."
+
+        if booking.check_in > date.today():
+            return f"Check-in date is {booking.check_in.strftime('%b %d, %Y')} - too early to check in."
+
+        if booking.payment_status == AccommodationPaymentStatus.UNPAID.value:
+            if not BookingStateMachine._cash_eligible_at_checkin(booking):
+                return "Booking is unpaid and not eligible for pay-on-arrival. Please collect payment first."
+
+        if not BookingStateMachine._registration_satisfied(booking):
+            return (
+                "Guest registration is incomplete and the registration deadline "
+                "has not passed yet. Ask the guest to complete registration online, "
+                "or register them here and check in."
+            )
+
+        return "Booking is not ready for check-in."
+
+    @staticmethod
     def check_in(booking_id: int, user_id: int) -> Tuple[bool, Optional[str]]:
         """
         Check in a booking and assign room if not already assigned.
@@ -532,7 +554,7 @@ class BookingService:
         try:
             # Enforce state-machine readiness (payment, registration, date).
             if not BookingStateMachine._can_check_in(booking):
-                return False, "Booking is not ready for check-in"
+                return False, BookingService._check_in_block_reason(booking)
 
             # Assign room if not assigned - must match booking's room type
             if not booking.assigned_room_id:
@@ -574,6 +596,14 @@ class BookingService:
             booking.checked_in_at = datetime.now(timezone.utc)
 
             db.session.commit()
+
+            # Notify guest, host and module admins (listeners dispatch notifications).
+            try:
+                from app.notifications.signals import booking_checked_in
+                booking_checked_in.send(booking, booking=booking)
+            except Exception as sig_err:
+                logger.warning(f"booking_checked_in signal failed for {booking_id}: {sig_err}")
+
             return True, None
         except Exception as e:
             db.session.rollback()
@@ -623,6 +653,14 @@ class BookingService:
                     rb.check_out()
 
             db.session.commit()
+
+            # Notify guest, host and module admins (listeners dispatch notifications).
+            try:
+                from app.notifications.signals import booking_checked_out
+                booking_checked_out.send(booking, booking=booking)
+            except Exception as sig_err:
+                logger.warning(f"booking_checked_out signal failed for {booking_id}: {sig_err}")
+
             return True, None
         except Exception as e:
             db.session.rollback()
@@ -1012,7 +1050,8 @@ class BookingService:
         if cancelled_by_user_id not in (owner_id, booking.host_user_id):
             return False, "You are not authorised to cancel this booking.", None
 
-        can_cancel, msg, refund = booking.can_cancel()
+        quote = booking.get_cancellation_quote()
+        can_cancel, msg, refund = quote["allowed"], quote["message"], quote["refund"]
         if not can_cancel:
             return False, msg, None
 
@@ -1049,6 +1088,23 @@ class BookingService:
             booking.cancelled_by_user_id = cancelled_by_user_id
             booking.cancellation_reason = reason
 
+            # Persist the cancellation quote (explicit fine line item) so the
+            # penalty is auditable and independent of the withheld refund.
+            snapshot = dict(booking.policy_snapshot or {})
+            snapshot["cancellation_outcome"] = {
+                "policy": quote["policy"],
+                "phase": quote["phase"],
+                "refundable_base": str(quote["refundable_base"]),
+                "refund": str(quote["refund"]),
+                "fine": str(quote["fine"]),
+                "nights_remaining": quote["nights_remaining"],
+                "days_until_checkin": quote["days_until_checkin"],
+                "cancelled_by": cancelled_by_user_id,
+                "cancelled_at": booking.cancelled_at.isoformat(),
+                "from_status": old_status,
+            }
+            booking.policy_snapshot = snapshot
+
             # Record host policy violation if host cancels a confirmed/active booking
             if (cancelled_by_user_id == booking.host_user_id and
                 old_status in [
@@ -1080,7 +1136,7 @@ class BookingService:
             logger.info(
                 f"Booking cancelled: {booking.booking_reference} | "
                 f"Cancelled by: {cancelled_by_user_id} | "
-                f"Refund: ${refund if refund else 0} | Reason: {reason}"
+                f"Refund: ${refund if refund else 0} | Fine: ${quote['fine']} | Reason: {reason}"
             )
 
             return True, msg, refund

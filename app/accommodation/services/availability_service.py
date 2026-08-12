@@ -773,25 +773,17 @@ class AvailabilityService:
             if available < units_to_block:
                 return False, f"Insufficient units: {available} available, {units_to_block} requested"
 
-            # Check for an existing block for the same room type and date range
-            existing_block = InventoryBlock.query.filter(
-                InventoryBlock.room_type_id == room_type_id,
-                InventoryBlock.date_range_start == check_in,
-                InventoryBlock.date_range_end == check_out,
-            ).first()
-
-            if existing_block:
-                existing_block.units_blocked += units_to_block
-            else:
-                block = InventoryBlock(
-                    room_type_id=room_type_id,
-                    booking_id=booking_id,
-                    date_range_start=check_in,
-                    date_range_end=check_out,
-                    units_blocked=units_to_block,
-                    reason=reason,
-                )
-                db.session.add(block)
+            # Always create a distinct inventory block for this booking/hold request
+            block = InventoryBlock(
+                room_type_id=room_type_id,
+                booking_id=booking_id,
+                date_range_start=check_in,
+                date_range_end=check_out,
+                units_blocked=units_to_block,
+                reason=reason,
+                created_by=created_by,
+            )
+            db.session.add(block)
 
             db.session.commit()
             return True, None

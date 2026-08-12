@@ -77,6 +77,8 @@ def make_celery(app=None):
             "app.tasks.accommodation_reminders",
             "app.media.tasks",
             "app.notifications.tasks",
+            "app.notifications.events.tasks",
+            "app.tasks.backup_tasks",
             # add future task modules here
         ],
     )
@@ -113,6 +115,40 @@ def make_celery(app=None):
         "notifications-cleanup-old": {
             "task": "notifications.cleanup_old",
             "schedule": 86400.0,  # every 24 hours
+        },
+
+        # --- Platform event backbone (app/notifications/events) ---
+        # Three decoupled loops so a slow consumer never blocks publication
+        # and a dead partner endpoint never blocks user notifications.
+        "events-relay-outbox": {
+            "task": "events.relay_outbox",
+            "schedule": 10.0,  # outbox -> Redis Streams (keep tight: user-facing latency)
+        },
+        "events-consume": {
+            "task": "events.consume",
+            "schedule": 15.0,  # Redis Streams -> consumers (notification/audit/analytics/webhook)
+        },
+        "events-dispatch-webhooks": {
+            "task": "events.dispatch_webhooks",
+            "schedule": 30.0,  # queued partner webhooks -> HTTPS endpoints
+        },
+        "events-retry-dead-letters": {
+            "task": "events.retry_dead_letters",
+            "schedule": 900.0,  # every 15 min: requeue transport-level DLQ rows
+        },
+        "events-health-snapshot": {
+            "task": "events.health_snapshot",
+            "schedule": 300.0,  # every 5 min: queue depth / DLQ / provider health
+        },
+        "events-cleanup-ledger": {
+            "task": "events.cleanup_ledger",
+            "schedule": 86400.0,  # daily retention pruning
+        },
+
+        # --- Database backup & disaster recovery ---
+        "backup-scheduled-run": {
+            "task": "backup.scheduled_run",
+            "schedule": 3600.0,  # hourly due-check; actual dump respects BACKUP_FREQUENCY
         },
     }
 

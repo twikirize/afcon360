@@ -97,6 +97,12 @@ class Config:
     FLASK_ENV = os.getenv("FLASK_ENV", "development")
     DEBUG     = FLASK_ENV != "production"
 
+    # Publicly reachable base URL (scheme + host, no trailing slash). Used to
+    # build absolute links/QR codes that must work outside the current request
+    # context (emails, notifications, printable passes). Falls back to the
+    # request host when unset. Example: https://afcon360.com
+    PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+
     # ---- Auth secrets -------------------------------------------------------
     SECRET_KEY    = os.getenv("SECRET_KEY")
     SECURITY_SALT = os.getenv("SECURITY_SALT")
@@ -119,11 +125,14 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         "isolation_level": os.getenv("DB_ISOLATION_LEVEL", "REPEATABLE_READ"),
-        "pool_size":        int(os.getenv("DB_POOL_SIZE",     "5")),
-        "max_overflow":     int(os.getenv("DB_MAX_OVERFLOW",  "10")),
+        "pool_size":        int(os.getenv("DB_POOL_SIZE",     "10")),
+        "max_overflow":     int(os.getenv("DB_MAX_OVERFLOW",  "15")),
         "pool_timeout":     int(os.getenv("DB_POOL_TIMEOUT",  "30")),
         "pool_recycle":     int(os.getenv("DB_POOL_RECYCLE",  "1800")),
         "pool_pre_ping":    True,
+        "connect_args": {
+            "options": "-c lock_timeout=5000 -c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000"
+        }
     }
 
     # ---- Redis (single source of truth) -------------------------------------
@@ -221,6 +230,30 @@ class Config:
     REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
     ALLOW_USERNAME_LOGIN       = os.getenv("ALLOW_USERNAME_LOGIN",       "true").lower()  == "true"
 
+    # ---- Email address validation (app/auth/email_validation.py) ------------
+    # NOTE: whether verification is *required* is owned by the owner-managed
+    # AuthConfiguration.email_verification_required toggle
+    # (/admin/owner/settings/auth). REQUIRE_EMAIL_VERIFICATION above is only a
+    # fallback used when that settings row cannot be read.
+    EMAIL_VALIDATE_MX          = os.getenv("EMAIL_VALIDATE_MX",          "true").lower()  == "true"
+    EMAIL_ALLOW_ROLE_ACCOUNTS  = os.getenv("EMAIL_ALLOW_ROLE_ACCOUNTS",  "false").lower() == "true"
+    EMAIL_ALLOW_DISPOSABLE     = os.getenv("EMAIL_ALLOW_DISPOSABLE",     "false").lower() == "true"
+    DISPOSABLE_EMAIL_REFRESH   = os.getenv("DISPOSABLE_EMAIL_REFRESH",   "false").lower() == "true"
+
+    # ---- Signup OTP / pending registration ----------------------------------
+    SIGNUP_OTP_TTL             = int(os.getenv("SIGNUP_OTP_TTL",             "600"))   # 10 min
+    SIGNUP_OTP_MAX_LIFETIME    = int(os.getenv("SIGNUP_OTP_MAX_LIFETIME",    "900"))   # 15 min ceiling
+    SIGNUP_OTP_KEEPALIVE       = int(os.getenv("SIGNUP_OTP_KEEPALIVE",       "120"))   # +2 min per heartbeat
+    SIGNUP_OTP_MAX_ATTEMPTS    = int(os.getenv("SIGNUP_OTP_MAX_ATTEMPTS",    "5"))
+    SIGNUP_EMAIL_RATE_LIMIT    = int(os.getenv("SIGNUP_EMAIL_RATE_LIMIT",    "3"))     # per window, per email
+    SIGNUP_IP_RATE_LIMIT       = int(os.getenv("SIGNUP_IP_RATE_LIMIT",       "10"))    # per window, per IP
+    SIGNUP_RATE_WINDOW         = int(os.getenv("SIGNUP_RATE_WINDOW",         "900"))   # 15 min
+    # Log the OTP instead of failing when mail is unconfigured. Never enable in
+    # production - it is auto-detected for local development.
+    OTP_DEV_LOG_FALLBACK       = os.getenv("OTP_DEV_LOG_FALLBACK",       "false").lower() == "true"
+    OTP_FAILURE_ALERT_THRESHOLD = int(os.getenv("OTP_FAILURE_ALERT_THRESHOLD", "10"))
+    OTP_PEPPER                 = os.getenv("OTP_PEPPER")  # falls back to SECRET_KEY
+
     # ---- CSRF ---------------------------------------------------------------
     WTF_CSRF_ENABLED      = os.getenv("WTF_CSRF_ENABLED",    "true").lower()  == "true"
     WTF_CSRF_SECRET_KEY   = os.getenv("WTF_CSRF_SECRET_KEY") or SECRET_KEY
@@ -250,7 +283,7 @@ class Config:
 
     # Local storage (dev)
     MEDIA_LOCAL_PATH = os.getenv('MEDIA_LOCAL_PATH', '/tmp/afcon360_media')
-    MEDIA_LOCAL_URL_PREFIX = os.getenv('MEDIA_LOCAL_URL_PREFIX', '/media/files')
+    MEDIA_LOCAL_URL_PREFIX = os.getenv('MEDIA_LOCAL_URL_PREFIX', '/api/media/files')
 
     # OCI Object Storage (production Oracle)
     OCI_NAMESPACE = os.getenv('OCI_NAMESPACE')           # Oracle tenancy namespace

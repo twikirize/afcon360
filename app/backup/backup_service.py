@@ -1,22 +1,37 @@
 """
-Automated Backup and Disaster Recovery Service
+Automated Backup and Disaster Recovery Service for AFCON360
 
-Implements database backups, file backups, and disaster recovery procedures.
+Implements PostgreSQL database dumps (pg_dump), file backups (tar+gzip),
+configuration snapshots, SHA-256 checksum verification, and disaster-recovery
+restores via psql.
+
+Design notes (production hardening):
+- All models inherit from app.models.base.BaseModel (BigInteger PK, soft delete).
+- Backups are never exposed by internal `id`; routes use `public_id` (UUID).
+- All pg_dump/psql calls go through subprocess with PGPASSWORD injected via the
+  environment (never on the command line) and a hard timeout to avoid hangs.
+- Scheduling is delegated to Celery beat (see app/tasks/backup_tasks.py); this
+  module intentionally has NO hard dependency on the `schedule` library.
 """
 
 import os
-import subprocess
-import shutil
 import gzip
 import json
+import shutil
+import hashlib
+import subprocess
+import logging
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
+
 from flask import current_app
-from sqlalchemy import text
 from app.extensions import db
-import threading
-import schedule
-import time
+from app.models.base import BaseModel
+from app.config import Config
+
+
+logger = logging.getLogger(__name__)
 
 
 class BackupType:
@@ -25,509 +40,465 @@ class BackupType:
     FILES = "files"
     CONFIG = "config"
     FULL = "full"
+    ALL = (DATABASE, FILES, CONFIG, FULL)
 
 
 class BackupSchedule:
-    """Backup schedule configuration."""
+    """Backup schedule constants."""
+    MANUAL = "manual"
     HOURLY = "hourly"
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
+    ALL = (MANUAL, HOURLY, DAILY, WEEKLY, MONTHLY)
 
 
-class BackupRecord(db.Model):
-    """Backup tracking record."""
-    __tablename__ = 'backup_records'
-    
-    id = Column(Integer, primary_key=True)
-    backup_type = Column(String(20), nullable=False, index=True)
-    backup_schedule = Column(String(20), nullable=False)
-    file_path = Column(String(500), nullable=False)
-    file_size = Column(Integer, nullable=False)
-    checksum = Column(String(64), nullable=False)
-    status = Column(String(20), nullable=False, index=True)  # running, completed, failed
-    started_at = Column(DateTime, nullable=False)
-    completed_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)
-    
-    __table_args__ = (
-        db.Index('ix_backup_records_type_status', 'backup_type', 'status'),
+class BackupStatus:
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    ALL = (RUNNING, COMPLETED, FAILED)
+
+
+# Retention policy (how many completed backups to keep per schedule).
+DEFAULT_RETENTION = {
+    BackupSchedule.HOURLY: 24,
+    BackupSchedule.DAILY: 30,
+    BackupSchedule.WEEKLY: 12,
+    BackupSchedule.MONTHLY: 24,
+}
+
+# Default backup directory (overridable via BACKUP_DIR config / env).
+DEFAULT_BACKUP_DIR = "/var/backups/afcon360"
+
+# Directories mirrored by a "files" backup (relative to app root).
+FILE_BACKUP_DIRS = ("templates", "static", "uploads", "logs")
+
+
+class BackupRecord(BaseModel):
+    """Tracks a single backup operation and its resulting artifact."""
+
+    __tablename__ = "backup_records"
+
+    public_id = db.Column(
+        db.String(64), unique=True, nullable=False, index=True,
+        default=lambda: uuid.uuid4().hex,
     )
+    backup_type = db.Column(db.String(20), nullable=False, index=True)
+    backup_schedule = db.Column(db.String(20), nullable=False, default=BackupSchedule.MANUAL)
+    file_path = db.Column(db.String(500), nullable=True)
+    file_name = db.Column(db.String(255), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
+    checksum = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default=BackupStatus.RUNNING, index=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    created_by = db.Column(db.BigInteger, nullable=True)
+
+    def __repr__(self):
+        return f"<BackupRecord {self.public_id} {self.backup_type} {self.status}>"
+
+    @property
+    def is_completed_flag(self) -> bool:
+        return self.status == BackupStatus.COMPLETED
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "public_id": self.public_id,
+            "backup_type": self.backup_type,
+            "backup_schedule": self.backup_schedule,
+            "file_name": self.file_name,
+            "file_size": self.file_size,
+            "checksum": self.checksum,
+            "status": self.status,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "error_message": self.error_message,
+            "created_by": self.created_by,
+        }
 
 
 class BackupService:
-    """Automated backup service."""
-    
+    """Core backup / restore engine backed by pg_dump and psql."""
+
     def __init__(self):
-        self.backup_dir = current_app.config.get('BACKUP_DIR', '/var/backups/afcon360')
-        self.max_backups = {
-            BackupSchedule.HOURLY: 24,  # Keep 24 hourly backups
-            BackupSchedule.DAILY: 30,   # Keep 30 daily backups
-            BackupSchedule.WEEKLY: 12,  # Keep 12 weekly backups
-            BackupSchedule.MONTHLY: 24  # Keep 24 monthly backups
-        }
+        self.backup_dir = current_app.config.get("BACKUP_DIR") or DEFAULT_BACKUP_DIR
         self.compression_enabled = True
-        self.encryption_enabled = False  # Set to True when encryption key is configured
-        
-        # Ensure backup directory exists
+        self.max_backups = dict(DEFAULT_RETENTION)
+        self.dump_timeout = int(current_app.config.get("BACKUP_DUMP_TIMEOUT", 1800))
         os.makedirs(self.backup_dir, exist_ok=True)
-    
-    def create_database_backup(self, schedule: str = BackupSchedule.DAILY) -> BackupRecord:
-        """Create database backup."""
-        backup_record = BackupRecord(
+
+    # ------------------------------------------------------------------ #
+    # Tooling helpers
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _which(tool: str) -> Optional[str]:
+        return shutil.which(tool)
+
+    def _require_tool(self, tool: str) -> str:
+        path = self._which(tool)
+        if not path:
+            raise RuntimeError(
+                f"'{tool}' executable not found on PATH. Install PostgreSQL client "
+                f"tools (pg_dump/psql) and ensure they are on PATH for backup/restore."
+            )
+        return path
+
+    def _get_database_config(self) -> Dict[str, str]:
+        return {
+            "host": Config.DB_HOST,
+            "port": str(Config.DB_PORT),
+            "user": Config.DB_USER,
+            "password": Config.DB_PASS,
+            "dbname": Config.DB_NAME,
+        }
+
+    def _db_env(self) -> Dict[str, str]:
+        env = os.environ.copy()
+        pwd = self._get_database_config().get("password")
+        if pwd:
+            env["PGPASSWORD"] = pwd
+        return env
+
+    @staticmethod
+    def _calculate_checksum(file_path: str) -> str:
+        hash_sha = hashlib.sha256()
+        with open(file_path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                hash_sha.update(chunk)
+        return hash_sha.hexdigest()
+
+    # ------------------------------------------------------------------ #
+    # Query helpers
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def get_backup(public_id: str) -> Optional[BackupRecord]:
+        return BackupRecord.query.filter_by(
+            public_id=public_id, is_deleted=False
+        ).first()
+
+    @staticmethod
+    def list_backups(backup_type: Optional[str] = None, limit: int = 100) -> List[BackupRecord]:
+        q = BackupRecord.query.filter_by(is_deleted=False)
+        if backup_type:
+            q = q.filter_by(backup_type=backup_type)
+        return q.order_by(BackupRecord.created_at.desc()).limit(limit).all()
+
+    def get_backup_status(self) -> Dict[str, Any]:
+        records = BackupRecord.query.filter_by(is_deleted=False).all()
+        completed = [r for r in records if r.status == BackupStatus.COMPLETED]
+        failed = [r for r in records if r.status == BackupStatus.FAILED]
+        running = [r for r in records if r.status == BackupStatus.RUNNING]
+        last = max((r.completed_at for r in completed if r.completed_at), default=None)
+        return {
+            "total": len(records),
+            "completed": len(completed),
+            "failed": len(failed),
+            "running": len(running),
+            "last_completed_at": last.isoformat() if last else None,
+            "backup_directory": self.backup_dir,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Create backups
+    # ------------------------------------------------------------------ #
+    def _finalize_success(self, record: BackupRecord, backup_path: str,
+                          metadata: Optional[Dict[str, Any]] = None) -> BackupRecord:
+        record.file_path = backup_path
+        record.file_name = os.path.basename(backup_path)
+        record.file_size = os.path.getsize(backup_path)
+        record.checksum = self._calculate_checksum(backup_path)
+        record.status = BackupStatus.COMPLETED
+        record.completed_at = datetime.now(timezone.utc)
+        if metadata:
+            record.metadata_json = metadata
+        db.session.commit()
+        return record
+
+    def _finalize_failure(self, record: BackupRecord, error: str) -> BackupRecord:
+        record.status = BackupStatus.FAILED
+        record.error_message = str(error)[:4000]
+        record.completed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return record
+
+    def create_database_backup(self, schedule: str = BackupSchedule.MANUAL,
+                               triggered_by: Optional[int] = None) -> BackupRecord:
+        """Dump the PostgreSQL database to a compressed .sql.gz archive."""
+        pg_dump = self._require_tool("pg_dump")
+        record = BackupRecord(
             backup_type=BackupType.DATABASE,
             backup_schedule=schedule,
-            status='running',
+            status=BackupStatus.RUNNING,
             started_at=datetime.now(timezone.utc),
-            metadata={'compression': self.compression_enabled}
+            created_by=triggered_by,
         )
-        db.session.add(backup_record)
+        db.session.add(record)
         db.session.commit()
-        
         try:
-            # Generate backup filename
-            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            filename = f"database_{schedule}_{timestamp}.sql"
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            filename = f"database_{schedule}_{ts}.sql"
             if self.compression_enabled:
                 filename += ".gz"
-            
             backup_path = os.path.join(self.backup_dir, filename)
-            
-            # Get database connection details
-            db_config = self._get_database_config()
-            
-            # Create backup using pg_dump
+
+            cfg = self._get_database_config()
             cmd = [
-                'pg_dump',
-                '--host', db_config['host'],
-                '--port', str(db_config['port']),
-                '--username', db_config['user'],
-                '--dbname', db_config['database'],
-                '--verbose',
-                '--clean',
-                '--no-owner',
-                '--no-privileges'
+                pg_dump,
+                "--host", cfg["host"],
+                "--port", cfg["port"],
+                "--username", cfg["user"],
+                "--dbname", cfg["dbname"],
+                "--verbose",
+                "--clean",
+                "--if-exists",
+                "--no-owner",
+                "--no-privileges",
+                "--format=plain",
             ]
-            
+
             if self.compression_enabled:
-                # Use gzip compression
-                with open(backup_path, 'wb') as f:
-                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    with gzip.open(f, 'wb') as gz_file:
-                        for chunk in iter(lambda: process.stdout.read(4096), b''):
-                            gz_file.write(chunk)
-                    
-                    process.wait()
-                    
-                    if process.returncode != 0:
-                        error = process.stderr.read().decode()
-                        raise Exception(f"pg_dump failed: {error}")
+                with open(backup_path, "wb") as out:
+                    proc = subprocess.Popen(
+                        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        env=self._db_env(),
+                    )
+                    with gzip.open(out, "wb") as gz:
+                        for chunk in iter(lambda: proc.stdout.read(65536), b""):
+                            gz.write(chunk)
+                    proc.wait(timeout=self.dump_timeout)
+                    if proc.returncode != 0:
+                        err = proc.stderr.read().decode(errors="replace")
+                        raise RuntimeError(f"pg_dump failed: {err}")
             else:
-                # No compression
-                with open(backup_path, 'w') as f:
-                    process = subprocess.Popen(cmd, stdout=f, stderr=subprocess.PIPE)
-                    process.wait()
-                    
-                    if process.returncode != 0:
-                        error = process.stderr.read().decode()
-                        raise Exception(f"pg_dump failed: {error}")
-            
-            # Calculate checksum
-            checksum = self._calculate_checksum(backup_path)
-            file_size = os.path.getsize(backup_path)
-            
-            # Update backup record
-            backup_record.file_path = backup_path
-            backup_record.file_size = file_size
-            backup_record.checksum = checksum
-            backup_record.status = 'completed'
-            backup_record.completed_at = datetime.now(timezone.utc)
-            
-            db.session.commit()
-            
-            # Clean up old backups
+                with open(backup_path, "w") as out:
+                    proc = subprocess.run(
+                        cmd, stdout=out, stderr=subprocess.PIPE,
+                        env=self._db_env(), timeout=self.dump_timeout,
+                    )
+                    if proc.returncode != 0:
+                        err = proc.stderr.decode(errors="replace")
+                        raise RuntimeError(f"pg_dump failed: {err}")
+
+            self._finalize_success(
+                record, backup_path,
+                metadata={"compression": self.compression_enabled, "tool": "pg_dump"},
+            )
             self._cleanup_old_backups(BackupType.DATABASE, schedule)
-            
             current_app.logger.info(f"Database backup completed: {backup_path}")
-            
-            return backup_record
-            
-        except Exception as e:
-            backup_record.status = 'failed'
-            backup_record.error_message = str(e)
-            backup_record.completed_at = datetime.now(timezone.utc)
-            db.session.commit()
-            
-            current_app.logger.error(f"Database backup failed: {e}")
-            raise
-    
-    def create_files_backup(self, schedule: str = BackupSchedule.WEEKLY) -> BackupRecord:
-        """Create files backup."""
-        backup_record = BackupRecord(
+            return record
+        except Exception as exc:
+            current_app.logger.error(f"Database backup failed: {exc}")
+            return self._finalize_failure(record, exc)
+
+    def create_files_backup(self, schedule: str = BackupSchedule.WEEKLY,
+                            triggered_by: Optional[int] = None) -> BackupRecord:
+        """Archive application directories (templates/static/uploads/logs) as tar.gz."""
+        record = BackupRecord(
             backup_type=BackupType.FILES,
             backup_schedule=schedule,
-            status='running',
+            status=BackupStatus.RUNNING,
             started_at=datetime.now(timezone.utc),
-            metadata={'compression': self.compression_enabled}
+            created_by=triggered_by,
         )
-        db.session.add(backup_record)
+        db.session.add(record)
         db.session.commit()
-        
         try:
-            # Generate backup filename
-            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            filename = f"files_{schedule}_{timestamp}.tar"
-            if self.compression_enabled:
-                filename += ".gz"
-            
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            filename = f"files_{schedule}_{ts}.tar.gz"
             backup_path = os.path.join(self.backup_dir, filename)
-            
-            # Directories to backup
+
             app_root = current_app.root_path
-            directories_to_backup = [
-                'templates',
-                'static',
-                'uploads',
-                'logs'
-            ]
-            
-            # Create tar archive
-            cmd = ['tar', '-cf', backup_path.replace('.gz', '')]
-            for directory in directories_to_backup:
-                dir_path = os.path.join(app_root, directory)
-                if os.path.exists(dir_path):
-                    cmd.append(directory)
-            
-            # Run tar command
-            result = subprocess.run(cmd, cwd=app_root, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"tar failed: {result.stderr}")
-            
-            # Compress if enabled
-            if self.compression_enabled:
-                with open(backup_path.replace('.gz', ''), 'rb') as f_in:
-                    with gzip.open(backup_path, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
-                os.remove(backup_path.replace('.gz', ''))
-            
-            # Calculate checksum
-            checksum = self._calculate_checksum(backup_path)
-            file_size = os.path.getsize(backup_path)
-            
-            # Update backup record
-            backup_record.file_path = backup_path
-            backup_record.file_size = file_size
-            backup_record.checksum = checksum
-            backup_record.status = 'completed'
-            backup_record.completed_at = datetime.now(timezone.utc)
-            
-            db.session.commit()
-            
-            # Clean up old backups
+            dirs = [d for d in FILE_BACKUP_DIRS if os.path.isdir(os.path.join(app_root, d))]
+            if not dirs:
+                raise RuntimeError("No backup directories found to archive.")
+
+            raw_tar = backup_path.replace(".gz", "")
+            cmd = ["tar", "-czf", backup_path, "-C", app_root] + dirs
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.dump_timeout)
+            if proc.returncode != 0:
+                raise RuntimeError(f"tar failed: {proc.stderr}")
+            if os.path.exists(raw_tar):
+                os.remove(raw_tar)
+
+            self._finalize_success(
+                record, backup_path,
+                metadata={"directories": dirs, "compression": True, "tool": "tar"},
+            )
             self._cleanup_old_backups(BackupType.FILES, schedule)
-            
             current_app.logger.info(f"Files backup completed: {backup_path}")
-            
-            return backup_record
-            
-        except Exception as e:
-            backup_record.status = 'failed'
-            backup_record.error_message = str(e)
-            backup_record.completed_at = datetime.now(timezone.utc)
-            db.session.commit()
-            
-            current_app.logger.error(f"Files backup failed: {e}")
-            raise
-    
-    def create_config_backup(self, schedule: str = BackupSchedule.MONTHLY) -> BackupRecord:
-        """Create configuration backup."""
-        backup_record = BackupRecord(
+            return record
+        except Exception as exc:
+            current_app.logger.error(f"Files backup failed: {exc}")
+            return self._finalize_failure(record, exc)
+
+    def create_config_backup(self, schedule: str = BackupSchedule.MONTHLY,
+                             triggered_by: Optional[int] = None) -> BackupRecord:
+        """Snapshot dynamic SystemConfig values to a JSON archive."""
+        record = BackupRecord(
             backup_type=BackupType.CONFIG,
             backup_schedule=schedule,
-            status='running',
-            started_at=datetime.now(timezone.utc)
+            status=BackupStatus.RUNNING,
+            started_at=datetime.now(timezone.utc),
+            created_by=triggered_by,
         )
-        db.session.add(backup_record)
+        db.session.add(record)
         db.session.commit()
-        
         try:
-            # Generate backup filename
-            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            filename = f"config_{schedule}_{timestamp}.json"
+            from app.models.system_config import SystemConfig
+
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            filename = f"config_{schedule}_{ts}.json"
             if self.compression_enabled:
                 filename += ".gz"
-            
             backup_path = os.path.join(self.backup_dir, filename)
-            
-            # Collect configuration data
-            config_data = {
-                'app_config': current_app.config,
-                'environment_variables': {
-                    key: value for key, value in os.environ.items()
-                    if not key.lower().startswith('password') and not key.lower().startswith('secret')
-                },
-                'database_config': self._get_database_config(),
-                'backup_timestamp': timestamp
-            }
-            
-            # Save configuration
-            if self.compression_enabled:
-                with gzip.open(backup_path, 'wt', encoding='utf-8') as f:
-                    json.dump(config_data, f, indent=2, default=str)
-            else:
-                with open(backup_path, 'w') as f:
-                    json.dump(config_data, f, indent=2, default=str)
-            
-            # Calculate checksum
-            checksum = self._calculate_checksum(backup_path)
-            file_size = os.path.getsize(backup_path)
-            
-            # Update backup record
-            backup_record.file_path = backup_path
-            backup_record.file_size = file_size
-            backup_record.checksum = checksum
-            backup_record.status = 'completed'
-            backup_record.completed_at = datetime.now(timezone.utc)
-            
-            db.session.commit()
-            
-            # Clean up old backups
-            self._cleanup_old_backups(BackupType.CONFIG, schedule)
-            
-            current_app.logger.info(f"Configuration backup completed: {backup_path}")
-            
-            return backup_record
-            
-        except Exception as e:
-            backup_record.status = 'failed'
-            backup_record.error_message = str(e)
-            backup_record.completed_at = datetime.now(timezone.utc)
-            db.session.commit()
-            
-            current_app.logger.error(f"Configuration backup failed: {e}")
-            raise
-    
-    def restore_database(self, backup_file: str) -> bool:
-        """Restore database from backup."""
-        try:
-            backup_path = os.path.join(self.backup_dir, backup_file)
-            
-            if not os.path.exists(backup_path):
-                raise FileNotFoundError(f"Backup file not found: {backup_path}")
-            
-            # Verify backup integrity
-            stored_record = BackupRecord.query.filter_by(file_path=backup_path).first()
-            if stored_record:
-                current_checksum = self._calculate_checksum(backup_path)
-                if current_checksum != stored_record.checksum:
-                    raise ValueError("Backup file checksum mismatch - file may be corrupted")
-            
-            # Get database configuration
-            db_config = self._get_database_config()
-            
-            # Restore using psql
-            cmd = [
-                'psql',
-                '--host', db_config['host'],
-                '--port', str(db_config['port']),
-                '--username', db_config['user'],
-                '--dbname', db_config['database']
+
+            rows = SystemConfig.query.filter_by(is_deleted=False).all()
+            config_data = [
+                {
+                    "key": r.key,
+                    "value": r.value,
+                    "value_type": r.value_type,
+                    "category": r.category,
+                    "description": r.description,
+                }
+                for r in rows
             ]
-            
-            if backup_path.endswith('.gz'):
-                # Decompressed restore
-                with gzip.open(backup_path, 'rt') as f:
-                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-                    stdout, stderr = process.communicate(input=f.read())
-            else:
-                # Direct restore
-                with open(backup_path, 'r') as f:
-                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-                    stdout, stderr = process.communicate(input=f.read())
-            
-            if process.returncode != 0:
-                raise Exception(f"psql failed: {stderr.decode()}")
-            
-            current_app.logger.info(f"Database restored from: {backup_path}")
-            return True
-            
-        except Exception as e:
-            current_app.logger.error(f"Database restore failed: {e}")
-            return False
-    
-    def _get_database_config(self) -> Dict[str, str]:
-        """Get database configuration."""
-        from app.config import Config
-        
-        return {
-            'host': Config.DB_HOST,
-            'port': Config.DB_PORT,
-            'user': Config.DB_USER,
-            'database': Config.DB_NAME
-        }
-    
-    def _calculate_checksum(self, file_path: str) -> str:
-        """Calculate SHA-256 checksum of file."""
-        hash_sha256 = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_sha256.update(chunk)
-        return hash_sha256.hexdigest()
-    
-    def _cleanup_old_backups(self, backup_type: str, schedule: str):
-        """Clean up old backups based on retention policy."""
-        max_keep = self.max_backups.get(schedule, 10)
-        
-        # Get old backups
-        old_backups = BackupRecord.query.filter_by(
-            backup_type=backup_type,
-            backup_schedule=schedule,
-            status='completed'
-        ).order_by(BackupRecord.started_at.desc()).offset(max_keep).all()
-        
-        for backup in old_backups:
-            try:
-                if os.path.exists(backup.file_path):
-                    os.remove(backup.file_path)
-                    current_app.logger.info(f"Removed old backup: {backup.file_path}")
-                
-                db.session.delete(backup)
-            except Exception as e:
-                current_app.logger.error(f"Failed to remove old backup {backup.file_path}: {e}")
-        
-        db.session.commit()
-    
-    def get_backup_status(self) -> Dict[str, Any]:
-        """Get backup system status."""
-        recent_backups = BackupRecord.query.filter(
-            BackupRecord.started_at >= datetime.now(timezone.utc) - timedelta(days=7)
-        ).order_by(BackupRecord.started_at.desc()).all()
-        
-        status = {
-            'total_backups': len(recent_backups),
-            'successful_backups': len([b for b in recent_backups if b.status == 'completed']),
-            'failed_backups': len([b for b in recent_backups if b.status == 'failed']),
-            'last_backup': recent_backups[0].started_at if recent_backups else None,
-            'backup_directory': self.backup_dir,
-            'disk_usage': self._get_disk_usage()
-        }
-        
-        return status
-    
-    def _get_disk_usage(self) -> Dict[str, Any]:
-        """Get disk usage statistics."""
-        try:
-            total, used, free = shutil.disk_usage(self.backup_dir)
-            return {
-                'total_gb': total // (1024**3),
-                'used_gb': used // (1024**3),
-                'free_gb': free // (1024**3),
-                'usage_percent': (used / total) * 100
+            payload = {
+                "generated_at": ts,
+                "count": len(config_data),
+                "settings": config_data,
             }
-        except Exception:
-            return {'error': 'Unable to get disk usage'}
-    
-    def test_backup_system(self) -> Dict[str, Any]:
-        """Test backup system functionality."""
-        results = {
-            'database_backup': False,
-            'files_backup': False,
-            'config_backup': False,
-            'restore_test': False,
-            'errors': []
+
+            if self.compression_enabled:
+                with gzip.open(backup_path, "wt", encoding="utf-8") as fh:
+                    json.dump(payload, fh, indent=2, default=str)
+            else:
+                with open(backup_path, "w", encoding="utf-8") as fh:
+                    json.dump(payload, fh, indent=2, default=str)
+
+            self._finalize_success(
+                record, backup_path,
+                metadata={"count": len(config_data), "compression": self.compression_enabled},
+            )
+            self._cleanup_old_backups(BackupType.CONFIG, schedule)
+            current_app.logger.info(f"Config backup completed: {backup_path}")
+            return record
+        except Exception as exc:
+            current_app.logger.error(f"Config backup failed: {exc}")
+            return self._finalize_failure(record, exc)
+
+    def create_full_backup(self, schedule: str = BackupSchedule.DAILY,
+                           triggered_by: Optional[int] = None) -> Dict[str, BackupRecord]:
+        """Convenience: run database + files + config backups together."""
+        return {
+            BackupType.DATABASE: self.create_database_backup(schedule, triggered_by),
+            BackupType.FILES: self.create_files_backup(schedule, triggered_by),
+            BackupType.CONFIG: self.create_config_backup(schedule, triggered_by),
         }
-        
+
+    # ------------------------------------------------------------------ #
+    # Restore & delete
+    # ------------------------------------------------------------------ #
+    def restore_database(self, public_id: str, verify_checksum: bool = True) -> bool:
+        """
+        Restore the database from a completed backup artifact using psql.
+
+        WARNING: this is destructive. The dump was created with --clean and is
+        replayed with --single-transaction so it either fully applies or rolls
+        back. Callers MUST have confirmed owner intent before invoking.
+        """
+        psql = self._require_tool("psql")
+        record = self.get_backup(public_id)
+        if not record or record.backup_type != BackupType.DATABASE:
+            raise ValueError("Database backup not found or invalid type.")
+        if record.status != BackupStatus.COMPLETED:
+            raise ValueError("Cannot restore an incomplete/failed backup.")
+
+        backup_path = record.file_path
+        if not backup_path or not os.path.exists(backup_path):
+            raise FileNotFoundError(f"Backup file missing: {backup_path}")
+
+        if verify_checksum:
+            if self._calculate_checksum(backup_path) != record.checksum:
+                raise ValueError("Checksum mismatch - backup may be corrupted.")
+
+        cfg = self._get_database_config()
+        cmd = [
+            psql,
+            "--host", cfg["host"],
+            "--port", cfg["port"],
+            "--username", cfg["user"],
+            "--dbname", cfg["dbname"],
+            "--single-transaction",
+            "--echo-errors",
+            "--quiet",
+        ]
+
         try:
-            # Test database backup
-            backup = self.create_database_backup(BackupSchedule.HOURLY)
-            results['database_backup'] = backup.status == 'completed'
-            
-            # Test files backup
-            backup = self.create_files_backup(BackupSchedule.HOURLY)
-            results['files_backup'] = backup.status == 'completed'
-            
-            # Test config backup
-            backup = self.create_config_backup(BackupSchedule.HOURLY)
-            results['config_backup'] = backup.status == 'completed'
-            
-        except Exception as e:
-            results['errors'].append(str(e))
-        
-        return results
+            if backup_path.endswith(".gz"):
+                with gzip.open(backup_path, "rt", encoding="utf-8") as fh:
+                    proc = subprocess.run(
+                        cmd, stdin=fh, capture_output=True, text=True,
+                        env=self._db_env(), timeout=self.dump_timeout,
+                    )
+            else:
+                with open(backup_path, "r", encoding="utf-8") as fh:
+                    proc = subprocess.run(
+                        cmd, stdin=fh, capture_output=True, text=True,
+                        env=self._db_env(), timeout=self.dump_timeout,
+                    )
+            if proc.returncode != 0:
+                raise RuntimeError(f"psql restore failed: {proc.stderr}")
+        except Exception as exc:
+            current_app.logger.error(f"Database restore failed: {exc}")
+            raise
 
+        current_app.logger.info(f"Database restored from: {backup_path}")
+        return True
 
-class BackupScheduler:
-    """Backup scheduler service."""
-    
-    def __init__(self):
-        self.backup_service = BackupService()
-        self.running = False
-        self.scheduler_thread = None
-    
-    def start_scheduler(self):
-        """Start the backup scheduler."""
-        if self.running:
+    def delete_backup(self, public_id: str) -> bool:
+        """Soft-delete a backup record and remove its artifact from disk."""
+        record = self.get_backup(public_id)
+        if not record:
+            return False
+        try:
+            if record.file_path and os.path.exists(record.file_path):
+                os.remove(record.file_path)
+        except OSError as exc:
+            current_app.logger.warning(f"Could not remove backup file {record.file_path}: {exc}")
+        record.soft_delete()
+        return True
+
+    # ------------------------------------------------------------------ #
+    # Retention
+    # ------------------------------------------------------------------ #
+    def _cleanup_old_backups(self, backup_type: str, schedule: str) -> None:
+        """Keep only the most recent N completed backups for a given schedule."""
+        max_keep = self.max_backups.get(schedule, 10)
+        if max_keep <= 0:
             return
-        
-        self.running = True
-        
-        def run_scheduler():
-            # Schedule backups
-            schedule.every().hour.do(self._hourly_backup)
-            schedule.every().day.at("02:00").do(self._daily_backup)
-            schedule.every().sunday.at("03:00").do(self._weekly_backup)
-            schedule.every().month.do(self._monthly_backup)
-            
-            while self.running:
-                schedule.run_pending()
-                time.sleep(60)  # Check every minute
-        
-        self.scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-        self.scheduler_thread.start()
-        
-        current_app.logger.info("Backup scheduler started")
-    
-    def stop_scheduler(self):
-        """Stop the backup scheduler."""
-        self.running = False
-        if self.scheduler_thread:
-            self.scheduler_thread.join(timeout=5)
-        
-        current_app.logger.info("Backup scheduler stopped")
-    
-    def _hourly_backup(self):
-        """Hourly backup task."""
-        try:
-            self.backup_service.create_database_backup(BackupSchedule.HOURLY)
-        except Exception as e:
-            current_app.logger.error(f"Hourly backup failed: {e}")
-    
-    def _daily_backup(self):
-        """Daily backup task."""
-        try:
-            self.backup_service.create_database_backup(BackupSchedule.DAILY)
-        except Exception as e:
-            current_app.logger.error(f"Daily backup failed: {e}")
-    
-    def _weekly_backup(self):
-        """Weekly backup task."""
-        try:
-            self.backup_service.create_database_backup(BackupSchedule.WEEKLY)
-            self.backup_service.create_files_backup(BackupSchedule.WEEKLY)
-        except Exception as e:
-            current_app.logger.error(f"Weekly backup failed: {e}")
-    
-    def _monthly_backup(self):
-        """Monthly backup task."""
-        try:
-            self.backup_service.create_database_backup(BackupSchedule.MONTHLY)
-            self.backup_service.create_files_backup(BackupSchedule.MONTHLY)
-            self.backup_service.create_config_backup(BackupSchedule.MONTHLY)
-        except Exception as e:
-            current_app.logger.error(f"Monthly backup failed: {e}")
-
-
-# Global backup scheduler instance
-backup_scheduler = BackupScheduler()
-
+        old = (
+            BackupRecord.query.filter_by(
+                is_deleted=False,
+                backup_type=backup_type,
+                backup_schedule=schedule,
+                status=BackupStatus.COMPLETED,
+            )
+            .order_by(BackupRecord.created_at.desc())
+            .offset(max_keep)
+            .all()
+        )
+        for backup in old:
+            try:
+                if backup.file_path and os.path.exists(backup.file_path):
+                    os.remove(backup.file_path)
+                backup.soft_delete()
+            except OSError as exc:
+                current_app.logger.warning(
+                    f"Failed to purge old backup {backup.public_id}: {exc}"
+                )
+        db.session.commit()

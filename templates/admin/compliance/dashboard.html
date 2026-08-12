@@ -66,7 +66,7 @@
             <tbody>
               {% for item in kyc_items[:5] %}
               <tr class="{{ 'row-critical' if item.priority == 'critical' else ('row-high' if item.priority == 'high' else '') }}">
-                <td><a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}">#{{ item.id }}</a></td>
+                <td><a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=item.id) }}">#{{ item.id }}</a></td>
                 <td>
                   <div class="user-cell">
                     <div class="av">{{ item.user.username[0] if item.user else '?' }}</div>
@@ -80,7 +80,7 @@
                 <td class="mono">{{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '-' }}</td>
                 <td><span class="badge badge-{{ 'orange' if item.status == 'pending' else 'blue' }}">{{ item.status }}</span></td>
                 <td>
-                  <a href="{{ url_for('admin.compliance.view_kyc', kyc_id=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
+                  <a href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=item.id) }}" class="btn btn-sm btn-secondary">Review</a>
                 </td>
               </tr>
               {% endfor %}

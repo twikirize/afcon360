@@ -6,124 +6,159 @@
 
 {% block content %}
 <div class="container py-4">
-    <h2>My Bookings</h2>
-    <p class="text-muted">Manage your property bookings</p>
+    <div class="host-bookings">
+        <div class="mb-4">
+            <h2 class="hb-title">My Bookings</h2>
+            <p class="hb-subtitle">Manage your property bookings</p>
+        </div>
 
-    <form method="GET" class="row g-3 mb-4">
-        <div class="col-auto">
-            <label for="typeFilter" class="form-label">Booking Type</label>
-            <select name="type" id="typeFilter" class="form-select">
-                <option value="">All Types</option>
-                <option value="self" {{ 'selected' if current_type == 'self' }}>Personal</option>
-                <option value="third_party" {{ 'selected' if current_type == 'third_party' }}>For Guest</option>
-                <option value="group" {{ 'selected' if current_type == 'group' }}>Group</option>
-                <option value="event_assigned" {{ 'selected' if current_type == 'event_assigned' }}>Event</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <label for="statusFilter" class="form-label">Status</label>
-            <select name="status" id="statusFilter" class="form-select">
-                <option value="">All Statuses</option>
-                <option value="pending" {{ 'selected' if current_status == 'pending' }}>Pending</option>
-                <option value="pending_approval" {{ 'selected' if current_status == 'pending_approval' }}>Pending Approval</option>
-                <option value="confirmed" {{ 'selected' if current_status == 'confirmed' }}>Confirmed</option>
-                <option value="checked_in" {{ 'selected' if current_status == 'checked_in' }}>Checked In</option>
-                <option value="checked_out" {{ 'selected' if current_status == 'checked_out' }}>Checked Out</option>
-                <option value="cancelled" {{ 'selected' if current_status == 'cancelled' }}>Cancelled</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <label for="regFilter" class="form-label">Registration</label>
-            <select name="reg_status" id="regFilter" class="form-select">
-                <option value="">All</option>
-                <option value="complete" {{ 'selected' if current_reg == 'complete' }}>Complete</option>
-                <option value="incomplete" {{ 'selected' if current_reg == 'incomplete' }}>Incomplete</option>
-            </select>
-        </div>
-        <div class="col-auto align-self-end">
-            <button type="submit" class="btn btn-primary">Filter</button>
-        </div>
-    </form>
+        <form method="GET" class="hb-filters">
+            <div class="hb-field">
+                <label for="typeFilter">Booking Type</label>
+                <select name="type" id="typeFilter" class="hb-select">
+                    <option value="">All Types</option>
+                    <option value="self" {{ 'selected' if current_type == 'self' }}>Personal</option>
+                    <option value="third_party" {{ 'selected' if current_type == 'third_party' }}>For Guest</option>
+                    <option value="group" {{ 'selected' if current_type == 'group' }}>Group</option>
+                    <option value="event_assigned" {{ 'selected' if current_type == 'event_assigned' }}>Event</option>
+                </select>
+            </div>
+            <div class="hb-field">
+                <label for="statusFilter">Status</label>
+                <select name="status" id="statusFilter" class="hb-select">
+                    <option value="">All Statuses</option>
+                    <option value="pending" {{ 'selected' if current_status == 'pending' }}>Pending</option>
+                    <option value="pending_approval" {{ 'selected' if current_status == 'pending_approval' }}>Pending Approval</option>
+                    <option value="confirmed" {{ 'selected' if current_status == 'confirmed' }}>Confirmed</option>
+                    <option value="checked_in" {{ 'selected' if current_status == 'checked_in' }}>Checked In</option>
+                    <option value="checked_out" {{ 'selected' if current_status == 'checked_out' }}>Checked Out</option>
+                    <option value="cancelled" {{ 'selected' if current_status == 'cancelled' }}>Cancelled</option>
+                </select>
+            </div>
+            <div class="hb-field">
+                <label for="regFilter">Registration</label>
+                <select name="reg_status" id="regFilter" class="hb-select">
+                    <option value="">All</option>
+                    <option value="complete" {{ 'selected' if current_reg == 'complete' }}>Complete</option>
+                    <option value="incomplete" {{ 'selected' if current_reg == 'incomplete' }}>Incomplete</option>
+                </select>
+            </div>
+            <div class="hb-actions">
+                <button type="submit" class="hb-btn hb-btn-primary">
+                    <i class="fas fa-filter" aria-hidden="true"></i> Filter
+                </button>
+            </div>
+        </form>
 
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>Guest</th>
-                    <th>Property</th>
-                    <th>Dates</th>
-                    <th>Amount</th>
-                    <th>Guests</th>
-                    <th>Status</th>
-                    <th>Type</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for booking in bookings %}
-                <tr>
-                    <td>
-                        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}">
-                            {{ booking.primary_guest_name or booking.guest_name or 'N/A' }}
-                        </a>
-                    </td>
-                    <td>
-                        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}">
-                            {{ booking.accommodation_property.title if booking.accommodation_property else 'N/A' }}
-                        </a>
-                    </td>
-                    <td>{{ booking.check_in.strftime('%b %d') }} - {{ booking.check_out.strftime('%b %d, %Y') }}</td>
-                    <td>${{ "%.2f"|format(booking.total_amount) }}</td>
-                    <td>
-                        {% set reg_count = booking.guest_registrations | length %}
-                        {% set reg_completed = booking.guest_registrations | selectattr('status', 'in', ['completed', 'skipped']) | list | length %}
-                        <span class="badge {% if reg_completed == reg_count and reg_count > 0 %}bg-success{% else %}bg-warning{% endif %}">
-                            {{ reg_completed }}/{{ reg_count if reg_count > 0 else booking.num_guests }}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="badge bg-{{ 'success' if booking.status == 'confirmed' else 'warning' }}">
-                            {{ booking.status }}
-                        </span>
-                    </td>
-                    <td>
-                        {{ booking_type_badge(booking) }}
-                    </td>
-                    <td>
-                        <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}" class="btn btn-sm btn-outline-primary">
-                            View
-                        </a>
-                        {% if booking.status == 'pending_approval' %}
-                        <form method="POST" action="{{ url_for('accommodation.host_approve_booking', booking_id=booking.id) }}" class="d-inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-sm btn-success">Approve</button>
-                        </form>
-                        <form method="POST" action="{{ url_for('accommodation.host_reject_booking', booking_id=booking.id) }}" class="d-inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-sm btn-danger">Reject</button>
-                        </form>
-                        {% endif %}
-                        {% if booking.status == 'confirmed' %}
-                        <form method="POST" action="{{ url_for('accommodation.host_check_in', booking_id=booking.id) }}" class="d-inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-sm btn-success">Check In</button>
-                        </form>
-                        {% endif %}
-                        {% if booking.status == 'checked_in' %}
-                        <form method="POST" action="{{ url_for('accommodation.host_check_out', booking_id=booking.id) }}" class="d-inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-sm btn-primary">Check Out</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="8" class="text-center text-muted py-4">No bookings found.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="hb-table-wrap">
+            <table class="hb-table">
+                <thead>
+                    <tr>
+                        <th class="hb-col-text">Guest</th>
+                        <th class="hb-col-text">Property</th>
+                        <th class="hb-col-text">Dates</th>
+                        <th class="hb-col-text">Amount</th>
+                        <th class="hb-th-center hb-col-center">Guests</th>
+                        <th class="hb-th-center hb-col-center">Status</th>
+                        <th class="hb-th-center hb-col-center">Type</th>
+                        <th class="hb-col-text">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for booking in bookings %}
+                    <tr>
+                        <td class="hb-col-text">
+                            <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}" class="hb-guest">
+                                <span class="hb-avatar"><i class="fas fa-user" aria-hidden="true"></i></span>
+                                {{ booking.primary_guest_name or booking.guest_name or 'N/A' }}
+                            </a>
+                        </td>
+                        <td class="hb-col-text">
+                            <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}" class="hb-link">
+                                {{ booking.accommodation_property.title if booking.accommodation_property else 'N/A' }}
+                            </a>
+                        </td>
+                        <td class="hb-col-text hb-muted">{{ booking.check_in.strftime('%b %d') }} – {{ booking.check_out.strftime('%b %d, %Y') }}</td>
+                        <td class="hb-col-text">${{ "%.2f"|format(booking.total_amount) }}</td>
+                        <td class="hb-col-center">
+                            {% set reg_count = booking.guest_registrations | length %}
+                            {% set reg_completed = booking.guest_registrations | selectattr('status', 'in', ['completed', 'skipped']) | list | length %}
+                            {% set guests_shown = reg_count if reg_count > 0 else booking.num_guests %}
+                            {% set reg_complete = reg_count > 0 and reg_completed == reg_count %}
+                            <span class="hb-pill {{ 'hb-pill-success' if reg_complete else 'hb-pill-warning' }}">
+                                <i class="fas fa-users" aria-hidden="true"></i>
+                                {{ reg_completed }}/{{ guests_shown }}
+                            </span>
+                        </td>
+                        <td class="hb-col-center">
+                            {% set status_key = {
+                                'pending_approval': 'warning',
+                                'pending': 'warning',
+                                'confirmed': 'success',
+                                'checked_in': 'info',
+                                'checked_out': 'secondary',
+                                'cancelled': 'danger',
+                                'refunded': 'dark'
+                            } %}
+                            {% set pill_class = 'hb-pill-' ~ status_key.get(booking.status, 'secondary') %}
+                            <span class="hb-pill {{ pill_class }}">
+                                <span class="hb-dot"></span>
+                                {{ booking.status|replace('_', ' ')|title }}
+                            </span>
+                        </td>
+                        <td class="hb-col-center">
+                            <span class="hb-type-badge">
+                                {% if booking.booking_type == 'self' %}
+                                    <i class="fas fa-user" aria-hidden="true"></i>
+                                {% elif booking.booking_type == 'third_party' %}
+                                    <i class="fas fa-user-friends" aria-hidden="true"></i>
+                                {% elif booking.booking_type == 'group' %}
+                                    <i class="fas fa-hotel" aria-hidden="true"></i>
+                                {% elif booking.booking_type == 'event_assigned' %}
+                                    <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                                {% endif %}
+                                {{ booking.booking_type|replace('_', ' ')|title }}
+                                {% if booking.room_number %}(Room {{ booking.room_number }}){% endif %}
+                            </span>
+                        </td>
+                        <td class="hb-col-text">
+                            <div class="hb-actions-cell">
+                                <a href="{{ url_for('accommodation.host_booking_detail', booking_id=booking.id) }}" class="hb-btn hb-btn-ghost hb-btn-sm">
+                                    <i class="fas fa-eye" aria-hidden="true"></i> View
+                                </a>
+                                {% if booking.status == 'pending_approval' %}
+                                <form method="POST" action="{{ url_for('accommodation.host_approve_booking', booking_id=booking.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="hb-btn hb-btn-primary hb-btn-sm">Approve</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('accommodation.host_reject_booking', booking_id=booking.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="hb-btn hb-btn-ghost hb-btn-sm" style="color:#b32437;border-color:#dc3545;">Reject</button>
+                                </form>
+                                {% endif %}
+                                {% if booking.status == 'confirmed' %}
+                                <form method="POST" action="{{ url_for('accommodation.host_check_in', booking_id=booking.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="hb-btn hb-btn-primary hb-btn-sm">Check In</button>
+                                </form>
+                                {% endif %}
+                                {% if booking.status == 'checked_in' %}
+                                <form method="POST" action="{{ url_for('accommodation.host_check_out', booking_id=booking.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="hb-btn hb-btn-primary hb-btn-sm">Check Out</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="hb-empty">No bookings found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

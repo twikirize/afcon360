@@ -1,9 +1,20 @@
 # app/auth/validators.py
 import re
 
+from app.auth.email_validation import validate_email_address
+
 RESERVED_USERNAMES = {"admin", "root", "system"}
 
-def validate_registration(username, password, email=None):
+def validate_registration(username, password, email=None, *, check_email_mx=None):
+    """
+    Validate registration input.
+
+    Email checks are delegated to ``app.auth.email_validation`` so that
+    normalisation, disposable-domain blocking, role-account rejection and MX
+    verification are applied consistently everywhere.
+
+    Returns: (is_valid, error_message)
+    """
     # Username rules
     if not (3 <= len(username) <= 30):
         return False, "Username must be 3-30 characters long"
@@ -19,9 +30,12 @@ def validate_registration(username, password, email=None):
     if sum(bool(re.search(p, password)) for p in categories) < 3:
         return False, "Password must include at least 3 of: uppercase, lowercase, number, symbol"
 
-    # Email rules
-    if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-        return False, "Invalid email format"
+    # Email rules - full validation pipeline
+    if email:
+        kwargs = {} if check_email_mx is None else {"check_mx": check_email_mx}
+        result = validate_email_address(email, **kwargs)
+        if not result.is_valid:
+            return False, result.message
 
     return True, ""
 

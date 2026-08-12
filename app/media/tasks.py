@@ -76,8 +76,11 @@ def process_media_task(self, media_id: int) -> Optional[Dict[str, Any]]:
             result = _process_photo(media, backend)
         elif media.media_type == 'video_url':
             result = _process_video_url(media)
+        elif media.media_type in ('document', 'pdf') or (media.mime_type and 'pdf' in media.mime_type):
+            result = _process_document(media, backend)
         else:
-            raise ValueError(f"Unsupported media type: {media.media_type}")
+            # Fallback for generic documents/files
+            result = _process_document(media, backend)
 
         # Update media record with successful result
         media.status = 'ready'
@@ -178,6 +181,27 @@ def _process_video_url(media) -> Dict[str, Any]:
     }
 
     return {'urls': urls, 'width': 1280, 'height': 720}
+
+
+def _process_document(media, backend) -> Dict[str, Any]:
+    """Process document media (PDFs, docs)."""
+    from app.media.processors.document import DocumentProcessor
+
+    if not media.storage_key:
+        raise ValueError("No storage key for document media")
+
+    file_data = backend.get_raw(media.storage_key)
+    if not file_data:
+        raise ValueError(f"File not found: {media.storage_key}")
+
+    prefix = f"{media.module}/{media.entity_id}/{media.public_id}"
+
+    try:
+        urls = DocumentProcessor.process(file_data, prefix, backend)
+        return {'urls': urls}
+    except Exception as e:
+        logger.error(f"Document processing failed: {e}")
+        raise RuntimeError(f"Document processing failed: {str(e)}")
 
 
 def _is_retryable_error(error: Exception) -> bool:

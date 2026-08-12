@@ -80,7 +80,7 @@ def _get_wallet(context='individual', org_id=None):
 def _get_modules():
     """Return module-enabled dict — never raises."""
     from app.utils.module_guard import module_enabled
-    keys = ('wallet', 'transport', 'accommodation', 'tourism', 'tournament')
+    keys = ('wallet', 'transport', 'accommodation', 'tourism', 'tournament', 'events')
     return {k: {'enabled': module_enabled(k)} for k in keys}
 
 
@@ -345,16 +345,9 @@ def dashboard():
         wallet_action_buttons = WalletStatusService.get_action_buttons(org_obj if current_context == 'organization' else user)
 
         priority_actions = []
-        if not kyc_info or kyc_info.get('tier', 0) < 2:
-            priority_actions.append({
-                'id': 'kyc',
-                'title': 'Verify Identity' if current_context == 'individual' else 'Verify Organisation',
-                'message': 'Complete verification to unlock all platform features.',
-                'action_label': 'Verify Now',
-                'action_url': '/kyc/verify' if current_context == 'individual' else f'/org/{current_org_id}/verify',
-                'icon': 'fa-id-card',
-                'severity': 'critical' if kyc_info.get('tier', 0) == 0 else 'medium'
-            })
+        # NOTE: KYC verification prompt is rendered as a single consolidated banner
+        # in user_dashboard.html (kyc_info.tier < 2). Do NOT add a duplicate KYC
+        # card here — that caused three redundant "Verify" cards on the dashboard.
 
         return render_template(
             'user/user_dashboard.html',

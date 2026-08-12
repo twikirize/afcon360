@@ -1,0 +1,48 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}Report {{ report.report_number }} — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Regulatory Report{% endblock %}
+
+{% block content %}
+{{ aml_nav('reports') }}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-file-shield"></i> {{ report.report_number }}</div>
+    <span class="badge badge-blue">{{ report.report_type|upper }}</span>
+  </div>
+  <div class="card-body">
+    <div class="detail-grid">
+      <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">{{ report.status|title }}</span></div>
+      <div class="detail-row"><span class="detail-label">Subject Type</span><span class="detail-value">{{ report.subject_type }}</span></div>
+      <div class="detail-row"><span class="detail-label">Subject</span><span class="detail-value">{{ report.subject_name or report.subject_identifier or '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Risk Score</span><span class="detail-value">{{ report.risk_score if report.risk_score is not none else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value mono">{{ "{:,.0f}".format(report.amount) if report.amount else '-' }} {{ report.currency_code or '' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Suspicion Formed</span><span class="detail-value mono">{{ report.suspicion_formed_at.strftime('%Y-%m-%d %H:%M') if report.suspicion_formed_at else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Filing Due (SLA)</span><span class="detail-value mono">{{ report.due_at.strftime('%Y-%m-%d %H:%M') if report.due_at else '-' }}</span></div>
+      <div class="detail-row"><span class="detail-label">Filed At / Ref</span><span class="detail-value mono">{{ report.filed_at.strftime('%Y-%m-%d') if report.filed_at else '-' }} {{ report.external_reference or '' }}</span></div>
+    </div>
+    <div style="margin-top: 12px;">
+      <span class="detail-label">Narrative</span>
+      <p style="font-size: 14px; margin-top: 4px;">{{ report.narrative or 'No narrative provided.' }}</p>
+    </div>
+    {% if report.status != 'filed' %}
+    <form method="POST" action="{{ url_for('admin.compliance.aml_report_file', report_id=report.id) }}" style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;">
+      {{ csrf_token() }}
+      <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+        <label class="form-label">FIU External Reference</label>
+        <input type="text" name="external_reference" class="form-control" placeholder="goAML reference / acknowledgement">
+      </div>
+      <button type="submit" class="btn btn-success"><i class="fas fa-paper-plane"></i> Mark as Filed</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card animate-up">
+  <div class="card-header"><div class="card-title"><i class="fas fa-code"></i> goAML XML (submission-ready)</div></div>
+  <div class="card-body">
+    <pre style="white-space: pre-wrap; word-break: break-word; background: var(--bg); padding: 16px; border-radius: var(--radius); font-size: 12px; max-height: 420px; overflow: auto;">{{ report.xml_content or 'Not generated.' }}</pre>
+  </div>
+</div>
+{% endblock %}

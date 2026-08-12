@@ -352,6 +352,8 @@ class AccommodationBooking(BaseModel):
 
         # Check property-level guest identity requirement (D-005)
         try:
+            from app.accommodation.models.booking_policy import PropertyBookingPolicy
+
             policy = PropertyBookingPolicy.query.filter_by(
                 property_id=self.property_id
             ).first()
@@ -363,9 +365,46 @@ class AccommodationBooking(BaseModel):
         return True
 
     @property
+    def check_in_date_reached(self) -> bool:
+        """True once the check-in date is today or in the past."""
+        return bool(self.check_in) and self.check_in <= date.today()
+
+    @property
+    def registration_deadline_passed(self) -> bool:
+        """
+        True when the soft registration deadline is in the past.
+
+        This is a *soft* limit: it never blocks check-in on its own. It only
+        drives guest reminders and the host "registration incomplete" flag.
+        """
+        if not self.registration_deadline:
+            return False
+        deadline = self.registration_deadline
+        # Column is timezone-aware, but SQLite/legacy rows can return naive values.
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+        return deadline < datetime.now(timezone.utc)
+
+    @property
+    def registration_incomplete(self) -> bool:
+        """
+        True when guests still need to register.
+
+        Used to show a warning badge to the host. Never used to deny a stay.
+        """
+        return not self.all_required_guests_registered
+
+    @property
+    def registration_needs_attention(self) -> bool:
+        """True when the deadline lapsed and registration is still incomplete."""
+        return self.registration_deadline_passed and self.registration_incomplete
+
+    @property
     def all_required_guests_registered(self) -> bool:
         """Check if all required guests are registered for this booking."""
         try:
+            from app.accommodation.models.guest_registration import GuestRegistration
+
             registrations = GuestRegistration.query.filter_by(booking_id=self.id).all()
             if not registrations:
                 return False
@@ -435,37 +474,171 @@ class AccommodationBooking(BaseModel):
 
         return True, msg, refund
 
-    def can_cancel(self):
-        from app.accommodation.models.property import AccommodationCancellationPolicy
+    # -------------------------------
+    # Cancellation policy / refund engine
+    # -------------------------------
+    CANCELLABLE_STATUSES = [
+        AccommodationBookingStatus.DRAFT,
+        AccommodationBookingStatus.HELD,
+        AccommodationBookingStatus.PENDING,
+        AccommodationBookingStatus.PENDING_PAYMENT,
+        AccommodationBookingStatus.PENDING_APPROVAL,
+        AccommodationBookingStatus.CONFIRMED,
+        AccommodationBookingStatus.CHECKED_IN,
+    ]
 
-        current_status = self.status_enum
+    def _cancellation_policy_context(self):
+        """
+        Resolve the effective cancellation policy for this booking.
 
-        if current_status not in [
-            AccommodationBookingStatus.DRAFT,
-            AccommodationBookingStatus.HELD,
-            AccommodationBookingStatus.PENDING,
-            AccommodationBookingStatus.PENDING_PAYMENT,
-            AccommodationBookingStatus.PENDING_APPROVAL,
-            AccommodationBookingStatus.CONFIRMED,
-        ]:
-            return False, "Cannot cancel at this stage", 0
+        Precedence:
+          1. Policy snapshot taken at booking time (immutable for the guest)
+          2. PropertyBookingPolicy row (host-configured, authoritative today)
+          3. Property.cancellation_policy (legacy fallback)
+        Returns (policy_obj_or_None, policy_name).
+        """
+        policy_obj = None
+        try:
+            from app.accommodation.models.booking_policy import PropertyBookingPolicy
 
-        days_until = (self.check_in - date.today()).days
-        policy = self.accommodation_property.cancellation_policy
+            policy_obj = PropertyBookingPolicy.query.filter_by(
+                property_id=self.property_id
+            ).first()
+        except Exception:
+            policy_obj = None
 
-        if policy == "flexible":
-            return True, "Full refund", self.total_amount
-        elif policy == "moderate":
-            if days_until >= 5:
-                return True, "Full refund", self.total_amount
-            elif days_until >= 1:
-                return True, "50% refund", self.total_amount * Decimal("0.5")
+        snapshot_name = None
+        if isinstance(self.policy_snapshot, dict):
+            snapshot_name = self.policy_snapshot.get("cancellation_policy")
+
+        name = snapshot_name or (policy_obj.cancellation_policy if policy_obj else None)
+        if not name:
+            try:
+                name = self.accommodation_property.cancellation_policy
+            except Exception:
+                name = None
+        return policy_obj, (name or "non_refundable")
+
+    @staticmethod
+    def _apply_policy_tiers(policy_name: str, base: Decimal, days_remaining: int) -> Decimal:
+        """Pure policy → refund mapping (used when no policy row is available)."""
+        if base <= 0:
+            return Decimal("0.00")
+        if policy_name == "flexible":
+            return base if days_remaining >= 1 else Decimal("0.00")
+        if policy_name == "moderate":
+            if days_remaining >= 5:
+                return base
+            if days_remaining >= 1:
+                return base * Decimal("0.5")
+            return Decimal("0.00")
+        if policy_name == "strict":
+            return base * Decimal("0.5") if days_remaining >= 7 else Decimal("0.00")
+        if policy_name == "super_strict":
+            if days_remaining >= 30:
+                return base * Decimal("0.5")
+            if days_remaining >= 14:
+                return base * Decimal("0.25")
+            return Decimal("0.00")
+        return Decimal("0.00")
+
+    def get_cancellation_quote(self) -> dict:
+        """
+        Single source of truth for cancellation outcomes (pre- and post-check-in).
+
+        Returns a dict:
+          allowed, message, phase, policy, refundable_base, refund, fine,
+          nights_remaining / days_until_checkin
+        The FINE is the explicit penalty line item = refundable_base - refund.
+        """
+        def _q(v):
+            return Decimal(v or 0).quantize(Decimal("0.01"))
+
+        quote = {
+            "allowed": False,
+            "message": "Cannot cancel at this stage",
+            "phase": "none",
+            "policy": None,
+            "refundable_base": Decimal("0.00"),
+            "refund": Decimal("0.00"),
+            "fine": Decimal("0.00"),
+            "nights_remaining": 0,
+            "days_until_checkin": 0,
+        }
+
+        if self.status_enum not in self.CANCELLABLE_STATUSES:
+            return quote
+
+        policy_obj, policy_name = self._cancellation_policy_context()
+        quote["policy"] = policy_name
+        total = Decimal(self.total_amount or 0)
+
+        # -------- Mid-stay cancellation (already checked in) --------
+        if self.status_enum == AccommodationBookingStatus.CHECKED_IN:
+            nights_remaining = (self.check_out - date.today()).days
+            quote["phase"] = "mid_stay"
+            quote["nights_remaining"] = max(nights_remaining, 0)
+            quote["allowed"] = True
+
+            if nights_remaining <= 0:
+                quote["message"] = "No refund — stay already completed"
+                return quote
+
+            base = min(
+                (total * Decimal(nights_remaining)) / Decimal(self.num_nights or 1),
+                total,
+            )
+            # Mid-stay tiers (see BACKLOG.md — pending finance sign-off):
+            # flexible = full remaining, moderate = full remaining (>=1 night),
+            # strict = 50% of remaining, super_strict/non_refundable = 0.
+            if policy_name in ("flexible", "moderate"):
+                refund = base
+            elif policy_name == "strict":
+                refund = base * Decimal("0.5")
+            elif policy_name == "super_strict":
+                refund = base * Decimal("0.25")
             else:
-                return True, "No refund for same-day cancellation", Decimal("0.00")
-        elif policy == "strict":
-            if days_until >= 7:
-                return True, "50% refund", self.total_amount * Decimal("0.5")
-        return False, "Non-refundable", 0
+                refund = Decimal("0.00")
+
+            quote["refundable_base"] = _q(base)
+            quote["refund"] = _q(refund)
+            quote["fine"] = _q(base - refund)
+            quote["message"] = (
+                f"Mid-stay cancellation under '{policy_name}' policy: "
+                f"{quote['refund']} refunded on {quote['refundable_base']} remaining, "
+                f"fine {quote['fine']}"
+            )
+            return quote
+
+        # -------- Pre-check-in cancellation --------
+        days_until = (self.check_in - date.today()).days
+        quote["phase"] = "pre_checkin"
+        quote["days_until_checkin"] = days_until
+        quote["allowed"] = True
+        quote["refundable_base"] = _q(total)
+
+        if policy_obj is not None:
+            refund = policy_obj.get_cancellation_refund(days_until, total)
+        else:
+            refund = self._apply_policy_tiers(policy_name, total, days_until)
+
+        quote["refund"] = _q(refund)
+        quote["fine"] = _q(total - Decimal(refund))
+        if quote["refund"] <= 0:
+            quote["message"] = f"No refund under '{policy_name}' policy"
+        elif quote["refund"] >= quote["refundable_base"]:
+            quote["message"] = "Full refund"
+        else:
+            quote["message"] = (
+                f"Partial refund of {quote['refund']} under '{policy_name}' policy "
+                f"(fine {quote['fine']})"
+            )
+        return quote
+
+    def can_cancel(self):
+        """Backwards-compatible wrapper around get_cancellation_quote()."""
+        quote = self.get_cancellation_quote()
+        return quote["allowed"], quote["message"], quote["refund"]
 
 
 # ==========================================

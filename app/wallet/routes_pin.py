@@ -182,7 +182,7 @@ def reset_pin():
             from app.auth.email import send_otp_email
             send_otp_email(user.email, otp, purpose="PIN reset")
         else:
-            from app.services.sms_service import send_sms
+            from app.notifications.sms_service import send_sms
             send_sms(user.phone, f"Your AFCON360 PIN reset code is: {otp}. Valid for 10 minutes.")
 
         return jsonify({

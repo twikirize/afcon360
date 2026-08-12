@@ -1,0 +1,315 @@
+{# ============================================================================
+   AFCON360 — Universal Notification Bell (module-aware)
+   ----------------------------------------------------------------------------
+   AFCON360 runs several INDEPENDENT businesses on ONE notification system:
+   accommodation, transport, events, wallet, tourism, tournament. They have
+   different customers and different activities, so every item is badged with
+   its originating module and the inbox can be filtered per module.
+
+   Usage — drop into any dashboard / base template:
+
+       {% include 'components/notification_bell.html' %}
+
+   Scoping to a single module (e.g. the transport console shows only transport):
+       In the blueprint:
+           @bp.before_request
+           def _scope():
+               g.notification_module = 'transport'
+
+   Data source (all injected globally by
+   app/notifications/context.py::inject_notification_context):
+       notif_badges         - counts incl. `by_module`
+       recent_notifications - recent items (already module-scoped if applicable)
+       notif_modules        - per-module summary for the filter chips
+       notif_active_module  - module this dashboard is scoped to, or None
+
+   Renders nothing for anonymous users.
+   ============================================================================ #}
+
+{% if current_user.is_authenticated %}
+{% set _badges  = notif_badges | default({}) %}
+{% set _mods    = notif_modules | default([]) %}
+{% set _scoped  = notif_active_module %}
+{% set _msgs    = _badges.get('unread_messages', 0) %}
+{% set _unread  = _badges.get('scoped_unread', _badges.get('unread_notifications', 0)) if _scoped else _badges.get('unread_notifications', 0) %}
+{% set _total   = _unread if _scoped else _badges.get('total_unread', 0) %}
+
+<div class="afc-notif"{% if _scoped %} data-module="{{ _scoped }}"{% endif %}>
+  <button type="button"
+          class="afc-notif__trigger"
+          aria-label="Notifications{% if _scoped %} ({{ _scoped }}){% endif %}"
+          aria-expanded="false"
+          aria-haspopup="true">
+    <i class="bi bi-bell"></i>
+    <span class="afc-notif__badge{% if _total == 0 %} is-hidden{% endif %}"
+          data-count="{{ _total }}">{{ _total if _total < 100 else '99+' }}</span>
+  </button>
+
+  <div class="afc-notif__panel" role="menu" aria-hidden="true">
+    <div class="afc-notif__head">
+      <span class="afc-notif__title">
+        {% if _scoped %}
+          {{ notif_module_meta.labels.get(_scoped, _scoped|title) }} Notifications
+        {% else %}
+          Notifications
+        {% endif %}
+      </span>
+      <button type="button" class="afc-notif__readall">Mark all read</button>
+    </div>
+
+    {# Module filter chips — only on the global bell, and only when the user
+       actually has activity in more than one business. #}
+    {% if not _scoped and _mods|length > 1 %}
+    <div class="afc-notif__filters">
+      <button type="button" class="afc-notif__chip is-active" data-filter="all">
+        All <span class="afc-notif__chipcount">{{ _badges.get('unread_notifications', 0) }}</span>
+      </button>
+      {% for m in _mods %}
+      <button type="button" class="afc-notif__chip" data-filter="{{ m.module }}"
+              style="--chip:{{ m.color }}">
+        <i class="bi {{ m.icon }}"></i>{{ m.label }}
+        <span class="afc-notif__chipcount">{{ m.count }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="afc-notif__list">
+      {% if recent_notifications %}
+        {% for n in recent_notifications %}
+        {% set _m = n.module | default('system') %}
+        <a class="afc-notif__item{% if not n.is_read %} is-unread{% endif %}"
+           href="{{ n.link or '#' }}"
+           data-notif-id="{{ n.id }}"
+           data-module="{{ _m }}">
+          <span class="afc-notif__mod"
+                style="--mod:{{ n.module_color | default('#7a8290') }}"
+                title="{{ n.module_label | default('System') }}">
+            <i class="bi {{ n.module_icon | default('bi-bell') }}"></i>
+          </span>
+          <span class="afc-notif__body">
+            <span class="afc-notif__row">
+              <span class="afc-notif__subject">{{ n.subject or (n.type | replace('_', ' ') | title) }}</span>
+              {% if not _scoped %}
+              <span class="afc-notif__tag"
+                    style="--mod:{{ n.module_color | default('#7a8290') }}">{{ n.module_label | default('System') }}</span>
+              {% endif %}
+            </span>
+            <span class="afc-notif__text">{{ (n.body or '') | truncate(88, true, '…') }}</span>
+            <span class="afc-notif__time">{{ n.created_at.strftime('%d %b, %H:%M') if n.created_at else '' }}</span>
+          </span>
+        </a>
+        {% endfor %}
+      {% else %}
+        <div class="afc-notif__empty">
+          <i class="bi bi-bell-slash"></i>
+          <span>You're all caught up</span>
+        </div>
+      {% endif %}
+      <div class="afc-notif__nomatch" hidden>
+        <i class="bi bi-funnel"></i><span>Nothing in this module</span>
+      </div>
+    </div>
+
+    <div class="afc-notif__foot">
+      {% if _msgs and not _scoped %}
+        <a class="afc-notif__all"
+           href="{{ url_for('communication_pages.messages') }}">{{ _msgs }} unread message{{ 's' if _msgs != 1 }}</a>
+      {% endif %}
+      <a class="afc-notif__all"
+         href="{{ url_for('communication_pages.notifications', module=_scoped if _scoped else None) }}">View all</a>
+    </div>
+  </div>
+</div>
+
+{# Styles + behaviour.
+   Duplicated <style> is harmless (identical rules); the <script> is guarded by
+   `window.__afcNotifInit` and binds to every `.afc-notif` root on the page. #}
+<style{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}>
+.afc-notif{position:relative;display:inline-block;vertical-align:middle}
+.afc-notif__trigger{position:relative;background:none;border:none;cursor:pointer;padding:6px 8px;
+  font-size:1.15rem;line-height:1;color:inherit;border-radius:8px;transition:background .15s ease}
+.afc-notif__trigger:hover{background:rgba(255,255,255,.10)}
+.afc-notif__badge{position:absolute;top:-2px;right:-2px;min-width:17px;height:17px;padding:0 4px;
+  background:#e63946;color:#fff;border-radius:9px;font-size:10px;font-weight:700;line-height:17px;
+  text-align:center;pointer-events:none}
+.afc-notif__badge.is-hidden{display:none}
+.afc-notif__panel{position:absolute;top:calc(100% + 10px);right:0;width:370px;max-width:calc(100vw - 24px);
+  background:#15181d;color:#e8e8e8;border:1px solid rgba(255,255,255,.10);border-radius:12px;
+  box-shadow:0 14px 38px rgba(0,0,0,.45);opacity:0;visibility:hidden;transform:translateY(-6px);
+  transition:opacity .16s ease,transform .16s ease,visibility .16s;z-index:1080;overflow:hidden}
+.afc-notif__panel.is-open{opacity:1;visibility:visible;transform:translateY(0)}
+.afc-notif__head{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;
+  border-bottom:1px solid rgba(255,255,255,.08)}
+.afc-notif__title{font-weight:600;font-size:.9rem}
+.afc-notif__readall{background:none;border:none;color:#d4af37;font-size:.75rem;cursor:pointer;padding:0}
+.afc-notif__readall:hover{text-decoration:underline}
+/* Module filter chips */
+.afc-notif__filters{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;scrollbar-width:none;
+  border-bottom:1px solid rgba(255,255,255,.08)}
+.afc-notif__filters::-webkit-scrollbar{display:none}
+.afc-notif__chip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);color:#cfd3d8;
+  border-radius:999px;padding:4px 9px;font-size:.71rem;transition:all .14s ease}
+.afc-notif__chip:hover{background:rgba(255,255,255,.10)}
+.afc-notif__chip.is-active{background:color-mix(in srgb, var(--chip,#d4af37) 22%, transparent);
+  border-color:var(--chip,#d4af37);color:#fff}
+.afc-notif__chipcount{background:rgba(255,255,255,.14);border-radius:999px;padding:0 5px;font-size:.65rem}
+.afc-notif__list{max-height:380px;overflow-y:auto}
+.afc-notif__item{display:flex;gap:10px;padding:11px 14px;text-decoration:none;color:inherit;
+  border-bottom:1px solid rgba(255,255,255,.05)}
+.afc-notif__item:hover{background:rgba(255,255,255,.05)}
+.afc-notif__item.is-unread{background:rgba(212,175,55,.05)}
+/* Module avatar — the colour/icon that differentiates each business */
+.afc-notif__mod{flex:0 0 auto;width:27px;height:27px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;font-size:.78rem;margin-top:2px;
+  background:color-mix(in srgb, var(--mod,#7a8290) 20%, transparent);
+  color:var(--mod,#7a8290);border:1px solid color-mix(in srgb, var(--mod,#7a8290) 38%, transparent)}
+.afc-notif__body{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.afc-notif__row{display:flex;align-items:center;gap:6px;min-width:0}
+.afc-notif__subject{font-size:.82rem;font-weight:600;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;flex:1;min-width:0}
+.afc-notif__tag{flex:0 0 auto;font-size:.6rem;text-transform:uppercase;letter-spacing:.04em;
+  padding:1px 6px;border-radius:4px;font-weight:700;
+  background:color-mix(in srgb, var(--mod,#7a8290) 20%, transparent);color:var(--mod,#7a8290)}
+.afc-notif__text{font-size:.75rem;opacity:.72;line-height:1.35}
+.afc-notif__time{font-size:.68rem;opacity:.5}
+.afc-notif__empty,.afc-notif__nomatch{display:flex;flex-direction:column;align-items:center;gap:7px;
+  padding:26px 14px;opacity:.55;font-size:.8rem}
+.afc-notif__empty i,.afc-notif__nomatch i{font-size:1.5rem}
+.afc-notif__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 14px;
+  border-top:1px solid rgba(255,255,255,.08)}
+.afc-notif__msgcount{font-size:.72rem;opacity:.65}
+.afc-notif__all{font-size:.78rem;color:#d4af37;text-decoration:none;margin-left:auto}
+.afc-notif__all:hover{text-decoration:underline}
+@media (max-width:480px){.afc-notif__panel{width:calc(100vw - 24px);right:-8px}}
+</style>
+
+<script{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}>
+(function () {
+  if (window.__afcNotifInit) return;
+  window.__afcNotifInit = true;
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    if (m) return m.getAttribute('content');
+    var i = document.querySelector('input[name="csrf_token"]');
+    return i ? i.value : '';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var roots = Array.prototype.slice.call(document.querySelectorAll('.afc-notif'));
+    if (!roots.length) return;
+
+    function paintAll(count, scopedModule) {
+      roots.forEach(function (r) {
+        // A module-scoped bell only reflects its own module's count.
+        var rm = r.getAttribute('data-module');
+        if (rm && scopedModule && rm !== scopedModule) return;
+        var b = r.querySelector('.afc-notif__badge');
+        if (!b) return;
+        b.setAttribute('data-count', count);
+        b.textContent = count < 100 ? count : '99+';
+        b.classList.toggle('is-hidden', !count);
+      });
+    }
+
+    roots.forEach(function (root) {
+      var trigger = root.querySelector('.afc-notif__trigger');
+      var panel   = root.querySelector('.afc-notif__panel');
+      var readAll = root.querySelector('.afc-notif__readall');
+      var noMatch = root.querySelector('.afc-notif__nomatch');
+      if (!trigger || !panel) return;
+
+      function setOpen(open) {
+        panel.classList.toggle('is-open', open);
+        panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+
+      trigger.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        setOpen(!panel.classList.contains('is-open'));
+      });
+      document.addEventListener('click', function (e) {
+        if (!root.contains(e.target)) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') setOpen(false);
+      });
+
+      // ---- Module filter chips (client-side, instant) ----
+      var chips = root.querySelectorAll('.afc-notif__chip');
+      var items = root.querySelectorAll('.afc-notif__item');
+      chips.forEach(function (chip) {
+        chip.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          var f = chip.getAttribute('data-filter');
+          chips.forEach(function (c) { c.classList.toggle('is-active', c === chip); });
+          var shown = 0;
+          items.forEach(function (it) {
+            var match = (f === 'all') || (it.getAttribute('data-module') === f);
+            it.hidden = !match;
+            if (match) shown++;
+          });
+          if (noMatch) noMatch.hidden = shown !== 0;
+        });
+      });
+
+      // ---- Mark a single notification read ----
+      items.forEach(function (item) {
+        item.addEventListener('click', function () {
+          var id = item.getAttribute('data-notif-id');
+          if (!id || !item.classList.contains('is-unread')) return;
+          item.classList.remove('is-unread');
+          fetch('/api/notifications/' + id + '/read', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf(), 'Content-Type': 'application/json' },
+            credentials: 'same-origin'
+          }).then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { if (d && typeof d.unread_count === 'number') paintAll(d.unread_count); })
+            .catch(function () {});
+        });
+      });
+
+      if (readAll) {
+        readAll.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          fetch('/api/notifications/read-all', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf(), 'Content-Type': 'application/json' },
+            credentials: 'same-origin'
+          }).then(function (r) { return r.ok ? r.json() : null; })
+            .then(function () {
+              document.querySelectorAll('.afc-notif__item.is-unread')
+                      .forEach(function (i) { i.classList.remove('is-unread'); });
+              paintAll(0);
+            }).catch(function () {});
+        });
+      }
+    });
+
+    // ---- Poll: refresh the global badge and each module-scoped badge ----
+    setInterval(function () {
+      if (document.hidden) return;
+      fetch('/api/notifications/unread-count?by_module=true', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d) return;
+          var byMod = d.unread_by_module || {};
+          roots.forEach(function (r) {
+            var rm = r.getAttribute('data-module');
+            var count = rm ? (byMod[rm] || 0) : (d.unread_count || 0);
+            var b = r.querySelector('.afc-notif__badge');
+            if (!b) return;
+            b.setAttribute('data-count', count);
+            b.textContent = count < 100 ? count : '99+';
+            b.classList.toggle('is-hidden', !count);
+          });
+        })
+        .catch(function () {});
+    }, 60000);
+  });
+})();
+</script>
+{% endif %}

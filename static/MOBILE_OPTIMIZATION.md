@@ -34,7 +34,8 @@ templates/
 │   └── moderate_review.html         ← UPDATED (matched global AFCON360 light theme, removed inline styles, hidden/visible toggle via CSS class)
 ├── owner/
 │   ├── cash_settings.html            ← NEW (global cash payment settings: development mode toggle, fraud protection requirements, amount limits)
-│   └── dashboard.html                ← UPDATED (added Cash Settings card; added Unclaimed Bookings and Check-in Blockers widgets)
+│   ├── dashboard.html                ← UPDATED (added Cash Settings card; added Unclaimed Bookings and Check-in Blockers widgets)
+│   └── backups.html                  ← NEW (owner database backup & restore management UI; mobile-first responsive grid, stacked table on ≤640px, 44px touch targets)
 ├── super_admin_dashboard.html        ← UPDATED (mobile drawer + JS; added Accommodation Overview widget)
 └── admin/
     ├── accommodation_admin_dashboard.html ← UPDATED (added Unclaimed Bookings and Check-in Blockers widgets)
@@ -51,6 +52,13 @@ templates/
 ---
 
 ## 2. Change Log by File
+
+### `templates/owner/backups.html` — **NEW**
+- Owner database backup & restore management UI. Mobile-first: `clamp()`-based fluid padding/typography, `repeat(auto-fit, minmax(...))` responsive card grids, full-width stacked table rows with `data-label` headers on ≤640px, 44px-min touch targets on all buttons, restore confirmation modal.
+- CSRF-protected forms (`{{ csrf_token() }}`). No inline layout styles; all layout via scoped `<style>` using the mobile utility patterns.
+
+### `templates/owner/danger_zone.html` — **UPDATED**
+- Added a "Database Backups & Restore" card in the Settings Management section linking to `admin.owner.owner_backup.backups`.
 
 ### `static/css/global/mobile-utilities.css` — **NEW**
 - Added shared helpers: `.touch-target` (44×44px min), `.stack-mobile`, `.hide-mobile`, `.show-mobile`, `.scroll-x-mobile`, `.safe-bottom`, `.safe-top`, fluid typography helpers (`text-fluid-sm/base/lg/xl`), `.contain-mobile`.
@@ -299,6 +307,44 @@ templates/
 
 ---
 
+### `templates/admin/compliance/cases.html` — **UPDATED**
+- Line 130 SLA overdue check: fixed `case.sla_due_at < now` comparison. The route passes a naive `now` (`datetime.now()`) matching the naive `sla_due_at` column; previously an aware `datetime.now(timezone.utc)` caused a `TypeError` (offset-naive vs offset-aware) and a 500 on `/admin/compliance/cases`.
+- **Mobile:** No layout/CSS changes; SLA column already uses responsive table classes.
+
+### `templates/admin/compliance/view_case.html` — **FIXED**
+- Line 50 SLA overdue check: fixed `case.sla_due_at < now` comparison. The `view_case` route previously relied on the global `now` (which is the `datetime.now` function, not a datetime) and raised a 500 (`'<'` not supported between `datetime` and `builtin_function_or_method`). Now the route passes a naive `datetime.now()` matching the naive `sla_due_at` column (consistent with `cases.html`).
+
+### `templates/admin/compliance/view_case.html` — **UPDATED**
+- Fixed SLA overdue comparison (`case.sla_due_at < now`); route now passes naive `datetime.now()` (see `cases.html` entry).
+- Wired `notes` and `history` into the template (previously undefined — `view_case` route now passes `ComplianceCaseService.get_case_notes()` and `get_case_history()`).
+- Extended the actions footer: added **Request Info** (text input + post), **Close** (confirm), and a terminal-state **Reopen Case** footer shown when the case is resolved/closed. All actions use `?_pane` safe POST forms with `{{ csrf_token() }}`.
+- Fixed `url_for('admin.compliance.view_kyc', kyc_id=...)` → `kyc_id_or_uuid=...` to match the route signature (`view_case.html:220`). Same latent bug fixed in `escalations.html` and `dashboard.html` to prevent `BuildError` 500s.
+- History timeline now uses `entry.author.username` (removed the duplicate `user` relationship on `ComplianceCaseNote` that triggered an SQLAlchemy overlapping-relationship warning). No layout change.
+
+### `templates/admin/compliance/aml_queue.html` — **REWRITTEN (full AML dashboard)**
+- Now fully wired to real data from the `FraudAlert` store (the suspicious-activity monitoring engine) via the `aml_queue` route — no functionality removed.
+- Renders: stat row (critical alerts, high-risk TX, suspicious users, today's volume), **High-Risk Transactions** table (joined to `TransactionModel`, paginated), **Pattern Alerts** (active alerts aggregated by detected pattern with severity), **Flagged Users** sidebar (distinct users with active high-risk alerts), and a Quick Actions panel (Export AML Report, File SAR, Case History).
+- Drill-downs restored: each high-risk TX links to `admin.compliance.view_transaction` and each flagged user to `admin.compliance.user_audit`.
+- **Mobile:** `col-layout-8-4` collapses to single column ≤900px; `detail-grid`/tables use responsive card classes; `≥44px` touch targets on Investigate/View buttons.
+
+### `templates/admin/compliance/view_transaction.html` — **ADDED**
+- Transaction investigation drill-down (route `admin.compliance.view_transaction`, keyed by transaction UUID). Shows TX type/status/amount/fees/provider, actor & recipient links, and all related `FraudAlert` records with risk scores and status.
+- **Mobile:** Responsive `.detail-grid` (2-col → 1-col ≤560px), `.data-table` for alerts, `≥44px` back/action buttons.
+
+### `templates/admin/compliance/user_audit.html` — **ADDED**
+- User audit drill-down (route `admin.compliance.user_audit`, keyed by user `public_id`). Shows profile, KYC risk score/status, that user's `FraudAlert` history, and linked compliance cases — the compliance-grade 360° view regulators/partners expect.
+- **Mobile:** Responsive `.detail-grid`, `.data-table` for alerts/cases, `≥44px` back/action buttons.
+
+### `templates/admin/compliance/sar_filing.html` — **ADDED**
+- New template for the Suspicious Activity Report (SAR) filing workflow, kept separate from the moderation `escalations` queue.
+- Provides a `csrf_token()`-protected form to file a SAR (`ComplianceReport` of type `REGULATORY_FILING`), a list of open AML alerts to attach, and a list of previously filed SARs.
+- **Mobile:** Mirrors `aml_queue.html` responsive patterns — `stat-grid`, `.data-table`, stacked cards, `≥44px` touch targets; no fixed `min-width` or `overflow: hidden` on dropdowns/layout containers.
+
+### `templates/admin/compliance/base_compliance.html` — **UPDATED**
+- Added `.detail-grid`, `.detail-row`, `.detail-label`, `.detail-value` CSS (2-col grid → 1-col ≤560px) used by `view_transaction.html` and `user_audit.html` for responsive key/value layouts. Preserves existing theme variables and branding; no color/hex changes.
+
+---
+
 ## 4. Verification Checklist
 
 - [x] `mobile-utilities.css` loaded in `base.html`
@@ -431,3 +477,258 @@ static/
 **Migration needed?** No  
 **Manual steps:** Restart Flask server; visit `/kyc/` to see the tracker. Submitting a National ID (status `manual_review`/`pending`) advances to Processing; approval advances to Verified.  
 **Risks/conflicts:** Purely presentational. `kyc.index` route now passes two extra template variables (`kyc_stage`, `overall_status`); no other template consumes them. No schema, color, or branding changes.
+
+---
+
+### AML Regulatory Module (2026-08-11) — NEW
+
+A jurisdiction-aware AML/CFT regulatory program was added under `app/compliance/`
+(models + service) and `app/admin/compliance/routes.py`, with 10 new admin
+templates plus a shared nav partial. All pages extend `base_compliance.html`, are
+mobile-responsive, and use `{{ csrf_token() }}` on every POST.
+
+#### `templates/admin/compliance/_aml_nav.html` — **ADDED**
+- Shared `aml_nav()` macro: a wrapping flex row of quick-nav buttons linking all
+  AML program pages. Used by every AML template for in-module navigation.
+
+#### `templates/admin/compliance/aml_jurisdictions.html` — **ADDED**
+- Lists `JurisdictionProfile` rows (threshold, STR SLA, report types, identifiers,
+  retention). **Mobile:** flex-wrapping nav; responsive `.data-table`.
+
+#### `templates/admin/compliance/aml_reports.html` — **ADDED**
+- Lists `RegulatoryReport` filings (STR/SAR/CTR/IWTR/TFR) with status + pagination.
+
+#### `templates/admin/compliance/aml_report_detail.html` — **ADDED**
+- Report detail (`.detail-grid`), narrative, "Mark as Filed" POST form, and a
+  scrollable `<pre>` of the generated goAML XML.
+
+#### `templates/admin/compliance/aml_ctr.html` — **ADDED**
+- CTR / structuring alerts table + "Run Detection" POST button; per-user drill-down.
+
+#### `templates/admin/compliance/aml_terminated.html` — **ADDED**
+- Terminated-entity (MATCH/VMSS) registry table + add form (grid inputs).
+
+#### `templates/admin/compliance/aml_scenarios.html` — **ADDED**
+- Monitoring scenarios table + add form + inline per-row calibrate form
+  (enable/disable, weight, threshold).
+
+#### `templates/admin/compliance/aml_backtest.html` — **ADDED**
+- Back-test run form (scenario + window days), last-run result grid, history table.
+
+#### `templates/admin/compliance/aml_training.html` — **ADDED**
+- Training records table + add form (grid inputs).
+
+#### `templates/admin/compliance/aml_attestations.html` — **ADDED**
+- MLRO attestation register + add form.
+
+#### `templates/admin/compliance/aml_retention.html` — **ADDED**
+- Retention policy + aged-record summary table.
+
+#### `templates/admin/compliance/aml_queue.html` — **UPDATED**
+- Added `{{ aml_nav('queue') }}` for in-module navigation.
+
+**Mobile:** All new pages reuse existing responsive primitives (`.card`,
+`.data-table`, `.stat-grid`, `.detail-grid`, `.pagination`, `.badge`, `.btn` with
+`≥44px` touch targets). Form grids use `repeat(auto-fit, minmax(...))` and
+collapse to one column on phones; no fixed `min-width` or `overflow: hidden` on
+layout containers. Branding/theme variables preserved; no color changes.
+
+**Migration needed?** Yes — new tables (`aml_jurisdiction_profiles`,
+`aml_regulatory_reports`, `aml_ctr_alerts`, `aml_terminated_entities`,
+`aml_organisation_profiles`, `aml_monitoring_scenarios`, `aml_backtest_runs`,
+`aml_training_records`, `aml_attestations`, `aml_retention_policies`). Run
+`flask db migrate -m "aml_regulatory"` then `flask db upgrade` (not auto-run;
+user handles migrations).
+
+---
+
+### Targeted KYC/KYB document replacement (2026-08-11) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/
+├── kyc/reupload.py                         ← NEW (signed replacement state helpers)
+├── kyc/routes.py                            ← UPDATED (user-scoped replacement flow)
+├── admin/compliance/routes.py               ← UPDATED (individual + organisation requests)
+└── notifications/services.py                ← UPDATED (replacement notification)
+templates/
+├── kyc/status.html                          ← UPDATED (replacement alerts and links)
+├── kyc/verify_upload.html                   ← UPDATED (focused replacement form)
+├── profile/account.html                      ← UPDATED (authoritative KYC status display)
+└── admin/compliance/
+    ├── view_kyc.html                        ← UPDATED (targeted reviewer action)
+    └── view_org.html                        ← NEW (KYB document review actions)
+```
+
+#### Responsive Change Log
+- `templates/kyc/status.html`: replacement cards wrap on mobile and keep the action button usable without horizontal scrolling.
+- `templates/kyc/verify_upload.html`: the focused replacement panel uses fluid padding and a single-column file form on small screens.
+- `templates/profile/account.html`: KYC status and rejection notices now use the current review context without changing responsive layout behavior.
+- `templates/admin/compliance/view_kyc.html` and `view_org.html`: reviewer action grids use `auto-fit` and wrapping controls for phone and tablet widths.
+
+### Verification Checklist
+- [x] Replacement cards and forms wrap at mobile widths.
+- [x] File inputs and action buttons remain accessible on touch devices.
+- [x] No fixed layout `min-width` was added to the replacement workflow.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated for every changed HTML template.
+
+**Migration needed?** No — replacement metadata is stored in existing compliance notes.
+
+---
+
+### KYC Progress Tracker Layout Fix (2026-08-11) — UPDATED
+
+#### File Tree — What Was Touched
+```
+static/
+└── css/
+    └── dashboard.css                   ← UPDATED (fixed KYC progress tracker layout)
+templates/
+└── kyc/
+    └── index.html                      ← UPDATED (standardized icons, centered panel body)
+```
+
+#### What Changed
+- Fixed text/icon overlap in the KYC progress stepper by converting `.step-item` to `flex-direction: column` with `align-items: center`, ensuring icons, labels, and sub-labels stack cleanly above the connecting line.
+- Standardized stepper icons: checkmarks for completed steps, spinner (`bi-arrow-repeat`) for active processing, circle outline for pending/upcoming, and red X for rejected.
+- Centered the tracker and status message inside the panel body using flexbox, eliminating excess vertical whitespace.
+- Increased contrast and weight on `.step-sub` badges so status labels (PENDING, IN REVIEW, APPROVED) are more readable.
+- Improved mobile scaling: circles shrink to 34px at ≤768px and 30px at ≤480px; labels and sub-labels use relative font sizes.
+
+#### Responsive Change Log
+- `.kyc-progress-tracker .step-item` now uses flex column layout instead of inline text centering, preventing text-over-line collisions on all viewports.
+- `.step-label` and `.step-sub` are block-level with proper `margin-top` spacing.
+- Panel body uses `display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:280px` to balance whitespace.
+- No fixed `min-width` or `overflow: hidden` introduced.
+
+#### Verification Checklist
+- [x] Stepper icons no longer overlap with text or connecting line.
+- [x] Status badges have sufficient contrast against background.
+- [x] Layout is centered with balanced whitespace on desktop and mobile.
+- [x] Icons are consistent across all three nodes (completed / active / pending / rejected).
+- [x] `static/MOBILE_OPTIMIZATION.md` updated.
+
+**Migration needed?** No  
+**Manual steps:** Restart Flask server; visit `/kyc/` to verify the progress tracker.  
+**Risks/conflicts:** Purely presentational. No schema, route, or model changes. Existing theme variables and brand colors preserved.
+
+---
+
+### Uniform KYC Tier Information Overhaul (2026-08-11) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/
+├── auth/kyc_compliance.py                    ← UPDATED (uniform tier response, requirement labels, activity restrictions)
+├── profile/routes.py                         ← UPDATED (pass enriched kyc_info to edit template)
+└── utils/immutable_fields.py                 ← UPDATED (specific blocked field error messages)
+templates/
+├── profile/account.html                      ← UPDATED (tier badge in hero, next-tier needs, restricted activities, immutable fields notice)
+├── profile/account_pane.html                 ← UPDATED (tier badge with next-tier preview)
+├── profile/edit.html                         ← UPDATED (KYC tier sidebar card with next-tier requirements)
+├── admin/owner/kyc_tiers.html                ← UPDATED (tier description, next-tier needs, restricted activities columns)
+├── admin/view_user.html                      ← UPDATED (enhanced KYC tier display with next-tier needs)
+└── admin/update_profile.html                 ← UPDATED (KYC tier context and restricted activities alert)
+```
+
+#### What Changed
+- `calculate_kyc_tier()` now returns a uniform dict with `tier`, `tier_name`, `tier_description`, `verification_status`, `is_verified`, `fulfillment_percentage`, `missing_requirements_labels`, `next_tier`, `next_tier_name`, `next_tier_requirements_labels`, `immutable_fields`, and `activities_restricted`.
+- Added `REQUIREMENT_LABELS` mapping requirement keys to human-readable labels (e.g., `phone_verified` → `Phone verification`).
+- Added `ACTIVITY_TIER_REQUIREMENTS` mapping platform activities to minimum KYC tiers.
+- User-facing pages (`/account`, `/profile/edit`, dashboard pane) now show a single authoritative KYC tier badge, progress toward the next tier, exactly what is needed to advance, and which activities are currently restricted.
+- Admin pages (`owner/kyc_tiers`, `view_user`, `update_profile`) now display the same uniform tier info so admins can see at a glance what a user needs and why certain actions are blocked.
+- Immutable field error messages now list the exact blocked fields instead of a generic message.
+
+#### Responsive Change Log
+- `templates/profile/account.html`: KYC card uses stacked info blocks on mobile; tier badge replaces scattered status badges in the hero. No fixed widths added.
+- `templates/profile/edit.html`: KYC tier sidebar card stacks naturally; next-tier list uses fluid padding.
+- `templates/admin/owner/kyc_tiers.html`: Table columns wrap text with `truncate`; mobile horizontal scroll is preserved via existing `.table-responsive`.
+- `templates/admin/view_user.html` and `update_profile.html`: Info blocks use responsive `.detail-grid` patterns already defined in base templates.
+
+#### Verification Checklist
+- [x] KYC tier badge is visible on `/account`, `/profile/edit`, and dashboard pane.
+- [x] Next-tier requirements render as human-readable labels.
+- [x] Restricted activities count displays correctly.
+- [x] Immutable fields notice appears after verification with field list.
+- [x] Admin owner KYC tiers table shows tier description, next needs, and restricted count.
+- [x] Admin view user page shows enhanced KYC tier context.
+- [x] No fixed `min-width` or `overflow: hidden` added to layout containers.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated for every changed HTML template.
+
+**Migration needed?** No  
+**Manual steps:** None. Restart Flask server to pick up updated templates and helper constants.  
+**Risks/conflicts:** No schema changes. Backward-compatible — `calculate_kyc_tier()` retains all previously returned keys. No colors, branding, or desktop layout altered.
+
+---
+
+### Email verification OTP + link fix (2026-08-11) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/
+└── auth/otp_service.py                         ← UPDATED (verification_link in context, link on notification)
+templates/
+└── notifications/email/
+    └── verification_email.html                 ← UPDATED (OTP code primary, clickable link fallback)
+```
+
+#### What Changed
+- `OTPService.send_email_otp_checked` now includes `verification_code`, `verification_link`, and `user_name` in the notification context.
+- `notification.link` is set to a purpose-aware URL (`/verify-signup`, `/verify-email`, or `/verify-phone`) so the fallback link is always clickable.
+- `templates/notifications/email/verification_email.html` now displays the OTP code prominently as the primary verification method, with a clickable "Or click here to verify" button as fallback.
+- Plain-text email body also includes the verification link.
+
+#### Responsive Change Log
+- `verification_email.html`: centered code display at `font-size: 28px` with `letter-spacing: 8px` for readability on mobile; button uses standard padding for touch targets; max-width container preserves readability on all viewports.
+
+#### Verification Checklist
+- [x] OTP code renders prominently in HTML email.
+- [x] Fallback link is clickable and points to the correct verification page.
+- [x] Plain-text email body includes the link.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated.
+
+**Migration needed?** No  
+**Manual steps:** Restart Flask server; trigger a verification email to confirm both OTP code and link render correctly.  
+**Risks/conflicts:** No schema changes. Existing notification templates that reference `user_name` directly remain unchanged; only `verification_email.html` was fixed.
+
+---
+
+### Temporary phone verification via email (2026-08-11) — NEW
+
+#### File Tree — What Was Touched
+```
+app/
+└── auth/routes.py                            ← UPDATED (phone verification now routes through email OTP)
+templates/
+└── auth/
+    └── verify_phone.html                     ← NEW (phone verification form with email OTP delivery)
+```
+
+#### What Changed
+- `/verify-phone` GET now renders `templates/auth/verify_phone.html` instead of redirecting with a flash message.
+- `/send-phone-verification` now generates a 6-digit OTP, stores it with purpose `phone_verification`, and delivers it via the existing `OTPService.send_email_otp_checked` pipeline (temporary replacement for SMS/Twilio).
+- `/verify-phone` POST verifies the submitted code against the email-stored OTP using `OTPService.verify_otp` with purpose `phone_verification`.
+- On success, `profile.phone_verified` is set to `True` and the session flag `phone_verified` is updated.
+
+#### Responsive Change Log
+- `templates/auth/verify_phone.html`: Centered card layout with `max-width: 480px`, fluid padding (`p-4 p-md-5`), and brand-aligned header border (`#ffcc00`).
+- Form inputs use Bootstrap responsive classes; the code input is `text-center` with `form-control-lg` and `inputmode="numeric"` for mobile keyboards.
+- Buttons use full-width `d-grid` layout and maintain ≥44px touch targets via Bootstrap's `.btn-lg`.
+- No fixed `min-width` constraints; the card safely fits 320px viewports.
+
+#### Verification Checklist
+- [x] New template renders at `/verify-phone` for logged-in users.
+- [x] OTP is delivered via email (check server logs for dev fallback OTP if mail is not configured).
+- [x] Code entry form accepts 6 digits and strips non-numeric input client-side.
+- [x] Resend button triggers a fresh OTP via POST to `/send-phone-verification`.
+- [x] No fixed `min-width` or `overflow: hidden` on layout containers.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated.
+
+**Migration needed?** No  
+**Manual steps:** 
+1. Ensure the logged-in user has an email address set on their account (`current_user.email`).
+2. Ensure the user has a phone number in their profile (`profile.phone_number`).
+3. Restart Flask server.
+4. Visit `/verify-phone` to test the email-based phone verification flow.
+
+**Risks/conflicts:** No schema changes. This is a temporary routing change — when Twilio/SMS is configured, revert `send_phone_verification` and `verify_phone` to use `SMSService`. Existing `SMSService` code is untouched. No colors, branding, or desktop layout altered.

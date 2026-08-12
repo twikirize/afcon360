@@ -462,7 +462,7 @@ class DataChangeLog(BaseModel):
 
     entity_type = Column(String(64), nullable=False)
     entity_id = Column(String(128), nullable=False)
-    operation = Column(String(32), nullable=False)  # create, update, delete, freeze, unfreeze
+    operation = Column(String(128), nullable=False)  # create, update, delete, freeze, unfreeze; ForensicAuditService prefixes attempt_/completed_/blocked_
 
     old_value = Column(JSON)
     new_value = Column(JSON)

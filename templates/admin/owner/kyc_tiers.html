@@ -79,53 +79,69 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Email</th>
-                            <th>Current Tier</th>
-                            <th>Verification Status</th>
-                            <th>Missing Requirements</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in user_kyc_info %}
-                        <tr>
-                            <td>{{ item.user.username }}</td>
-                            <td>{{ item.user.email }}</td>
-                            <td>
-                                {% set tier_num = item.kyc_info.tier|default(0) %}
-                                {% set tier_name = item.kyc_info.tier_name|default('Unregistered') %}
-                                {% set tier_color_map = tier_colors|default({0: 'secondary', 1: 'info', 2: 'primary', 3: 'success', 4: 'warning', 5: 'danger'}) %}
-                                <span class="badge bg-{{ tier_color_map.get(tier_num, 'secondary') }}">
-                                    {{ tier_name }}
-                                </span>
-                            </td>
-                            <td>
-                                {% set status = item.kyc_info.verification_status|default('not_started') %}
-                                {% if status == 'verified' %}
-                                <span class="badge bg-success">Verified</span>
-                                {% elif status == 'pending' %}
-                                <span class="badge bg-warning">Pending</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Not Started</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if item.kyc_info.missing_requirements %}
-                                <small>{{ item.kyc_info.missing_requirements|join(', ')|truncate(30) if item.kyc_info.missing_requirements else '' }}</small>
-                                {% else %}
-                                <span class="text-success">Complete</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
-                                        data-bs-target="#upgradeModal{{ item.user.public_id }}">
-                                    <i class="bi bi-arrow-up"></i> Manual Upgrade
-                                </button>
-                            </td>
-                        </tr>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Email</th>
+                                <th>Current Tier</th>
+                                <th>Verification Status</th>
+                                <th>Missing / Next Needs</th>
+                                <th>Restricted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in user_kyc_info %}
+                            <tr>
+                                <td>{{ item.user.username }}</td>
+                                <td>{{ item.user.email }}</td>
+                                <td>
+                                    {% set tier_num = item.kyc_info.tier|default(0) %}
+                                    {% set tier_name = item.kyc_info.tier_name|default('Unregistered') %}
+                                    {% set tier_color_map = tier_colors|default({0: 'secondary', 1: 'info', 2: 'primary', 3: 'success', 4: 'warning', 5: 'danger'}) %}
+                                    <span class="badge bg-{{ tier_color_map.get(tier_num, 'secondary') }}">
+                                        {{ tier_name }}
+                                    </span>
+                                    <div style="font-size:11px;color:var(--ink-3);margin-top:4px;">
+                                        {{ item.kyc_info.tier_description or '' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    {% set status = item.kyc_info.verification_status|default('not_started') %}
+                                    {% if status == 'verified' %}
+                                    <span class="badge bg-success">Verified</span>
+                                    {% elif status == 'pending' %}
+                                    <span class="badge bg-warning">Pending</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Not Started</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.kyc_info.missing_requirements_labels %}
+                                    <small>{{ item.kyc_info.missing_requirements_labels|join(', ')|truncate(40) }}</small>
+                                    {% else %}
+                                    <span class="text-success">Complete</span>
+                                    {% endif %}
+                                    {% if item.kyc_info.next_tier is not none and item.kyc_info.next_tier_requirements_labels %}
+                                    <div style="font-size:11px;color:var(--ink-3);margin-top:4px;">
+                                      <strong>Tier {{ item.kyc_info.next_tier }} needs:</strong> {{ item.kyc_info.next_tier_requirements_labels|join(', ')|truncate(50) }}
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.kyc_info.activities_restricted %}
+                                    <small>{{ item.kyc_info.activities_restricted|length }} restricted</small>
+                                    {% else %}
+                                    <span class="text-success">Full access</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
+                                            data-bs-target="#upgradeModal{{ item.user.public_id }}">
+                                        <i class="bi bi-arrow-up"></i> Manual Upgrade
+                                    </button>
+                                </td>
+                            </tr>
 
                         <!-- Manual Upgrade Modal -->
                         <div class="modal fade" id="upgradeModal{{ item.user.public_id }}" tabindex="-1">

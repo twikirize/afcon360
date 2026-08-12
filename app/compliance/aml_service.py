@@ -7,8 +7,9 @@ Implements AML screening, transaction monitoring, and regulatory reporting.
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, JSON, Float, BigInteger
 from app.extensions import db
+from app.models.base import BaseModel
 from flask import current_app
 import hashlib
 import json
@@ -34,12 +35,11 @@ class AMLAlertType(Enum):
     STRUCTURING = "transaction_structuring"
 
 
-class AMLScreeningResult(db.Model):
+class AMLScreeningResult(BaseModel):
     """AML screening results storage."""
     __tablename__ = 'aml_screening_results'
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
     transaction_id = Column(String(100), nullable=True, index=True)
     
     # Screening details
@@ -62,20 +62,16 @@ class AMLScreeningResult(db.Model):
     
     # Review status
     reviewed = Column(Boolean, default=False, nullable=False)
-    reviewed_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    reviewed_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     reviewed_date = Column(DateTime, nullable=True)
     review_notes = Column(Text, nullable=True)
-    
-    # Metadata
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
-class AMLTransactionMonitor(db.Model):
+class AMLTransactionMonitor(BaseModel):
     """Transaction monitoring for AML."""
     __tablename__ = 'aml_transaction_monitor'
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
     
     # Monitoring period
     monitoring_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
@@ -101,8 +97,6 @@ class AMLTransactionMonitor(db.Model):
     # Alert status
     alert_level = Column(String(20), nullable=False, default='none')  # none, low, medium, high
     alerts_generated = Column(JSON, nullable=True)
-    
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class AMLService:
@@ -544,7 +538,7 @@ def require_aml_screening(f):
                 
                 # Block high-risk users
                 if screening.risk_level in ['high', 'prohibited']:
-                    flash('Transaction blocked due to compliance requirements', 'error')
+                    flash('Transaction blocked due to compliance requirements', 'danger')
                     return redirect(url_for('wallet.dashboard'))
         
         return f(*args, **kwargs)

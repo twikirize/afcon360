@@ -224,10 +224,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
     <a href="{{ url_for('auth.change_password') }}" class="alert-action">Change password →</a>
   </div>
   {% endif %}
-  {% if profile and profile.verification_status == 'rejected' %}
+  {% if verification_status == 'rejected' %}
   <div class="alert-banner danger" role="alert">
     <i class="fas fa-times-circle"></i>
-    <span><strong>Verification rejected:</strong> {{ profile.rejected_reason or 'Please re-submit your documents.' }}</span>
+    <span><strong>Verification rejected:</strong> {{ verification_rejection_reason or 'Please re-submit your documents.' }}</span>
     <a href="{{ url_for('auth.kyc_routes.kyc_upload') }}" class="alert-action">Re-submit →</a>
   </div>
   {% endif %}
@@ -256,16 +256,13 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
       <div class="hero-sub">{{ user.email }} &nbsp;·&nbsp; Member since {{ user.created_at.strftime('%B %Y') if user.created_at else '—' }}</div>
     </div>
     <div class="hero-badges">
-      {% if profile %}
-        {% if profile.verification_status == 'verified' %}
-          <span class="badge badge-ok"><i class="fas fa-check-circle"></i> Verified</span>
-        {% elif profile.verification_status == 'pending' %}
-          <span class="badge badge-warn"><i class="fas fa-clock"></i> Pending</span>
-        {% elif profile.verification_status == 'rejected' %}
-          <span class="badge badge-danger-d"><i class="fas fa-times-circle"></i> Rejected</span>
-        {% elif profile.verification_status == 'suspended' %}
-          <span class="badge badge-purple"><i class="fas fa-ban"></i> Suspended</span>
-        {% endif %}
+      {% if kyc_info %}
+        {% set tier_num = kyc_info.tier|default(0) %}
+        {% set tier_name = kyc_info.tier_name|default('Unregistered') %}
+        {% set tier_color_map = {0: 'secondary', 1: 'info', 2: 'primary', 3: 'success', 4: 'warning', 5: 'danger'} %}
+        <span class="badge bg-{{ tier_color_map.get(tier_num, 'secondary') }}">
+          <i class="fas fa-shield-alt"></i> Tier {{ tier_num }}: {{ tier_name }}
+        </span>
       {% endif %}
       {% if mfa_active %}<span class="badge badge-ok"><i class="fas fa-shield-alt"></i> MFA on</span>{% endif %}
       {% if has_pin %}<span class="badge badge-gold"><i class="fas fa-key"></i> PIN set</span>{% endif %}
@@ -454,14 +451,13 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
     <div class="acc-card">
       <div class="acc-card-head">
         <span class="acc-card-title"><i class="fas fa-id-card"></i> Verification & KYC</span>
-        {% if verification_status == 'verified' %}
-          <span class="pill-ok" style="font-size:10px;padding:2px 7px;"><i class="fas fa-check"></i> {{ tier_name }}</span>
-        {% elif verification_status == 'suspended' %}
-          <span class="pill-purple" style="font-size:10px;padding:2px 7px;"><i class="fas fa-ban"></i> Suspended</span>
-        {% elif verification_status == 'rejected' %}
-          <span class="pill-danger" style="font-size:10px;padding:2px 7px;"><i class="fas fa-times"></i> Rejected</span>
-        {% else %}
-          <span class="pill-warn" style="font-size:10px;padding:2px 7px;"><i class="fas fa-clock"></i> {{ tier_name }}</span>
+        {% if kyc_info %}
+          {% set tier_num = kyc_info.tier|default(0) %}
+          {% set tier_name = kyc_info.tier_name|default('Unregistered') %}
+          {% set tier_color_map = {0: 'secondary', 1: 'info', 2: 'primary', 3: 'success', 4: 'warning', 5: 'danger'} %}
+          <span class="badge bg-{{ tier_color_map.get(tier_num, 'secondary') }}">
+            Tier {{ tier_num }}: {{ tier_name }}
+          </span>
         {% endif %}
       </div>
       <div class="acc-card-body">
@@ -470,21 +466,66 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
           <i class="fas fa-ban"></i>
           <span>Your account is suspended. Contact support to resolve this.</span>
         </div>
-        {% elif verification_status == 'rejected' and profile and profile.rejected_reason %}
+        {% elif verification_status == 'rejected' and verification_rejection_reason %}
         <div class="alert-banner danger" style="margin-bottom:.75rem;" role="alert">
           <i class="fas fa-times-circle"></i>
-          <span>Rejection reason: {{ profile.rejected_reason }}</span>
+          <span>Rejection reason: {{ verification_rejection_reason }}</span>
         </div>
         {% endif %}
-        <div class="kyc-bar-wrap">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;">
-            <span style="font-size:12px;font-weight:600;color:var(--ink-2);">Progress</span>
-            <span style="font-size:13px;font-weight:700;color:var(--ink);">{{ progress_percentage }}%</span>
+
+        {% if kyc_info %}
+        <div style="display:grid;gap:.75rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:13px;font-weight:700;color:var(--ink);">Current tier</span>
+            <span style="font-size:12px;color:var(--ink-3);">{{ kyc_info.tier_description or '' }}</span>
           </div>
-          <div class="kyc-bar-track">
-            <div class="kyc-bar-fill" style="width:{{ progress_percentage }}%;"></div>
+
+          <div class="kyc-bar-wrap">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <span style="font-size:12px;font-weight:600;color:var(--ink-2);">Progress</span>
+              <span style="font-size:13px;font-weight:700;color:var(--ink);">{{ progress_percentage }}%</span>
+            </div>
+            <div class="kyc-bar-track">
+              <div class="kyc-bar-fill" style="width:{{ progress_percentage }}%;"></div>
+            </div>
           </div>
+
+          {% if kyc_info.next_tier is not none and kyc_info.next_tier_requirements_labels %}
+          <div style="background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-md);padding:.85rem 1rem;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-soft);margin-bottom:.5rem;">
+              To reach <strong>Tier {{ kyc_info.next_tier }}: {{ kyc_info.next_tier_name }}</strong>
+            </div>
+            <ul style="margin:0;padding-left:1.2rem;display:grid;gap:.35rem;">
+              {% for req in kyc_info.next_tier_requirements_labels %}
+              <li style="font-size:.9rem;color:var(--text);">{{ req }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if kyc_info.activities_restricted %}
+          <div style="background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-md);padding:.85rem 1rem;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#92400e;margin-bottom:.4rem;">
+              <i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i> Restricted activities
+            </div>
+            <div style="font-size:.9rem;color:#92400e;">
+               Complete KYC to unlock: {{ kyc_info.activities_restricted|length }} features.
+            </div>
+          </div>
+          {% endif %}
+
+          {% if verification_status == 'verified' %}
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-border);border-radius:var(--radius-md);padding:.85rem 1rem;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#065f46;margin-bottom:.4rem;">
+              <i class="fas fa-lock" style="margin-right:4px;"></i> Immutable fields
+            </div>
+            <div style="font-size:.9rem;color:#065f46;">
+              These fields cannot be edited after verification: {{ kyc_info.immutable_fields|join(', ')|replace('_', ' ')|title }}.
+            </div>
+          </div>
+          {% endif %}
         </div>
+
         <div class="kyc-steps">
           <div class="kyc-step {% if profile and profile.email_verified %}done{% else %}todo{% endif %}">
             <span><i class="fas fa-envelope" style="margin-right:7px;"></i>Email verified</span>
@@ -503,6 +544,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
         <a href="{{ url_for('kyc.upload') }}" style="display:block;margin-top:1rem;text-align:center;font-size:12px;font-weight:600;color:var(--green);text-decoration:none;padding:.6rem;border:1px dashed var(--surface-3);border-radius:var(--radius-md);">
           <i class="fas fa-arrow-up-from-bracket"></i> Upload documents →
         </a>
+        {% endif %}
         {% endif %}
       </div>
     </div>

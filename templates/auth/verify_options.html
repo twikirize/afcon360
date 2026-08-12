@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="card shadow-sm" style="width: 100%; max-width: 550px; border-radius: 12px; border: none; border-top: 4px solid #ffcc00;">
+        <div class="card-body p-4 p-md-5">
+            <h2 class="card-title text-center mb-3">Choose Verification Channel</h2>
+            <p class="text-muted text-center mb-4">Select how you would like to receive your verification code.</p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, msg in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'danger' else ('success' if category == 'success' else 'info') }}" role="alert">
+                            {{ msg }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="list-group mb-4">
+                    {% for ch in channels %}
+                    <label class="list-group-item list-group-item-action d-flex align-items-center p-3 mb-2 rounded border" style="cursor: pointer;">
+                        <input class="form-check-input me-3" type="radio" name="channel" value="{{ ch.id }}" {% if loop.first %}checked{% endif %}>
+                        <div>
+                            <div class="fw-bold">{{ ch.label }}</div>
+                            <div class="text-muted small">Send code to: {{ ch.contact }}</div>
+                            {% if ch.verified %}
+                            <span class="badge bg-success mt-1">Verified</span>
+                            {% endif %}
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-success btn-lg" style="background-color: #006400; border-color: #006400;">Send Verification Code</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}Monitoring Scenarios — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Monitoring Scenarios (TMS){% endblock %}
+
+{% block content %}
+{{ aml_nav('scenarios') }}
+<div class="card animate-up" style="margin-bottom: 20px;">
+  <div class="card-header"><div class="card-title"><i class="fas fa-wave-square"></i> Add Scenario</div></div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.compliance.aml_scenario_add') }}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end;">
+      {{ csrf_token() }}
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Name</label><input name="name" class="form-control" required></div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Category</label>
+        <select name="category" class="form-control"><option value="amount">Amount</option><option value="velocity">Velocity</option><option value="pattern">Pattern</option><option value="geography">Geography</option><option value="sanctions">Sanctions</option><option value="pep">PEP</option></select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Risk Weight</label><input name="risk_weight" type="number" class="form-control" value="0"></div>
+      <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Threshold</label><input name="threshold_value" type="number" step="any" class="form-control"></div>
+      <div class="form-group" style="margin-bottom: 0; grid-column: span 2;"><label class="form-label">Description</label><input name="description" class="form-control"></div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add</button>
+    </form>
+  </div>
+</div>
+
+<div class="card animate-up">
+  <div class="card-header"><div class="card-title">Configured Scenarios</div><span class="badge badge-blue">{{ scenarios|length }}</span></div>
+  <div class="card-body">
+    {% if scenarios %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Category</th><th>Weight</th><th>Threshold</th><th>Enabled</th><th>Calibrate</th></tr></thead>
+        <tbody>
+          {% for s in scenarios %}
+          <tr>
+            <td>{{ s.name }}<div class="muted" style="font-size: 11px;">{{ s.description or '' }}</div></td>
+            <td><span class="badge badge-blue">{{ s.category }}</span></td>
+            <td>{{ s.risk_weight }}</td>
+            <td class="mono">{{ s.threshold_value if s.threshold_value is not none else '-' }}</td>
+            <td>{% if s.is_enabled %}<span class="badge badge-green">Yes</span>{% else %}<span class="badge badge-gray">No</span>{% endif %}</td>
+            <td>
+              <form method="POST" action="{{ url_for('admin.compliance.aml_scenario_calibrate', scenario_id=s.id) }}" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                {{ csrf_token() }}
+                <input type="number" name="risk_weight" value="{{ s.risk_weight }}" class="form-control" style="width: 70px;" title="Risk weight">
+                <input type="number" name="threshold_value" step="any" value="{{ s.threshold_value or '' }}" class="form-control" style="width: 100px;" placeholder="threshold" title="Threshold">
+                <button type="submit" name="toggle" value="enable" class="btn btn-sm btn-secondary">Enable</button>
+                <button type="submit" name="toggle" value="disable" class="btn btn-sm btn-secondary">Disable</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="empty-icon"><i class="fas fa-check-circle"></i></div><p>No scenarios configured.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -477,7 +477,7 @@ def _alert_owner_dead_letter(event):
             try:
                 if getattr(owner, "phone", None) and getattr(owner, "phone_verified", False):
                     try:
-                        from app.services.sms_service import send_sms
+                        from app.notifications.sms_service import send_sms
                         send_sms(owner.phone, message)
                     except Exception:
                         logger.exception("Failed to send dead-letter SMS to owner %s", owner.id)

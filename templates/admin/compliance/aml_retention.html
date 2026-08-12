@@ -1,0 +1,36 @@
+{% extends "admin/compliance/base_compliance.html" %}
+{% from "admin/compliance/_aml_nav.html" import aml_nav %}
+
+{% block title %}Retention Policies — AFCON360 Compliance{% endblock %}
+{% block topbar_title %}Record Retention{% endblock %}
+
+{% block content %}
+{{ aml_nav('retention') }}
+<div class="card animate-up">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-archive"></i> Retention Policies & Aged Records</div>
+  </div>
+  <div class="card-body">
+    <p class="muted" style="font-size: 13px; margin-bottom: 16px;">
+      FATF and most jurisdictions require retention of KYC, transaction, screening and filing records for
+      a minimum period (commonly 5–10 years after the relationship ends). The platform enforces a per
+      resource-type policy; the table shows records that have already exceeded the configured window.
+    </p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Resource Type</th><th>Retention (yrs)</th><th>Auto-Purge</th><th>Aged Records</th></tr></thead>
+        <tbody>
+          {% for s in summary %}
+          <tr>
+            <td>{{ s.resource_type }}</td>
+            <td>{{ s.retention_years }}</td>
+            <td>{% if s.auto_purge %}<span class="badge badge-orange">Enabled</span>{% else %}<span class="badge badge-gray">Manual</span>{% endif %}</td>
+            <td class="mono">{{ s.aged_records }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

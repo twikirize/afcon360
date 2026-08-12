@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from app.extensions import db
 from app.accommodation.models.property import Property
 from app.accommodation.models.moderation import PropertyModerationHistory
-from app.services.notification_service import NotificationService
+from app.notifications.services import NotificationService
 import logging
 
 logger = logging.getLogger(__name__)
